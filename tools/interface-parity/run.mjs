@@ -5203,6 +5203,46 @@ async function probeTacticalBattleLastShipLost(page, viewport, folder, consoleLi
   const keysHeld = await stableInteractionFrame(page, folder, "battle-last-ship-fkeys");
   assert.equal(sha256(keysHeld), sha256(results), `${faction}: an F-key changed the screen under the summary`);
   probes.push({ type: "battle-last-ship-fkeys", keys: ["F2", "F6", "F7"], held: true });
+  // Accelerator table 11 arrives as message 0x483 (FUN_004138a0). Its Agent
+  // cases (Alt+G 0xbc5, Alt+H 0xbd7) act only while DAT_006be4e4, the list
+  // a +0xb8 window joins on WM_CREATE (FUN_006068f0), is empty; the GID
+  // cases (Alt+1..9, 0xbca..0xbd2 -> FUN_00425d00) do not read it
+  // (FUN_00422ce0). A frame between key events so the port sees Alt held.
+  const nextFrames = () => page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const altKey = async (code) => {
+    await page.keyboard.down("Alt");
+    await nextFrames();
+    await page.keyboard.down(code);
+    await nextFrames();
+    await page.keyboard.up(code);
+    await page.keyboard.up("Alt");
+    await page.waitForTimeout(200);
+  };
+  await altKey("KeyG");
+  await altKey("KeyH");
+  assert.ok(!consoleLines.some(({ text }) => /\[agent\] command=.*source=accelerator/.test(text)),
+    `${faction}: Alt+G or Alt+H carried out an Agent command while the Battle Summary was open`);
+  const altHeld = await stableInteractionFrame(page, folder, "battle-last-ship-alt-agent");
+  assert.equal(sha256(altHeld), sha256(results), `${faction}: Alt+G or Alt+H changed the screen under the summary`);
+  probes.push({ type: "battle-last-ship-alt-agent", keys: ["Alt+G", "Alt+H"], held: true });
+  // The campaign shows Popular Support (Alt+1) already, so Alt+2 picks
+  // Uprisings (0x12) and Alt+1 brings Popular Support (0x11) back for the
+  // checks below.
+  const gidSelected = (id) => consoleLines.some(({ text }) => new RegExp(
+    `\\[interface\\] command=0x${id} destination=gid status=selected label=.* source=accelerator`).test(text));
+  await altKey("Digit2");
+  assert.ok(gidSelected("12"), `${faction}: Alt+2 did not switch the GID display under the summary`);
+  const uprisings = await stableInteractionFrame(page, folder, "battle-last-ship-alt-2");
+  assert.notEqual(sha256(uprisings), sha256(results), `${faction}: Alt+2 changed no display under the summary`);
+  await altKey("Digit1");
+  assert.ok(gidSelected("11"), `${faction}: Alt+1 did not switch the GID display under the summary`);
+  const popular = await stableInteractionFrame(page, folder, "battle-last-ship-alt-1");
+  probes.push({
+    type: "battle-last-ship-alt-gid", keys: ["Alt+2", "Alt+1"], answered: true,
+    restored_frame: sha256(popular) === sha256(results),
+  });
   // The Display page ("Go directly to", the fourth tab), then the system
   // button at window (29, 182), 169 by 96.
   const tabX = (alliance ? 523.5 : 533) + dx;
