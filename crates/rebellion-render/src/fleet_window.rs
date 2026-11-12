@@ -1702,9 +1702,41 @@ fn tab_enabled(
         FleetWindowTab::Personnel => {
             !value.characters.is_empty()
                 || !value.special_forces.is_empty()
-                || arrivals.iter().any(|(_, to)| *to == fleet)
+                || bound_members(world, arrivals, fleet).next().is_some()
         }
     }
+}
+
+/// The members on their way into `fleet` that its walk finds. The walk's
+/// mode 3 takes existing children only (`+0x50` bit 6, `FUN_004f6b90`;
+/// `FUN_00536da0(ship, 3)`), so a killed member is gone; and the Move's
+/// acceptance refuses another side's container (`FUN_00553410`: `1`/`0x24`,
+/// `1`/`0x28`), so a member of another side is never aboard. A prisoner
+/// carries its captor's side (`FUN_004eec60`, `missions::character_side`).
+fn bound_members<'a>(
+    world: &'a GameWorld,
+    arrivals: &'a [(MissionMember, FleetKey)],
+    fleet: FleetKey,
+) -> impl Iterator<Item = MissionMember> + 'a {
+    let side = world.fleets.get(fleet).map(|value| value.is_alliance);
+    arrivals
+        .iter()
+        .filter(move |(_, to)| *to == fleet)
+        .map(|&(member, _)| member)
+        .filter(move |&member| {
+            let is_alliance = match member {
+                MissionMember::Character(key) => world
+                    .characters
+                    .get(key)
+                    .filter(|character| !character.is_killed)
+                    .and_then(rebellion_core::missions::character_side)
+                    .map(|faction| faction == Faction::Alliance),
+                MissionMember::SpecialForce(key) => {
+                    world.special_forces.get(key).map(|unit| unit.is_alliance)
+                }
+            };
+            is_alliance.is_some() && is_alliance == side
+        })
 }
 
 /// The tab a new selection shows: a ship has no Capital Ships tab, so it
@@ -2035,10 +2067,8 @@ fn right_items(
             // (FUN_00556390 into the Move's target container +0x74), with
             // its en route mark (FUN_0042c3b0 +0x50 bit 4).
             .chain(
-                arrivals
-                    .iter()
-                    .filter(|(_, to)| *to == fleet)
-                    .filter_map(|&(member, _)| travelling_member_item(world, member)),
+                bound_members(world, arrivals, fleet)
+                    .filter_map(|member| travelling_member_item(world, member)),
             )
             .collect(),
     }
@@ -2048,7 +2078,7 @@ fn right_items(
 fn travelling_member_item(world: &GameWorld, member: MissionMember) -> Option<RightItem> {
     Some(match member {
         MissionMember::Character(key) => {
-            let character = world.characters.get(key)?;
+            let character = world.characters.get(key).filter(|value| !value.is_killed)?;
             RightItem {
                 mini: character_picture(character),
                 kind: MiniObject::Character,
@@ -3992,6 +4022,46 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_killed_or_other_sides_member_bound_for_a_fleet_is_not_aboard() {
+        // The walk's mode 3 takes existing children only (+0x50 bit 6,
+        // FUN_004f6b90), and FUN_00553410 refuses a Move into another
+        // side's container (1/0x24, 1/0x28): a killed traveller or one of
+        // the other side neither lists on the Personnel tab nor lights it.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 2);
+        let traveller = |world: &mut GameWorld, is_alliance, is_empire, is_killed| {
+            world.characters.insert(rebellion_core::world::Character {
+                is_alliance,
+                is_empire,
+                is_killed,
+                ..Default::default()
+            })
+        };
+        let killed = traveller(&mut world, true, false, true);
+        let imperial = traveller(&mut world, false, true, false);
+        let unit = world.special_forces.insert(rebellion_core::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: true,
+        });
+        let arrivals = [
+            (MissionMember::Character(killed), fleet),
+            (MissionMember::Character(imperial), fleet),
+            (MissionMember::SpecialForce(unit), fleet),
+        ];
+        let transport = TroopTransportState::default();
+        let selected = Some(FleetWindowEntry::Fleet(fleet));
+        assert!(!tab_enabled(&world, &transport, &arrivals, selected, FleetWindowTab::Personnel));
+        assert!(right_items(&world, &transport, &arrivals, selected, FleetWindowTab::Personnel).is_empty());
+        assert!(travelling_member_item(&world, MissionMember::Character(killed)).is_none());
+        // A living member of the fleet's side is aboard.
+        let own = traveller(&mut world, true, false, false);
+        let arrivals = [(MissionMember::Character(own), fleet)];
+        assert!(tab_enabled(&world, &transport, &arrivals, selected, FleetWindowTab::Personnel));
+    }
+
+    #[test]
     fn units_on_their_way_aboard_are_listed_with_the_en_route_mark_and_light_their_tabs() {
         // FUN_00556390 puts a regiment, squadron or member sent by Move into
         // its target container at once, in hyperspace (+0x50 bit 4;
@@ -4013,6 +4083,8 @@ pub(crate) mod tests {
             });
         let character = world.characters.insert(rebellion_core::world::Character {
             name: "Wedge".into(),
+            // The fleet's side: FUN_00553410 refuses another's.
+            is_alliance: true,
             ..Default::default()
         });
         let selected = Some(FleetWindowEntry::Fleet(fleet));
