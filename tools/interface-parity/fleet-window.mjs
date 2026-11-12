@@ -2664,30 +2664,30 @@ const cases = [
   {
     name: "fleet-encyclopedia",
     code: FLEET_LOAD,
-    // A fleet's Encyclopedia (0x100) opens the topic its record's name
-    // gives, "Fleet", outside the index list (FUN_0045d400; A0
-    // menus2/20-fleet-encyclopedia.png) and lists it by name for the
-    // window's life; its next arrow (0x84, at (380, 14)) opens the list's
+    // A fleet's Encyclopedia (0x100) opens the "Fleet" topic, the FLEETSD
+    // class 0x0800_0004 every fleet is made from (FUN_004f7d50), which
+    // FUN_00422620 lists in every index (FUN_0045d400; A0
+    // menus2/20-fleet-encyclopedia.png); its next arrow (0x84, at (380, 14)) opens the list's
     // next name (menus2/21) and previous (0x83, at (28, 14)) comes back.
     async run(page, faction, setup, directory, source, log) {
       const opened = await openFleetWindow(page, setup);
       const menu = await openMenu(page, point(opened.fleet_entry), directory, "fleet");
       await choose(page, menu, menu.row_states.findIndex(([label]) => label === "Encyclopedia"), "Encyclopedia");
       const topic = await log.logged("Encyclopedia opens the fleet topic",
-        /command=0x100 destination=encyclopedia status=opened topic_mode=true object=Some\(134217728\)$/);
+        /command=0x100 destination=encyclopedia status=opened topic_mode=true object=Some\(134217732\)$/);
       await frames(page, 3);
       await shot(page, directory, "fleet-topic");
       const origin = faction.name === "alliance" ? { x: 62, y: 50 } : { x: 125, y: 52 };
       await click(page, { x: origin.x + 390, y: origin.y + 22 });
       const next = await log.logged("the next arrow opens the list's next name",
-        /\[encyclopedia\] command=0x84 topic_mode=true object=Some\((?!134217728\))\d+\)$/);
+        /\[encyclopedia\] command=0x84 topic_mode=true object=Some\((?!134217732\))\d+\)$/);
       await shot(page, directory, "fleet-topic-next");
       // The window keeps Fleet on its list: the previous arrow comes back
       // to it (A0 menus2/24, Flax's next is Fleet).
       await page.waitForTimeout(400);
       await click(page, { x: origin.x + 38, y: origin.y + 22 });
       const back = await log.logged("the previous arrow comes back to Fleet",
-        /\[encyclopedia\] command=0x83 topic_mode=true object=Some\(134217728\)$/);
+        /\[encyclopedia\] command=0x83 topic_mode=true object=Some\(134217732\)$/);
       return { menu, topic, next, back };
     },
   },
