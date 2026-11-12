@@ -2640,18 +2640,21 @@ pub fn draw_fleet_windows(
         if let Some((selection, point, row)) = result.object_menu {
             // The menu takes the hit list's selection (slot +0x58,
             // FUN_004a2c80), the clicked item first.
-            let mut team = vec![selection];
-            if row.is_some_and(|row| window.selected_items.contains(row)) {
+            // Squadrons of one class share their object, so each selected
+            // item stays in the team.
+            let team = if row.is_some_and(|row| window.selected_items.contains(row)) {
                 let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
-                team.extend(
+                crate::drag_list::clicked_first(
+                    selection,
                     items
                         .iter()
                         .enumerate()
                         .filter(|(index, _)| window.selected_items.contains(*index))
-                        .filter_map(|(_, item)| item.object.map(ItemObject::menu_object))
-                        .filter(|object| *object != selection),
-                );
-            }
+                        .filter_map(|(_, item)| item.object.map(ItemObject::menu_object)),
+                )
+            } else {
+                vec![selection]
+            };
             actions.push(FleetWindowAction::OpenObjectMenu {
                 system: window.system,
                 selection,
@@ -6150,6 +6153,50 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>(),
             [MenuObject::Fighter { fleet, index: 1 }]
         );
+    }
+
+    #[test]
+    fn a_menu_on_one_of_several_selected_squadrons_of_a_class_takes_them_all() {
+        // FUN_004ac5c0 takes the list's whole selection (slot +0x58): three
+        // X-wing squadrons selected with Ctrl are three team members,
+        // though the port's squadrons share their class entry.
+        let (mut world, transport, system, fleet, _) = fleet_with_regiment();
+        let fighter = world.fighter_classes.insert(Default::default());
+        world.fleets[fleet]
+            .fighters
+            .push(rebellion_core::world::FighterEntry {
+                class: fighter,
+                count: 3,
+                carrier: None,
+            });
+        let mut state = opened(&world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.tab = FleetWindowTab::Fighters;
+        }
+        for (row, modifiers) in [
+            (0, egui::Modifiers::NONE),
+            (1, egui::Modifiers::CTRL),
+            (2, egui::Modifiers::CTRL),
+        ] {
+            let point = state.item_screen_rect(scaled(), system, row).unwrap().center();
+            let _ = run(
+                &world,
+                &transport,
+                &mut state,
+                CockpitFaction::Alliance,
+                click_with(point, modifiers),
+            );
+        }
+        let point = state.item_screen_rect(scaled(), system, 1).unwrap().center();
+        let teams: Vec<Vec<MenuObject>> = right_click(&world, &transport, &mut state, point)
+            .into_iter()
+            .filter_map(|action| match action {
+                FleetWindowAction::OpenObjectMenu { team, .. } => Some(team),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(teams, [vec![MenuObject::Fighter { fleet, index: 0 }; 3]]);
     }
 
     #[test]

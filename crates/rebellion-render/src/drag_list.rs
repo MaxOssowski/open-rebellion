@@ -203,6 +203,21 @@ fn meets(from: ContentPoint, to: ContentPoint, origin: ContentPoint, size: (f32,
     origin.0 <= right && left <= origin.0 + size.0 && origin.1 <= bottom && top <= origin.1 + size.1
 }
 
+/// A menu's team (`FUN_004ac5c0` over the window's slot `+0x58`): the
+/// clicked object first, then the rest of the `selected` objects in list
+/// order. Only one occurrence of `clicked` gives way to it, since several
+/// squadrons of a class stand for the same object and each is its own unit.
+#[must_use]
+pub fn clicked_first<T: PartialEq>(clicked: T, selected: impl IntoIterator<Item = T>) -> Vec<T> {
+    let mut rest: Vec<T> = selected.into_iter().collect();
+    if let Some(index) = rest.iter().position(|object| *object == clicked) {
+        rest.remove(index);
+    }
+    let mut team = vec![clicked];
+    team.extend(rest);
+    team
+}
+
 /// The keys held now, as `wParam` reports them with a press.
 #[must_use]
 pub fn modifiers(ctx: &egui_macroquad::egui::Context) -> Modifiers {
@@ -347,6 +362,14 @@ mod tests {
         assert_eq!(selection.items(), &[1]);
         assert!(selection.press(None, (60.0, 230.0), PLAIN, &cells));
         assert!(selection.is_empty());
+    }
+
+    #[test]
+    fn a_menu_team_keeps_every_selected_squadron_of_the_clicked_class() {
+        // Three X-wing squadrons stand for one object each; the team of
+        // the menu opened on one of them holds all three.
+        assert_eq!(clicked_first('x', ['a', 'x', 'x', 'x']), ['x', 'a', 'x', 'x']);
+        assert_eq!(clicked_first('x', ['a', 'b']), ['x', 'a', 'b']);
     }
 
     #[test]

@@ -1430,22 +1430,20 @@ pub fn draw_defenses_windows(
         if let Some((selection, point)) = result.object_menu {
             // The menu takes the list's whole selection (slot 22,
             // FUN_004a7a20), the clicked row first.
+            // Squadrons of one class share their object, so each selected
+            // row stays in the team.
             let team = selection.map_or_else(Vec::new, |clicked| {
-                let mut team = vec![clicked];
-                team.extend(
-                    result
-                        .cells
-                        .iter()
-                        .filter(|(item, _, _)| window.selected.contains(*item))
-                        .filter_map(|(item, _, _)| item.menu_object())
-                        .filter(|object| *object != clicked),
-                );
-                if team.len() > 1 && !result.cells.iter().any(|(item, _, _)| {
-                    window.selected.contains(*item) && item.menu_object() == Some(clicked)
-                }) {
-                    team.truncate(1);
+                let selected: Vec<MenuObject> = result
+                    .cells
+                    .iter()
+                    .filter(|(item, _, _)| window.selected.contains(*item))
+                    .filter_map(|(item, _, _)| item.menu_object())
+                    .collect();
+                if selected.contains(&clicked) {
+                    crate::drag_list::clicked_first(clicked, selected)
+                } else {
+                    vec![clicked]
                 }
-                team
             });
             actions.push(DefensesWindowAction::OpenObjectMenu {
                 system,
@@ -3633,6 +3631,39 @@ mod tests {
             menus(&opened),
             [(Some(MenuObject::Character(hidden)), (120, 130))]
         );
+    }
+
+    #[test]
+    fn a_menu_on_one_of_two_selected_squadrons_of_a_class_takes_both() {
+        // FUN_004ac5c0 takes slot 22's whole selection (FUN_004a7a20): two
+        // X-wing squadrons selected with Ctrl are two team members, though
+        // both stand for the planet's X-wing entry.
+        let (world, system, missions) = stocked();
+        let mut state = opened(&world, system);
+        state.windows[0].page = DefensesPage::Squadrons;
+        let _ = run(&world, &missions, &mut state, click(at(30.0, 100.0)));
+        let _ = run(
+            &world,
+            &missions,
+            &mut state,
+            click_with(at(100.0, 100.0), egui::Modifiers::CTRL),
+        );
+        assert_eq!(state.windows[0].selected.items().len(), 2);
+        let opened = run(&world, &missions, &mut state, right_click(at(30.0, 100.0)));
+        let teams: Vec<Vec<MenuObject>> = opened
+            .actions
+            .iter()
+            .filter_map(|action| match action {
+                DefensesWindowAction::OpenObjectMenu { team, .. } => Some(team.clone()),
+                _ => None,
+            })
+            .collect();
+        let [team] = &teams[..] else {
+            panic!("{teams:?}");
+        };
+        assert_eq!(team.len(), 2, "{team:?}");
+        assert_eq!(team[0], team[1]);
+        assert!(matches!(team[0], MenuObject::PlanetFighter { .. }));
     }
 
     #[test]
