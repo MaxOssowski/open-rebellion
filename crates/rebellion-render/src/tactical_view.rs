@@ -6523,38 +6523,6 @@ fn update_tactical_camera_follow(state: &mut TacticalState) -> bool {
     // builds class `0x66d478`, `0x005d9b10` places it). port: the lead is
     // the group's first live hull, and the group's second object (vt
     // `+0x44`) is not traced, so the camera takes the no-target branch.
-    if let TacticalCameraFollow::TaskForce(group) = follow {
-        let lead = session.ships.iter().find(|ship| {
-            ship.alive
-                && !ship.retreating
-                && ship.is_attacker == session.player_is_attacker
-                && ship.task_force == group
-        });
-        let Some(lead) = lead else {
-            state.camera_follow = None;
-            state.asset_renderer.clear_chase();
-            return false;
-        };
-        let bounds = lead
-            .tactical_resource
-            .and_then(|resource| {
-                state
-                    .asset_renderer
-                    .participant_box(resource.mesh_resource_base)
-            })
-            .unwrap_or([0.0; 6]);
-        let position = lead.source_position;
-        let forward = lead.source_forward;
-        let view = crate::tactical_assets::original_chase_view(
-            10_001 + u32::from(group),
-            macroquad::math::vec3(position.x, position.y, position.z),
-            macroquad::math::vec3(forward.x, forward.y, forward.z),
-            bounds,
-        );
-        state.asset_renderer.set_chase(view);
-        return true;
-    }
-    state.asset_renderer.clear_chase();
     let (source_positions, fallback_positions, object_id): (Vec<_>, Vec<_>, u32) = match follow {
         TacticalCameraFollow::TaskForce(group) => {
             let members = session
@@ -6597,8 +6565,34 @@ fn update_tactical_camera_follow(state: &mut TacticalState) -> bool {
             )
         }
     };
+    // F1-F8: the chase camera behind the task force's lead hull
+    // (`FUN_005aafc0` gives the group's object, `FUN_005c2990` mode 0xb
+    // builds class `0x66d478`, `0x005d9b10` places it). port: the lead is
+    // the group's first live hull, and the group's second object (vt
+    // `+0x44`) is not traced, so the camera takes the no-target branch.
+    // F9-F12 keep the look-at below: a fighter sprite has no mesh box.
+    let chase = match follow {
+        TacticalCameraFollow::TaskForce(group) => session
+            .ships
+            .iter()
+            .find(|ship| {
+                ship.alive
+                    && !ship.retreating
+                    && ship.is_attacker == session.player_is_attacker
+                    && ship.task_force == group
+            })
+            .map(|lead| {
+                (
+                    lead.tactical_resource,
+                    lead.source_position,
+                    lead.source_forward,
+                )
+            }),
+        TacticalCameraFollow::FighterGroup(_) => None,
+    };
     if source_positions.is_empty() {
         state.camera_follow = None;
+        state.asset_renderer.clear_chase();
         return false;
     }
     let count = source_positions.len() as f32;
@@ -6632,9 +6626,27 @@ fn update_tactical_camera_follow(state: &mut TacticalState) -> bool {
         / fallback_count;
     state.camera_x = fallback_x - ARENA_WIDTH * 0.5;
     state.camera_y = fallback_y - ARENA_HEIGHT * 0.5;
-    state
-        .asset_renderer
-        .focus_target(object_id, source.rendered());
+    let Some((resource, position, forward)) = chase else {
+        state.asset_renderer.clear_chase();
+        state
+            .asset_renderer
+            .focus_target(object_id, source.rendered());
+        return true;
+    };
+    let bounds = resource
+        .and_then(|resource| {
+            state
+                .asset_renderer
+                .participant_box(resource.mesh_resource_base)
+        })
+        .unwrap_or([0.0; 6]);
+    let view = crate::tactical_assets::original_chase_view(
+        object_id,
+        macroquad::math::vec3(position.x, position.y, position.z),
+        macroquad::math::vec3(forward.x, forward.y, forward.z),
+        bounds,
+    );
+    state.asset_renderer.set_chase(view);
     true
 }
 
@@ -18706,32 +18718,53 @@ mod tests {
     // commands 7 and 10) returns to the free camera, which F1 left as it was.
     #[test]
     fn following_a_task_force_runs_the_chase_camera_behind_its_lead_hull() {
-        let mut lead = test_ship(1, 0, true, true);
-        lead.task_force = 0;
-        lead.source_position = at(3.0, 4.0, -53.0);
-        lead.source_forward = TacticalWorldVector {
+        // Ships F2 must pass over: dead, retreating, the enemy's, and one
+        // in task force 1; then the lead and a second member of task force 2.
+        let mut ships = Vec::new();
+        for (dat_id, is_alliance, alive, retreating, task_force) in [
+            (1, true, false, false, 1),
+            (2, true, true, true, 1),
+            (3, false, true, false, 1),
+            (4, true, true, false, 0),
+            (5, true, true, false, 1),
+            (6, true, true, false, 1),
+        ] {
+            let mut ship = test_ship(dat_id, 0, is_alliance, alive);
+            ship.retreating = retreating;
+            ship.task_force = task_force;
+            ship.source_position = at(dat_id as f32, 0.0, -53.0);
+            ships.push(ship);
+        }
+        ships[4].source_position = at(3.0, 4.0, -53.0);
+        ships[4].source_forward = TacticalWorldVector {
             x: 0.0,
             y: 0.0,
             z: 1.0,
         };
-        let mut second = test_ship(2, 1, true, true);
-        second.task_force = 0;
-        second.source_position = at(30.0, 0.0, -53.0);
         let mut state = TacticalState::default();
-        state.session = Some(test_session(vec![lead, second], Vec::new(), true));
+        state.session = Some(test_session(ships, Vec::new(), true));
         let free = crate::tactical_assets::OriginalTacticalCamera::new(false, 100.0);
         state.asset_renderer.restore_camera_state(free);
-        state.camera_follow = Some(TacticalCameraFollow::TaskForce(0));
+        state.camera_follow = Some(TacticalCameraFollow::TaskForce(1));
         assert!(update_tactical_camera_follow(&mut state));
         let chase = state
             .asset_renderer
             .chase_view()
-            .expect("F1 runs the chase camera");
+            .expect("F2 runs the chase camera");
         // No box is loaded here, so e is 0: the eye is the lead's position.
         assert_eq!(chase.eye, at(3.0, 4.0, -53.0).rendered());
         assert_eq!(chase.direction, macroquad::math::vec3(0.0, 0.0, -1.0));
-        assert_eq!(chase.object_id, 10_001);
+        assert_eq!(chase.object_id, 10_002);
         assert_eq!(state.asset_renderer.camera_state(), Some(free));
+        // A fighter group (F9-F12) keeps the look-at: no chase.
+        let mut squadron = test_fighter(5, true);
+        squadron.fighter_group = 0;
+        state.session.as_mut().unwrap().fighters.push(squadron);
+        state.camera_follow = Some(TacticalCameraFollow::FighterGroup(0));
+        assert!(update_tactical_camera_follow(&mut state));
+        assert_eq!(state.asset_renderer.chase_view(), None);
+        state.camera_follow = Some(TacticalCameraFollow::TaskForce(1));
+        assert!(update_tactical_camera_follow(&mut state));
         state.camera_follow = None;
         assert!(!update_tactical_camera_follow(&mut state));
         assert_eq!(state.asset_renderer.chase_view(), None);

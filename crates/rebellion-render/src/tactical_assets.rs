@@ -4888,6 +4888,8 @@ mod tests {
         assert_eq!(chase.target, view.eye + view.direction);
         assert_eq!(chase.up, Vec3::Y);
         assert_near(chase.near, 0.1);
+        // The chase sets no back plane: the free camera's stays.
+        assert_near(chase.far, free.far);
         assert_near(chase.field, 0.02);
         assert_near(chase.fovy_radians, 2.0 * 0.2_f32.atan());
         assert_eq!(chase.target_object_id, Some(10_001));
