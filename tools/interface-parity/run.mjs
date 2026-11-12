@@ -4935,6 +4935,56 @@ async function probeTacticalBattleLastShipLost(page, viewport, folder, consoleLi
     probes.push({ type: "battle-last-ship-scene-a0", a0: "TAC-01-C013/original.png", checked, differ });
     assert.equal(differ, 0, `${faction}: the summary scene differs from A0 TAC-01-C013 in ${differ} of ${checked} pixels`);
   }
+  // The summary is a child window of the Command Center (FUN_0042a640 ->
+  // FUN_0046f140), over the live strategy screen, as A0 TAC-01-C013 shows.
+  assert.ok(consoleLines.some(({ text }) =>
+    text.includes("[tactical-results] summary_window owner=command_center")),
+  `${faction}: the Battle Summary did not open over the Command Center`);
+  if (alliance && native && fs.existsSync(c013)) {
+    // Around the window, against A0: the status bar less its three
+    // numbers (game state), the left column up to the galaxy display (x 52)
+    // less the message rail's lit icons (A0's unread messages), the
+    // cockpit's consoles and droids under
+    // the window, and the right column under the sector window A0 had
+    // open; A0's pointer (x 630.., y 392..411) is left out.
+    const a0 = PNG.sync.read(fs.readFileSync(c013));
+    const port = PNG.sync.read(results);
+    const count = (x0, y0, x1, y1, skip = () => false) => {
+      let differ = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          if (skip(x, y)) continue;
+          const i = (y * 640 + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) differ++;
+        }
+      }
+      return differ;
+    };
+    const inWindow = (x, y) => x >= 62 && x < 532 && y >= 49 && y < 380;
+    const strategy = {
+      status_bar: count(0, 0, 640, 26, (x, y) => x >= 230 && x < 530 && y >= 8),
+      left_column: count(0, 0, 52, 480, (x, y) => x < 32 && y >= 104 && y < 310),
+      consoles: count(0, 396, 630, 480),
+      right_column: count(540, 0, 630, 396),
+    };
+    // Every pixel outside the window, to report: the status bar's numbers,
+    // the lit rail icons, the galaxy display and A0's sector window differ.
+    const outside = count(0, 0, 640, 480, inWindow);
+    probes.push({ type: "battle-last-ship-strategy-a0", a0: "TAC-01-C013/original.png", strategy, outside });
+    assert.deepEqual(strategy, { status_bar: 0, left_column: 0, consoles: 0, right_column: 0 },
+      `${faction}: the strategy screen around the summary differs from A0 TAC-01-C013`);
+  }
+  // Modal (manual p. 64; FUN_0046f140 sets +0xb8 = 1 as the System
+  // Finder's FUN_00460090 does): the System Finder control takes no click.
+  const finder = alliance ? [119.5, 416] : [161.5, 446];
+  await click(finder[0], finder[1]);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(300);
+  assert.ok(!consoleLines.some(({ text }) => text.includes("[interface] command=0x12d")),
+    `${faction}: the cockpit took a click while the Battle Summary was open`);
+  const held = await stableInteractionFrame(page, folder, "battle-last-ship-modal");
+  assert.equal(sha256(held), sha256(results), `${faction}: the strategy screen changed under the summary`);
+  probes.push({ type: "battle-last-ship-modal", control: "0x12d", held: true });
   // The Display page ("Go directly to", the fourth tab), then the system
   // button at window (29, 182), 169 by 96.
   const tabX = (alliance ? 523.5 : 533) + dx;
