@@ -140,12 +140,20 @@ const CONTENT_INDICATORS: [(u8, u32, f32); 3] = [
 /// special force, which keeps no seat, marks that first ship too. A0
 /// `fleet2/vjun-fleet5-admiral-ships`: Garm Bel Iblis aboard Fleet 5 marks
 /// Corellian Corvette 2.
-fn ship_contents(world: &GameWorld, transport: &TroopTransportState, fleet: FleetKey) -> Vec<u8> {
-    ship_cargo(world, transport, fleet)
+///
+/// `FUN_004a66a0` walks the ship's children in mode 3, so the units on
+/// their way in mark the ship they were seated on ([`ship_load`]).
+fn ship_contents(
+    world: &GameWorld,
+    transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
+    fleet: FleetKey,
+) -> Vec<u8> {
+    ship_load(world, transport, arrivals, fleet)
         .iter()
         .map(|cargo| {
             let mut flags = 0;
-            if cargo.squadrons > 0 {
+            if cargo.squadrons > 0 || !cargo.incoming_squadrons.is_empty() {
                 flags |= CONTENT_SQUADRONS;
             }
             if !cargo.regiments.is_empty() {
@@ -167,6 +175,9 @@ pub(crate) struct ShipCargo {
     pub special_forces: Vec<SpecialForceKey>,
     pub regiments: Vec<TroopKey>,
     pub squadrons: usize,
+    /// The squadrons on their way in seated here, each by its place among
+    /// the fleet's incoming squadrons ([`incoming_squadrons`]).
+    pub incoming_squadrons: Vec<usize>,
 }
 
 /// Each capital ship's cargo, by index in `fleet`, seated as
@@ -218,6 +229,88 @@ pub(crate) fn ship_cargo(
     for &key in &value.special_forces {
         if let Some(each) = first.and_then(|index| cargo.get_mut(index)) {
             each.special_forces.push(key);
+        }
+    }
+    cargo
+}
+
+/// [`ship_cargo`] with the units on their way into `fleet` seated too, as
+/// the Fleet window's walks find them (mode 3 counts a ship's children in
+/// hyperspace).
+///
+/// A Move onto a fleet places each member on one of its ships
+/// (`FUN_00552300`, fleet destination `0x08..0x0f`): it tries the fleet's
+/// usable ships of the side (`FUN_00502e30(fleet, 1, side)`) in child
+/// order through `FUN_00552b10`, which keeps a later candidate only when
+/// `FUN_0054fbb0` finds it strictly better: not refused, then unlimited
+/// room, then more room left after the move (`+8`, `FUN_0054fca0`: the
+/// room `FUN_00500b40` less the team's count). So a regiment or squadron
+/// boards the ship with the most room left, the first of equals, and the
+/// room already counts the units on their way (`FUN_00500b40` subtracts
+/// the mode-3 count). Characters and special forces have unlimited room
+/// (`0x30..0x40`), so they board the first usable ship. port: the seats are
+/// recomputed from the port's own seating each frame, in departure order,
+/// and the first ship is [`ship_cargo`]'s first living numbered one.
+pub(crate) fn ship_load(
+    world: &GameWorld,
+    transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
+    fleet: FleetKey,
+) -> Vec<ShipCargo> {
+    let mut cargo = ship_cargo(world, transport, fleet);
+    let Some(value) = world.fleets.get(fleet) else {
+        return cargo;
+    };
+    let capacity = |pick: fn(&CapitalShipClass) -> u32| -> Vec<Option<i64>> {
+        value
+            .capital_ships
+            .iter()
+            .map(|ship| {
+                world
+                    .capital_ship_classes
+                    .get(ship.class)
+                    .filter(|_| ship.alive)
+                    .map(|class| i64::from(pick(class)))
+            })
+            .collect()
+    };
+    // The ship with the most room left, the first of equals.
+    let roomiest = |room: &[Option<i64>], taken: &dyn Fn(&ShipCargo) -> usize, cargo: &[ShipCargo]| {
+        room.iter()
+            .zip(cargo)
+            .enumerate()
+            .filter_map(|(index, (room, each))| {
+                Some((index, (*room)? - i64::try_from(taken(each)).unwrap_or(i64::MAX)))
+            })
+            .fold(None, |best: Option<(usize, i64)>, (index, left)| match best {
+                Some((_, most)) if most >= left => best,
+                _ => Some((index, left)),
+            })
+            .map(|(index, _)| index)
+    };
+    let troops = capacity(|class| class.troop_capacity);
+    for troop in incoming_regiments(transport, fleet) {
+        if let Some(index) = roomiest(&troops, &|each| each.regiments.len(), &cargo) {
+            cargo[index].regiments.push(troop);
+        }
+    }
+    let hangars = capacity(|class| class.fighter_capacity);
+    for ordinal in 0..incoming_squadrons(transport, fleet).count() {
+        let taken = |each: &ShipCargo| each.squadrons + each.incoming_squadrons.len();
+        if let Some(index) = roomiest(&hangars, &taken, &cargo) {
+            cargo[index].incoming_squadrons.push(ordinal);
+        }
+    }
+    let first = value
+        .capital_ships
+        .iter()
+        .position(|ship| ship.id != 0 && ship.alive);
+    if let Some(each) = first.and_then(|index| cargo.get_mut(index)) {
+        for member in bound_members(world, arrivals, fleet) {
+            match member {
+                MissionMember::Character(key) => each.characters.push(key),
+                MissionMember::SpecialForce(key) => each.special_forces.push(key),
+            }
         }
     }
     cargo
@@ -1664,7 +1757,7 @@ fn tab_enabled(
         // regiments light its Troops tab, Corellian Corvette 1's stays
         // dark; a ship's tabs follow its own content flags.
         Some(FleetWindowEntry::Ship { fleet, index }) => {
-            let flags = ship_contents(world, transport, fleet)
+            let flags = ship_contents(world, transport, arrivals, fleet)
                 .get(index)
                 .copied()
                 .unwrap_or(0);
@@ -1880,9 +1973,10 @@ fn right_items(
     // A selected ship lists what it carries (FUN_00536da0(ship, ..), its
     // own containers): A0 fleet-aboard/10..12 shows Imperial Star Destroyer
     // 1's six TIE Fighter squadrons, three Stormtrooper Regiments and
-    // Veers. The port seats the fleet's units as `ship_cargo` does.
+    // Veers. The port seats the fleet's units as `ship_cargo` does, and the
+    // units on their way in as `ship_load` does.
     if let Some(FleetWindowEntry::Ship { fleet, index }) = selected {
-        let cargo = ship_cargo(world, transport, fleet);
+        let cargo = ship_load(world, transport, arrivals, fleet);
         let Some(own) = cargo.get(index) else {
             return Vec::new();
         };
@@ -1896,8 +1990,23 @@ fn right_items(
         return match tab {
             FleetWindowTab::CapitalShips => Vec::new(),
             FleetWindowTab::Fighters => {
+                // The fleet's own squadrons first, then those on their way
+                // in, each listed under the ship it was seated on.
+                let own_total = items
+                    .iter()
+                    .filter(|item| !matches!(item.object, Some(ItemObject::TravellingFighter { .. })))
+                    .count();
                 let before: usize = cargo[..index].iter().map(|each| each.squadrons).sum();
-                items.into_iter().skip(before).take(own.squadrons).collect()
+                let mut items = items.into_iter();
+                let mut listed: Vec<RightItem> =
+                    items.by_ref().take(own_total).skip(before).take(own.squadrons).collect();
+                listed.extend(
+                    items
+                        .enumerate()
+                        .filter(|(ordinal, _)| own.incoming_squadrons.contains(ordinal))
+                        .map(|(_, item)| item),
+                );
+                listed
             }
             FleetWindowTab::Troops | FleetWindowTab::Personnel => items
                 .into_iter()
@@ -1917,7 +2026,7 @@ fn right_items(
         return Vec::new();
     };
     let roster = fleet_join::roster(world, fleet).unwrap_or_default();
-    let contents = ship_contents(world, transport, fleet);
+    let contents = ship_contents(world, transport, arrivals, fleet);
     match tab {
         FleetWindowTab::CapitalShips => value
             .capital_ships
@@ -2124,10 +2233,12 @@ fn tab_counts(
         let value = world.fleets.get(fleet)?;
         let ship = value.capital_ships.get(index)?;
         let class = world.capital_ship_classes.get(ship.class)?;
-        let own = ship_cargo(world, transport, fleet).into_iter().nth(index)?;
+        // Its slots count the units on their way in seated on it too (mode
+        // 3, CapShip_vt23c / CapShip_vt240).
+        let own = ship_load(world, transport, &[], fleet).into_iter().nth(index)?;
         return match tab {
             FleetWindowTab::Fighters => Some((
-                u32::try_from(own.squadrons).unwrap_or(u32::MAX),
+                u32::try_from(own.squadrons + own.incoming_squadrons.len()).unwrap_or(u32::MAX),
                 class.fighter_capacity,
             )),
             FleetWindowTab::Troops => Some((
@@ -2796,7 +2907,7 @@ fn draw_fleet_window(
                         // hyp: the entry shows its ships' indicators, as
                         // A0 menus/23 marks Fleet 1's regiments under its
                         // frame at (41, 33) (FUN_004a3d40 draws the ships').
-                        let flags = ship_contents(world, transport, fleet)
+                        let flags = ship_contents(world, transport, arrivals, fleet)
                             .into_iter()
                             .fold(0, |all, flags| all | flags);
                         paint_contents(&list_painter, ctx, cache, item, scale, side, flags, 33.0);
@@ -2906,7 +3017,7 @@ fn draw_fleet_window(
                                     );
                                 }
                             }
-                            let flags = ship_contents(world, transport, fleet)
+                            let flags = ship_contents(world, transport, arrivals, fleet)
                                 .get(index)
                                 .copied()
                                 .unwrap_or(0);
@@ -6172,19 +6283,134 @@ pub(crate) mod tests {
             world.fleets[fleet].capital_ships[index].class = key;
         }
         let mut transport = TroopTransportState::default();
-        assert_eq!(ship_contents(&world, &transport, fleet), [0, 0, 0]);
+        assert_eq!(ship_contents(&world, &transport, &[], fleet), [0, 0, 0]);
         let troops: Vec<_> = (0..3).map(|_| add_troop(&mut world, system)).collect();
         transport.embark(&mut world, fleet, &troops[..2]).unwrap();
         // Two fill the second ship and leave none for the third.
-        assert_eq!(ship_contents(&world, &transport, fleet), [0, CONTENT_REGIMENTS, 0]);
+        assert_eq!(ship_contents(&world, &transport, &[], fleet), [0, CONTENT_REGIMENTS, 0]);
         transport.embark(&mut world, fleet, &troops[2..]).unwrap();
         // The third goes to the third.
         assert_eq!(
-            ship_contents(&world, &transport, fleet),
+            ship_contents(&world, &transport, &[], fleet),
             [0, CONTENT_REGIMENTS, CONTENT_REGIMENTS]
         );
         world.fleets[fleet].capital_ships[1].alive = false;
-        assert_eq!(ship_contents(&world, &transport, fleet), [0, 0, CONTENT_REGIMENTS]);
+        assert_eq!(ship_contents(&world, &transport, &[], fleet), [0, 0, CONTENT_REGIMENTS]);
+    }
+
+    #[test]
+    fn a_unit_on_its_way_aboard_boards_the_ship_with_the_most_room_left() {
+        // FUN_00552300 for a fleet destination tries the fleet's usable
+        // ships (FUN_00502e30(fleet, 1, side)) in order; FUN_00552b10 keeps
+        // a later one only when FUN_0054fbb0 finds it strictly better:
+        // unlimited room, else more room left after the move (+8,
+        // FUN_0054fca0; the room is FUN_00500b40's capacity less the
+        // mode-3 count). Personnel are unlimited (0x30..0x40), so they
+        // board the first ship. A selected ship lists and counts what was
+        // seated on it (FUN_004a6be0, CapShip_vt23c / CapShip_vt240).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let ship = world.fleets[fleet].capital_ships[0].clone();
+        world.fleets[fleet].capital_ships.extend([ship.clone(), ship]);
+        for (index, (troops, hangar)) in [(2, 0), (2, 1), (1, 2)].into_iter().enumerate() {
+            let mut class =
+                world.capital_ship_classes[world.fleets[fleet].capital_ships[index].class].clone();
+            class.troop_capacity = troops;
+            class.fighter_capacity = hangar;
+            let key = world.capital_ship_classes.insert(class);
+            world.fleets[fleet].capital_ships[index].class = key;
+            world.fleets[fleet].capital_ships[index].id = 1 + index as u64;
+        }
+        let xwing = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0003),
+                name: "X-wing".into(),
+                is_alliance: true,
+                ..Default::default()
+            });
+        let own = add_troop(&mut world, system);
+        let incoming: Vec<_> = (0..2).map(|_| add_troop(&mut world, system)).collect();
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, fleet, &[own]).unwrap();
+        let mut value = serde_json::to_value(&transport).unwrap();
+        for &troop in &incoming {
+            value["transit"].as_array_mut().unwrap().push(
+                serde_json::to_value(rebellion_core::troop_transport::RegimentTransit {
+                    troop,
+                    origin: system,
+                    leg: RegimentLeg::Fleet(fleet),
+                    arrival_tick: 9,
+                })
+                .unwrap(),
+            );
+        }
+        value["squadrons"]["transits"].as_array_mut().unwrap().push(
+            serde_json::to_value(rebellion_core::squadrons::SquadronTransit {
+                class: xwing,
+                count: 2,
+                origin: system,
+                to: SquadronPlace::Fleet(fleet),
+                arrival_tick: 9,
+            })
+            .unwrap(),
+        );
+        let transport: TroopTransportState = serde_json::from_value(value).unwrap();
+        let character = world.characters.insert(rebellion_core::world::Character {
+            is_alliance: true,
+            ..Default::default()
+        });
+        let arrivals = [(MissionMember::Character(character), fleet)];
+
+        let load = ship_load(&world, &transport, &arrivals, fleet);
+        // The fleet's own regiment sits on the first ship (rooms 1, 2, 1):
+        // the first on its way takes the second ship (2 left), the next
+        // the first of three equals (1, 1, 1).
+        assert_eq!(load[0].regiments, [own, incoming[1]]);
+        assert_eq!(load[1].regiments, [incoming[0]]);
+        assert!(load[2].regiments.is_empty());
+        // Hangars 0, 1, 2: the first squadron takes the third ship, the
+        // second the first of equals, the second ship.
+        let seats: Vec<_> = load.iter().map(|each| each.incoming_squadrons.clone()).collect();
+        assert_eq!(seats, [vec![], vec![1], vec![0]]);
+        assert_eq!(load[0].characters, [character]);
+        assert_eq!(
+            ship_contents(&world, &transport, &arrivals, fleet),
+            [
+                CONTENT_REGIMENTS | CONTENT_PERSONNEL,
+                CONTENT_REGIMENTS | CONTENT_SQUADRONS,
+                CONTENT_SQUADRONS
+            ]
+        );
+        // The battle's seating keeps only what is aboard.
+        assert!(ship_cargo(&world, &transport, fleet)[1].regiments.is_empty());
+
+        let ship = |index| Some(FleetWindowEntry::Ship { fleet, index });
+        let regiments = |index| {
+            right_items(&world, &transport, &arrivals, ship(index), FleetWindowTab::Troops)
+                .into_iter()
+                .map(|item| (item.object, item.en_route))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            regiments(0),
+            [
+                (Some(ItemObject::Regiment(own)), false),
+                (Some(ItemObject::Regiment(incoming[1])), true)
+            ]
+        );
+        assert_eq!(regiments(1), [(Some(ItemObject::Regiment(incoming[0])), true)]);
+        assert_eq!(tab_counts(&world, &transport, ship(0), FleetWindowTab::Troops), Some((2, 2)));
+        assert_eq!(tab_counts(&world, &transport, ship(2), FleetWindowTab::Fighters), Some((1, 2)));
+        let squadrons = |index| {
+            right_items(&world, &transport, &arrivals, ship(index), FleetWindowTab::Fighters).len()
+        };
+        assert_eq!([squadrons(0), squadrons(1), squadrons(2)], [0, 1, 1]);
+        let personnel = right_items(&world, &transport, &arrivals, ship(0), FleetWindowTab::Personnel);
+        assert_eq!(personnel.len(), 1);
+        assert!(personnel[0].en_route);
+        assert!(tab_enabled(&world, &transport, &arrivals, ship(2), FleetWindowTab::Fighters));
+        assert!(!tab_enabled(&world, &transport, &arrivals, ship(2), FleetWindowTab::Troops));
     }
 
     // hyp (as the regiments): squadrons fill the live ships' fighter
@@ -6218,7 +6444,7 @@ pub(crate) mod tests {
             .collect::<Vec<_>>();
         assert_eq!(squadrons, [1, 1, 0]);
         assert_eq!(
-            ship_contents(&world, &transport, fleet),
+            ship_contents(&world, &transport, &[], fleet),
             [CONTENT_SQUADRONS, CONTENT_SQUADRONS, 0]
         );
     }
@@ -6243,19 +6469,19 @@ pub(crate) mod tests {
             ..Default::default()
         });
         world.fleets[fleet].characters.push(rider);
-        assert_eq!(ship_contents(&world, &transport, fleet), [0, 0, CONTENT_PERSONNEL]);
+        assert_eq!(ship_contents(&world, &transport, &[], fleet), [0, 0, CONTENT_PERSONNEL]);
         let unseated = world.characters.insert(rebellion_core::world::Character {
             name: "Mothma".into(),
             ..Default::default()
         });
         world.fleets[fleet].characters.push(unseated);
         assert_eq!(
-            ship_contents(&world, &transport, fleet),
+            ship_contents(&world, &transport, &[], fleet),
             [CONTENT_PERSONNEL, 0, CONTENT_PERSONNEL]
         );
         world.fleets[fleet].capital_ships[0].alive = false;
         assert_eq!(
-            ship_contents(&world, &transport, fleet),
+            ship_contents(&world, &transport, &[], fleet),
             [0, CONTENT_PERSONNEL, CONTENT_PERSONNEL]
         );
     }

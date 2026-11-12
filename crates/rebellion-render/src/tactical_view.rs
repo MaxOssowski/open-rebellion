@@ -18458,6 +18458,7 @@ mod tests {
             special_forces: vec![force],
             regiments: vec![troop],
             squadrons: 0,
+            incoming_squadrons: Vec::new(),
         };
         let contents = ship_contents_of(&world, &cargo);
         assert_eq!(
