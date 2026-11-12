@@ -18733,6 +18733,8 @@ mod tests {
             ship.retreating = retreating;
             ship.task_force = task_force;
             ship.source_position = at(dat_id as f32, 0.0, -53.0);
+            ship.x = 100.0 * dat_id as f32;
+            ship.y = 10.0 * dat_id as f32;
             ships.push(ship);
         }
         ships[4].source_position = at(3.0, 4.0, -53.0);
@@ -18756,13 +18758,41 @@ mod tests {
         assert_eq!(chase.direction, macroquad::math::vec3(0.0, 0.0, -1.0));
         assert_eq!(chase.object_id, 10_002);
         assert_eq!(state.asset_renderer.camera_state(), Some(free));
-        // A fighter group (F9-F12) keeps the look-at: no chase.
-        let mut squadron = test_fighter(5, true);
-        squadron.fighter_group = 0;
-        state.session.as_mut().unwrap().fighters.push(squadron);
-        state.camera_follow = Some(TacticalCameraFollow::FighterGroup(0));
+        // port: the 2D fallback view centres the group's members (5 and 6).
+        assert_eq!(state.camera_x, 550.0 - ARENA_WIDTH * 0.5);
+        assert_eq!(state.camera_y, 55.0 - ARENA_HEIGHT * 0.5);
+        // A fighter group (F9-F12) keeps the look-at at its members' centre:
+        // no chase. The others are dead, empty, the enemy's or in group 2.
+        for (dat_id, is_alliance, alive, squad_count, group, z) in [
+            (7, true, false, 12, 1, 30.0),
+            (8, true, true, 0, 1, 30.0),
+            (9, false, true, 12, 1, 30.0),
+            (10, true, true, 12, 2, 30.0),
+            (11, true, true, 12, 1, 10.0),
+            (12, true, true, 12, 1, 20.0),
+        ] {
+            let mut squadron = test_fighter(dat_id, is_alliance);
+            squadron.alive = alive;
+            squadron.squad_count = squad_count;
+            squadron.fighter_group = group;
+            squadron.source_position = at(z, z, z);
+            squadron.x = 10.0 * z;
+            squadron.y = z;
+            state.session.as_mut().unwrap().fighters.push(squadron);
+        }
+        state.camera_follow = Some(TacticalCameraFollow::FighterGroup(1));
         assert!(update_tactical_camera_follow(&mut state));
         assert_eq!(state.asset_renderer.chase_view(), None);
+        assert_eq!(state.asset_renderer.target_object_id(), Some(10_102));
+        assert_eq!(
+            state
+                .asset_renderer
+                .camera_state()
+                .map(|camera| camera.target_point()),
+            Some(at(15.0, 15.0, 15.0).rendered())
+        );
+        assert_eq!(state.camera_x, 150.0 - ARENA_WIDTH * 0.5);
+        assert_eq!(state.camera_y, 15.0 - ARENA_HEIGHT * 0.5);
         state.camera_follow = Some(TacticalCameraFollow::TaskForce(1));
         assert!(update_tactical_camera_follow(&mut state));
         state.camera_follow = None;
