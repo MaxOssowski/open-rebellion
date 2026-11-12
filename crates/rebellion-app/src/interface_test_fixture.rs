@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 106;
+const SCENARIO_COUNT: u8 = 107;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -359,6 +359,12 @@ pub enum Scenario {
     /// Conflict rail files (`FUN_00497530` kind 3) is opened as the
     /// message index's Display opens it (`FUN_00469de0`).
     EnemyAssaultTaken = 105,
+    /// Coruscant held by the Alliance, as A0 coruscant-676/14 shows it (the
+    /// VM's Empire game, day 679, after Get Immediate Result gave the
+    /// Alliance Coruscant): one Alliance regiment there and nothing else of
+    /// the Alliance's, the system in sight, and its sector window open.
+    /// The quadrant gate's second system is Coruscant (`quadrant_systems`).
+    CoruscantSeized = 106,
 }
 
 impl Scenario {
@@ -470,6 +476,7 @@ impl Scenario {
             103 => Self::SpecialForceEnroute,
             104 => Self::RegimentEnroute,
             105 => Self::EnemyAssaultTaken,
+            106 => Self::CoruscantSeized,
             _ => return None,
         })
     }
@@ -1069,6 +1076,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::EnemyAssaultTaken {
         place_enemy_assault(world, movement, troop_transport);
+    }
+    if request.scenario == Scenario::CoruscantSeized {
+        place_coruscant_seized(request, world, movement, sectors);
     }
     if request.scenario == Scenario::FleetWindowBlockade {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
@@ -1785,6 +1795,86 @@ fn place_coruscant(
     fleets.select(coruscant, FleetWindowEntry::Fleet(first));
     // A0 opened it with a double click on the entry, which expands it.
     fleets.expand(coruscant, first);
+}
+
+/// The world's Coruscant.
+fn coruscant(world: &GameWorld) -> Option<SystemKey> {
+    world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Coruscant")
+        .map(|(key, _)| key)
+}
+
+/// The `CoruscantSeized` scenario: Coruscant the Alliance's, as A0
+/// coruscant-676/14 shows its Defenses window after the seizure. Its tabs
+/// there: Personnel pressed over an empty list, Trooper Regiments full, the
+/// rest empty (`FUN_004a9ce0`'s art for side 1). So Coruscant keeps one
+/// Alliance Army Regiment (`0x1000_0001`) and nothing else; the rest of
+/// what stood there goes to a system of another sector.
+fn place_coruscant_seized(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    sectors: &mut SectorWindowState,
+) {
+    let Some(coruscant) = coruscant(world) else {
+        return;
+    };
+    let sector = world.systems[coruscant].sector;
+    let Some(elsewhere) = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.sector != sector)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    let value = &mut world.systems[coruscant];
+    value.control = ControlKind::Controlled(Faction::Alliance);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.is_populated = true;
+    value.is_destroyed = false;
+    value.defense_facilities.clear();
+    let troops = std::mem::take(&mut value.ground_units);
+    let forces = std::mem::take(&mut value.special_forces);
+    world.systems[elsewhere].ground_units.extend(troops);
+    world.systems[elsewhere].special_forces.extend(forces);
+    for fleet in world.fleets.values_mut() {
+        if fleet.location == coruscant {
+            fleet.location = elsewhere;
+        }
+    }
+    reconcile_fleet_orbits(movement, world);
+    for character in world.characters.values_mut() {
+        if character.current_system == Some(coruscant) {
+            character.current_system = Some(elsewhere);
+        }
+    }
+    let regiment = world.troops.insert(TroopUnit {
+        class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+        is_alliance: true,
+        regiment_strength: 100,
+    });
+    world.systems[coruscant].ground_units.push(regiment);
+    sectors.open_for_system(world, coruscant, request.faction);
+}
+
+/// The quadrant gate's two systems: in `Quadrants` the primary and its
+/// sector's next system, in `CoruscantSeized` the sector's first other
+/// system and Coruscant.
+fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(SystemKey, SystemKey)> {
+    match request.scenario {
+        Scenario::Quadrants => {
+            let primary = world.systems.keys().next()?;
+            Some((primary, loading_target(world, primary)?))
+        }
+        Scenario::CoruscantSeized => {
+            let coruscant = coruscant(world)?;
+            Some((loading_target(world, coruscant)?, coruscant))
+        }
+        _ => None,
+    }
 }
 
 /// The `FleetWindowVjun` scenario: A0's Fleet 5 at Vjun with Garm Bel
@@ -2714,14 +2804,23 @@ pub fn emit_encyclopedia(
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
-/// The Rescue scenario sees into the enemy prison
-/// (`opposing_contents_visible`).
+/// The Rescue scenario sees into the enemy prison, and `CoruscantSeized`
+/// into Coruscant (`opposing_contents_visible`).
 pub fn reveal(
     request: FixtureRequest,
     world: &GameWorld,
     fog_alliance: &mut FogState,
     fog_empire: &mut FogState,
 ) {
+    if request.scenario == Scenario::CoruscantSeized {
+        // A0 coruscant-676/14 shows the Alliance's regiment there to the
+        // Empire (its Trooper Regiments tab full).
+        if let Some(coruscant) = coruscant(world) {
+            fog_alliance.reveal(coruscant);
+            fog_empire.reveal(coruscant);
+        }
+        return;
+    }
     if !request.scenario.targets_an_object() {
         return;
     }
@@ -5603,12 +5702,8 @@ fn quadrant_setup(
     world: &GameWorld,
     sectors: &SectorWindowState,
 ) -> Option<FixtureQuadrantSetup> {
-    if request.scenario != Scenario::Quadrants {
-        return None;
-    }
+    let (primary, second) = quadrant_systems(request, world)?;
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
-    let primary = world.systems.keys().next()?;
-    let second = loading_target(world, primary)?;
     let mut quadrants = Vec::new();
     for system in [primary, second] {
         for (quadrant, name) in [
@@ -5630,7 +5725,11 @@ fn quadrant_setup(
             .and_then(|&system| sectors.planet_screen_rect(world, layout, system))
             .map(|rect| [rect.min.x, rect.min.y, rect.width(), rect.height()])
     };
-    let marks = mark_systems(world, primary);
+    let marks = if request.scenario == Scenario::Quadrants {
+        mark_systems(world, primary)
+    } else {
+        Vec::new()
+    };
     Some(FixtureQuadrantSetup {
         status: "quadrant-setup",
         code: request.code,
@@ -5761,9 +5860,7 @@ impl QuadrantWatch {
         world: &GameWorld,
         windows: &QuadrantWindows<'_>,
     ) -> Option<QuadrantObservation> {
-        if request.scenario != Scenario::Quadrants {
-            return None;
-        }
+        quadrant_systems(request, world)?;
         let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
         let defenses_windows = world
             .systems
@@ -10622,6 +10719,111 @@ mod tests {
             &applied.sectors
         )
         .is_none());
+    }
+
+    /// A0 coruscant-676/14 (the VM's Empire game, day 679, after the
+    /// Alliance seized Coruscant): the Empire's Defenses window of Coruscant
+    /// shows the Alliance's side, Personnel pressed over an empty list,
+    /// Trooper Regiments full and the other tabs empty.
+    #[test]
+    fn the_seized_coruscant_scenario_leaves_the_alliance_one_regiment_there_in_the_empires_sight() {
+        let request = request(Scenario::CoruscantSeized, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let held = world.systems.keys().nth(1).unwrap();
+            world.systems[held].name = "Coruscant".into();
+            world.systems[held].control = ControlKind::Controlled(Faction::Empire);
+            // A third system in the sector, which the quadrant scenario
+            // would mark; this one marks nothing.
+            let mut third = world.systems[held].clone();
+            third.name = "Third".into();
+            third.dat_id = rebellion_core::ids::DatId::new(0x9000_0005);
+            let third = world.systems.insert(third);
+            let sector = world.systems[held].sector;
+            world.sectors[sector].systems.push(third);
+            // `apply` moves the world's first character to the primary
+            // system, so the one at Coruscant is a second.
+            let mut agent = world.characters.values().next().unwrap().clone();
+            agent.name = "Bystander".into();
+            agent.current_system = Some(held);
+            world.characters.insert(agent);
+            let stormtroopers = world.troops.insert(TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0006),
+                is_alliance: false,
+                regiment_strength: 100,
+            });
+            world.systems[held].ground_units.push(stormtroopers);
+        });
+        let world = &applied.world;
+        let here = world.systems.keys().next().unwrap();
+        let held = super::coruscant(world).unwrap();
+        assert_eq!(
+            world.systems[held].control,
+            ControlKind::Controlled(Faction::Alliance)
+        );
+        let [regiment] = world.systems[held].ground_units[..] else {
+            panic!("{:?}", world.systems[held].ground_units);
+        };
+        assert!(world.troops[regiment].is_alliance);
+        assert!(world.fleets.values().all(|fleet| fleet.location != held));
+        // What stood there went to another sector.
+        let agent = world
+            .characters
+            .values()
+            .find(|character| character.name == "Bystander")
+            .unwrap();
+        let moved_to = agent.current_system.unwrap();
+        assert_ne!(world.systems[moved_to].sector, world.systems[held].sector);
+        assert!(world
+            .characters
+            .values()
+            .all(|character| character.current_system != Some(held)));
+
+        // The quadrant gate's second system is Coruscant.
+        let setup = quadrant_setup(request, world, &applied.sectors).unwrap();
+        assert_eq!(
+            (setup.primary_dat_id, setup.second_dat_id),
+            (
+                world.systems[here].dat_id.raw(),
+                world.systems[held].dat_id.raw()
+            )
+        );
+        assert_eq!(setup.quadrants.len(), 8);
+        assert_eq!((setup.headquarters, setup.uprising), (None, None));
+
+        let mut fog_alliance = FogState::new(Faction::Alliance);
+        let mut fog = FogState::new(Faction::Empire);
+        reveal(request, world, &mut fog_alliance, &mut fog);
+        let economy = EconomyState::default();
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::default();
+        let deliveries = rebellion_core::delivery::DeliveryState::default();
+        let missions_windows = MissionsWindowState::default();
+        let mut defenses = DefensesWindowState::default();
+        let layout = CockpitState::new(CockpitFaction::Empire).layout_for(640.0, 480.0);
+        assert!(defenses.open(world, held, (200, 91), CockpitFaction::Empire, layout));
+        let shown = QuadrantWatch::default()
+            .next(
+                request,
+                world,
+                &QuadrantWindows {
+                    systems: &applied.systems,
+                    defenses: &defenses,
+                    missions_windows: &missions_windows,
+                    fog: &fog,
+                    missions: &applied.missions,
+                    production: rebellion_render::DefensesProduction {
+                        manufacturing: &manufacturing,
+                        deliveries: &deliveries,
+                        regiments: &[],
+                    },
+                    economy: &economy,
+                },
+            )
+            .unwrap();
+        let [window] = &shown.defenses_windows[..] else {
+            panic!("{:?}", shown.defenses_windows);
+        };
+        assert_eq!((window.side, window.page), (1, "personnel"));
+        assert_eq!(window.counts, [0, 1, 0, 0, 0]);
     }
 
     #[test]
