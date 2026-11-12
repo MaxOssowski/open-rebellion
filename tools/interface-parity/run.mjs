@@ -6378,14 +6378,20 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     page = await context.newPage();
     if (scenario.battle_options_presentation) {
       // An occupied first save slot (the build's localStorage keys,
-      // rebellion_data::save::slot_key / meta_key; a body that does not
-      // decode still occupies its slot), so a battle's Game Options can
-      // show its Load lit.
+      // rebellion_data::save::slot_key / meta_key), so a battle's Game
+      // Options can show its Load lit. The row needs a readable header
+      // (FUN_00415cd0 reads it; an unreadable one leaves the row empty,
+      // rebellion_data::save::game_options_saves); the body need not decode.
       const version = fs.readFileSync(path.join(root, "crates/rebellion-data/src/save.rs"), "utf8")
         .match(/pub const SAVE_VERSION: u32 = (\d+);/)[1];
       await page.addInitScript((v) => {
         localStorage.setItem(`rebellion_save_v${v}_0`, "AAAA");
-        localStorage.setItem(`rebellion_meta_v${v}_0`, "{}");
+        localStorage.setItem(`rebellion_meta_v${v}_0`, JSON.stringify({
+          schema_version: 1,
+          name: "Battle",
+          game_tick: 1,
+          state_fingerprint: { version: 1, value: "1" },
+        }));
       }, version);
     }
     page.on("response", (response) => {
