@@ -391,6 +391,31 @@ pub fn window_button_specs(
     buttons
 }
 
+/// `FUN_0046a200` (mode 2): a scroll button with no neighbour on its side
+/// is disabled (button vt `+0x10`, `FUN_006028a0`: state bit 2 and
+/// `EnableWindow(.., 0)`) and shows its `FUN_00603150(2, ..)` art: `0x96`
+/// shows `0x2aa9` (10921) on the oldest message, `0x9a` shows `0x2ac6`
+/// (10950) on the newest. A disabled button keeps that art while pressed.
+#[must_use]
+pub fn disable_scroll_buttons(
+    mut buttons: Vec<WindowButtonSpec>,
+    older: bool,
+    newer: bool,
+) -> Vec<WindowButtonSpec> {
+    for button in &mut buttons {
+        let disabled = match button.command_id {
+            0x96 => (!older).then_some(10_921),
+            0x9a => (!newer).then_some(10_950),
+            _ => None,
+        };
+        if let Some(art) = disabled {
+            button.normal_resource = art;
+            button.pressed_resource = art;
+        }
+    }
+    buttons
+}
+
 /// The rail's disabled controls in their disabled art (`FUN_004665f0`'s
 /// and `FUN_00468fb0`'s third bitmap, `FUN_00603150(2, ..)`): window
 /// point, size and resource. Display (`0x67`) unless the chosen message has
@@ -485,6 +510,7 @@ fn draw_window_buttons(
     list_empty: bool,
     display: Option<DisplayKind>,
     question: bool,
+    (older, newer): (bool, bool),
 ) -> Option<u16> {
     let mut clicked = None;
     egui::Area::new(egui::Id::new("original-message-index-buttons"))
@@ -519,9 +545,13 @@ fn draw_window_buttons(
                     ),
                 );
             }
-            for button in window_button_specs(faction, mode, silent, list_empty, display)
-                .into_iter()
-                .chain(question_button_specs(mode, question))
+            for button in disable_scroll_buttons(
+                window_button_specs(faction, mode, silent, list_empty, display),
+                older,
+                newer,
+            )
+            .into_iter()
+            .chain(question_button_specs(mode, question))
             {
                 let rect = message_index_rect(
                     window_rect,
@@ -1029,9 +1059,11 @@ impl MessageIndexState {
 
     /// Mode 2's scroll buttons: show the neighbouring message in the
     /// category's list (`FUN_0046a200` enables each only while it has a
-    /// neighbour). port: `0x9a` at x 367 is drawn as the up arrow (10948)
-    /// and `0x96` at x 390 as the down arrow (10919), so `0x9a` goes to the
-    /// earlier message and `0x96` to the later one (inferred from the art).
+    /// neighbour). `FUN_00467f10`: `0x96` takes the row's next link
+    /// (`FUN_004ad730`, one row down) and `0x9a` its previous link
+    /// (`FUN_004ad750`, one row up). The rows run newest first
+    /// (`FUN_00468ab0`), so `forward` (`0x96`) opens the older message and
+    /// `0x9a` the newer one.
     pub fn view_adjacent(
         &mut self,
         rows: &[MessageId],
@@ -1046,6 +1078,17 @@ impl MessageIndexState {
         let id = *rows.get(next)?;
         self.viewing = Some(id);
         Some(MessageIndexAction::MessageDisplayed(id))
+    }
+
+    /// Whether the open message has an older (`0x96`) and a newer (`0x9a`)
+    /// neighbour in the category's rows (`FUN_0046a200`).
+    #[must_use]
+    pub fn scroll_neighbours(&self, rows: &[MessageId]) -> (bool, bool) {
+        rows.iter()
+            .position(|id| Some(*id) == self.viewing)
+            .map_or((false, false), |current| {
+                (current + 1 < rows.len(), current > 0)
+            })
     }
 
     /// Return to mode 1 (list) from mode 2 (single message).
@@ -1417,6 +1460,7 @@ pub fn draw_message_index(
     let kind = display_kind(&rows, state);
     let encyclopedia = display_message(&rows, state).and_then(|message| message.encyclopedia);
     let question = viewed_question(&rows, state);
+    let ids: Vec<MessageId> = rows.iter().map(|message| message.id).collect();
     match draw_window_buttons(
         ctx,
         cache,
@@ -1428,6 +1472,7 @@ pub fn draw_message_index(
         rows.is_empty(),
         kind,
         question.is_some(),
+        state.scroll_neighbours(&ids),
     ) {
         // FUN_00467f10 in mode 2: the checkmark keeps the mission going
         // (vt +0x38 drops the held Abort), the X sends the Abort with force
@@ -1461,7 +1506,6 @@ pub fn draw_message_index(
         Some(0x65) => actions.extend(state.toggle_display()),
         Some(0x91) => actions.extend(state.delete_selected(&rows)),
         Some(command @ (0x96 | 0x9a)) => {
-            let ids: Vec<MessageId> = rows.iter().map(|message| message.id).collect();
             actions.extend(state.view_adjacent(&ids, command == 0x96));
         }
         _ => {}
@@ -3559,8 +3603,9 @@ mod tests {
 
     #[test]
     fn the_scroll_buttons_step_through_the_categorys_messages() {
-        // FUN_0046a200 enables each scroll button only with a neighbour;
-        // forward is the down arrow (0x96), back the up arrow (0x9a).
+        // FUN_0046a200 enables each scroll button only with a neighbour.
+        // FUN_00467f10: forward is 0x96, the row's next link (FUN_004ad730),
+        // back is 0x9a, its previous link (FUN_004ad750).
         let mut state = MessageIndexState::new();
         state.mode = IndexMode::SingleMessage;
         state.viewing = Some(2);
@@ -3579,6 +3624,56 @@ mod tests {
         assert_eq!(state.view_adjacent(&rows, false), None);
         state.viewing = Some(9);
         assert_eq!(state.view_adjacent(&rows, true), None);
+    }
+
+    #[test]
+    fn the_scroll_buttons_show_their_disabled_art_at_the_ends_of_the_list() {
+        // FUN_0046a200: a scroll button with no neighbour on its side takes
+        // its FUN_00603150(2, ..) art (FUN_004665f0): 0x96 0x2aa9 (10921) on
+        // the oldest message, 0x9a 0x2ac6 (10950) on the newest.
+        let mut state = MessageIndexState::new();
+        state.mode = IndexMode::SingleMessage;
+        // Rows run newest first (FUN_00468ab0).
+        let rows = [3, 2, 1];
+        let art = |state: &MessageIndexState| {
+            let (older, newer) = state.scroll_neighbours(&rows);
+            disable_scroll_buttons(
+                window_button_specs(
+                    CockpitFaction::Alliance,
+                    IndexMode::SingleMessage,
+                    false,
+                    false,
+                    None,
+                ),
+                older,
+                newer,
+            )
+            .into_iter()
+            .filter(|button| matches!(button.command_id, 0x96 | 0x9a))
+            .map(|button| {
+                (
+                    button.command_id,
+                    button.normal_resource,
+                    button.pressed_resource,
+                )
+            })
+            .collect::<Vec<_>>()
+        };
+        state.viewing = Some(3);
+        assert_eq!(
+            art(&state),
+            [(0x96, 10_919, 10_920), (0x9a, 10_950, 10_950)]
+        );
+        state.viewing = Some(2);
+        assert_eq!(
+            art(&state),
+            [(0x96, 10_919, 10_920), (0x9a, 10_948, 10_949)]
+        );
+        state.viewing = Some(1);
+        assert_eq!(
+            art(&state),
+            [(0x96, 10_921, 10_921), (0x9a, 10_948, 10_949)]
+        );
     }
 
     // ── Category switch state reset ─────────────────────────────────────

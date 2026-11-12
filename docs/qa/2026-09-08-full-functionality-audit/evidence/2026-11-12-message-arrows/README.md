@@ -174,3 +174,29 @@ Still open in this cell: the disabled arrow art (gap 2). No A0 capture
 is needed for the direction. For gap 2, one A0 capture of the newest
 message open (to see 10950 on `0x9a`) would confirm the art and its
 keying.
+
+## Port fix
+
+Both gaps are closed in `crates/rebellion-render/src/message_index.rs`:
+
+1. The doc comment on `view_adjacent` and the test
+   `the_scroll_buttons_step_through_the_categorys_messages` now cite
+   `FUN_00467f10`, `FUN_004ad730` / `FUN_004ad750` and `FUN_00468ab0`
+   instead of "inferred from the art".
+2. `MessageIndexState::scroll_neighbours` reports whether the open message
+   has an older and a newer row. `disable_scroll_buttons` (`FUN_0046a200`)
+   gives `0x96` 10921 with no older row and `0x9a` 10950 with no newer row,
+   for both normal and pressed, so a disabled arrow never shows its pressed
+   art. A press still does nothing there (`view_adjacent` returns `None`).
+
+Test: `the_scroll_buttons_show_their_disabled_art_at_the_ends_of_the_list`
+(newest, middle and oldest message). It failed with the art swap stubbed
+out (`0x9a` stayed 10948 / 10949 on the newest message) and passes with
+it. `cargo test -p rebellion-render` passes (1492 tests) and `cargo check
+--workspace` is clean. `cargo mutants` on the two new functions: 22
+caught, 1 unviable.
+
+Still open: 10921 and 10950 are drawn without the colour key. 10950 is
+asserted opaque in `bmp_cache.rs` from an earlier check, and the keying of
+both needs the A0 capture named above (newest message open). No WASM build
+or browser gate was run.
