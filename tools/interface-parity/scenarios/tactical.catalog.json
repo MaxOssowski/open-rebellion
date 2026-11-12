@@ -596,6 +596,18 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Selects Task Force 1, rests the pointer at A0's (562, 255) on the Missions button and compares the tip's box with A0 TAC-03-C012 for the Alliance at 640 x 480: its place at the pointer plus (0, 21), its height, and its width within the accepted text deviation."
+    },
+    {
+      "slug": "production-coruscant-chase",
+      "description": "A0 TAC-04-C014's battle: the Alliance's Escort Carrier with an X-wing and a Y-wing squadron attacks Imperial Coruscant's home fleet; paused, the four navigation sets shown, Red Group selected, then F1. It supports TAC-04-C014, which another scenario maps: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65835, "empire": 66091 },
+      "execution_kind": "journey",
+      "tactical_proof": false,
+      "production_participants": true,
+      "coruscant_chase": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "Presses F1 on the paused battle and compares the frame with A0 TAC-04-C014 for the Alliance at 640 x 480: the cockpit and group bar outside the view, the selected group's panel outside its text, and the chase view's navigation pyramids."
     }
   ]
 }

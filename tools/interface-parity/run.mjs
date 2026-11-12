@@ -4659,6 +4659,163 @@ async function probeTacticalBattleAlertRetreat(page, viewport, folder, consoleLi
   return probes;
 }
 
+// A0 TAC-04-C014 (the Alliance's Battle at Imperial Coruscant, paused):
+// the four navigation sets on (manual p. 144), Red Group selected, then F1,
+// "Camera Follows Task Force 1" (manual p. 66; FUN_0059b730 case 0x70,
+// FUN_005c2990 mode 0xb builds the chase camera FUN_005d9a70). The probe
+// compares the frame outside the battle view and outside text with A0, and
+// measures the navigation pyramids the chase view shows in both.
+async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines, ready, faction) {
+  assert.equal(ready.system, "Coruscant", `${faction}: the battle is not at Coruscant`);
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const at = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const click = async (x, y) => {
+    const p = at(x, y);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down({ button: "left" });
+    await page.waitForTimeout(80);
+    await page.mouse.up({ button: "left" });
+    await page.waitForTimeout(300);
+  };
+  const own = ready.participants.filter(({ faction: side }) => side === faction);
+  const ships = own.filter(({ kind }) => kind === "capital-ship");
+  const groups = own.filter(({ kind, active }) => kind === "fighter-group" && active);
+  if (faction === "alliance") {
+    // A0's Fleet 2: one Alliance Escort Carrier, an X-wing and a Y-wing
+    // squadron (A0 TAC-02-C002, TAC-02-C003).
+    assert.deepEqual(ships.map(({ name }) => name.replace(/ \d+$/, "")), ["Alliance Escort Carrier"],
+      `${faction}: the fleet is not A0's carrier`);
+    assert.equal(groups.length, 2, `${faction}: the fleet does not field two squadrons`);
+  }
+  // Navigation Point Set 1 to 4 (1026..1029 at x 485, 524, 563, 602).
+  for (const x of [485, 524, 563, 602]) await click(x + 13, 285);
+  // Red Group: the first squadron button (347, 2; A0 TAC-02-C002).
+  if (groups.length > 0) await click(359, 10);
+  // A0 then right-clicks its own carrier: Red Group escorts it (manual
+  // p. 148, A0 TAC-05-C011). The carrier stands where the scene drew it.
+  const scene = consoleLines.find(({ text }) => text.includes("[tactical_3d] participant_scene"));
+  const carrierAt = scene?.text.match(/screen_positions=1:([\d.]+),([\d.]+)/);
+  if (faction === "alliance" && carrierAt) {
+    const p = at(Number(carrierAt[1]), Number(carrierAt[2]));
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down({ button: "right" });
+    await page.waitForTimeout(80);
+    await page.mouse.up({ button: "right" });
+    await page.waitForTimeout(300);
+  }
+  await page.keyboard.press("F1");
+  await page.waitForTimeout(300);
+  // A0's pointer rests at the bottom of the battle view.
+  const rest = at(300, 465);
+  await page.mouse.move(rest.x, rest.y);
+  await page.waitForTimeout(500);
+  const chase = await stableInteractionFrame(page, folder, "coruscant-chase-f1");
+  const follow = consoleLines.find(({ text }) =>
+    text.includes("[tactical_camera] command=follow kind=task_force group=1"));
+  assert.ok(follow, `${faction}: F1 did not follow Task Force 1`);
+  if (faction === "alliance") {
+    assert.ok(consoleLines.some(({ text }) =>
+      /\[tactical_escort\] event=assigned .*target_object_id=1 capital_members=0 fighter_members=1/.test(text)),
+    `${faction}: Red Group did not escort the carrier`);
+  }
+  const probe = { type: "coruscant-chase", follow_log: follow.text,
+    ships: ships.map(({ name }) => name), squadrons: groups.length };
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  const a0Path = path.join(root, ".artifacts/interface-parity/a0/TAC-04-C014/original.png");
+  if (!native || faction !== "alliance") return [probe];
+  assert.ok(fs.existsSync(a0Path), `A0 TAC-04-C014 is missing at ${a0Path}`);
+  const a0 = PNG.sync.read(fs.readFileSync(a0Path));
+  const port = PNG.sync.read(chase);
+  // The retained-mode view (tactical_scene_viewport) and its frame, the
+  // panel's text lines, and A0's pointer.
+  const view = { x: 17, y: 30, width: 440, height: 438 };
+  const textBoxes = [
+    { x: 66, y: 3, width: 12, height: 13 }, // the task-force button's "1"
+    { x: 490, y: 34, width: 145, height: 40 }, // Red Group, its orders, Tactics
+    { x: 500, y: 172, width: 110, height: 16 }, // "X-wings: 1 12/12"
+  ];
+  const pointer = { x: 288, y: 452, width: 32, height: 28 };
+  const inside = (rect, x, y) => x >= rect.x && y >= rect.y
+    && x < rect.x + rect.width && y < rect.y + rect.height;
+  const regions = {
+    group_bar: { x: 0, y: 0, width: 468, height: 24 },
+    right_panel: { x: 468, y: 0, width: 172, height: 480 },
+  };
+  probe.outside_view = {};
+  const others = [];
+  for (const [name, rect] of Object.entries(regions)) {
+    let checked = 0;
+    let differ = 0;
+    for (let y = rect.y; y < rect.y + rect.height; y++) {
+      for (let x = rect.x; x < rect.x + rect.width; x++) {
+        if (inside(view, x, y) || inside(pointer, x, y)
+          || textBoxes.some((box) => inside(box, x, y))) continue;
+        const i = (y * 640 + x) * 4;
+        checked++;
+        if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) {
+          differ++;
+          const pair = `${[...a0.data.subarray(i, i + 3)]}>${[...port.data.subarray(i, i + 3)]}`;
+          // One palette entry reads (194, 158, 149) in A0 and (238, 142, 142)
+          // in the port, in the ship icon and the X-wing portrait.
+          if (pair !== "194,158,149>238,142,142") others.push({ x, y, pair });
+        }
+      }
+    }
+    probe.outside_view[name] = { checked, differ };
+  }
+  probe.outside_view.other_than_one_palette_entry = others.slice(0, 20);
+  assert.equal(others.length, 0,
+    `${faction}: the frame outside the view differs from A0 TAC-04-C014 ${JSON.stringify(probe.outside_view)}`);
+  // The navigation pyramids: 4-connected components of pure red (set 1)
+  // and of grey-white (set 2) inside the view, outside "Battle Paused".
+  const pyramids = (image) => {
+    const pixel = (x, y) => {
+      const k = (y * 640 + x) * 4;
+      return [image.data[k], image.data[k + 1], image.data[k + 2]];
+    };
+    const red = ([r, g, b]) => r >= 120 && g < 50 && b < 50;
+    const label = { x: 17, y: 30, width: 110, height: 20 };
+    const components = (test) => {
+      const seen = new Uint8Array(640 * 480);
+      const found = [];
+      for (let y = view.y; y < view.y + view.height; y++) {
+        for (let x = view.x; x < view.x + view.width; x++) {
+          const key = y * 640 + x;
+          if (seen[key] || inside(label, x, y) || !test(pixel(x, y))) continue;
+          const stack = [key];
+          seen[key] = 1;
+          let area = 0;
+          let box = [x, y, x, y];
+          while (stack.length) {
+            const k = stack.pop();
+            const [cx, cy] = [k % 640, Math.floor(k / 640)];
+            area++;
+            box = [Math.min(box[0], cx), Math.min(box[1], cy), Math.max(box[2], cx), Math.max(box[3], cy)];
+            for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+              const nk = ny * 640 + nx;
+              if (!inside(view, nx, ny) || seen[nk] || inside(label, nx, ny) || !test(pixel(nx, ny))) continue;
+              seen[nk] = 1;
+              stack.push(nk);
+            }
+          }
+          if (area >= 20) found.push({ area, box });
+        }
+      }
+      return found.sort((a, b) => b.area - a.area);
+    };
+    const red_pyramids = components(red);
+    return {
+      red_count: red_pyramids.length,
+      red_area: red_pyramids.reduce((sum, { area }) => sum + area, 0),
+      largest_red: red_pyramids.slice(0, 3),
+    };
+  };
+  probe.pyramids = { a0: pyramids(a0), port: pyramids(port) };
+  return [probe];
+}
+
 // A0 TAC-01-C008 (the Empire's Battle at Umgul, paused): Rotate Left 16
 // times (the camera sphere's left control, 1049; FUN_005d9640 yaws the
 // camera about +Y) shows the holocube's (+x, -y, +z) corner at (106, 298)
@@ -6573,6 +6730,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? await probeTacticalCapitalPanelTip(page, viewport, folder, faction)
         : scenario.umgul_backdrop
         ? await probeTacticalUmgulBackdrop(page, viewport, folder, ready, faction)
+        : scenario.coruscant_chase
+        ? await probeTacticalCoruscantChase(page, viewport, folder, consoleLines, ready, faction)
         : scenario.battle_last_ship_lost
         ? await probeTacticalBattleLastShipLost(
           page, viewport, folder, consoleLines, ready, faction,
@@ -6699,6 +6858,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       assert.equal(ready.battle_withdrawal_report, Boolean(scenario.battle_withdrawal_report));
       assert.equal(ready.battle_last_ship_lost, Boolean(scenario.battle_last_ship_lost));
       assert.equal(ready.umgul_backdrop, Boolean(scenario.umgul_backdrop));
+      assert.equal(ready.coruscant_chase, Boolean(scenario.coruscant_chase));
       assert.equal(ready.tactical_audio_presentation,
         Boolean(scenario.tactical_audio_presentation));
       assert.equal(ready.hull_scale_presentation,
@@ -6753,7 +6913,17 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? { first_active_objects: 7, second_active_objects: 2 }
         : { first_active_objects: 2, second_active_objects: 7 };
       const projectileFieldLayout = { first_active_objects: 4, second_active_objects: 4 };
-      assert.deepEqual(ready.source_layout, scenario.battle_alert_retreat ? {
+      assert.deepEqual(ready.source_layout, scenario.coruscant_chase ? {
+        // A0 TAC-04-C014: the carrier and two squadrons against one hull,
+        // 100 + 3 x 3 (FUN_005ab650).
+        first_active_objects: 3,
+        second_active_objects: 1,
+        battle_extent: 109,
+        outer_positive_z: 54.5,
+        outer_negative_z: -54.5,
+        inner_negative_z: -34.5,
+        inner_positive_z: 34.5,
+      } : scenario.battle_alert_retreat ? {
         // The viewer's one hull against the enemy's four: 100 + 3 x 4.
         first_active_objects: faction === "alliance" ? 1 : 4,
         second_active_objects: faction === "alliance" ? 4 : 1,
@@ -6860,7 +7030,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         inner_positive_z: 33,
       });
       assert.equal(ready.participants.length,
-        scenario.group_presentation ? 14
+        scenario.coruscant_chase ? 10
+        : scenario.group_presentation ? 14
           : scenario.effect_presentation ? 9
           : scenario.projectile_field_presentation
             || scenario.detail_escort_presentation
@@ -7092,6 +7263,23 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.equal(of("capital-ship", faction).length, 1);
         assert.equal(of("capital-ship", faction === "alliance" ? "empire" : "alliance").length, 4);
         assert.equal(of("fighter-group", "alliance").length + of("fighter-group", "empire").length, 0);
+      } else if (scenario.coruscant_chase) {
+        // A0 TAC-04-C014: the Alliance Escort Carrier (2050) and its X-wing
+        // and Y-wing squadrons against Coruscant's Imperial Star Destroyer
+        // (2560), each on its side's lane.
+        // The home fleet's six TIE squadrons are listed but not active:
+        // the layout counts one Imperial object.
+        const inactive = ready.participants.filter(({ active }) => !active);
+        assert.deepEqual(inactive.map(({ kind, faction }) => [kind, faction]),
+          Array(6).fill(["fighter-group", "empire"]));
+        assert.deepEqual(ready.participants.filter(({ active }) => active)
+          .map(({ kind, faction, resource_base, source_position }) =>
+            [kind, faction, kind === "capital-ship" ? resource_base : null, source_position[2]]), [
+          ["capital-ship", "alliance", 2050, -54.5],
+          ["capital-ship", "empire", 2560, 54.5],
+          ["fighter-group", "alliance", null, -34.5],
+          ["fighter-group", "alliance", null, -34.5],
+        ]);
       } else if (scenario.hull_scale_presentation) {
         // A0 TAC-01-C003: the Medium Transport (2070) and the Victory
         // Destroyer (2550), each alone on its side's capital lane.
@@ -7348,7 +7536,9 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           // The contents fixture takes each side's first class with room for
           // three regiments (CAPSHPSD 7 and 20).
           const participantFamilies = scenario.hull_scale_presentation ? [2070, 2550]
-            : scenario.detail_escort_presentation ? [2080, 2560] : [2010, 2510];
+            : scenario.detail_escort_presentation ? [2080, 2560]
+            // A0 TAC-04-C014: the Escort Carrier and the Star Destroyer.
+            : scenario.coruscant_chase ? [2050, 2560] : [2010, 2510];
           assert.equal(participantFamilyLogs.length, 2,
             "production participants did not load exactly two source families");
           assert.deepEqual(participantFamilyLogs.map(({ text }) => {
@@ -7419,9 +7609,11 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             assert.ok(cameraLogs.length >= 1 && targets.size === 1,
               "the Death Star journey's camera did not keep following its one target");
           } else {
-            // The Umgul backdrop logs its first camera and 16 Rotate Left turns.
+            // The Umgul backdrop logs its first camera and 16 Rotate Left turns;
+            // the Coruscant chase its first camera and F1's.
             assert.equal(cameraLogs.length,
-              scenario.fighter_detail_journey ? 40 : scenario.umgul_backdrop ? 17 : 1,
+              scenario.fighter_detail_journey ? 40 : scenario.umgul_backdrop ? 17
+                : scenario.coruscant_chase ? 2 : 1,
               "production participants did not use the source tactical camera");
           }
           assert.equal(layoutLogs.length, 1,
@@ -7639,20 +7831,21 @@ async function main() {
         "production-battle-withdrawal-report",
         "production-battle-last-ship-lost",
         "production-umgul-backdrop",
-        "production-capital-panel-missions-tip"]);
+        "production-capital-panel-missions-tip",
+        "production-coruscant-chase"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(36).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(37).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined]);
+        undefined, undefined, undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 43 }, (_, index) => index === 5));
+      Array.from({ length: 44 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 43 }, (_, index) => index === 6));
+      Array.from({ length: 44 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });
