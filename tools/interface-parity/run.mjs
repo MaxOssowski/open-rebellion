@@ -4940,6 +4940,11 @@ async function probeTacticalBattleLastShipLost(page, viewport, folder, consoleLi
   assert.ok(consoleLines.some(({ text }) =>
     text.includes("[tactical-results] summary_window owner=command_center")),
   `${faction}: the Battle Summary did not open over the Command Center`);
+  // Not even for the frame that ended the battle: state 0x16 closes the
+  // tactical module (FUN_005975a0) before FUN_0042a640 opens the summary.
+  assert.ok(!consoleLines.some(({ text }) =>
+    text.includes("[tactical-results] summary_window over=tactical_view")),
+  `${faction}: the Battle Summary was drawn over the tactical view`);
   if (alliance && native && fs.existsSync(c013)) {
     // Around the window, against A0: the status bar less its three
     // numbers (game state), the left column up to the galaxy display (x 52)
@@ -4985,6 +4990,19 @@ async function probeTacticalBattleLastShipLost(page, viewport, folder, consoleLi
   const held = await stableInteractionFrame(page, folder, "battle-last-ship-modal");
   assert.equal(sha256(held), sha256(results), `${faction}: the strategy screen changed under the summary`);
   probes.push({ type: "battle-last-ship-modal", control: "0x12d", held: true });
+  // FUN_00422ce0's WM_KEYDOWN drops F1..F7 while a child with the +0xb8
+  // modal bit is up; the summary passes them on (FUN_004710f0). F2 (System
+  // Finder), F6 (Message Index) and F7 (Encyclopedia) open nothing.
+  for (const key of ["F2", "F6", "F7"]) {
+    await page.keyboard.press(key);
+    await page.waitForTimeout(200);
+  }
+  assert.ok(!consoleLines.some(({ text }) => /\[interface\] command=0x(12d|131)\b/.test(text)
+    || text.includes("destination=message_index")),
+  `${faction}: an F-key opened a window while the Battle Summary was open`);
+  const keysHeld = await stableInteractionFrame(page, folder, "battle-last-ship-fkeys");
+  assert.equal(sha256(keysHeld), sha256(results), `${faction}: an F-key changed the screen under the summary`);
+  probes.push({ type: "battle-last-ship-fkeys", keys: ["F2", "F6", "F7"], held: true });
   // The Display page ("Go directly to", the fourth tab), then the system
   // button at window (29, 182), 169 by 96.
   const tabX = (alliance ? 523.5 : 533) + dx;
@@ -5143,6 +5161,21 @@ async function probeTacticalBattleWithdrawalReport(page, viewport, folder, conso
     probes.push({ type: "battle-withdrawal-scene-a0", a0: "TAC-07-C004/original.png", checked, differ });
     assert.equal(differ, 0, `${faction}: the withdrawal scene differs from A0 TAC-07-C004 in ${differ} of ${checked} pixels`);
   }
+  // Escape closes the summary as its Close button does (FUN_004710f0:
+  // 0x1b -> slot +0x30, FUN_0041ce80), and the battle's result reaches the
+  // galaxy.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  assert.ok(consoleLines.some(({ text }) => text.includes("[tactical-results] key=escape status=closed")),
+    `${faction}: Escape did not close the Battle Summary`);
+  assert.ok(consoleLines.some(({ text }) =>
+    text.includes("[tactical_results] strategic_persistence applied=true")),
+  `${faction}: the result was not applied after Escape`);
+  assert.ok(!consoleLines.some(({ text }) => text.includes("[main_menu] returned_from_campaign")),
+    `${faction}: Escape left the campaign`);
+  const closed = await stableInteractionFrame(page, folder, "battle-withdrawal-escape");
+  assert.notEqual(sha256(closed), sha256(results), `${faction}: the summary still shows after Escape`);
+  probes.push({ type: "battle-withdrawal-escape", closed: true });
   return probes;
 }
 
