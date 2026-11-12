@@ -452,6 +452,14 @@ const cases = [
     rows: [["Attached: "], ["Status:", "Enroute"], ["ETA Destination:", "Day 249"], ["Maintenance Cost:"],
       ["Diplomacy Rating:"], ["Espionage Rating:"], ["Combat Rating:"], ["Leadership Rating:"]],
     marks: [["Strategy", 11520]],
+    // Its cell on the Defenses window: A0 sfstatus/01 lists the travelling
+    // Infiltrators third on Yavin's personnel page, the mini at (452, 167)
+    // over the en route mark STRATEGY 11501 (hyperspace through the
+    // ports), not the backdrop 11500 alone (FUN_0042c3b0, +0x50 bit 4).
+    // The 61 by 25 mini is found in the port's window and compared in
+    // every pixel but 11501's key pixel (0, 24), where the window's own
+    // background shows.
+    a0Cell: { file: "../sfstatus/01-yavin.png", x: 452, y: 167, width: 61, height: 25, skip: [[0, 24]], side: "alliance" },
     a0Menu: { width: 104, height: 122,
       rows: ["Move", "Confirmed Move", "Mission", "Encyclopedia", "Status", "Retire"] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
@@ -578,6 +586,40 @@ async function inspect(server, source, faction, testCase, executable) {
     await page.evaluate(() => document.fonts.ready);
 
     const target = await testCase.target(page, faction);
+    // The listed cell's mini and marks against A0, at the best offset near
+    // the target (the cell's top left is up to 70 by 50 from it).
+    let cellCheck = null;
+    if (testCase.a0Cell && faction.name === testCase.a0Cell.side) {
+      const cell = testCase.a0Cell;
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await page.waitForTimeout(300);
+      const port = PNG.sync.read(await page.screenshot({ animations: "disabled" }));
+      const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/status", cell.file)));
+      const skip = new Set(cell.skip.map(([x, y]) => `${x},${y}`));
+      const differing = (ox, oy) => {
+        let count = 0;
+        for (let y = 0; y < cell.height; y += 1) {
+          for (let x = 0; x < cell.width; x += 1) {
+            if (skip.has(`${x},${y}`)) continue;
+            const i = ((cell.y + y) * a0.width + cell.x + x) * 4;
+            const j = ((oy + y) * port.width + ox + x) * 4;
+            if ([0, 1, 2].some((k) => a0.data[i + k] !== port.data[j + k])) count += 1;
+          }
+        }
+        return count;
+      };
+      let best = null;
+      for (let oy = Math.round(target.y) - 60; oy <= Math.round(target.y); oy += 1) {
+        for (let ox = Math.round(target.x) - 75; ox <= Math.round(target.x); ox += 1) {
+          const count = differing(ox, oy);
+          if (!best || count < best.differing) best = { x: ox, y: oy, differing: count };
+        }
+      }
+      cellCheck = { pixels: cell.width * cell.height - skip.size, ...best };
+      fs.writeFileSync(path.join(directory, "cell-port.png"), PNG.sync.write(crop(PNG.sync.write(port), { x: best.x, y: best.y, width: cell.width, height: cell.height })));
+      assert.equal(best.differing, 0, `the listed cell differs from A0: ${JSON.stringify(cellCheck)}`);
+    }
     // A right release on the window off its bands, no band selected, opens
     // the pop-up for nothing (FUN_004534f0 -> FUN_004ac5c0): A0
     // menus3/34-icon-menu-reserved, at Coruscant's window's left edge,
@@ -797,7 +839,7 @@ async function inspect(server, source, faction, testCase, executable) {
       menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
       assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
     }
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, cellCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {
