@@ -250,6 +250,48 @@ const CASES = {
     await shot("main-menu-with-score");
     return { cinematic, under_cinematic: underCinematic, menu_score: started };
   },
+  // Every movie stops the score first (FUN_00610c00(0); credits: command
+  // 0x73 in FUN_00406000, movie-flow.md "3. Credits") and the screen after
+  // it starts its own again: the credits' callback LAB_00406520 restarts
+  // the menu's (FUN_004173c0, FUN_00417520), and the game started after the
+  // side's movie (state 8) plays the galaxy view's.
+  async "movies-hold-the-score"(page, shot) {
+    const sounding = () => window.__openRebellionActiveLoops.size;
+    await waitStem(page, "000", "the logos play");
+    await page.locator("#glcanvas").focus();
+    // The click is the gesture that unlocks the page's WebAudio.
+    await page.mouse.click(320, 240);
+    await waitStem(page, "001", "the cinematic plays");
+    await page.keyboard.press("Escape");
+    await waitFor(page, menuActive, "the main menu");
+    await waitFor(page, () => window.__openRebellionActiveLoops.size === 1, "the menu's score sounds", 10_000);
+    await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(11));
+    const credits = await waitStem(page, "005", "the credits movie plays");
+    await page.waitForTimeout(1000);
+    assert.equal(await page.evaluate(sounding), 0, "no score under the credits");
+    await shot("credits-silent");
+    await page.mouse.click(320, 240);
+    await waitFor(page, menuActive, "a click ends the credits and the menu shows again");
+    await waitFor(page, () => window.__openRebellionActiveLoops.size === 1,
+      "the menu's score sounds again after the credits", 10_000);
+    const afterCredits = await page.evaluate(() => window.__openRebellionLoops.length);
+    await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(8));
+    const newGame = await waitStem(page, "004", "the Empire's movie plays before the game");
+    await page.waitForTimeout(1000);
+    assert.equal(await page.evaluate(sounding), 0, "no score under the side's movie");
+    await shot("new-game-silent");
+    await page.keyboard.press("Escape");
+    await waitFor(page, () => !document.querySelector("video")
+      && !(document.getElementById("main-menu-semantics")?.dataset.active === "true"),
+      "the game starts after the movie");
+    await waitFor(page, () => window.__openRebellionActiveLoops.size === 1,
+      "the galaxy view's score sounds", 15_000);
+    await shot("galaxy-with-score");
+    const starts = await page.evaluate(() => window.__openRebellionLoops.slice());
+    assert.equal(starts.length, 3, JSON.stringify(starts));
+    assert.ok(starts.every(({ stem }) => stem === null), `no score starts under a movie: ${JSON.stringify(starts)}`);
+    return { credits, new_game: newGame, starts, starts_after_credits: afterCredits };
+  },
   // FUN_005f6920: a movie the video manager cannot open shows
   // MessageBoxA(path, "PathName unknown to VideoManager", 0x1010) and the
   // flow waits for OK, then goes on as after the movie (the menu again).
@@ -386,8 +428,16 @@ async function run(browser, base, name) {
           menu: document.getElementById("main-menu-semantics")?.dataset.active === "true",
           stem: window.__openRebellionCutscene?.state === 1 ? window.__openRebellionCutscene.stem : null,
         });
+        window.__openRebellionActiveLoops.add(this);
       }
       return start.apply(this, rest);
+    };
+    // The looped sources still sounding (a stop ends one).
+    window.__openRebellionActiveLoops = new Set();
+    const stop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.stop = function (...rest) {
+      window.__openRebellionActiveLoops.delete(this);
+      return stop.apply(this, rest);
     };
   });
   const shot = async (label) => {

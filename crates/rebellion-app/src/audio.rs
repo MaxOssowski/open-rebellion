@@ -771,6 +771,18 @@ impl AudioEngine {
         self.play_music(track, sounds_dir, vol_state);
     }
 
+    /// Stop the browser music but keep its decoded track, so the next
+    /// `try_play_loaded_music` starts it again from its beginning (WebAudio
+    /// decodes a fresh track asynchronously, which a short screen between
+    /// two movies would not wait for).
+    #[cfg(target_arch = "wasm32")]
+    pub fn halt_music(&mut self) {
+        if let Some((sound, _)) = &self.music {
+            sound.stop(&self.ctx);
+        }
+        self.music_playing = false;
+    }
+
     /// Stop the current music track immediately.
     pub fn stop_music(&mut self) {
         if let Some((sound, _)) = self.music.take() {

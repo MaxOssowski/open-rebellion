@@ -322,7 +322,6 @@ fn original_dll_path(game_dir: &Path, gdata_path: &Path, name: &str) -> PathBuf 
 /// cutscene stops the music, so its end has to start this again. The
 /// tactical battle has no score (`FUN_00450540` stops it at the Battle
 /// Alert), so a trench run returns to silence.
-#[cfg(not(target_arch = "wasm32"))]
 fn music_context_after_cutscene(kind: &CutsceneKind) -> Option<MusicContext> {
     match kind {
         CutsceneKind::Intro | CutsceneKind::NewGame => None,
@@ -1658,6 +1657,9 @@ async fn main() {
             audio_vol.cutscene_volume(),
             #[cfg(not(target_arch = "wasm32"))]
             &mut audio_engine,
+            // Nothing sounds yet; the decoding main theme waits for the menu.
+            #[cfg(target_arch = "wasm32")]
+            None,
         )
     } else {
         None
@@ -4492,6 +4494,8 @@ async fn main() {
                     audio_vol.cutscene_volume(),
                     #[cfg(not(target_arch = "wasm32"))]
                     &mut audio_engine,
+                    #[cfg(target_arch = "wasm32")]
+                    browser_menu_audio.as_mut(),
                 );
                 if cutscene_player.is_some() {
                     game_mode = GameMode::Cutscene {
@@ -4520,6 +4524,8 @@ async fn main() {
                     audio_vol.cutscene_volume(),
                     #[cfg(not(target_arch = "wasm32"))]
                     &mut audio_engine,
+                    #[cfg(target_arch = "wasm32")]
+                    browser_menu_audio.as_mut(),
                 );
                 if cutscene_player.is_some() {
                     macroquad::logging::info!(
@@ -4551,7 +4557,6 @@ async fn main() {
                     CutsceneKind::Story(_) => GameMode::Galaxy,
                 };
                 let chains_cinematic = *kind == CutsceneKind::Intro;
-                #[cfg(not(target_arch = "wasm32"))]
                 let next_music = music_context_after_cutscene(kind);
 
                 if let Some(player) = cutscene_player.as_mut() {
@@ -4576,6 +4581,8 @@ async fn main() {
                                 audio_vol.cutscene_volume(),
                                 #[cfg(not(target_arch = "wasm32"))]
                                 &mut audio_engine,
+                                #[cfg(target_arch = "wasm32")]
+                                browser_menu_audio.as_mut(),
                             );
                             if cutscene_player.is_some() {
                                 game_mode = GameMode::Cutscene {
@@ -4590,6 +4597,27 @@ async fn main() {
                                 &sounds_dir,
                                 &audio_vol,
                             );
+                        }
+                        // The browser holds only the main theme; the movie
+                        // halted it (`open_cutscene`), and it starts again
+                        // once the next screen shows (`score_may_start`).
+                        // A track the browser no longer holds is decoded
+                        // again first.
+                        #[cfg(target_arch = "wasm32")]
+                        if let (Some(next_music), Some(engine), Some(bytes)) = (
+                            next_music.filter(|_| cutscene_player.is_none()),
+                            browser_menu_audio.as_mut(),
+                            browser_main_theme.as_deref(),
+                        ) {
+                            let track = audio::track_for_context(next_music);
+                            if track == rebellion_render::MusicTrack::MainTheme
+                                && engine.current_track() != Some(track)
+                            {
+                                engine.load_music_bytes(
+                                    rebellion_render::MusicTrack::MainTheme,
+                                    bytes,
+                                );
+                            }
                         }
                     }
                 } else {
@@ -4713,6 +4741,8 @@ async fn main() {
                                 audio_vol.cutscene_volume(),
                                 #[cfg(not(target_arch = "wasm32"))]
                                 &mut audio_engine,
+                                #[cfg(target_arch = "wasm32")]
+                                browser_menu_audio.as_mut(),
                             );
                             if cutscene_player.is_some() {
                                 game_mode = GameMode::Cutscene {
@@ -4739,6 +4769,8 @@ async fn main() {
                                 audio_vol.cutscene_volume(),
                                 #[cfg(not(target_arch = "wasm32"))]
                                 &mut audio_engine,
+                                #[cfg(target_arch = "wasm32")]
+                                browser_menu_audio.as_mut(),
                             );
                             if cutscene_player.is_some() {
                                 game_mode = GameMode::Cutscene {
@@ -5099,6 +5131,17 @@ async fn main() {
                                         &sounds_dir,
                                         &audio_vol,
                                     );
+                                }
+                                #[cfg(target_arch = "wasm32")]
+                                if let (Some(engine), Some(bytes)) =
+                                    (browser_menu_audio.as_mut(), browser_main_theme.as_deref())
+                                {
+                                    // The side's movie halted the menu's
+                                    // score; the galaxy view plays the same.
+                                    let track = audio::track_for_context(MusicContext::GalaxyMap);
+                                    if engine.current_track() != Some(track) {
+                                        engine.load_music_bytes(track, bytes);
+                                    }
                                 }
 
                                 // Sync advisor faction and send greeting
@@ -8750,6 +8793,8 @@ async fn main() {
                             audio_vol.cutscene_volume(),
                             #[cfg(not(target_arch = "wasm32"))]
                             &mut audio_engine,
+                            #[cfg(target_arch = "wasm32")]
+                            browser_menu_audio.as_mut(),
                         );
                         if cutscene_player.is_some() {
                             game_mode = GameMode::Cutscene {
@@ -13948,9 +13993,17 @@ fn open_cutscene(
     path: &Path,
     volume: f32,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
+    #[cfg(target_arch = "wasm32")] browser_audio: Option<&mut audio::AudioEngine>,
 ) -> Option<VideoPlayer> {
+    // Every movie stops the score first (`FUN_00610c00(0)`: the credits'
+    // command 0x73 in `FUN_00406000`, a story movie's 0x482 in
+    // `FUN_00422ce0`, the trench run's `FUN_005cfec0`).
     #[cfg(not(target_arch = "wasm32"))]
     audio_engine.stop_music();
+    #[cfg(target_arch = "wasm32")]
+    if let Some(engine) = browser_audio {
+        engine.halt_music();
+    }
 
     match VideoPlayer::open(path, volume) {
         Ok(player) => {

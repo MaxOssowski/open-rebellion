@@ -99,6 +99,27 @@ async function run(browser, base, faction) {
     if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => errors.push(String(error)));
+  // The looped WebAudio sources (the score; effects and voices are
+  // one-shot): each start, and those still sounding.
+  await page.addInitScript(() => {
+    window.__openRebellionLoops = [];
+    window.__openRebellionActiveLoops = new Set();
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...rest) {
+      if (this.loop) {
+        window.__openRebellionLoops.push({
+          stem: window.__openRebellionCutscene?.state === 1 ? window.__openRebellionCutscene.stem : null,
+        });
+        window.__openRebellionActiveLoops.add(this);
+      }
+      return start.apply(this, rest);
+    };
+    const stop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.stop = function (...rest) {
+      window.__openRebellionActiveLoops.delete(this);
+      return stop.apply(this, rest);
+    };
+  });
   const shot = async (label) => {
     const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
     shots.push({ label, sha256: createHash("sha256").update(bytes).digest("hex") });
@@ -125,11 +146,18 @@ async function run(browser, base, faction) {
     // (0x128, FUN_0048e5a0) has queued MDATA.102 behind it, which plays
     // next under its own caption. Each Escape ends one; then the galaxy
     // view comes back.
+    // The first skip is a click, the gesture that unlocks the page's
+    // WebAudio, so the galaxy view's score sounds between the movies.
+    // FUN_00422ce0's 0x482 stops it for each movie (FUN_00610c00(0)) and
+    // its 0x402 starts it again (FUN_004173c0, FUN_00422cb0 calling
+    // FUN_00417520).
     await page.locator("#glcanvas").focus();
     const stems = ["104"];
     const captions = {};
+    const score = {};
     for (;;) {
-      await page.keyboard.press("Escape");
+      if (stems.length === 1) await page.mouse.click(320, 240);
+      else await page.keyboard.press("Escape");
       await until(page, `movie ${stems.at(-1)} ends`, () => {
         const c = window.__openRebellionCutscene;
         return !document.querySelector("video") || (c && c.state === 1 && c.stem !== undefined);
@@ -162,6 +190,10 @@ async function run(browser, base, faction) {
         // the port's within the accepted text deviation (left and top
         // within 2 pixels, width within 15%).
         await until(page, "MDATA.103 plays", () => document.querySelector("video")?.currentTime > 1.0);
+        score.before_103 = await page.evaluate(() => window.__openRebellionLoops.length);
+        score.under_103 = await page.evaluate(() => window.__openRebellionActiveLoops.size);
+        assert.ok(score.before_103 >= 1, `the galaxy view's score sounded before 103: ${JSON.stringify(score)}`);
+        assert.equal(score.under_103, 0, `no score under 103: ${JSON.stringify(score)}`);
         const bytes = await shot("movie-103");
         assert.ok(log.some((line) => line.includes(
           "[cutscene] story movie=103 caption=The Alliance has seized the Imperial capital system of Coruscant.")));
@@ -183,12 +215,17 @@ async function run(browser, base, faction) {
       }
       assert.ok(stems.length < 6, `too many movies: ${stems}`);
     }
+    await until(page, "the galaxy view's score sounds after the movies",
+      () => window.__openRebellionActiveLoops.size === 1, 10_000);
+    score.starts = await page.evaluate(() => window.__openRebellionLoops.slice());
+    assert.ok(score.starts.every(({ stem }) => stem === null),
+      `no score starts under a movie: ${JSON.stringify(score)}`);
     await page.waitForTimeout(500);
     const after = measure(await shot("galaxy"));
     assert.ok(after.outside > 10_000, `the cockpit is back: ${JSON.stringify(after)}`);
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(stems.includes("103"), `MDATA.103 played: ${stems}`);
-    return { faction: faction.name, status: "pass", stems, captions, playing, after, shots };
+    return { faction: faction.name, status: "pass", stems, captions, score, playing, after, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
