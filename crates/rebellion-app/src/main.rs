@@ -16572,6 +16572,28 @@ mod fleet_move_tests {
                     confirmed
                 ))
             );
+            let members = vec![MissionMember::Character(rebellion_core::ids::CharacterKey::default())];
+            assert_eq!(
+                fleet_drop_order(
+                    &world,
+                    FleetWindowAction::DragMembers {
+                        members: members.clone(),
+                        point,
+                        confirmed,
+                    }
+                ),
+                Some((
+                    FleetDropOrder::Team {
+                        place: None,
+                        team: rebellion_render::quadrant_icons::DefensesTeam {
+                            members,
+                            ..Default::default()
+                        },
+                    },
+                    point,
+                    confirmed
+                ))
+            );
         }
     }
 }
