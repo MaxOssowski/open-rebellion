@@ -333,12 +333,17 @@ impl ClipPlayer {
         self.second.as_ref().and_then(|second| second.frame())
     }
 
-    /// The length of the voice the last [`ClipEvent::Voice`] started; the
-    /// clip holds its last frame until it ends.
-    pub fn voice_started(&mut self, seconds: f32) {
+    /// Answer the last [`ClipEvent::Voice`]: whether its WAVE played and
+    /// its length. A played voice holds the clip's last frame until it
+    /// ends; one that did not play holds nothing. The wait is bit 5 of the
+    /// clip's sound `+0x28` (`FUN_00403fe0`), the sound layer's playing
+    /// bit: `FUN_00611580` sets it when the buffer starts, and the poll
+    /// `FUN_00611780` rewrites it from the buffer's status (`FUN_00612890`)
+    /// or, with the WAVE not loaded, clears it and fails (`0x10`).
+    pub fn voice_started(&mut self, played: bool, seconds: f32) {
         if self.voice_owners.pop_front() == Some(true) {
             if let Some(second) = &mut self.second {
-                second.voice_started(seconds);
+                second.voice_started(played, seconds);
             }
             return;
         }
@@ -347,7 +352,7 @@ impl ClipPlayer {
             ..
         }) = &mut self.current
         {
-            *voice_left = seconds.max(0.0);
+            *voice_left = if played { seconds.max(0.0) } else { 0.0 };
         }
     }
 
@@ -458,9 +463,11 @@ impl ClipPlayer {
                         self.show(base);
                     }
                 }
-                // hyp: the clip waits for its voice (FUN_00403fe0 with
-                // flag bit 5, whose writer is unread); a stopped op 0x13
-                // does not (FUN_00412b80 returns +0x64).
+                // The clip waits while its voice plays (FUN_00403fe0: bit 5
+                // of +0x28 is the playing bit FUN_00611580 sets and
+                // FUN_00612890 refreshes), every voiced clip alike, the
+                // briefing's first too; a stopped op 0x13 does not
+                // (FUN_00412b80 returns +0x64).
                 *next_frame > *last_frame && (*voice_left <= 0.0 || *stopped)
             }
             // FUN_00412260: one tick (+0x50 = 1, FUN_00412180), then done;
@@ -717,7 +724,7 @@ mod tests {
                 wave: 1155
             }]
         );
-        player.voice_started(4.0 * CLIP_TICK_SECONDS);
+        player.voice_started(true, 4.0 * CLIP_TICK_SECONDS);
         let (first, first_serial) = player.frame().map(|(f, s)| (f.indices.clone(), s)).unwrap();
         // Two deltas, one a tick, each added to the frame before.
         assert!(ticks(&mut player, 1).is_empty());
@@ -752,7 +759,7 @@ mod tests {
         });
 
         ticks(&mut player, 1);
-        player.voice_started(6.0 * CLIP_TICK_SECONDS);
+        player.voice_started(true, 6.0 * CLIP_TICK_SECONDS);
         let (first, first_serial) = player.frame().map(|(f, s)| (f.indices.clone(), s)).unwrap();
         // 2102 adds its delta.
         assert!(ticks(&mut player, 1).is_empty());
@@ -864,7 +871,7 @@ mod tests {
                 wave: 1512
             }]
         );
-        player.voice_started(2.0 * CLIP_TICK_SECONDS);
+        player.voice_started(true, 2.0 * CLIP_TICK_SECONDS);
         assert!(player.frame().is_some());
         let (_, second_serial) = player.second_frame().unwrap();
         // Two deltas, then the voice; the agent holds throughout.
@@ -1130,6 +1137,28 @@ mod tests {
     }
 
     #[test]
+    fn a_clip_whose_voice_did_not_play_ends_the_tick_its_last_frame_is_added() {
+        // FUN_00403fe0 waits only on bit 5 of the sound's +0x28, which
+        // FUN_00611580 sets when the buffer plays; with the WAVE not loaded
+        // the poll FUN_00611780 clears it and returns 0x10, so the clip
+        // ends with its frames whatever the WAVE's length.
+        let root = staged_root(3);
+        let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
+        let action = ClipAction { kind: 2, code: 1 };
+        player.queue(QueuedClip {
+            op: OP_DEFINITION,
+            slot: BRIEFING_SLOT,
+            record: 0x103b,
+            action,
+        });
+
+        assert_eq!(ticks(&mut player, 1).len(), 1);
+        player.voice_started(false, 10.0);
+        assert!(ticks(&mut player, 1).is_empty());
+        assert_eq!(ticks(&mut player, 1), [ClipEvent::Finished(action)]);
+    }
+
+    #[test]
     fn a_new_clip_stops_the_playing_one_each_class_its_own_way() {
         // FUN_00472930 (the player's slot 8) asks the current clip to stop
         // (vt +0x24) when another is queued. Op 4 (FUN_00404740 ->
@@ -1153,7 +1182,7 @@ mod tests {
             action,
         });
         ticks(&mut player, 1);
-        player.voice_started(10.0);
+        player.voice_started(true, 10.0);
         player.queue(next);
         assert_eq!(
             ticks(&mut player, 1),
@@ -1174,7 +1203,7 @@ mod tests {
             action,
         });
         ticks(&mut player, 1);
-        player.voice_started(10.0);
+        player.voice_started(true, 10.0);
         player.queue(next);
         // Three deltas still to add; it ends with the last, its voice
         // untouched.
@@ -1214,7 +1243,7 @@ mod tests {
             action: ClipAction::default(),
         });
         ticks(&mut player, 1);
-        player.voice_started(10.0);
+        player.voice_started(true, 10.0);
         player.flush();
         assert!(
             player.frame().is_some(),

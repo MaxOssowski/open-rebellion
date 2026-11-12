@@ -2120,7 +2120,7 @@ async fn main() {
                         .as_mut()
                         .is_some_and(|engine| engine.play_advisor_voice(directory, wave, &audio_vol));
                     let seconds = advisor_voice_seconds.get(&key).copied().unwrap_or(0.0);
-                    advisor_state.clips.voice_started(seconds);
+                    advisor_state.clips.voice_started(loaded, seconds);
                     macroquad::logging::info!(
                         "[advisor] clip voice directory={} wave={} seconds={:.3} loaded={} muted={}",
                         directory,
