@@ -1669,6 +1669,55 @@ const cases = [
     },
   },
   {
+    name: "defenses-multi-select",
+    scenario: CORUSCANT_SQUADRONS,
+    factions: ["empire"],
+    // The Defenses window's list (flags 0xa0000, FUN_004a8790) is no
+    // single-selection list: Ctrl adds a squadron, and Shift adds every
+    // cell meeting the rectangle from the last press to this one in the
+    // list's content pixels (FUN_006083c0, FUN_00609590), across a scroll.
+    async run(page, faction, setup, directory) {
+      const { dat, window } = await openDefenses(page, setup, "second");
+      const tab = window.tabs.find(([name]) => name === "squadrons")[1];
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await click(page, { x: tab[0] + 18, y: tab[1] + 16 });
+      const opened = defensesWindow(await until(page, "the squadrons page opens",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.page === "squadrons"), dat), dat);
+      const origin = corner(opened);
+      const cell = (w, index) => ({ x: w.cells[index][0] + 30, y: w.cells[index][1] + 12 });
+      const withKey = async (key, at) => {
+        await page.keyboard.down(key);
+        await frames(page);
+        await click(page, at);
+        await page.waitForTimeout(300);
+        await page.keyboard.up(key);
+        await frames(page);
+      };
+      await click(page, cell(opened, 0));
+      await page.waitForTimeout(300);
+      await withKey("Control", cell(opened, 1));
+      const two = defensesWindow(await until(page, "Ctrl+click selects two squadrons",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && JSON.stringify(w.selection) === "[0,1]"), dat), dat);
+      await shot(page, directory, "two-selected");
+      // Page the list to its end on the bar's track, then Shift+click the
+      // tenth squadron (column 0): columns 0..1 of every line join.
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await click(page, { x: origin[0] + 224, y: origin[1] + 260 });
+      const end = defensesWindow(await until(page, "the track pages the list to its end",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value[0] && w.cells[9][1] === value[1]),
+        [dat, origin[1] + 81 + 210 - 75]), dat);
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await withKey("Shift", cell(end, 9));
+      const range = defensesWindow(await until(page, "Shift+click adds the range across the scroll",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && JSON.stringify(w.selection) === "[0,1,3,4,6,7,9]"), dat), dat);
+      await shot(page, directory, "shift-range");
+      return { two, range };
+    },
+  },
+  {
     name: "defenses-list-bar",
     scenario: CORUSCANT_SQUADRONS,
     factions: ["empire"],
