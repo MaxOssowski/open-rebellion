@@ -545,3 +545,11 @@ cases pass on the first run. The two failures were in the gates:
   so the right-click missed. Commit c4f02d3f fixes the mapping. Rerun of
   all four cases: pass (`g-chase-rerun4`).
 Batch b201 reruns everything with both fixes.
+
+## Batch b201
+
+Full gate batch b201 (Linux, Arch Chromium), with the Alt-accelerator fix
+71bf9394 and the gate fixes 1c0ef350 and c4f02d3f: check, workspace 3643
+and fixture 163 tests pass, 31 of 31 gates and 176 of 176 battle cases
+pass. The Alt case under the Battle Summary (Alt+G/H refused, Alt+2/Alt+1
+switch the GID display) passes in production-battle-last-ship-lost.
