@@ -73,6 +73,9 @@ const BATTLE_WITHDRAWAL_REPORT_SCENARIO: u32 = 40;
 /// Mon Calamari played until the Alliance's last hull dies, then the
 /// Battle Summary's system button (`0xcb`, `FUN_00470ea0`).
 const BATTLE_LAST_SHIP_LOST_SCENARIO: u32 = 41;
+/// A0 TAC-01-C008: a battle at Umgul, whose planet the camera shows at the
+/// holocube's top right after Rotate Left 16 times.
+const UMGUL_BACKDROP_SCENARIO: u32 = 42;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -137,6 +140,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub battle_alert_retreat: bool,
     pub battle_withdrawal_report: bool,
     pub battle_last_ship_lost: bool,
+    pub umgul_backdrop: bool,
     pub subsystem_field_command_presentation: bool,
     pub live_subsystem_damage_presentation: bool,
     pub subsystem_repair_mobility_presentation: bool,
@@ -371,7 +375,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | ATTACK_TARGET_LOST_PRESENTATION_SCENARIO
         | BATTLE_ALERT_RETREAT_SCENARIO
         | BATTLE_WITHDRAWAL_REPORT_SCENARIO
-        | BATTLE_LAST_SHIP_LOST_SCENARIO => (
+        | BATTLE_LAST_SHIP_LOST_SCENARIO
+        | UMGUL_BACKDROP_SCENARIO => (
             false,
             true,
             false,
@@ -421,6 +426,7 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         battle_alert_retreat: scenario == BATTLE_ALERT_RETREAT_SCENARIO,
         battle_withdrawal_report: scenario == BATTLE_WITHDRAWAL_REPORT_SCENARIO,
         battle_last_ship_lost: scenario == BATTLE_LAST_SHIP_LOST_SCENARIO,
+        umgul_backdrop: scenario == UMGUL_BACKDROP_SCENARIO,
         subsystem_field_command_presentation: scenario
             == SUBSYSTEM_FIELD_COMMAND_PRESENTATION_SCENARIO,
         live_subsystem_damage_presentation: scenario == LIVE_SUBSYSTEM_DAMAGE_PRESENTATION_SCENARIO,
@@ -492,7 +498,18 @@ pub(crate) fn apply(
         .collect();
     empty.sort_unstable();
     let ordinal = usize::from(request.faction != CockpitFaction::Alliance);
-    let system = if request.hull_scale_presentation {
+    let system = if request.umgul_backdrop {
+        // A0 TAC-01-C008 was taken at Umgul: the same system gives the
+        // same planet decal. Its own fleets stay out.
+        let key = world
+            .systems
+            .iter()
+            .find(|(_, system)| !system.is_destroyed && system.name == "Umgul")
+            .map(|(key, _)| key)
+            .ok_or("fixture system Umgul is missing")?;
+        world.systems[key].fleets.clear();
+        key
+    } else if request.hull_scale_presentation {
         // A0 TAC-01-C003 was taken at Mon Calamari: the same system gives
         // the same planet and battle palette. Its own fleets stay out.
         let key = world
@@ -1003,6 +1020,7 @@ struct FixtureRecord<'a> {
     battle_alert_retreat: bool,
     battle_withdrawal_report: bool,
     battle_last_ship_lost: bool,
+    umgul_backdrop: bool,
     battle_alert_open: bool,
     tactical_music_mdata_id: Option<u32>,
     tactical_weapon_audio_wave_first: u32,
@@ -1516,6 +1534,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         battle_alert_retreat: request.battle_alert_retreat,
         battle_withdrawal_report: request.battle_withdrawal_report,
         battle_last_ship_lost: request.battle_last_ship_lost,
+        umgul_backdrop: request.umgul_backdrop,
         battle_alert_open: tactical.battle_alert_open(),
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1606,6 +1625,7 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         battle_alert_retreat: request.battle_alert_retreat,
         battle_withdrawal_report: request.battle_withdrawal_report,
         battle_last_ship_lost: request.battle_last_ship_lost,
+        umgul_backdrop: request.umgul_backdrop,
         battle_alert_open: false,
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1750,7 +1770,9 @@ mod tests {
         assert!(decode(0x10129).unwrap().battle_last_ship_lost);
         assert!(decode(0x10129).unwrap().hull_scale_presentation);
         assert!(!decode(0x10128).unwrap().battle_last_ship_lost);
-        assert!(decode(0x1012a).is_none());
+        assert!(decode(0x1012a).unwrap().umgul_backdrop);
+        assert!(!decode(0x10129).unwrap().umgul_backdrop);
+        assert!(decode(0x1012b).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
     }

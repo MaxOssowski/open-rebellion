@@ -4659,6 +4659,87 @@ async function probeTacticalBattleAlertRetreat(page, viewport, folder, consoleLi
   return probes;
 }
 
+// A0 TAC-01-C008 (the Empire's Battle at Umgul, paused): Rotate Left 16
+// times (the camera sphere's left control, 1049; FUN_005d9640 yaws the
+// camera about +Y) shows the holocube's (+x, -y, +z) corner at (106, 298)
+// and Umgul's planet decal (FUN_005d4d10: e wide at (2e, r, r)) at the top
+// right. The probe measures both in the port and in A0.
+async function probeTacticalUmgulBackdrop(page, viewport, folder, ready, faction) {
+  assert.equal(ready.system, "Umgul", `${faction}: the battle is not at Umgul`);
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const at = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const left = at(506, 402);
+  for (let press = 0; press < 16; press++) {
+    await page.mouse.move(left.x, left.y);
+    await page.mouse.down({ button: "left" });
+    await page.waitForTimeout(80);
+    await page.mouse.up({ button: "left" });
+    await page.waitForTimeout(300);
+  }
+  // A0's cursor rests at the bottom of the battle view.
+  const rest = at(310, 470);
+  await page.mouse.move(rest.x, rest.y);
+  await page.waitForTimeout(500);
+  const turned = await stableInteractionFrame(page, folder, "umgul-rotated-left-16");
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  if (!native) return [{ type: "umgul-backdrop", presses: 16 }];
+  const measure = (image) => {
+    const pixel = (x, y) => {
+      const k = (y * 640 + x) * 4;
+      return [image.data[k], image.data[k + 1], image.data[k + 2]];
+    };
+    const blue = ([r, g, b]) => b > 150 && r < 80 && g < 80;
+    const bright = (c) => c[0] + c[1] + c[2] > 200 && !blue(c);
+    // The corner: the first row, from the top, where the holocube's lines
+    // run three blue pixels wide near A0's corner.
+    let corner = null;
+    for (let y = 270; y < 330 && !corner; y++) {
+      for (let x = 80; x < 140; x++) {
+        if ([0, 1, 2].every((i) => blue(pixel(x + i, y)))) {
+          corner = { x, y };
+          break;
+        }
+      }
+    }
+    const rowEdge = (y) => {
+      for (let x = 200; x < 454; x++) {
+        if ([0, 1, 2, 3].every((i) => bright(pixel(x + i, y)))) return x;
+      }
+      return null;
+    };
+    const columnEdge = (x) => {
+      for (let y = 200; y > 31; y--) {
+        if ([0, 1, 2, 3].every((i) => bright(pixel(x, y - i)))) return y;
+      }
+      return null;
+    };
+    return {
+      corner,
+      planet_left: { y30: rowEdge(30), y40: rowEdge(40), y60: rowEdge(60) },
+      planet_bottom: { x420: columnEdge(420), x450: columnEdge(450) },
+    };
+  };
+  const port = measure(PNG.sync.read(turned));
+  const probe = { type: "umgul-backdrop", presses: 16, port };
+  const a0Path = path.join(root, ".artifacts/interface-parity/a0/TAC-01-C008/original.png");
+  if (faction === "empire" && fs.existsSync(a0Path)) {
+    probe.a0 = measure(PNG.sync.read(fs.readFileSync(a0Path)));
+    // The planet stands at the top right in both (its random offsets are
+    // the port's centre, port:).
+    assert.ok(port.planet_left.y40 !== null && port.planet_left.y40 > 300,
+      `${faction}: no planet at the top right ${JSON.stringify(port)}`);
+    // The corner within 3 pixels, the unit test's tolerance
+    // (the_camera_orbits_the_vertical_axis_as_the_original_captures_show);
+    // the 1-pixel offset left is the open item of the cell.
+    assert.ok(port.corner && Math.abs(port.corner.x - probe.a0.corner.x) <= 3
+      && Math.abs(port.corner.y - probe.a0.corner.y) <= 3,
+    `${faction}: the holocube corner ${JSON.stringify(port.corner)} is not near A0's`);
+  }
+  return [probe];
+}
+
 // A0 TAC-01-C003's battle at Imperial Mon Calamari (one Medium Transport
 // against one Victory Destroyer) played until the Alliance's last hull
 // dies: the battle ends by itself (A0 TAC-01-C013), and the Battle
@@ -6286,6 +6367,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? await probeTacticalNavigationCameraPresentation(
           page, viewport, folder, stable, consoleLines, ready,
         )
+        : scenario.umgul_backdrop
+        ? await probeTacticalUmgulBackdrop(page, viewport, folder, ready, faction)
         : scenario.battle_last_ship_lost
         ? await probeTacticalBattleLastShipLost(
           page, viewport, folder, consoleLines, ready, faction,
@@ -6411,6 +6494,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       assert.equal(ready.battle_alert_retreat, Boolean(scenario.battle_alert_retreat));
       assert.equal(ready.battle_withdrawal_report, Boolean(scenario.battle_withdrawal_report));
       assert.equal(ready.battle_last_ship_lost, Boolean(scenario.battle_last_ship_lost));
+      assert.equal(ready.umgul_backdrop, Boolean(scenario.umgul_backdrop));
       assert.equal(ready.tactical_audio_presentation,
         Boolean(scenario.tactical_audio_presentation));
       assert.equal(ready.hull_scale_presentation,
@@ -7131,7 +7215,9 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             assert.ok(cameraLogs.length >= 1 && targets.size === 1,
               "the Death Star journey's camera did not keep following its one target");
           } else {
-            assert.equal(cameraLogs.length, scenario.fighter_detail_journey ? 40 : 1,
+            // The Umgul backdrop logs its first camera and 16 Rotate Left turns.
+            assert.equal(cameraLogs.length,
+              scenario.fighter_detail_journey ? 40 : scenario.umgul_backdrop ? 17 : 1,
               "production participants did not use the source tactical camera");
           }
           assert.equal(layoutLogs.length, 1,
@@ -7347,19 +7433,21 @@ async function main() {
         "production-attack-target-lost-presentation",
         "production-battle-alert-retreat",
         "production-battle-withdrawal-report",
-        "production-battle-last-ship-lost"]);
+        "production-battle-last-ship-lost",
+        "production-umgul-backdrop"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(34).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(35).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+        undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 41 }, (_, index) => index === 5));
+      Array.from({ length: 42 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 41 }, (_, index) => index === 6));
+      Array.from({ length: 42 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });

@@ -571,6 +571,18 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Compares the report's words and the summary scene's pixels outside the text boxes with A0 TAC-01-C013, then the sector window the system button opens with A0 TAC-07-C014, for the Alliance at 640 x 480."
+    },
+    {
+      "slug": "production-umgul-backdrop",
+      "description": "A one-hull battle at Umgul turned by Rotate Left 16 times, so Umgul's planet decal shows at the holocube's top right as in A0 TAC-01-C008. It supports TAC-01-C008, which another scenario maps: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65834, "empire": 66090 },
+      "execution_kind": "journey",
+      "tactical_proof": false,
+      "production_participants": true,
+      "umgul_backdrop": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "Locates the holocube's near corner and the planet's lit box after 16 Rotate Left presses and compares them with A0 TAC-01-C008 for the Empire at 640 x 480."
     }
   ]
 }
