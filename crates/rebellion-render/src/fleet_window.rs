@@ -522,6 +522,42 @@ fn right_cells(rows: usize) -> Vec<(usize, (f32, f32), (f32, f32))> {
         .collect()
 }
 
+/// A right list item's unit: its object and how many items before it in
+/// the list stand for the same object. The port's squadrons of one class
+/// share their object, so the count tells them apart.
+type RightKey = (ItemObject, usize);
+
+/// Each right list row's [`RightKey`], in list order.
+fn right_keys(items: &[RightItem]) -> Vec<Option<RightKey>> {
+    let mut seen: Vec<ItemObject> = Vec::new();
+    items
+        .iter()
+        .map(|item| {
+            let object = item.object?;
+            let nth = seen.iter().filter(|known| **known == object).count();
+            seen.push(object);
+            Some((object, nth))
+        })
+        .collect()
+}
+
+/// [`right_cells`] keyed by each row's unit.
+fn right_key_cells(keys: &[Option<RightKey>]) -> Vec<(RightKey, (f32, f32), (f32, f32))> {
+    right_cells(keys.len())
+        .into_iter()
+        .filter_map(|(row, origin, size)| Some((keys[row]?, origin, size)))
+        .collect()
+}
+
+/// The rows of `keys` whose unit `selection` holds, in list order.
+fn selected_rows(selection: &ListSelection<RightKey>, keys: &[Option<RightKey>]) -> Vec<usize> {
+    keys.iter()
+        .enumerate()
+        .filter(|(_, key)| key.is_some_and(|key| selection.contains(key)))
+        .map(|(row, _)| row)
+        .collect()
+}
+
 /// The right list's row under list point `at`, among `rows` rows.
 fn right_hit(at: (f32, f32), rows: usize) -> Option<usize> {
     (at.0 >= 0.0 && at.0 < RIGHT_LIST.2 && at.1 >= 0.0)
@@ -694,9 +730,11 @@ struct OpenFleetWindow {
     /// port: one selected entry; the list's own selection rules
     /// (`FUN_00609410`) are untraced.
     selected: Option<FleetWindowEntry>,
-    /// The right list's selected rows, by the `CoolDragList` rules
-    /// ([`crate::drag_list`]).
-    selected_items: ListSelection<usize>,
+    /// The right list's selected items, by the `CoolDragList` rules
+    /// ([`crate::drag_list`]). Each is kept by its unit, not its row: the
+    /// original's items are the objects themselves (`+0x6c`), so a unit
+    /// that lands, leaves or dies above another moves no selection.
+    selected_items: ListSelection<RightKey>,
     expanded: Vec<FleetKey>,
     tab: FleetWindowTab,
     /// The in-place name edit Rename (0x203) opens (`FUN_004ac7a0`).
@@ -1209,11 +1247,17 @@ impl FleetWindowState {
                 .into_iter()
                 .map(|item| item.label)
                 .collect(),
-            selected_items: {
-                let mut rows = window.selected_items.items().to_vec();
-                rows.sort_unstable();
-                rows
-            },
+            selected_items: selected_rows(
+                &window.selected_items,
+                &right_keys(&window_items(
+                    world,
+                    movement,
+                    transport,
+                    &self.arrivals,
+                    selected,
+                    window.tab,
+                )),
+            ),
             counts: window_tab_counts(world, movement, transport, selected, window.tab),
         })
     }
@@ -1299,11 +1343,10 @@ impl FleetWindowState {
         } else if in_rect(RIGHT_LIST, local) {
             let row = right_row_at(local.1, window.right_scroll);
             right_target(world, movement, transport, &self.arrivals, window, row).or_else(|| {
-                window
-                    .selected_items
-                    .items()
-                    .iter()
-                    .min()
+                let items =
+                    window_items(world, movement, transport, &self.arrivals, window.selected, window.tab);
+                selected_rows(&window.selected_items, &right_keys(&items))
+                    .first()
                     .and_then(|&index| right_target(world, movement, transport, &self.arrivals, window, index))
             })
         } else {
@@ -2537,7 +2580,7 @@ struct WindowDrawResult {
     tab: Option<FleetWindowTab>,
     /// A left or right press on the right list: the row under it, the list
     /// point, the keys held and the rows listed (`FUN_006083c0`).
-    item_press: Option<(Option<usize>, (f32, f32), Modifiers, usize)>,
+    item_press: Option<(Option<usize>, (f32, f32), Modifiers, Vec<Option<RightKey>>)>,
     drag: Option<ItemDrag>,
     /// The object, release point and right list row of a right release.
     object_menu: Option<(MenuObject, egui::Pos2, Option<usize>)>,
@@ -2592,8 +2635,8 @@ pub fn draw_fleet_windows(
             }) if system == window.system => {
                 let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
                 // An object in hyperspace takes no order (FUN_004f9860).
-                let objects: Vec<ItemObject> = (0..items.len())
-                    .filter(|row| window.selected_items.contains(*row))
+                let objects: Vec<ItemObject> = selected_rows(&window.selected_items, &right_keys(&items))
+                    .into_iter()
                     .filter(|row| !items[*row].en_route)
                     .filter_map(|row| items[row].object)
                     .filter(|object| !matches!(object, ItemObject::TravellingFighter { .. }))
@@ -2604,17 +2647,24 @@ pub fn draw_fleet_windows(
                 }
             }
             Some(DragEnd::Release { system, point }) if system == window.system => {
-                let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab).len();
+                let keys = right_keys(&window_items(
+                    world,
+                    movement,
+                    transport,
+                    &arrivals,
+                    window.selected,
+                    window.tab,
+                ));
                 let local = window_screen_rect(window, layout);
                 let at = (
                     (point.x - local.min.x) / layout.scale - RIGHT_LIST.0,
                     (point.y - local.min.y) / layout.scale - RIGHT_LIST.1 + window.right_scroll,
                 );
-                let hit = right_hit(at, items);
+                let hit = right_hit(at, keys.len()).and_then(|row| keys[row]);
                 let modifiers = crate::drag_list::modifiers(ctx);
                 if let Some(open) = state.window_mut(system) {
                     open.selected_items
-                        .release(hit, at, modifiers, &right_cells(items));
+                        .release(hit, at, modifiers, &right_key_cells(&keys));
                 }
             }
             _ => {}
@@ -2642,15 +2692,13 @@ pub fn draw_fleet_windows(
             // FUN_004a2c80), the clicked item first.
             // Squadrons of one class share their object, so each selected
             // item stays in the team.
-            let team = if row.is_some_and(|row| window.selected_items.contains(row)) {
-                let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
+            let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
+            let rows = selected_rows(&window.selected_items, &right_keys(&items));
+            let team = if row.is_some_and(|row| rows.contains(&row)) {
                 crate::drag_list::clicked_first(
                     selection,
-                    items
-                        .iter()
-                        .enumerate()
-                        .filter(|(index, _)| window.selected_items.contains(*index))
-                        .filter_map(|(_, item)| item.object.map(ItemObject::menu_object)),
+                    rows.iter()
+                        .filter_map(|&index| items[index].object.map(ItemObject::menu_object)),
                 )
             } else {
                 vec![selection]
@@ -2728,11 +2776,13 @@ pub fn draw_fleet_windows(
             if let Some(tab) = result.tab {
                 open.show_tab(tab);
             }
-            if let Some((hit, point, modifiers, rows)) = result.item_press {
-                open.selected_items.retain(|row| *row < rows);
+            if let Some((hit, point, modifiers, keys)) = result.item_press {
                 open.selected_items
-                    .press(hit, point, modifiers, &right_cells(rows));
+                    .press(hit.and_then(|row| keys[row]), point, modifiers, &right_key_cells(&keys));
             }
+            // A unit no longer listed is no longer selected.
+            let keys = right_keys(&window_items(world, movement, transport, &arrivals, open.selected, open.tab));
+            open.selected_items.retain(|key| keys.contains(&Some(*key)));
             match result.rename {
                 Some(RenameOutcome::Typed(text)) => {
                     if let Some(edit) = &mut open.rename {
@@ -3458,6 +3508,7 @@ fn draw_fleet_window(
                     Some(FleetWindowEntry::Fleet(fleet)) if movement.is_in_transit(fleet)
                 );
                 let shown_items = window_items(world, movement, transport, arrivals, selected, window.tab);
+                let shown_keys = right_keys(&shown_items);
                 let content = right_content(shown_items.len());
                 let bar = crate::list_scroll_bar::ScrollBar::new(
                     LIST_BAR_ART,
@@ -3482,7 +3533,7 @@ fn draw_fleet_window(
                     // a drag is held, the selected items' images follow the
                     // pointer (FUN_00609960 copies them into the list-sized
                     // drag bitmap, FUN_0060dbb0 / FUN_0060df00).
-                    let chosen = window.selected_items.contains(row);
+                    let chosen = shown_keys[row].is_some_and(|key| window.selected_items.contains(key));
                     let mut targets = vec![(right_painter.clone(), cell)];
                     if let (true, Some(offset)) = (chosen, drag_image) {
                         targets.push((
@@ -3606,7 +3657,7 @@ fn draw_fleet_window(
                         right_hit(at, shown_items.len()),
                         at,
                         crate::drag_list::modifiers(ui.ctx()),
-                        shown_items.len(),
+                        right_keys(&shown_items),
                     ));
                     result.focus = true;
                     if left_pressed {
@@ -3934,6 +3985,18 @@ pub(crate) mod tests {
     use rebellion_core::dat::SectorGroup;
     use rebellion_core::ids::{DatId, TroopKey};
     use rebellion_core::world::{Fleet, Sector, System, TroopUnit};
+
+    /// The units of `window`'s right list `rows`.
+    fn keys_of(world: &GameWorld, window: &OpenFleetWindow, rows: &[usize]) -> Vec<RightKey> {
+        let keys = right_keys(&right_items(
+            world,
+            &TroopTransportState::default(),
+            &[],
+            window.selected,
+            window.tab,
+        ));
+        rows.iter().map(|&row| keys[row].unwrap()).collect()
+    }
 
     fn layout() -> CockpitLayout {
         let viewport = CockpitViewport {
@@ -4745,7 +4808,7 @@ pub(crate) mod tests {
         let ship = FleetWindowEntry::Ship { fleet, index: 0 };
         assert!(!state.select(system, ship));
         assert!(state.open(&world, system, (0, 0), CockpitFaction::Alliance, layout()));
-        state.windows[0].selected_items = ListSelection::only(0);
+        state.windows[0].selected_items = ListSelection::only((ItemObject::Fleet(fleet), 0));
 
         assert!(state.select(system, ship));
 
@@ -5106,7 +5169,8 @@ pub(crate) mod tests {
         assert_eq!(object(&state, right(0.0)), star);
         assert_eq!(object(&state, right(1.0)), transport);
         assert_eq!(pick(&state, right(2.0)), here);
-        state.windows[0].selected_items = ListSelection::only(0);
+        state.windows[0].selected_items =
+            ListSelection::only(keys_of(&world, &state.windows[0], &[0])[0]);
         assert_eq!(object(&state, right(2.0)), star);
         state.windows[0].tab = FleetWindowTab::Fighters;
         state.windows[0].selected_items = ListSelection::default();
@@ -5334,7 +5398,10 @@ pub(crate) mod tests {
         );
         // Ctrl on a selected item takes it out on the release.
         let _ = click(&mut state, row(0.0), egui::Modifiers::CTRL);
-        assert_eq!(state.windows[0].selected_items.items(), &[2, 1]);
+        assert_eq!(
+            state.windows[0].selected_items.items(),
+            keys_of(&world, &state.windows[0], &[2, 1])
+        );
         // A plain click on a selected item leaves it alone.
         let one = click(&mut state, row(1.0), egui::Modifiers::NONE);
         assert_eq!(frames(&one), [at(102.0, 178.0)]);
@@ -5484,7 +5551,10 @@ pub(crate) mod tests {
             .collect();
         assert_eq!(ships, [vec![1, 2]]);
         // The drop keeps the selection.
-        assert_eq!(state.windows[0].selected_items.items(), &[1, 2]);
+        assert_eq!(
+            state.windows[0].selected_items.items(),
+            keys_of(&world, &state.windows[0], &[1, 2])
+        );
     }
 
     #[test]
@@ -6153,6 +6223,51 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>(),
             [MenuObject::Fighter { fleet, index: 1 }]
         );
+    }
+
+    #[test]
+    fn a_selected_regiment_stays_selected_when_one_listed_above_it_leaves() {
+        // The list's items are the objects (FUN_004a6e70 keeps the object
+        // at +0x6c), so a regiment that lands moves no selection onto its
+        // neighbour.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 3);
+        let troops: Vec<TroopKey> = (0..3).map(|_| add_troop(&mut world, system)).collect();
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, fleet, &troops).unwrap();
+        let mut state = opened(&world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.tab = FleetWindowTab::Troops;
+        }
+        let listed = |world: &GameWorld, transport: &TroopTransportState| -> Vec<TroopKey> {
+            right_items(world, transport, &[], Some(FleetWindowEntry::Fleet(fleet)), FleetWindowTab::Troops)
+                .into_iter()
+                .filter_map(|item| match item.object {
+                    Some(ItemObject::Regiment(troop)) => Some(troop),
+                    _ => None,
+                })
+                .collect()
+        };
+        let order = listed(&world, &transport);
+        let point = state.item_screen_rect(scaled(), system, 1).unwrap().center();
+        let _ = run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            click_with(point, egui::Modifiers::NONE),
+        );
+        // The first listed regiment lands; the selected one is now first.
+        transport
+            .disembark_selected(&mut world, fleet, system, &[order[0]])
+            .unwrap();
+        let _ = run(&world, &transport, &mut state, CockpitFaction::Alliance, hover(point));
+        let report = state
+            .report(&world, &MovementState::default(), &fog(system), &transport, system)
+            .unwrap();
+        assert_eq!(listed(&world, &transport)[0], order[1]);
+        assert_eq!(report.selected_items, [0]);
     }
 
     #[test]
@@ -7088,7 +7203,7 @@ pub(crate) mod tests {
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
             window.selected = Some(FleetWindowEntry::Fleet(enemy));
-            window.selected_items = ListSelection::only(0);
+            window.selected_items = ListSelection::only(keys_of(&world, window, &[0])[0]);
             window.expanded.push(enemy);
         }
 
