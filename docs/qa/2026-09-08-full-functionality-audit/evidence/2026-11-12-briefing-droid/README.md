@@ -315,3 +315,8 @@ Tests:
 ## Batch b197
 
 The full gate batch b197 (2026-11-12 08:23-09:45) passed: 30 gates, the workspace (3617 tests) and fixture tests (158), and 172 tactical battle checks in 43 scenarios, 0 failed. The ledger notes above were applied after it.
+
+## User decisions 2026-11-12
+
+- PRE-05-C005 is excluded: the skip cannot be observed in the original on Windows 10 (the hooks above).
+- The port keeps letting egui windows and menus take clicks during the briefing; only the galaxy map is held.

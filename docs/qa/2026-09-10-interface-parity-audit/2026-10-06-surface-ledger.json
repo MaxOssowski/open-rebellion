@@ -998,14 +998,14 @@
         {
           "id": "PRE-05-C005",
           "requirement": "skip",
-          "status": "partial",
+          "status": "excluded",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
             "ghidra/notes/advisor-briefing.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-briefing-droid/README.md"
           ],
-          "note": "Skip via click or Escape (hooks FUN_0041d9d0, flush FUN_0041da30) gives actions 0xc,0xb,0xd and the short-form voice in briefing.mjs (Linux); no A0. 2026-11-12: no A0 of a skip; needs A0 frames every 0.5 s with a click during the first voice. b197: skip traced to the FUN_0041d9d0 hooks, which may not install on Windows 10, so an A0 skip may not be obtainable there; open question for the user.",
+          "note": "Skip via click or Escape (hooks FUN_0041d9d0, flush FUN_0041da30) gives actions 0xc,0xb,0xd and the short-form voice in briefing.mjs (Linux); no A0. 2026-11-12: no A0 of a skip; needs A0 frames every 0.5 s with a click during the first voice. b197: skip traced to the FUN_0041d9d0 hooks, which may not install on Windows 10, so an A0 skip may not be obtainable there; open question for the user. 2026-11-12 user decision: excluded — the original's skip hooks (FUN_0041d9d0: global SetWindowsHookExA with hMod NULL) fail on NT-family Windows (ERROR_HOOK_NEEDS_HMOD), so the skip cannot be observed on the A0 Windows 10 VM. The port keeps its traced skip (briefing.mjs skip case); egui windows still take clicks during the briefing by user decision.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
