@@ -4691,6 +4691,11 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
   }
   // Navigation Point Set 1 to 4 (1026..1029 at x 485, 524, 563, 602).
   for (const x of [485, 524, 563, 602]) await click(x + 13, 285);
+  // A0 TAC-04-C001: the same battle's free camera with the four sets on.
+  const restAt = at(300, 465);
+  await page.mouse.move(restAt.x, restAt.y);
+  await page.waitForTimeout(300);
+  const navigationSets = await stableInteractionFrame(page, folder, "coruscant-navigation-sets");
   // Red Group: the first squadron button (347, 2; A0 TAC-02-C002).
   if (groups.length > 0) await click(359, 10);
   // A0 then right-clicks its own carrier: Red Group escorts it (manual
@@ -4768,14 +4773,18 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
   probe.outside_view.other_than_one_palette_entry = others.slice(0, 20);
   assert.equal(others.length, 0,
     `${faction}: the frame outside the view differs from A0 TAC-04-C014 ${JSON.stringify(probe.outside_view)}`);
-  // The navigation pyramids: 4-connected components of pure red (set 1)
-  // and of grey-white (set 2) inside the view, outside "Battle Paused".
+  // The navigation pyramids: 4-connected components (at least 20 px) of
+  // pure red and of grey-white inside the view, outside "Battle Paused",
+  // with their centroids.
   const pyramids = (image) => {
     const pixel = (x, y) => {
       const k = (y * 640 + x) * 4;
       return [image.data[k], image.data[k + 1], image.data[k + 2]];
     };
-    const red = ([r, g, b]) => r >= 120 && g < 50 && b < 50;
+    const tests = {
+      red: ([r, g, b]) => r >= 120 && g < 50 && b < 50,
+      white: ([r, g, b]) => r > 150 && Math.abs(r - g) < 12 && Math.abs(r - b) < 12,
+    };
     const label = { x: 17, y: 30, width: 110, height: 20 };
     const components = (test) => {
       const seen = new Uint8Array(640 * 480);
@@ -4787,12 +4796,14 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
           const stack = [key];
           seen[key] = 1;
           let area = 0;
-          let box = [x, y, x, y];
+          let sumX = 0;
+          let sumY = 0;
           while (stack.length) {
             const k = stack.pop();
             const [cx, cy] = [k % 640, Math.floor(k / 640)];
             area++;
-            box = [Math.min(box[0], cx), Math.min(box[1], cy), Math.max(box[2], cx), Math.max(box[3], cy)];
+            sumX += cx;
+            sumY += cy;
             for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
               const nk = ny * 640 + nx;
               if (!inside(view, nx, ny) || seen[nk] || inside(label, nx, ny) || !test(pixel(nx, ny))) continue;
@@ -4800,19 +4811,50 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
               stack.push(nk);
             }
           }
-          if (area >= 20) found.push({ area, box });
+          if (area >= 20) {
+            found.push({ area, centroid: [Math.round(sumX / area * 10) / 10, Math.round(sumY / area * 10) / 10] });
+          }
         }
       }
       return found.sort((a, b) => b.area - a.area);
     };
-    const red_pyramids = components(red);
-    return {
-      red_count: red_pyramids.length,
-      red_area: red_pyramids.reduce((sum, { area }) => sum + area, 0),
-      largest_red: red_pyramids.slice(0, 3),
-    };
+    return Object.fromEntries(Object.entries(tests).map(([name, test]) => [name, components(test)]));
   };
-  probe.pyramids = { a0: pyramids(a0), port: pyramids(port) };
+  // Each A0 pyramid of at least `minimumArea` px against the port's nearest pyramid
+  // of its colour. The port draws the pyramids about 1.2 times A0's size
+  // (A0 TAC-04-C001, the free camera, below), so areas are not compared
+  // and a centroid may sit a few pixels off: tolerance 8 px.
+  const match = (a0Image, portImage, tolerance, minimumArea) => {
+    const a0Pyramids = pyramids(a0Image);
+    const portPyramids = pyramids(portImage);
+    const pairs = [];
+    for (const colour of ["red", "white"]) {
+      for (const { area, centroid } of a0Pyramids[colour].filter(({ area }) => area >= minimumArea)) {
+        const nearest = portPyramids[colour].reduce((best, candidate) => {
+          const distance = Math.hypot(candidate.centroid[0] - centroid[0], candidate.centroid[1] - centroid[1]);
+          return !best || distance < best.distance ? { distance, port: candidate } : best;
+        }, null);
+        pairs.push({ colour, a0: centroid, a0_area: area, port: nearest?.port.centroid ?? null,
+          port_area: nearest?.port.area ?? null,
+          distance: nearest ? Math.round(nearest.distance * 10) / 10 : null });
+      }
+    }
+    const worst = Math.max(...pairs.map(({ distance }) => distance ?? Infinity));
+    return { tolerance, minimum_area: minimumArea, compared: pairs.length, worst, pairs };
+  };
+  // The free camera with the four sets on, before F1 (A0 TAC-04-C001).
+  const c001 = path.join(root, ".artifacts/interface-parity/a0/TAC-04-C001/original.png");
+  assert.ok(fs.existsSync(c001), `A0 TAC-04-C001 is missing at ${c001}`);
+  probe.free_camera_pyramids = match(PNG.sync.read(fs.readFileSync(c001)), PNG.sync.read(navigationSets), 2, 20);
+  // The chase: coarse, 40 px. The port's camera sits 0.8 times as far
+  // from the hull as A0's (README 2026-11-12-coruscant-battle-fixture), so
+  // this confirms the chase's view, not its exact distance.
+  probe.chase_pyramids = match(a0, port, 40, 100);
+  for (const [name, result] of [["free camera (A0 TAC-04-C001)", probe.free_camera_pyramids],
+    ["chase (A0 TAC-04-C014)", probe.chase_pyramids]]) {
+    assert.ok(result.compared > 0 && result.worst <= result.tolerance,
+      `${faction}: the ${name} nav pyramids are off A0's ${JSON.stringify(result)}`);
+  }
   return [probe];
 }
 
@@ -7581,7 +7623,13 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           // Death Star battle, which brings no Imperial group) draws no
           // fighter scene.
           assert.equal(fighterSceneLogs.length,
-            fighterParticipants.length === 0 ? 0 : scenario.fighter_detail_journey ? 9 : 1,
+            // The chase camera (F1, 0x005d9b10) sits close behind the lead
+            // hull: the squadrons' sprites change detail (0x005d4af0) when
+            // it starts, and the navigation journey's manual exit changes
+            // them back.
+            fighterParticipants.length === 0 ? 0 : scenario.fighter_detail_journey ? 9
+              : scenario.navigation_camera_presentation ? 3
+              : scenario.coruscant_chase ? 2 : 1,
             "production participants emitted the wrong fighter scene count");
           if (fighterParticipants.length > 0) {
             assert.match(fighterSceneLogs[0].text,
