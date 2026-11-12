@@ -4380,6 +4380,59 @@ mod tests {
         }
     }
 
+    // Source: FUN_005d4d10 frames the planet at (2e, rand(0.2e) - 0.1e,
+    // rand(0.2e) - 0.1e) with an e-wide decal, from a stream seeded by the
+    // clock (FUN_005f5750). A0 TAC-01-C008 (Empire, 16 x Rotate Left)
+    // shows the disc's left edge at x 334, 339 and 352 on rows 30, 40 and
+    // 60, and its bottom edge at y 107 and 116 in columns 420 and 450. At
+    // extent 106 (the fixture's Umgul battle) the draws (6, 5) give those
+    // edges within two pixels (the probe finds edges by whole pixels); the
+    // centred frame is more than 9 px off.
+    // The disc's radius is 0.9905 of the decal's half width in the port's
+    // render (browser run 2026-11-12T04-31-05-179Z-3870797).
+    #[test]
+    fn the_umgul_planet_framing_is_one_of_the_originals_draws() {
+        const A0_LEFT: [(f32, f32); 3] = [(30.0, 334.0), (40.0, 339.0), (60.0, 352.0)];
+        const A0_BOTTOM: [(f32, f32); 2] = [(420.0, 107.0), (450.0, 116.0)];
+        let extent = 106.0;
+        let mut camera = OriginalTacticalCamera::new(true, extent);
+        for _ in 0..16 {
+            camera.turn_left();
+        }
+        let mut renderer = TacticalAssetRenderer::default();
+        renderer.restore_camera_state(camera);
+        let viewport = tactical_scene_viewport((16.0, 28.0, 444.0, 439.0));
+        let pose = camera.pose();
+        let right = (pose.target - pose.position).cross(pose.up).normalize_or_zero();
+        let worst_miss = |offsets: crate::tactical_backdrop::BackdropOffsets| {
+            let (y, z) = offsets.planet;
+            let centre = vec3(2.0 * extent, y, -z);
+            let middle = renderer.project_in_scene_viewport(viewport, centre).unwrap();
+            let edge = renderer
+                .project_in_scene_viewport(viewport, centre + right * extent * 0.5)
+                .unwrap();
+            let radius = 0.9905 * middle.distance(edge);
+            let left = A0_LEFT.iter().map(|&(row, x)| {
+                let dy = row + 0.5 - middle.y;
+                (middle.x - (radius * radius - dy * dy).sqrt() - x).abs()
+            });
+            let bottom = A0_BOTTOM.iter().map(|&(column, y)| {
+                let dx = column + 0.5 - middle.x;
+                (middle.y + (radius * radius - dx * dx).sqrt() - y).abs()
+            });
+            left.chain(bottom).fold(0.0_f32, f32::max)
+        };
+        let drawn = crate::tactical_backdrop::BackdropOffsets::from_clock(
+            crate::tactical_backdrop::UMGUL_A0_BACKDROP_CLOCK,
+            extent,
+            true,
+        );
+        let miss = worst_miss(drawn);
+        assert!(miss < 2.0, "the drawn planet misses A0 by {miss} px");
+        let centred = worst_miss(crate::tactical_backdrop::BackdropOffsets::CENTRED);
+        assert!(centred > 9.0, "the centred planet misses A0 by {centred} px");
+    }
+
     // Source: FUN_005d9640 (yaw about +Y, then pitch about +X, then
     // (0, 0, -distance)). A0 TAC-01-C002: the first Imperial frame shows the
     // holocube corner (+x, -y, -z) at (157, 290); TAC-01-C008 (16 times left)

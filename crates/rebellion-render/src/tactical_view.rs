@@ -33,6 +33,7 @@ use rebellion_core::world::GameWorld;
 use crate::bmp_cache::{resources, BmpCache, DllSource};
 #[cfg(feature = "interface-test-fixtures")]
 use crate::tactical_assets::TacticalLodView;
+use crate::tactical_backdrop::{wall_clock_seconds, BackdropOffsets};
 use crate::tactical_assets::{
     original_hull_axes, OriginalTacticalCamera, TacticalAssetRenderer, TacticalEffectRenderObject,
     TacticalFighterRenderObject, TacticalProjectileRenderObject, TacticalRenderObject,
@@ -807,6 +808,10 @@ pub struct TacticalState {
     render_original_participants: bool,
     render_original_starfield: bool,
     render_original_planet: bool,
+    /// The second the battle scene was built, which seeds the backdrop
+    /// decals' framing (`FUN_005d4d10`, `FUN_005f5750`). `None` keeps both
+    /// frames at the middle of their ranges.
+    backdrop_clock: Option<u32>,
     render_pyrotechnics: bool,
     /// The units' poses before the last step, drawn toward the current ones.
     previous_poses: Option<TacticalPoses>,
@@ -938,6 +943,7 @@ impl Default for TacticalState {
             render_original_participants: true,
             render_original_starfield: true,
             render_original_planet: true,
+            backdrop_clock: None,
             render_pyrotechnics: true,
             previous_poses: None,
             display_holocube: true,
@@ -1051,6 +1057,7 @@ impl TacticalState {
         self.render_original_participants = true;
         self.render_original_starfield = true;
         self.render_original_planet = true;
+        self.backdrop_clock = Some(wall_clock_seconds());
         self.render_pyrotechnics = true;
         self.display_holocube = true;
         #[cfg(feature = "interface-test-fixtures")]
@@ -1071,6 +1078,20 @@ impl TacticalState {
         self.render_pyrotechnics = flags[2];
         self.asset_renderer.set_high_detail(flags[3]);
         self.display_holocube = flags[4];
+    }
+
+    /// Pin the second that seeds the backdrop framing; `None` centres both
+    /// frames.
+    #[cfg(feature = "interface-test-fixtures")]
+    pub fn set_backdrop_clock_for_fixture(&mut self, clock: Option<u32>) {
+        self.backdrop_clock = clock;
+    }
+
+    /// The backdrop frames' offsets for this battle.
+    fn backdrop_offsets(&self, extent: f32) -> BackdropOffsets {
+        self.backdrop_clock.map_or(BackdropOffsets::CENTRED, |clock| {
+            BackdropOffsets::from_clock(clock, extent, self.render_original_planet)
+        })
     }
 
     /// Test-only direct state for the source-backed empty-space presentation.
@@ -10006,7 +10027,9 @@ fn draw_tactical_frame(
     }
     if state.render_original_planet {
         if let Some(session) = state.session.as_ref() {
-            let (center, size) = planet_backdrop_source(session.source_layout.battle_extent);
+            let extent = session.source_layout.battle_extent;
+            let (center, size) =
+                planet_backdrop_source(extent, state.backdrop_offsets(extent).planet);
             state
                 .asset_renderer
                 .draw_planet(aperture_tuple, center.rendered(), size);
@@ -11043,7 +11066,7 @@ fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32,
         return;
     };
     let extent = session.source_layout.battle_extent;
-    let (origin, _) = death_star_backdrop_source(extent);
+    let (origin, _) = death_star_backdrop_source(extent, state.backdrop_offsets(extent).death_star);
     let drawn = state.asset_renderer.draw_death_star_beam(
         aperture,
         origin.rendered(),
@@ -11072,14 +11095,14 @@ fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32,
 /// its width, for a battle extent `e`: a frame at
 /// `(2e, rand(0.2e) - 0.1e, rand(0.2e) - 0.1e)` (`DAT_0066d23c` 0.1)
 /// carrying an `e` decal, built only while Show Planet is on (`+0x680`).
-/// port: the two random offsets, from a local stream, are taken at their
-/// centre (0).
-fn planet_backdrop_source(extent: f32) -> (TacticalWorldPosition, f32) {
+/// `offset` is the frame's (y, z) offset, drawn from the clock-seeded
+/// stream by [`BackdropOffsets::from_clock`].
+fn planet_backdrop_source(extent: f32, offset: (f32, f32)) -> (TacticalWorldPosition, f32) {
     (
         TacticalWorldPosition {
             x: 2.0 * extent,
-            y: 0.0,
-            z: 0.0,
+            y: offset.0,
+            z: offset.1,
         },
         extent,
     )
@@ -11089,14 +11112,15 @@ fn planet_backdrop_source(extent: f32) -> (TacticalWorldPosition, f32) {
 /// and its width, for a battle extent `e`: a frame at
 /// `(-2e, rand(0.4e) - 0.2e, rand(0.4e) - 0.2e)` (`DAT_0066d248` -2,
 /// `DAT_0066d244` 0.2), opposite the planet, with a child at
-/// `(0, 0.11e, -0.09e)` carrying a `0.5e` decal. port: the frame's two random
-/// offsets, from a local stream, are taken at their centre (0).
-fn death_star_backdrop_source(extent: f32) -> (TacticalWorldPosition, f32) {
+/// `(0, 0.11e, -0.09e)` carrying a `0.5e` decal. `offset` is the frame's
+/// (y, z) offset, drawn from the clock-seeded stream by
+/// [`BackdropOffsets::from_clock`].
+fn death_star_backdrop_source(extent: f32, offset: (f32, f32)) -> (TacticalWorldPosition, f32) {
     (
         TacticalWorldPosition {
             x: -2.0 * extent,
-            y: 0.11 * extent,
-            z: -0.09 * extent,
+            y: offset.0 + 0.11 * extent,
+            z: offset.1 - 0.09 * extent,
         },
         0.5 * extent,
     )
@@ -11109,7 +11133,9 @@ fn draw_tactical_death_star_backdrop(state: &mut TacticalState, aperture: (f32, 
     let Some(death_star) = session.death_star else {
         return;
     };
-    let (center, size) = death_star_backdrop_source(session.source_layout.battle_extent);
+    let extent = session.source_layout.battle_extent;
+    let (center, size) =
+        death_star_backdrop_source(extent, state.backdrop_offsets(extent).death_star);
     let resource_id = death_star.resource_id();
     let drawn = state
         .asset_renderer
@@ -20851,13 +20877,17 @@ mod tests {
     // decal where the camera sees -x.
     #[test]
     fn the_death_star_hangs_behind_the_battle_opposite_the_planet() {
-        let (center, size) = death_star_backdrop_source(400.0);
+        let (center, size) = death_star_backdrop_source(400.0, (0.0, 0.0));
         assert!((center.x + 800.0).abs() < 1e-3);
         assert!((center.y - 44.0).abs() < 1e-3);
         assert!((center.z + 36.0).abs() < 1e-3);
         assert_eq!(size, 200.0);
-        let (planet, _) = planet_backdrop_source(400.0);
+        let (planet, _) = planet_backdrop_source(400.0, (0.0, 0.0));
         assert_eq!(planet.x, -center.x);
+        // The frame's random offsets move the child with it.
+        let (moved, _) = death_star_backdrop_source(400.0, (-3.0, 5.0));
+        assert!((moved.y - 41.0).abs() < 1e-3);
+        assert!((moved.z + 31.0).abs() < 1e-3);
     }
 
     #[test]
@@ -20872,11 +20902,13 @@ mod tests {
     // 0x005d540d, SetDecalSize(e, e)); A0 TAC-01-C008 shows it at +x.
     #[test]
     fn the_planet_hangs_two_extents_out_on_x_as_wide_as_the_battle() {
-        let (center, size) = planet_backdrop_source(400.0);
+        let (center, size) = planet_backdrop_source(400.0, (0.0, 0.0));
         assert_eq!(center.x, 800.0);
         assert_eq!(center.y, 0.0);
         assert_eq!(center.z, 0.0);
         assert_eq!(size, 400.0);
+        let (moved, _) = planet_backdrop_source(400.0, (-4.6, -5.6));
+        assert_eq!((moved.y, moved.z), (-4.6, -5.6));
     }
 
     // Source: FUN_005c4ed0 meter 0x5f px for charge 0..100; A0 TAC-05-C020

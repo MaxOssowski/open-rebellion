@@ -50,6 +50,8 @@ pub mod system_window;
 mod window_move;
 mod tactical_asset_cache;
 mod tactical_assets;
+mod tactical_backdrop;
+pub use tactical_backdrop::UMGUL_A0_BACKDROP_CLOCK;
 pub mod tactical_view;
 pub mod targeting;
 pub mod theme;

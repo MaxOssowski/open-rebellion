@@ -855,6 +855,15 @@ pub(crate) fn apply(
         game_mode,
     )
     .map_err(|error| format!("fixture battle entry failed: {error:?}"))?;
+    // The backdrop's framing follows the clock second (FUN_005f5750). A0
+    // TAC-01-C008's planet is one of its draws; the other scenarios keep
+    // both frames centred so their pictures do not change between runs.
+    #[cfg(feature = "interface-test-fixtures")]
+    tactical.set_backdrop_clock_for_fixture(
+        request
+            .umgul_backdrop
+            .then_some(rebellion_render::UMGUL_A0_BACKDROP_CLOCK),
+    );
     #[cfg(feature = "interface-test-fixtures")]
     if !(request.battle_alert_presentation || request.battle_alert_retreat) {
         tactical.dismiss_battle_alert_for_fixture();
