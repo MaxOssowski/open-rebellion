@@ -4703,7 +4703,8 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
   const scene = consoleLines.find(({ text }) => text.includes("[tactical_3d] participant_scene"));
   const carrierAt = scene?.text.match(/screen_positions=1:([\d.]+),([\d.]+)/);
   if (faction === "alliance" && carrierAt) {
-    const p = at(Number(carrierAt[1]), Number(carrierAt[2]));
+    // The scene logs its projections in canvas pixels, already letterboxed.
+    const p = { x: Number(carrierAt[1]), y: Number(carrierAt[2]) };
     await page.mouse.move(p.x, p.y);
     await page.mouse.down({ button: "right" });
     await page.waitForTimeout(80);
