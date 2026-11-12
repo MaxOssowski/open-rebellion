@@ -942,10 +942,16 @@ impl ObjectMenuState {
     /// objects `FUN_0051d990` enables Encyclopedia and Status only for a
     /// single selection; the orders take the whole team.
     ///
+    /// Each order is enabled when its `+0x18` passes for the whole team
+    /// (the gates, [`OrderGates`], hold the team's): Scrap (`0x200`,
+    /// `FUN_005201c0` one command per member) and Retire (`0x242`, a team
+    /// of characters and special forces) take every member; the Command
+    /// orders refuse more than one object (`FUN_00580db0`).
+    ///
     /// port: a team keeps only the orders ported for several objects: Move
-    /// and Confirmed Move, a team of ships' Create Fleet and a team of
-    /// characters' and special forces' Mission. The rest are drawn
-    /// disabled, and the menu opens no submenu.
+    /// and Confirmed Move, a team of ships' Create Fleet, a team of
+    /// characters' and special forces' Mission and Retire, and Scrap. The
+    /// rest are drawn disabled, and the menu opens no submenu.
     #[must_use]
     pub fn with_team(mut self, team: Vec<MenuObject>) -> Self {
         if team.len() > 1 {
@@ -953,9 +959,11 @@ impl ObjectMenuState {
             let members = team.iter().all(|object| object.mission_member().is_some());
             for row in &mut self.rows {
                 row.enabled &= match row.item.command {
-                    ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove => true,
+                    ObjectMenuCommand::Move
+                    | ObjectMenuCommand::ConfirmedMove
+                    | ObjectMenuCommand::Scrap => true,
                     ObjectMenuCommand::CreateFleet => ships,
-                    ObjectMenuCommand::Mission => members,
+                    ObjectMenuCommand::Mission | ObjectMenuCommand::Retire => members,
                     _ => false,
                 };
             }
@@ -1944,6 +1952,50 @@ mod tests {
             enabled(&one.rows),
             ["Move", "Confirmed Move", "Create Fleet", "Encyclopedia", "Status"]
         );
+    }
+
+    #[test]
+    fn a_team_menu_enables_scrap_and_a_member_teams_retire_by_the_teams_gates() {
+        // FUN_0051d990: each order's +0x18 runs with the whole selection as
+        // its team; Scrap's (FUN_0051fe20 over FUN_005201c0's command per
+        // member) and Retire's pass when every member's does.
+        let ship = |index| MenuObject::Ship {
+            fleet: FleetKey::default(),
+            index,
+            roster: 0,
+        };
+        let gates = OrderGates {
+            ship_move: true,
+            scrap: true,
+            ..OrderGates::default()
+        };
+        let ships = ObjectMenuState::new(Some(ship(0)), gates, (0, 0))
+            .with_team(vec![ship(0), ship(2)]);
+        assert!(enabled(&ships.rows).contains(&"Scrap"), "{:?}", enabled(&ships.rows));
+        let refused = ObjectMenuState::new(
+            Some(ship(0)),
+            OrderGates {
+                scrap: false,
+                ..gates
+            },
+            (0, 0),
+        )
+        .with_team(vec![ship(0), ship(2)]);
+        assert!(!enabled(&refused.rows).contains(&"Scrap"));
+        let mut world = rebellion_core::world::GameWorld::default();
+        let (a, b) = (
+            world.characters.insert(Default::default()),
+            world.characters.insert(Default::default()),
+        );
+        let retire = OrderGates {
+            retire: true,
+            ..MISSION_GATE
+        };
+        let both = ObjectMenuState::new(Some(MenuObject::Character(a)), retire, (0, 0))
+            .with_team(vec![MenuObject::Character(a), MenuObject::Character(b)]);
+        assert!(enabled(&both.rows).contains(&"Retire"), "{:?}", enabled(&both.rows));
+        // The Command orders take one object (FUN_00580db0).
+        assert!(both.submenu.is_empty());
     }
 
     #[test]

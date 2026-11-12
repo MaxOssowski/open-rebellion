@@ -7026,6 +7026,30 @@ async fn main() {
                     // team (FUN_00487c50 builds it with the selection).
                     let band_menu_result = match band_menu_result {
                         Some((command, _)) if menu_team.len() > 1 => {
+                            match team_confirmation(
+                                &world,
+                                &movement_state,
+                                &mission_state,
+                                player_faction,
+                                command,
+                                &menu_team,
+                            ) {
+                                Some(Ok(confirmation)) => {
+                                    macroquad::logging::info!(
+                                        "[interface] command={command:?} team={} status=asks",
+                                        menu_team.len()
+                                    );
+                                    move_confirmation_state.open(confirmation);
+                                }
+                                Some(Err(refusal)) => {
+                                    msg_log.push(GameMessage::new(
+                                        clock.tick,
+                                        refusal.to_string(),
+                                        MessageCategory::Event,
+                                    ));
+                                }
+                                None => {}
+                            }
                             if let Some(order) = team_menu_order(
                                 &world,
                                 command,
@@ -10231,8 +10255,113 @@ fn team_gates(team: &[MenuObject], gates_of: impl Fn(MenuObject) -> OrderGates) 
         gates.special_force_move = moves;
         gates.fleet_move = moves;
         gates.mission = each.iter().all(|(_, gates)| gates.mission);
+        // Scrap and Retire: one command per member, each its own check
+        // (FUN_005201c0, FUN_00553770).
+        gates.scrap = each.iter().all(|(_, gates)| gates.scrap);
+        gates.retire = each.iter().all(|(_, gates)| gates.retire);
     }
     gates
+}
+
+/// The confirmation a menu's Scrap (`0x200`) or Retire (`0x242`) opens for
+/// several objects, or the refusal: `FUN_00487740` validates the order,
+/// whose validator runs each member's command (`FUN_0051ff30`), so one
+/// refusal refuses all; then `FUN_00487cc0` always asks, and
+/// `FUN_0049a350` lists each member's name under 0x7050 or 0x7051
+/// (`FUN_0049a880`, 0x7054). `None` for another order.
+fn team_confirmation(
+    world: &GameWorld,
+    movement: &MovementState,
+    missions: &MissionState,
+    faction: MissionFaction,
+    command: ObjectMenuCommand,
+    team: &[MenuObject],
+) -> Option<Result<MoveConfirmation, &'static str>> {
+    let is_alliance = faction == MissionFaction::Alliance;
+    let confirmation = |order, characters, special_forces, scrap, lines| MoveConfirmation {
+        order,
+        faction,
+        fleets: Vec::new(),
+        characters,
+        special_forces,
+        missions: Vec::new(),
+        scrap,
+        troops: Vec::new(),
+        squadrons: Vec::new(),
+        ships: None,
+        blockaded: false,
+        destination: SystemKey::default(),
+        join: None,
+        lines,
+    };
+    match command {
+        ObjectMenuCommand::Scrap => {
+            let side = Faction::of_alliance(is_alliance);
+            let mut targets: Vec<rebellion_core::scrap::ScrapTarget> = team
+                .iter()
+                .flat_map(|object| object.scrap_team(movement, world, side))
+                .collect();
+            // A ship leaves its fleet's list when scrapped, so a fleet's
+            // ships go from the last (port: the order of the commands).
+            targets.sort_by_key(|target| match *target {
+                rebellion_core::scrap::ScrapTarget::Ship { index, .. } => {
+                    std::cmp::Reverse(index)
+                }
+                _ => std::cmp::Reverse(0),
+            });
+            let allowed = !targets.is_empty()
+                && targets.iter().all(|&target| {
+                    rebellion_core::scrap::check_with_movement(world, movement, side, target)
+                        .is_ok()
+                });
+            if !allowed {
+                return Some(Err("Scrap refused"));
+            }
+            let lines = targets
+                .iter()
+                .map(|&target| {
+                    (
+                        rebellion_core::scrap::target_name(world, target).unwrap_or_default(),
+                        0,
+                    )
+                })
+                .collect();
+            Some(Ok(confirmation(
+                ConfirmedOrder::Scrap,
+                Vec::new(),
+                Vec::new(),
+                targets,
+                lines,
+            )))
+        }
+        ObjectMenuCommand::Retire => {
+            let mut characters = Vec::new();
+            let mut special_forces = Vec::new();
+            let mut lines = Vec::new();
+            for object in team {
+                let member = object.mission_member().ok_or("Retire refused");
+                let Ok(member) = member else {
+                    return Some(Err("Retire refused"));
+                };
+                let Some(Ok(name)) = retire_check(world, missions, member, is_alliance) else {
+                    return Some(Err("Retire refused"));
+                };
+                match member {
+                    MissionMember::Character(key) => characters.push(key),
+                    MissionMember::SpecialForce(key) => special_forces.push(key),
+                }
+                lines.push((name, 0));
+            }
+            Some(Ok(confirmation(
+                ConfirmedOrder::Retire,
+                characters,
+                special_forces,
+                Vec::new(),
+                lines,
+            )))
+        }
+        _ => None,
+    }
 }
 
 /// The team a Defenses window selection moves (`FUN_004a7a20`): its
@@ -16574,6 +16703,135 @@ mod fleet_move_tests {
                 }
             );
         }
+    }
+
+    #[test]
+    fn a_team_scrap_asks_once_for_every_member_and_one_refusal_refuses_it() {
+        // FUN_005201c0 makes one command per member; FUN_0051ff30 runs each
+        // command's check, so one refusal refuses the order; FUN_00487cc0
+        // asks for 0x200 and FUN_0049a880 lists each name (0x7054).
+        use rebellion_core::scrap::ScrapTarget;
+        let mut w = defenses_world();
+        let second = w.world.troops.insert(w.world.troops[w.troop].clone());
+        w.world.systems[w.origin].ground_units.push(second);
+        let movement = MovementState::new();
+        let missions = MissionState::new();
+        let scrap = |world: &GameWorld, team: &[MenuObject]| {
+            team_confirmation(
+                world,
+                &movement,
+                &missions,
+                MissionFaction::Alliance,
+                ObjectMenuCommand::Scrap,
+                team,
+            )
+        };
+        let team = [MenuObject::Troop(w.troop), MenuObject::Troop(second)];
+        let window = scrap(&w.world, &team).unwrap().expect("the scrap asks");
+        assert_eq!(window.order, ConfirmedOrder::Scrap);
+        assert_eq!(window.scrap, [ScrapTarget::Troop(w.troop), ScrapTarget::Troop(second)]);
+        assert_eq!(window.lines.len(), 2);
+        // The Empire's regiment refuses its command: nothing is asked.
+        let enemy = w.world.systems[w.origin]
+            .ground_units
+            .iter()
+            .copied()
+            .find(|&key| !w.world.troops[key].is_alliance)
+            .unwrap();
+        assert_eq!(
+            scrap(&w.world, &[MenuObject::Troop(w.troop), MenuObject::Troop(enemy)]),
+            Some(Err("Scrap refused"))
+        );
+        // A fleet's ships go from the last, as each leaves the list.
+        let (world, fleets, _) = world_with_two_fleets();
+        let mut world = world;
+        let class = world.fleets[fleets[0]].capital_ships[0].class;
+        world.fleets[fleets[0]]
+            .capital_ships
+            .push(ShipInstance::new(class, 100, true));
+        let ship = |index| MenuObject::Ship {
+            fleet: fleets[0],
+            index,
+            roster: 0,
+        };
+        let ships = scrap(&world, &[ship(0), ship(1)]).unwrap().unwrap();
+        assert_eq!(
+            ships.scrap,
+            [
+                ScrapTarget::Ship {
+                    fleet: fleets[0],
+                    index: 1
+                },
+                ScrapTarget::Ship {
+                    fleet: fleets[0],
+                    index: 0
+                }
+            ]
+        );
+        // Another order is not this function's.
+        assert_eq!(scrap_or(&world, ObjectMenuCommand::Move, &[ship(0)]), None);
+    }
+
+    fn scrap_or(
+        world: &GameWorld,
+        command: ObjectMenuCommand,
+        team: &[MenuObject],
+    ) -> Option<Result<MoveConfirmation, &'static str>> {
+        team_confirmation(
+            world,
+            &MovementState::new(),
+            &MissionState::new(),
+            MissionFaction::Alliance,
+            command,
+            team,
+        )
+    }
+
+    #[test]
+    fn a_team_retire_asks_once_for_every_member_and_one_refusal_refuses_it() {
+        // FUN_00487740 validates the 0x242 for each member (FUN_004ed460,
+        // FUN_00533ba0); FUN_0049a350 case 0x242 lists each name.
+        let mut w = defenses_world();
+        let team = [MenuObject::Character(w.agent), MenuObject::SpecialForce(w.force)];
+        let window = scrap_or(&w.world, ObjectMenuCommand::Retire, &team)
+            .unwrap()
+            .expect("the retire asks");
+        assert_eq!(window.order, ConfirmedOrder::Retire);
+        assert_eq!(window.characters, [w.agent]);
+        assert_eq!(window.special_forces, [w.force]);
+        assert_eq!(window.lines.len(), 2);
+        w.world.characters[w.agent].on_mission = true;
+        assert_eq!(
+            scrap_or(&w.world, ObjectMenuCommand::Retire, &team),
+            Some(Err("Retire refused"))
+        );
+        assert_eq!(
+            scrap_or(&w.world, ObjectMenuCommand::Retire, &[MenuObject::Troop(w.troop)]),
+            Some(Err("Retire refused"))
+        );
+    }
+
+    #[test]
+    fn a_team_menus_gates_take_scrap_and_retire_from_every_member() {
+        // FUN_0051d990: the order's +0x18 with the whole team.
+        let gates = |scrap, retire| rebellion_render::object_menu::OrderGates {
+            scrap,
+            retire,
+            ..Default::default()
+        };
+        let team = [MenuObject::Troop(Default::default()), MenuObject::Fleet(Default::default())];
+        let both = team_gates(&team, |object| match object {
+            MenuObject::Troop(_) => gates(true, true),
+            _ => gates(true, false),
+        });
+        assert!(both.scrap);
+        assert!(!both.retire);
+        let one = team_gates(&team, |object| match object {
+            MenuObject::Troop(_) => gates(false, true),
+            _ => gates(true, true),
+        });
+        assert!(!one.scrap);
+        assert!(one.retire);
     }
 
     #[test]

@@ -94,8 +94,18 @@ window's selection (slot `+0x58`) and moves it against the drop window
   Defenses list.
 - A menu opened on a selected item takes the whole selection
   (`ObjectMenuState::with_team`); Encyclopedia and Status grey for more than
-  one (`FUN_0051d990`). port: only Move, Confirmed Move, a ships team's
-  Create Fleet and a characters team's Mission are ported for a team.
+  one (`FUN_0051d990`). `FUN_0051d990` lists the intersection of the
+  members' order lists (class slot `+0x3c`) and enables each order whose
+  `+0x18` passes with the whole selection as its team. For a team the port
+  enables Move and Confirmed Move (a fleets team too), a ships team's
+  Create Fleet, a members team's Mission and Retire (`0x242`, each member's
+  check), and Scrap (`0x200`, one command per member, `FUN_005201c0`):
+  one confirmation lists every member (`team_confirmation`), one refusal
+  refuses all. The Command orders refuse more than one object
+  (`FUN_00580db0`). port: Planetary Bombardment and Assault for a team of
+  fleets (`FUN_00553770` then `FUN_00582440` / `FUN_00581ae0` over the
+  team's fleets), Rename and Abort stay disabled for a team, and rows
+  outside the intersection are drawn disabled instead of left out.
 - The Fleet window's left list takes several entries (2026-11-13).
   `FUN_004a5c00` (read in full) then: counts the selected items (`+0x3c`
   bit 0); when one has item flag `+0x68` bit 8 (the viewer's side: without
