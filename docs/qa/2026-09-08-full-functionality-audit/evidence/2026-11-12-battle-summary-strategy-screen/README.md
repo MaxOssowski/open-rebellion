@@ -371,3 +371,19 @@ taking no click while it is open. The flag's reader is not traced.
 (Third pass: one reader is `FUN_006068f0`, which puts the window on the
 `DAT_006be4e4` list and installs the `WH_MOUSE` hook `FUN_00600ef0`; how
 that hook picks which clicks to eat, `FUN_0060f070`, is not read.)
+
+## Batch b200
+
+Full gate batch b200 (Linux, Arch Chromium): `cargo check`, workspace
+3641 and fixture 163 tests pass; 29 of 31 gates and 175 of 176 battle
+cases pass on the first run. The two failures were in the gates:
+- `game-options` compared the Yes tip's border pixel for pixel. The port
+  draws tips within five pixels of A0's widths (`win_tooltip.rs`), so
+  this tip is 26 px wide where A0's is 24. Commit 1c0ef350 checks its
+  corner and height exactly and its width within that tolerance. Rerun:
+  `game-options-2026-11-12T15-40-26-930Z`, pass.
+- `production-coruscant-chase` (Alliance, 1280 x 800) mapped the
+  carrier's logged canvas position through the letterbox a second time,
+  so the right-click missed. Commit c4f02d3f fixes the mapping. Rerun of
+  all four cases: pass (`g-chase-rerun4`).
+Batch b201 reruns everything with both fixes.

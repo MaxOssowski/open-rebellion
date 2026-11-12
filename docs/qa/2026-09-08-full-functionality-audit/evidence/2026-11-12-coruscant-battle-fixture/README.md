@@ -529,3 +529,19 @@ are now traced. Neither explains the gap: F1 follows the carrier, and with
 no attack target the eye is (-e, e, 2e). The cell needs a runtime read in
 the original of the chase's `+0x34` and the camera's position. The lead's
 batch reruns the gate on the unchanged code.
+
+## Batch b200
+
+Full gate batch b200 (Linux, Arch Chromium): `cargo check`, workspace
+3641 and fixture 163 tests pass; 29 of 31 gates and 175 of 176 battle
+cases pass on the first run. The two failures were in the gates:
+- `game-options` compared the Yes tip's border pixel for pixel. The port
+  draws tips within five pixels of A0's widths (`win_tooltip.rs`), so
+  this tip is 26 px wide where A0's is 24. Commit 1c0ef350 checks its
+  corner and height exactly and its width within that tolerance. Rerun:
+  `game-options-2026-11-12T15-40-26-930Z`, pass.
+- `production-coruscant-chase` (Alliance, 1280 x 800) mapped the
+  carrier's logged canvas position through the letterbox a second time,
+  so the right-click missed. Commit c4f02d3f fixes the mapping. Rerun of
+  all four cases: pass (`g-chase-rerun4`).
+Batch b201 reruns everything with both fixes.

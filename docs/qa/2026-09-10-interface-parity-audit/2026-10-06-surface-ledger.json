@@ -2588,13 +2588,14 @@
         {
           "id": "CMD-04-C018",
           "requirement": "Battle Summary window is modal",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-windows-a0/",
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-battle-summary-strategy-screen/README.md"
           ],
-          "note": "The Battle Summary runs in the tactical mode, so the galaxy takes no input; the window follows A0, but modality itself was not compared.",
+          "note": "The Battle Summary runs in the tactical mode, so the galaxy takes no input; the window follows A0, but modality itself was not compared. Batch b200: the summary is a modal child of the Command Center (FUN_0046f140 passes 1 as FUN_00606380's modal argument, flag +0xb8; manual p. 64); the browser case shows the cockpit and F-keys taking nothing while it is open (FUN_00422ce0 drops F1..F7 under the flag), Escape and the arrows answer the summary. Alt accelerators under it: traced and refused since 71bf9394 (verified in b201). The WH_MOUSE hook's filter FUN_0060f070 is not read.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3670,9 +3671,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "crates/rebellion-render/src/manufacturing_window.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-advanced-bases/README.md"
           ],
-          "note": "Advanced bases 9010/9018/9026 follow FUN_00458fe0. A0: the construction yard 9022 (system-vjun-yards.png, manufacturing/03, personnel-states/34) and Xyquine's Advanced Training Facility under construction, 9020 (personnel-states/35, 0 of 2189 off); build-selection.mjs finds 9020/9019 under construction exact on Linux for both sides. The advanced bases as built have no A0 or browser check.",
+          "note": "Advanced bases 9010/9018/9026 follow FUN_00458fe0. A0: the construction yard 9022 (system-vjun-yards.png, manufacturing/03, personnel-states/34) and Xyquine's Advanced Training Facility under construction, 9020 (personnel-states/35, 0 of 2189 off); build-selection.mjs finds 9020/9019 under construction exact on Linux for both sides. The advanced bases as built have no A0 or browser check. Batch b200: advanced-bases.mjs (Linux browser, AdvancedBases fixture) draws the built Advanced Shipyard, Training Facility and Construction Yard (9010/9018/9026) 0 pixels off their resources for both sides; no A0 of a built advanced base yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4441,7 +4443,7 @@
         {
           "id": "CMD-11-C029",
           "requirement": "message boxes",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-shell/",
@@ -4449,9 +4451,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
             "crates/rebellion-render/src/game_speed.rs",
             "tools/interface-parity/personnel-orders.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-fleet-and-classes/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-fleet-and-classes/README.md",
+            "tools/interface-parity/game-options.mjs"
           ],
-          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212), and the pause box's Resume shows 0x190d at A0's spot (tooltip/321; personnel-orders.mjs, Linux). The other one-button boxes (To Cockpit 0x190e, Acknowledged 0x190f) are not checked. 2026-11-10: To Cockpit and Acknowledged appear only in multiplayer boxes (REBDLOG 0x1204/0x1205/0x1208 callers); the single-player save notices 0x1217/0x1219 are not yet compared. 2026-11-12: To Cockpit 0x190e and Acknowledged 0x190f appear only in multiplayer boxes (FUN_00413560/FUN_0040ec60, FUN_00410dd0/FUN_00410c70) — out of scope; the save notice still needs A0.",
+          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212), and the pause box's Resume shows 0x190d at A0's spot (tooltip/321; personnel-orders.mjs, Linux). The other one-button boxes (To Cockpit 0x190e, Acknowledged 0x190f) are not checked. 2026-11-10: To Cockpit and Acknowledged appear only in multiplayer boxes (REBDLOG 0x1204/0x1205/0x1208 callers); the single-player save notices 0x1217/0x1219 are not yet compared. 2026-11-12: To Cockpit 0x190e and Acknowledged 0x190f appear only in multiplayer boxes (FUN_00413560/FUN_0040ec60, FUN_00410dd0/FUN_00410c70) — out of scope; the save notice still needs A0. Batch b200 (+ gate fix 1c0ef350, rerun game-options-2026-11-12T15-40-26-930Z): the single-player save question, the Selected Game Saved notice and its Yes tip match A0 2026-11-12-afternoon/21, 22, 23 — dialogs 0 of 44,562 and 0 of 42,662 pixels off outside their text bands (ink within 1 px), the tip box at A0's corner and height, 2 px wider (port tip-font tolerance, accepted text deviation).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9098,15 +9101,16 @@
         {
           "id": "TAC-01-C013",
           "requirement": "return to strategy",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-blockade-report/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-battle-summary-strategy-screen/README.md"
           ],
-          "note": "The browser results journey returns to the shared campaign; A0 TAC-01-C013 (strategic screen after the battle) is captured but not compared. 2026-11-11 b191: a unit test reproduces A0's result text word for word ('The Alliance fleet is defeated.' / 'Imperial forces have broken the blockade of Mon Calamari. The Alliance fleet has been completely destroyed.'); no browser case ends a battle by the player's last ship and shows the live strategy screen. 2026-11-12: production-battle-last-ship-lost ends the battle when the last Alliance ship dies; report words match A0, summary scene 0 of 66,314 pixels off. Open: the port draws the summary in the tactical view over a bare shell, A0 over the live Command Center (architecture question for the user).",
+          "note": "The browser results journey returns to the shared campaign; A0 TAC-01-C013 (strategic screen after the battle) is captured but not compared. 2026-11-11 b191: a unit test reproduces A0's result text word for word ('The Alliance fleet is defeated.' / 'Imperial forces have broken the blockade of Mon Calamari. The Alliance fleet has been completely destroyed.'); no browser case ends a battle by the player's last ship and shows the live strategy screen. 2026-11-12: production-battle-last-ship-lost ends the battle when the last Alliance ship dies; report words match A0, summary scene 0 of 66,314 pixels off. Open: the port draws the summary in the tactical view over a bare shell, A0 over the live Command Center (architecture question for the user). Batch b200 (Linux browser): the Battle Summary opens over the live Command Center as in A0 (strategy screen, approved 2026-11-12): its scene 0 of 66,314 pixels off, the strategy chrome around it 0 of 118,168 off; the remaining differences follow game state (status-bar numbers, lit message icons, open sector window, pointer). The Empire's summary has no A0 capture; its modal probe and report text run.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -9828,9 +9832,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-camera-tracking/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-battle-keys/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-compare/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-compare/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-coruscant-battle-fixture/README.md"
           ],
-          "note": "F1-F12 follow (FUN_0059b730) implemented; A0 TAC-04-C014 (F1 chase from behind) is captured but not compared. 2026-11-12: A0 is the Battle at Coruscant (Escort Carrier + X/Y-wings) which no fixture rebuilds; needs that fixture or an F1 A0 capture of fixture 37's battle.",
+          "note": "F1-F12 follow (FUN_0059b730) implemented; A0 TAC-04-C014 (F1 chase from behind) is captured but not compared. 2026-11-12: A0 is the Battle at Coruscant (Escort Carrier + X/Y-wings) which no fixture rebuilds; needs that fixture or an F1 A0 capture of fixture 37's battle. Batch b200: fixture 43 (Battle at Coruscant) runs F1 after Red Group escorts the carrier, on both sides and both viewports (letterboxed click fixed in c4f02d3f). The ported chase camera matches every traced input (box, followed hull, second object); its distance is about 1.25x A0's — needs a runtime read in the VM.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
