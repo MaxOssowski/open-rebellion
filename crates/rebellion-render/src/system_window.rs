@@ -807,6 +807,20 @@ pub fn band_menu_deselects(command: Option<ObjectMenuCommand>, escaped: bool) ->
     }
 }
 
+/// The window's selection (slot 22, `FUN_00453ee0`): on the overview (page
+/// `0x67`) the selected band's manager, on a facility page the list's
+/// selected item.
+fn surface_menu_object(window: &OpenSystemWindow, system: SystemKey) -> Option<MenuObject> {
+    match window.tab.page() {
+        None => window
+            .selected_band
+            .map(|area| MenuObject::Producer { system, area }),
+        Some(_) => window
+            .selected_item
+            .and_then(|item| item.menu_object(system)),
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemWindowAction {
     FocusSector(SystemKey),
@@ -1520,6 +1534,26 @@ fn draw_system_window(
                 None => controls.extend(BAND_AREAS.map(|area| band_rect(local, scale, area))),
                 Some(_) => {
                     controls.push(logical_rect(local, scale, LIST.0, LIST.1, LIST.2, LIST.3))
+                }
+            }
+            // A right release on the window's own surface, off its child
+            // controls, also opens the pop-up: FUN_004534f0 passes every
+            // 0x205 to the base procedure, which calls slot 7
+            // (FUN_004ac5c0) for slot 22's selection (FUN_00453ee0). A
+            // press off a band selects nothing and clears nothing, so the
+            // menu is the selected band's, or the one for nothing
+            // (Encyclopedia and Status, grey; A0 menus3/34).
+            // The controls take their own clicks; the window's response
+            // only sees the rest.
+            if window_response.secondary_clicked() {
+                if let Some(point) = window_response
+                    .interact_pointer_pos()
+                    .filter(|point| !controls.iter().any(|rect| rect_contains(*rect, *point)))
+                {
+                    result.object_menu = Some((
+                        surface_menu_object(&window, window.system),
+                        canvas_point(layout, point),
+                    ));
                 }
             }
             result.travel =
@@ -2834,6 +2868,101 @@ mod tests {
             "{:?}",
             right.actions
         );
+    }
+
+    // FUN_004534f0 hands every right release (0x205) to the base procedure,
+    // which opens FUN_004ac5c0's pop-up for slot 22's selection; a press off
+    // the band rects (FUN_00458480) selects and clears nothing. A0
+    // menus3/34: a right click on Coruscant's window left of its bands, no
+    // band selected, opens Encyclopedia and Status, both grey.
+    #[test]
+    fn a_right_click_off_the_bands_opens_the_menu_for_the_selection_or_nothing() {
+        let (mut world, systems) = fixture_world(1);
+        let yard = add_yard(&mut world, systems[0], 0x2800_0001);
+        let FacilityItem::Manufacturing(key) = yard else {
+            unreachable!()
+        };
+        let mut state = opened(&world, systems[0]);
+        let manufacturing = ManufacturingState::new();
+        let menu_at = |run: &Run, selection, point| {
+            run.actions.contains(&SystemWindowAction::OpenObjectMenu {
+                system: systems[0],
+                selection,
+                point,
+            })
+        };
+
+        // Beside the bands' pictures, nothing selected: the menu for nothing.
+        let nothing = run_with(
+            &world,
+            &manufacturing,
+            &mut state,
+            right_click(at(20.0, 150.0)),
+        );
+        assert!(menu_at(&nothing, None, (120, 210)), "{:?}", nothing.actions);
+        assert_eq!(
+            state.selection(systems[0]),
+            Some((SystemWindowTab::Overview, None))
+        );
+        // A left click there opens nothing.
+        let left = run_with(&world, &manufacturing, &mut state, click(at(20.0, 150.0)));
+        assert!(
+            !left
+                .actions
+                .iter()
+                .any(|action| matches!(action, SystemWindowAction::OpenObjectMenu { .. })),
+            "{:?}",
+            left.actions
+        );
+
+        // A band selected: the same spot opens its manager's menu and keeps it.
+        let _ = run_with(&world, &manufacturing, &mut state, click(at(100.0, 170.0)));
+        let band = run_with(
+            &world,
+            &manufacturing,
+            &mut state,
+            right_click(at(20.0, 150.0)),
+        );
+        assert!(
+            menu_at(
+                &band,
+                Some(MenuObject::Producer {
+                    system: systems[0],
+                    area: ProductionArea::TrainingFacility,
+                }),
+                (120, 210)
+            ),
+            "{:?}",
+            band.actions
+        );
+        assert_eq!(
+            state.selection(systems[0]),
+            Some((
+                SystemWindowTab::Overview,
+                Some(ProductionArea::TrainingFacility)
+            ))
+        );
+
+        // A facility page: left of the list, the list's selected yard.
+        let _ = run_with(&world, &manufacturing, &mut state, click(at(50.0, 30.0)));
+        let _ = run_with(&world, &manufacturing, &mut state, click(at(20.0, 90.0)));
+        assert_eq!(state.windows[0].selected_item, Some(yard));
+        let page = run_with(
+            &world,
+            &manufacturing,
+            &mut state,
+            right_click(at(4.0, 150.0)),
+        );
+        assert!(
+            menu_at(
+                &page,
+                Some(MenuObject::ManufacturingFacility(key)),
+                (104, 210)
+            ),
+            "{:?}",
+            page.actions
+        );
+        assert_eq!(state.windows[0].selected_item, Some(yard));
     }
 
     #[test]

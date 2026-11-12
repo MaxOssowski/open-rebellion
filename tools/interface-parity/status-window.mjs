@@ -532,6 +532,8 @@ const cases = [
     name: "production-manager",
     code: BUILD_SELECTION,
     family: "Producer",
+    // A0 menus3/34: the menu for nothing, off the bands.
+    offBandMenu: { width: 90, height: 42, rows: [["Encyclopedia", false], ["Status", false]] },
     target: async (page) => {
       await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3, null, { timeout: 10_000 });
       const [band] = (await page.evaluate(() => window.__openRebellionInterfaceProduction)).bands;
@@ -576,6 +578,26 @@ async function inspect(server, source, faction, testCase, executable) {
     await page.evaluate(() => document.fonts.ready);
 
     const target = await testCase.target(page, faction);
+    // A right release on the window off its bands, no band selected, opens
+    // the pop-up for nothing (FUN_004534f0 -> FUN_004ac5c0): A0
+    // menus3/34-icon-menu-reserved, at Coruscant's window's left edge,
+    // shows Encyclopedia and Status, both grey, 90 by 42.
+    let offBandMenu = null;
+    if (testCase.offBandMenu) {
+      const { bands } = await page.evaluate(() => window.__openRebellionInterfaceProduction);
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await click(page, { x: Math.round(bands[0].left - 35), y: Math.round(bands[0].top + 20) }, "right");
+      await page.waitForTimeout(300);
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu", null, { timeout: 10_000 });
+      offBandMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      fs.writeFileSync(path.join(directory, "off-band-menu.png"), await page.screenshot({ animations: "disabled" }));
+      assert.deepEqual([offBandMenu.width, offBandMenu.height], [testCase.offBandMenu.width, testCase.offBandMenu.height],
+        JSON.stringify(offBandMenu));
+      assert.deepEqual(offBandMenu.row_states, testCase.offBandMenu.rows, JSON.stringify(offBandMenu));
+      await page.keyboard.press("Escape");
+      await frames(page);
+      await page.waitForTimeout(300);
+    }
     const openStatus = () => chooseStatus(page, target);
     const opened = new RegExp(`command=0x103 destination=status_window status=opened object=${testCase.family}[ (].+ rect=(\\d+),(\\d+),(\\d+),(\\d+)`);
     const closed = /destination=status_window status=closed action=(\w+)/;
@@ -775,7 +797,7 @@ async function inspect(server, source, faction, testCase, executable) {
       menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
       assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
     }
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {
