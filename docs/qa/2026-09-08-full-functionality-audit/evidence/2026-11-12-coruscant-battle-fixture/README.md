@@ -333,3 +333,99 @@ What does not:
 To pass, the cell needs the box `0x005d9b10` reads traced (the tactical
 object's vt `+0x2c`). The chase test should then tighten from 40 px to a
 few pixels.
+
+## Third stage: the box the chase reads
+
+This stage traces the value that the second stage left open. It is a static
+trace only. No code changed, no WASM was built, and no browser gate ran. The
+lead's next batch reruns the gate.
+
+### The chain, from REBEXE
+
+Sources: `~/Games/rebexe-decompile/decompiled-typed/FUN_<addr>.c` and
+`objdump -d` of the GOG `REBEXE.EXE`.
+
+1. `0x005d9b10` (`Class_0066d478_vtc`) calls `FUN_00595d00(+0x30)` for two
+   ids. It looks up the first with `FUN_005c1080` (`FUN_005f5500`, an id
+   map). That object is the followed hull.
+2. At `0x005d9b79` it calls that object's vt `+0x2c`. For the hull class
+   `0x0066d198` (built by `FUN_005d26c0`), that slot is `0x0066d1c4` ->
+   `0x005d43b0` (`Class_0066d198_vt2c`). It returns `this + 0xcc`, with no
+   copy and no scale.
+3. `+0xcc` is written in one place: `FUN_005d26c0` at `0x005d2ae2`. That is
+   `GetBox(this + 0xcc)` (vt `+0x40`) on the mesh builder at `+0x48`, the
+   family's base + 1 member (`param_5 + 1`). The second `GetBox` at the end
+   of that constructor is the same call on the same mesh. In
+   `0x005d26c0..0x005d4400`, `objdump` finds no other store to
+   `+0xcc..+0xe0` of the object. It finds only `lea 0xcc(%esi)` at
+   `0x5d2ad7` and the getter at `0x5d43b0`.
+4. The mesh builder comes from the hull cache's loader `0x005d5b10`
+   (vtable `0x0066c990` + 4). It calls `Load` (vt `+0x2c`), then
+   `Scale(3, 3, 3)` (vt `+0x34`, `DAT_0066d2b0`), before the box is read.
+   So the box is the base + 1 vertex box times 3.
+5. `0x005d9b80..0x005d9ba4`: e = `box[3] - box[0]` (the X span) unless
+   `fcomps` sets C0 or C3. Then it takes `box[4] - box[1]` (the Y span).
+   That is the larger of the two full spans. It is not a half span, a
+   radius or a diagonal, and the Z span is not used. No constant multiplies
+   it. e goes to `+0x34`, the eye is SetPosition(hull frame, -e, e, 2e)
+   (vt `+0xf4`), and the eye looks along SetOrientation(hull frame, 0, 0,
+   -1, 0, 1, 0) (vt `+0xf0`).
+
+The port does the same:
+
+- `decode_mesh_object` scales the vertex box by `ORIGINAL_HULL_MESH_SCALE`
+  (3.0).
+- `participant_box` takes family member 1.
+- `original_chase_view` takes the larger of the X and Y spans.
+
+For the Alliance Escort Carrier (base 2050), e = 3.855. The runtime
+manifest's 2051 vertex box gives spans 3.855 x 0.617 x 5.304 after the
+scale. **So the box is not where the 1.25 gap comes from.**
+
+### Other places a 0.8 could come from, also checked
+
+- **The hull frame's own scale.** `0x005d3500` (`Class_0066d198_vt1c`)
+  builds the frame with `AddTransform(REPLACE)`. Its rows are:
+  - the side axis `(-Oz, 0, Ox)`, normalised to `DAT_0066d17c` = 1.0
+    (`DAT_0066d178` = -1.0, `DAT_0066d180` = 0.0);
+  - `(0, 1, 0)`;
+  - `-O`;
+  - the position.
+
+  A short `O` could only shorten the eye's Z offset. The fit shrank X and
+  Y too, so it does not explain the fit.
+- **The parent frame.** `FUN_005c1f10` passes the 3D window's `+0x138` to
+  the hull's constructor as the parent of its frame. That frame is made by
+  `CreateFrame(NULL, ...)` (`0x005d6ec0`), a scene root with no scale.
+- **The projection.** The chase sets front 0.1 (`0x005d9b6a`) and field
+  `+0x38` = 0.02 (`FUN_005d9a70`). The free camera (`0x005d9640`) sets
+  field `+0x48` and then front 1.0. The ratio is the same. The chase's vt
+  `+0x10` (`0x005d9d80`) changes `+0x38` only on a zoom step: x0.9, at
+  least 0.005 (`DAT_0066d438`), or x1.1, at most 0.2 (`DAT_0066d43c`).
+
+### What is still open
+
+Two things in `0x005d9b10` are still not traced. Either could explain why
+the original's eye sits closer:
+
+1. **Which hull is followed.** `FUN_005aafc0` returns the group's `+0x6c`
+   object. If the group's commander passes the `FUN_005a5fb0` 1..8 check,
+   it returns that commander's flagship (`FUN_00583c40` `+0xec`) instead.
+   The port takes the group's first live hull. A hull from another family
+   gives another e.
+2. **The second object** (the group's vt `+0x44`, read into `piVar4`). When
+   it exists, the eye is (e·x/d, e·y/d, 2e). (x, y) is the second object's
+   position in the hull's frame, from `GetPosition` (vt `+0x60`). d is the
+   length of (x, y), and the threshold is `DAT_0066d458` = 0.001. The eye
+   is then e·√5 from the hull, not e·√6, and it calls `LookAt` on that
+   object (vt `+0x90`). The group class behind vt `+0x44` was not found in
+   this pass.
+
+The fitted 0.8 is still not put into the code.
+
+### Verdict
+
+TAC-04-C014 stays partial. The box question from the second stage is
+settled: the port reads the same value as the original. The cell needs one
+of the two open items above traced, or a runtime read of `+0x34` in the
+original. The lead's batch reruns the gate on the unchanged code.
