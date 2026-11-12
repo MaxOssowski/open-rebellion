@@ -695,9 +695,10 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
             "ghidra/notes/game-options.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-corrupt-save-and-droid-clip/README.md"
           ],
-          "note": "Corrupt and metadata-only saves count as occupied and cancel safely in game-options-smoke; the original's corrupt-save behaviour is not compared in A0. Browser run on macOS only; rerun on Linux. 2026-11-12: the original shows an unreadable or empty save as an empty row, Load disabled (+0x18 == 1, FUN_00407180, FUN_00415cd0, FUN_00411900); the port shows 'Unreadable save' with Load enabled. Smoke passes on Linux.",
+          "note": "Corrupt and metadata-only saves count as occupied and cancel safely in game-options-smoke; the original's corrupt-save behaviour is not compared in A0. Browser run on macOS only; rerun on Linux. 2026-11-12: the original shows an unreadable or empty save as an empty row, Load disabled (+0x18 == 1, FUN_00407180, FUN_00415cd0, FUN_00411900); the port shows 'Unreadable save' with Load enabled. Smoke passes on Linux. b197: the port now shows an empty or unreadable save as an empty row with Load disabled, as FUN_00415cd0/FUN_00407180 (rebellion_data::save::game_options_saves); still needs an A0 of a corrupt slot.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -991,7 +992,7 @@
             "ghidra/notes/advisor-briefing.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-briefing-droid/README.md"
           ],
-          "note": "Voices from albrief/embrief DLLs with their lengths are asserted in briefing.mjs (Linux); audibility and timing not compared with A0. 2026-11-12: voice gaps dated from A0 droid frames are asserted within 0.3 s + 2% (9 Alliance, 14 Empire); the first voice's gap and the sound itself are not compared (needs an A0 audio recording with a clock).",
+          "note": "Voices from albrief/embrief DLLs with their lengths are asserted in briefing.mjs (Linux); audibility and timing not compared with A0. 2026-11-12: voice gaps dated from A0 droid frames are asserted within 0.3 s + 2% (9 Alliance, 14 Empire); the first voice's gap and the sound itself are not compared (needs an A0 audio recording with a clock). b197: the first voice gap is now asserted against A0 too (briefing.mjs); the sound itself still has no A0 audio recording.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1004,7 +1005,7 @@
             "ghidra/notes/advisor-briefing.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-briefing-droid/README.md"
           ],
-          "note": "Skip via click or Escape (hooks FUN_0041d9d0, flush FUN_0041da30) gives actions 0xc,0xb,0xd and the short-form voice in briefing.mjs (Linux); no A0. 2026-11-12: no A0 of a skip; needs A0 frames every 0.5 s with a click during the first voice.",
+          "note": "Skip via click or Escape (hooks FUN_0041d9d0, flush FUN_0041da30) gives actions 0xc,0xb,0xd and the short-form voice in briefing.mjs (Linux); no A0. 2026-11-12: no A0 of a skip; needs A0 frames every 0.5 s with a click during the first voice. b197: skip traced to the FUN_0041d9d0 hooks, which may not install on Windows 10, so an A0 skip may not be obtainable there; open question for the user.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3131,13 +3132,14 @@
         {
           "id": "CMD-07-C012",
           "requirement": "missing frame",
-          "status": "partial",
+          "status": "excluded",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-advisor-missing-frame/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-droid-encyclopedia-quadrants/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-droid-encyclopedia-quadrants/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-corrupt-save-and-droid-clip/README.md"
           ],
-          "note": "The behaviour for a missing clip frame is not yet traced. 2026-11-09 (b147): traced: FUN_0041c680 leaves a missing type-302 frame empty (FUN_0041c8f0) and FUN_0041c7a0 applies nothing for it, so the picture holds for that tick and the clip plays to its end; the port ended the clip at once and now holds (advisor_clip.rs, unit test a_missing_frame_holds_the_picture_and_the_clip_plays_to_its_end). No shipped clip that plays misses a frame, so no A0 capture can show it; a missing first bitmap is not traced. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-12: every ALSPRITE/EMSPRITE clip has its first bitmap and all delta frames, except ALSPRITE 4155/10155 (a leftover briefing clip copy, frames in ALBRIEF) whose playback is untraced; candidate for exclusion once that is traced."
+          "note": "The behaviour for a missing clip frame is not yet traced. 2026-11-09 (b147): traced: FUN_0041c680 leaves a missing type-302 frame empty (FUN_0041c8f0) and FUN_0041c7a0 applies nothing for it, so the picture holds for that tick and the clip plays to its end; the port ended the clip at once and now holds (advisor_clip.rs, unit test a_missing_frame_holds_the_picture_and_the_clip_plays_to_its_end). No shipped clip that plays misses a frame, so no A0 capture can show it; a missing first bitmap is not traced. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-12: every ALSPRITE/EMSPRITE clip has its first bitmap and all delta frames, except ALSPRITE 4155/10155 (a leftover briefing clip copy, frames in ALBRIEF) whose playback is untraced; candidate for exclusion once that is traced. b197: excluded as absent from the original after a trace: record 0x27ab (ALSPRITE 4155/10155) is played only from ALBRIEF in the briefing (flag 2, FUN_0042b1d0); REBEXE has no fallback that plays the ALSPRITE copy, so its missing frame never shows."
         }
       ]
     },
@@ -4457,9 +4459,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
-            "crates/rebellion-render/src/tactical_view.rs"
+            "crates/rebellion-render/src/tactical_view.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md"
           ],
-          "note": "All 51 §9 controls register their TEXTTACT tips with their runtime texts (hud_tooltip, command_tooltip); tooltip.mjs checks nine HUD controls in the production battle fixture (Linux); Wine A0 TAC-02-C009 shows 'Task Force 1' below the pointer. The side panels have no browser check and no Windows A0 capture.",
+          "note": "All 51 §9 controls register their TEXTTACT tips with their runtime texts (hud_tooltip, command_tooltip); tooltip.mjs checks nine HUD controls in the production battle fixture (Linux); Wine A0 TAC-02-C009 shows 'Task Force 1' below the pointer. The side panels have no browser check and no Windows A0 capture. b197: production-capital-panel-missions-tip shows the capital-ship panel's 'Missions' tip at (562,276) 52x19 as A0 TAC-03-C012 (Alliance). Only one panel tip on one side has A0; other panels and the Empire side still open.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5550,9 +5553,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-title-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-window-frames/README.md"
           ],
-          "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation).",
+          "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation). b197: tab pixels traced (tab_backdrop_origin: the strip's pane from each tab's left edge); a0-vjun ceilings tightened to the measured 1578/1125/1125/1486 (text and A0's cursor only).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -7353,9 +7357,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
             "ghidra/notes/status-window.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-enroute-and-question/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-enroute-and-question/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-window-frames/README.md"
           ],
-          "note": "Pass (2026-11-06): A0 mission-reports/missions-window-enroute-day276 shows Jerjerrod in hyperspace to Chandrila on the en route mark; sector-quadrants.mjs missions-en-route (Linux, Empire: Jerjerrod) finds the composed mini (11500, 11501, his mini) in A0 with 0 differing pixels.",
+          "note": "Pass (2026-11-06): A0 mission-reports/missions-window-enroute-day276 shows Jerjerrod in hyperspace to Chandrila on the en route mark; sector-quadrants.mjs missions-en-route (Linux, Empire: Jerjerrod) finds the composed mini (11500, 11501, his mini) in A0 with 0 differing pixels. b197: the tab key pixels traced (KeyPixel::BackgroundAt over 11165 at strip position); the whole Missions window now matches A0 missions-window-enroute-day276 in 0 of 49018 pixels outside text and state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9024,9 +9029,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-camera-backdrop/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md"
           ],
-          "note": "Planet decal e wide at (2e,0,0) (FUN_005d4d10); A0 TAC-01-C008 corner (105,298) vs port (105,297), planet top right; exact planet framing (random offsets taken at centre, port:) remains open. 2026-11-12: production-umgul-backdrop turns left 16 times as A0; holocube corner (108,297) vs A0 (106,298); planet edges up to 16 px off (random offsets, port: centre).",
+          "note": "Planet decal e wide at (2e,0,0) (FUN_005d4d10); A0 TAC-01-C008 corner (105,298) vs port (105,297), planet top right; exact planet framing (random offsets taken at centre, port:) remains open. 2026-11-12: production-umgul-backdrop turns left 16 times as A0; holocube corner (108,297) vs A0 (106,298); planet edges up to 16 px off (random offsets, port: centre). b197: the tactical scene projects into the original's 440x438 viewport (tactical_scene_viewport); 1052 of 1148 holocube pixels land on A0's; planet framing (random offsets) remains open.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9389,9 +9395,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md"
           ],
-          "note": "After destruction the panel returns to the emblem as in A0 TAC-03-C004; the explosion and TACTICAL 3368 destroyed presentation are not compared. 2026-11-11 b191: all five colours of A0's fireball appear in the port's TACTICAL 3368 frame (production-detail-escort-presentation, run 2026-11-11T16-51-41-850Z-1467492); the port's frame adds a sixth colour and A0's frame number is unknown, so shape and size are not compared.",
+          "note": "After destruction the panel returns to the emblem as in A0 TAC-03-C004; the explosion and TACTICAL 3368 destroyed presentation are not compared. 2026-11-11 b191: all five colours of A0's fireball appear in the port's TACTICAL 3368 frame (production-detail-escort-presentation, run 2026-11-11T16-51-41-850Z-1467492); the port's frame adds a sixth colour and A0's frame number is unknown, so shape and size are not compared. b197: A0's fireball best matches TACTICAL frame 3369; shape and timing not yet asserted.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

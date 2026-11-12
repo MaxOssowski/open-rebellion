@@ -311,3 +311,7 @@ Tests:
 - Mutants (`--re voice_started`): 2 mutants, 2 caught.
 - The `played` branch is not among the mutants cargo-mutants generates.
   Reverting it by hand fails the new test.
+
+## Batch b197
+
+The full gate batch b197 (2026-11-12 08:23-09:45) passed: 30 gates, the workspace (3617 tests) and fixture tests (158), and 172 tactical battle checks in 43 scenarios, 0 failed. The ledger notes above were applied after it.

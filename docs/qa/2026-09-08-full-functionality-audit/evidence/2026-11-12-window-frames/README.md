@@ -290,3 +290,7 @@ run folders are in the agent worktree's `.artifacts/interface-parity/`.
   a0-umgul, a0-yavin) keep their wider ceilings. Each has 1 or 2 pixels
   fewer to spend now. Their remaining differences are text and state,
   and they were not re-audited here.
+
+## Batch b197
+
+The full gate batch b197 (2026-11-12 08:23-09:45) passed: 30 gates, the workspace (3617 tests) and fixture tests (158), and 172 tactical battle checks in 43 scenarios, 0 failed. The ledger notes above were applied after it.

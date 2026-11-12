@@ -181,3 +181,7 @@ in the original.
 
 CMD-07-C012: exclude as absent from the original (trace above). No A0
 capture is needed.
+
+## Batch b197
+
+The full gate batch b197 (2026-11-12 08:23-09:45) passed: 30 gates, the workspace (3617 tests) and fixture tests (158), and 172 tactical battle checks in 43 scenarios, 0 failed. The ledger notes above were applied after it.

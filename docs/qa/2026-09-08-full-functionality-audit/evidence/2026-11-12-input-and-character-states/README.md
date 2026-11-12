@@ -249,3 +249,7 @@ input before I saw that it was paused:
 The VM was not resumed. If these inputs are queued, the Personnel Finder
 may open when the VM is resumed. `~/VMs/rebellion-win10/cursor.json`
 now says (300, 300). Run `g.py home` before the next walk.
+
+## Batch b197
+
+The full gate batch b197 (2026-11-12 08:23-09:45) passed: 30 gates, the workspace (3617 tests) and fixture tests (158), and 172 tactical battle checks in 43 scenarios, 0 failed. The ledger notes above were applied after it.
