@@ -76,6 +76,11 @@ const BATTLE_LAST_SHIP_LOST_SCENARIO: u32 = 41;
 /// A0 TAC-01-C008: a battle at Umgul, whose planet the camera shows at the
 /// holocube's top right after Rotate Left 16 times.
 const UMGUL_BACKDROP_SCENARIO: u32 = 42;
+/// A0 TAC-04-C014: the Alliance's Battle at Imperial Coruscant (manifest
+/// `new-game-alliance-small-2026-10-24-coruscant2`): Fleet 2, an Alliance
+/// Escort Carrier with one X-wing and one Y-wing squadron, against the
+/// home fleet the galaxy places at Coruscant.
+const CORUSCANT_CHASE_SCENARIO: u32 = 43;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -141,6 +146,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub battle_withdrawal_report: bool,
     pub battle_last_ship_lost: bool,
     pub umgul_backdrop: bool,
+    pub coruscant_chase: bool,
     pub subsystem_field_command_presentation: bool,
     pub live_subsystem_damage_presentation: bool,
     pub subsystem_repair_mobility_presentation: bool,
@@ -376,7 +382,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | BATTLE_ALERT_RETREAT_SCENARIO
         | BATTLE_WITHDRAWAL_REPORT_SCENARIO
         | BATTLE_LAST_SHIP_LOST_SCENARIO
-        | UMGUL_BACKDROP_SCENARIO => (
+        | UMGUL_BACKDROP_SCENARIO
+        | CORUSCANT_CHASE_SCENARIO => (
             false,
             true,
             false,
@@ -427,6 +434,7 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         battle_withdrawal_report: scenario == BATTLE_WITHDRAWAL_REPORT_SCENARIO,
         battle_last_ship_lost: scenario == BATTLE_LAST_SHIP_LOST_SCENARIO,
         umgul_backdrop: scenario == UMGUL_BACKDROP_SCENARIO,
+        coruscant_chase: scenario == CORUSCANT_CHASE_SCENARIO,
         subsystem_field_command_presentation: scenario
             == SUBSYSTEM_FIELD_COMMAND_PRESENTATION_SCENARIO,
         live_subsystem_damage_presentation: scenario == LIVE_SUBSYSTEM_DAMAGE_PRESENTATION_SCENARIO,
@@ -498,7 +506,16 @@ pub(crate) fn apply(
         .collect();
     empty.sort_unstable();
     let ordinal = usize::from(request.faction != CockpitFaction::Alliance);
-    let system = if request.umgul_backdrop {
+    let system = if request.coruscant_chase {
+        // A0 TAC-04-C014 was taken at Coruscant, whose home fleet defends:
+        // the fixture keeps the fleets the galaxy placed there.
+        world
+            .systems
+            .iter()
+            .find(|(_, system)| !system.is_destroyed && system.name == "Coruscant")
+            .map(|(key, _)| key)
+            .ok_or("fixture system Coruscant is missing")?
+    } else if request.umgul_backdrop {
         // A0 TAC-01-C008 was taken at Umgul: the same system gives the
         // same planet decal. Its own fleets stay out.
         let key = world
@@ -679,18 +696,24 @@ pub(crate) fn apply(
             special_forces: Vec::new(),
         }
     };
-    let attacker = world.fleets.insert(make_fleet(
-        true,
-        alliance_ship.0,
-        alliance_ship.1,
-        alliance_fighter,
-    ));
-    let defender = world.fleets.insert(make_fleet(
-        false,
-        empire_ship.0,
-        empire_ship.1,
-        empire_fighter,
-    ));
+    let (attacker, defender) = if request.coruscant_chase {
+        coruscant_chase_fleets(world, system)?
+    } else {
+        (
+            world.fleets.insert(make_fleet(
+                true,
+                alliance_ship.0,
+                alliance_ship.1,
+                alliance_fighter,
+            )),
+            world.fleets.insert(make_fleet(
+                false,
+                empire_ship.0,
+                empire_ship.1,
+                empire_fighter,
+            )),
+        )
+    };
     if request.detail_escort_presentation {
         let player_fleet = if player_is_alliance {
             attacker
@@ -762,7 +785,17 @@ pub(crate) fn apply(
             .embark(world, attacker, &troops)
             .map_err(|error| format!("results fixture regiments: {error}"))?;
     }
-    world.systems[system].fleets.extend([attacker, defender]);
+    if request.coruscant_chase {
+        // The home fleet is already listed at Coruscant. The Alliance
+        // arrived last at the Empire's system (A0: Fleet 2 dragged from
+        // Averam onto Imperial Coruscant).
+        world.systems[system].fleets.push(attacker);
+        world.systems[system].control =
+            rebellion_core::world::ControlKind::Controlled(rebellion_core::dat::Faction::Empire);
+        world.systems[system].last_arrival = Some(rebellion_core::dat::Faction::Alliance);
+    } else {
+        world.systems[system].fleets.extend([attacker, defender]);
+    }
     // The Empire's alert system holds Tralus's assets as A0
     // battle-alert-empire/01-system-assets lists them: GenCore Level I,
     // Orbital Shipyard, Construction Yard and two mines, nothing else.
@@ -1030,6 +1063,7 @@ struct FixtureRecord<'a> {
     battle_withdrawal_report: bool,
     battle_last_ship_lost: bool,
     umgul_backdrop: bool,
+    coruscant_chase: bool,
     battle_alert_open: bool,
     tactical_music_mdata_id: Option<u32>,
     tactical_weapon_audio_wave_first: u32,
@@ -1215,6 +1249,61 @@ struct FixtureParticipant<'a> {
     recovery_target: Option<usize>,
     attack_target_kind: Option<&'static str>,
     attack_target_index: Option<usize>,
+}
+
+/// A0 TAC-04-C014's sides: Fleet 2, one Alliance Escort Carrier with one
+/// X-wing and one Y-wing squadron (A0 TAC-02-C002 "X-wings: 1 12/12",
+/// TAC-02-C003 Blue Group), and the Imperial fleet the galaxy placed at
+/// Coruscant as the defender. port: the galaxy's seeded home fleet stands in
+/// for the day-2 save's, which the manifest names only in part (Judicator,
+/// TIE squadrons).
+fn coruscant_chase_fleets(
+    world: &mut GameWorld,
+    system: SystemKey,
+) -> Result<(rebellion_core::ids::FleetKey, rebellion_core::ids::FleetKey), String> {
+    let defender = world.systems[system]
+        .fleets
+        .iter()
+        .copied()
+        .find(|&fleet| {
+            !world.fleets[fleet].is_alliance && !world.fleets[fleet].capital_ships.is_empty()
+        })
+        .ok_or("Coruscant has no Imperial fleet")?;
+    let (carrier, hull) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| class.is_alliance && class.name == "Alliance Escort Carrier")
+        .map(|(key, class)| (key, class.hull))
+        .ok_or("no Alliance Escort Carrier class")?;
+    let fighter = |name: &str| {
+        world
+            .fighter_classes
+            .iter()
+            .find(|(_, class)| class.is_alliance && class.name == name)
+            .map(|(key, _)| key)
+            .ok_or(format!("no {name} class"))
+    };
+    let fighters = [fighter("X-wing")?, fighter("Y-wing")?]
+        .map(|class| FighterEntry {
+            class,
+            count: 1,
+            carrier: None,
+        })
+        .to_vec();
+    let attacker = world.fleets.insert(Fleet {
+        location: system,
+        capital_ships: vec![ShipInstance::new(
+            carrier,
+            i32::try_from(hull).unwrap_or(i32::MAX),
+            true,
+        )],
+        fighters,
+        characters: vec![],
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    Ok((attacker, defender))
 }
 
 fn fixture_attack_target(
@@ -1544,6 +1633,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         battle_withdrawal_report: request.battle_withdrawal_report,
         battle_last_ship_lost: request.battle_last_ship_lost,
         umgul_backdrop: request.umgul_backdrop,
+        coruscant_chase: request.coruscant_chase,
         battle_alert_open: tactical.battle_alert_open(),
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1635,6 +1725,7 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         battle_withdrawal_report: request.battle_withdrawal_report,
         battle_last_ship_lost: request.battle_last_ship_lost,
         umgul_backdrop: request.umgul_backdrop,
+        coruscant_chase: request.coruscant_chase,
         battle_alert_open: false,
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1781,8 +1872,63 @@ mod tests {
         assert!(!decode(0x10128).unwrap().battle_last_ship_lost);
         assert!(decode(0x1012a).unwrap().umgul_backdrop);
         assert!(!decode(0x10129).unwrap().umgul_backdrop);
-        assert!(decode(0x1012b).is_none());
+        assert!(decode(0x1012c).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
+    }
+
+    #[test]
+    fn code_43_enters_only_the_coruscant_chase_battle_on_either_side() {
+        for (code, faction) in [
+            (0x1012b, CockpitFaction::Alliance),
+            (0x1022b, CockpitFaction::Empire),
+        ] {
+            let request = decode(code).unwrap();
+            assert_eq!(request.faction, faction);
+            assert!(request.coruscant_chase);
+            assert!(request.production_participants);
+            assert!(!request.umgul_backdrop && !request.hull_scale_presentation);
+        }
+        assert!(!decode(0x1012a).unwrap().coruscant_chase);
+    }
+
+    // A0 TAC-04-C014 (manifest new-game-alliance-small-2026-10-24-coruscant2):
+    // Fleet 2 is one Alliance Escort Carrier with an X-wing and a Y-wing
+    // squadron, and it attacks the Imperial fleet at Coruscant.
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_coruscant_chase_sends_an_escort_carrier_with_x_and_y_wings_against_coruscants_fleet() {
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let mut world = rebellion_data::load_game_data(&data).expect("load original game data");
+        let system = world
+            .systems
+            .iter()
+            .find(|(_, system)| system.name == "Coruscant")
+            .map(|(key, _)| key)
+            .unwrap();
+        let home = world.systems[system].fleets.clone();
+        let (attacker, defender) = coruscant_chase_fleets(&mut world, system).unwrap();
+        assert!(home.contains(&defender));
+        assert!(!world.fleets[defender].is_alliance);
+        let fleet = &world.fleets[attacker];
+        assert!(fleet.is_alliance);
+        assert_eq!(fleet.location, system);
+        let ships: Vec<_> = fleet
+            .capital_ships
+            .iter()
+            .map(|ship| world.capital_ship_classes[ship.class].name.as_str())
+            .collect();
+        assert_eq!(ships, ["Alliance Escort Carrier"]);
+        let fighters: Vec<_> = fleet
+            .fighters
+            .iter()
+            .map(|entry| {
+                (
+                    world.fighter_classes[entry.class].name.as_str(),
+                    entry.count,
+                )
+            })
+            .collect();
+        assert_eq!(fighters, [("X-wing", 1), ("Y-wing", 1)]);
     }
 }
