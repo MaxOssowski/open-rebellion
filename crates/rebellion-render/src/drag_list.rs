@@ -112,6 +112,12 @@ impl<K: Copy + PartialEq> ListSelection<K> {
     /// A left or right press at `point` over `hit`, among `cells` (each
     /// item with its cell's top-left and size). Returns whether the
     /// selection changed.
+    ///
+    /// port: a press first forgets a click held by an earlier press.
+    /// `FUN_006083c0` sets flag `0x10` for a right press (`0x204`) on a
+    /// selected item too, and only a left release (`0x202`) clears it, so
+    /// after a right click that opened a menu the next Ctrl press's release
+    /// would toggle that item back off; untested against A0.
     pub fn press(
         &mut self,
         hit: Option<K>,
@@ -119,6 +125,7 @@ impl<K: Copy + PartialEq> ListSelection<K> {
         modifiers: Modifiers,
         cells: &[(K, ContentPoint, (f32, f32))],
     ) -> bool {
+        self.deferred = false;
         let before = self.items.clone();
         if hit.is_some_and(|item| self.contains(item)) {
             self.deferred = true;
@@ -298,6 +305,23 @@ mod tests {
         assert_eq!(selection.items(), &[0]);
         // A second release has nothing held.
         assert!(!selection.release(Some(1), row_point(1), PLAIN, &cells));
+    }
+
+    #[test]
+    fn a_right_press_on_a_selected_item_holds_no_click_past_the_next_press() {
+        // A right press on a selected item opens its menu and is never
+        // released by 0x202; the next Ctrl press's release must not toggle
+        // the item it just added back off.
+        let cells = rows();
+        let mut selection = ListSelection::default();
+        selection.press(Some(0), row_point(0), PLAIN, &cells);
+        selection.press(Some(1), row_point(1), CTRL, &cells);
+        // The right press on row 0, then the menu.
+        selection.press(Some(0), row_point(0), PLAIN, &cells);
+        selection.press(Some(2), row_point(2), CTRL, &cells);
+        assert_eq!(selection.items(), &[0, 1, 2]);
+        assert!(!selection.release(Some(2), row_point(2), CTRL, &cells));
+        assert_eq!(selection.items(), &[0, 1, 2]);
     }
 
     #[test]
