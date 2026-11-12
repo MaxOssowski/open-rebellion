@@ -140,12 +140,15 @@ const DROID_MAX_DIFFERING = 600;
 // every A0 droid box matched exactly to a clip frame decoded from the
 // briefing DLL; the tick fitted from the samples is 66 ms, the panel's
 // 0x43 ms). The Alliance's A0 has two series (b000..b045 every 1.5 s,
-// b100..b139 every 3 s) with an unknown gap; the first series' 1220 and
-// 1225 are left out, their frames also being 1156's and 1162's.
+// b100..b139 every 3 s) with an unknown gap. 1220's and 1225's frames are
+// also 1156's and 1162's, at the same index; only the briefing's clips
+// play, so they date 1220 and 1225 (a0_droid_clips.py, 2026-11-12 round 7).
 const A0_VOICE_STARTS = {
   alliance: [
-    [[1155, 0.78], [1221, 14.99], [1222, 20.19], [1223, 24.74], [1224, 35.59], [1157, 44.14]],
-    [[1160, -7.30], [1161, 2.48], [1226, 23.32], [1163, 37.34], [1164, 49.80], [1168, 53.22]],
+    [[1155, 0.78], [1220, 9.93], [1221, 14.99], [1222, 20.19], [1223, 24.74], [1224, 35.59],
+      [1157, 44.13]],
+    [[1160, -7.30], [1161, 2.48], [1225, 11.77], [1226, 23.33], [1163, 37.35], [1164, 49.81],
+      [1168, 53.22]],
   ],
   empire: [
     [[1147, 0.79], [1220, 12.22], [1221, 17.68], [1222, 21.29], [1223, 27.64], [1224, 35.44],
@@ -158,15 +161,13 @@ const A0_VOICE_STARTS = {
 // 65.9..66.4 ms against the panel's 67 ms).
 const VOICE_GAP_SLACK = 0.3;
 const VOICE_GAP_SHARE = 0.02;
-// The gap after the first voice is recorded, not asserted. Its clip's voice
-// outlasts its frames on both sides (ALBRIEF 1155: 137 frames, 9.43 s;
-// EMBRIEF 1147: 167 frames, 11.57 s), and in A0 the next clip starts 6 and
-// 5 ticks before that voice would end if it began with the first frame.
-// Later clips do wait for their voice in A0 (EMBRIEF 1152: 134 frames,
-// 10.59 s, the next voice 10.59 s on). So either the first voice starts
-// before its clip's first frame shows, or the first clip does not wait;
-// not traced (evidence/2026-11-12-briefing-droid/README.md).
-const VOICE_GAP_UNASSERTED_FROM = { alliance: 1155, empire: 1147 };
+// Every gap is asserted, the first voice's too. Each voiced clip waits
+// while its voice plays (FUN_00403fe0: bit 5 of +0x28 is the playing bit
+// FUN_00611580 sets and FUN_00612890 refreshes from the buffer); the first
+// is no exception. In A0 a voice-limited clip's next voice starts about 0
+// to 2 ticks before the voice's nominal end (EMBRIEF 1147 -0.14 s, 1223
+// -0.15 s, 1155 -0.13 s), the first as the others
+// (evidence/2026-11-12-briefing-droid/README.md, Round 7).
 
 function boxKey(png, [x0, y0, x1, y1], ox = 0, oy = 0) {
   const parts = [];
@@ -335,13 +336,12 @@ async function run(browser, base, faction, name) {
             const [[from, a0From], [to, a0To]] = [series[i - 1], series[i]];
             const a0Gap = a0To - a0From;
             const port = at.get(to) - at.get(from);
-            gaps.push({ from, to, a0: Number(a0Gap.toFixed(2)), port: Number(port.toFixed(2)),
-              asserted: from !== VOICE_GAP_UNASSERTED_FROM[faction.name] });
+            gaps.push({ from, to, a0: Number(a0Gap.toFixed(2)), port: Number(port.toFixed(2)) });
           }
         }
         narration = gaps;
-        const off = gaps.filter(({ a0: a, port, asserted }) => asserted
-          && !(Math.abs(port - a) <= VOICE_GAP_SLACK + VOICE_GAP_SHARE * a));
+        const off = gaps.filter(({ a0: a, port }) =>
+          !(Math.abs(port - a) <= VOICE_GAP_SLACK + VOICE_GAP_SHARE * a));
         assert.deepEqual(off, [], "the voices' gaps against A0");
       }
       const after = await shot("after-briefing");

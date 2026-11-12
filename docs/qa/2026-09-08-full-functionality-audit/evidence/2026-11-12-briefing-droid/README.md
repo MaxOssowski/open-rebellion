@@ -159,3 +159,155 @@ Full gate batch b194 (2026-11-12 02:32) is green: 30 gates, check, workspace
 scenarios). The briefing gate, run afterwards on the main checkout
 (`briefing-2026-11-12T01-32-46-611Z`), passes all four cases. Passed:
 PRE-05-C003, OBJ-01-C008, EVT-02-C005, TAC-07-C004.
+
+## Round 7: the first voice's wait and the skip (2026-11-12)
+
+### Who sets bit 5 of `+0x28`
+
+The clip's sound is a six-word block at `+0x18` (`FUN_00403f70` zeroes
+`+0x18..+0x2c`, then starts it through `FUN_00610c30` → `FUN_006115f0`).
+`+0x28` is that block's `+0x10`, the sound layer's flags:
+
+- `FUN_00611580` (the play) sets `0x20` when the buffer starts.
+- `FUN_00611780`, which `FUN_00403fe0` calls through `FUN_00610c80`, looks
+  the WAVE up. If it is loaded, `FUN_00612890` reads the buffer's status
+  (`FUN_00613c80`) and writes its playing bit to bit 5. If not, it clears
+  `0x30` and returns `0x10`, so `FUN_00403fe0` returns 0.
+
+So bit 5 means "the voice is playing". No clip-specific writer exists: every
+voiced clip waits while its voice plays, the briefing's first too. The
+port's `hyp:` is replaced with these citations. One case the port lacked:
+a voice that did not play holds nothing (`FUN_00611780` returns `0x10`).
+`ClipPlayer::voice_started` now takes whether the voice played. The test
+`a_clip_whose_voice_did_not_play_ends_the_tick_its_last_frame_is_added`
+fails without that (the clip held for the WAVE's length).
+
+The clip loader (`FUN_00404440`) decodes every frame, then starts the voice.
+The player (`FUN_004729c0`) loads the next clip in the step the last one
+ends, and the new clip's first step is the next period. That holds for every
+clip, so nothing here makes the first voice start before its first frame.
+
+### The first gap is not special
+
+`a0_droid_clips.py` now keeps only the briefing's own clips. ALBRIEF 1220's
+first 76 frames are also 1156's, and 1225's first 173 are 1162's, at the
+same index. Neither 1156 nor 1162 plays in message `0x29`, so those A0
+frames date 1220 (9.93 s, spread 0.05) and 1225 (11.77 s, spread 0.05).
+The Empire's dates are unchanged.
+
+The Alliance's "first gap" (1155 to 1221) spanned two voice-limited clips.
+Split, and against each clip's longer limit (frames at 66 ms, or voice):
+
+| Side | Clip | Frames | Voice | A0 gap | A0 gap minus the limit |
+|---|---|---|---|---|---|
+| Alliance | 1155 | 9.04 s | 9.43 s | 9.15 s | -0.28 s |
+| Alliance | 1220 | 5.02 s | 5.06 s | 5.06 s | 0.00 s |
+| Empire | 1147 | 11.02 s | 11.57 s | 11.43 s | -0.14 s |
+| Empire | 1223 | 7.72 s | 7.80 s | 7.80 s | 0.00 s |
+| Empire | 1226 | 16.37 s | 16.56 s | 16.45 s | -0.11 s |
+| Empire | 1155 | 26.27 s | 26.52 s | 26.39 s | -0.13 s |
+| Alliance | 1223 | 10.82 s | 11.00 s | 10.85 s | -0.15 s |
+
+In A0, a voice-limited clip's next voice starts up to about 2 ticks before
+the voice's nominal end, while a frame-limited clip's starts 1 to 2 ticks
+after its frames (an action between them). The Empire's first clip is like
+its others. The Alliance's 1155 is 2 ticks shorter again, inside the A0
+dating spread (0.05 s per voice, two voices per gap) plus one sample. So
+the first clip waits like the others. Nothing in `FUN_00403fe0`'s chain
+shortens the wait. The voice ending a tick or two early in A0 is therefore
+probably the buffer status that Windows 10's DirectSound reports, which is
+not observed. The port is not changed for it.
+
+`briefing.mjs` now asserts every gap, the first included, with the same
+0.3 s plus 2 % tolerance. The Alliance's first series has 6 gaps and its
+second 6 (was 5 and 5).
+
+### Skip (PRE-05-C005): the trace
+
+- Action `0xc` (`FUN_004c30c0` / `FUN_004c0fc0` → `FUN_0041d9d0`) calls
+  `SetWindowsHookExA(WH_KEYBOARD, LAB_0041d8f0, NULL, 0)` and
+  `SetWindowsHookExA(WH_MOUSE, FUN_0041d950, NULL, 0)` (the disassembly
+  pushes 0 for both `hMod` and `dwThreadId`), clears `DAT_006b14b4` and
+  sets `DAT_006b14bc`.
+- Mouse hook `FUN_0041d950`: a left or right press (`0x201`, `0x204`)
+  sets advice bit `0x2000` (`FUN_0043a200`); presses and releases
+  (`0x201`, `0x202`, `0x204`, `0x205`) are swallowed. Other messages,
+  such as the middle button, wheel and moves, pass on.
+- Keyboard hook `LAB_0041d8f0` (disassembled 2026-11-12): while
+  `DAT_006b14b4` is 0 it swallows every key. On Escape (`0x1b`) with
+  lParam bit 31 set (the release), it sets `0x2000`. Once `DAT_006b14b4`
+  is set it passes keys on.
+- The side's update answers `0x2000` (`FUN_004c2dd0` / `FUN_004c0d00`).
+  It schedules the short form `0x28` / `0x49` for 40000 days and calls
+  `FUN_0041da30`, which flushes both players once (`FUN_0042d620` →
+  `FUN_00472ba0`, guarded by `DAT_006b14b4`). The flush stops the current
+  op-4 clip, which cuts its voice (`FUN_00404360` with `+0x64`). So a skip
+  ends the whole briefing, not the current clip. The short form then plays:
+  action `0xb` (Alliance: `FUN_0041d8c0(0x11, 0)` and `FUN_0041dbe0`), one clip
+  (ALBRIEF 1165 / EMBRIEF 1157), and action `0xd`. Action `0xd` opens the
+  Message Index on the Advice Messages (`FUN_0041d770(1, 0x82)`, unless
+  bit `0x8000`) and removes both hooks (`FUN_0041da80`).
+
+The port matches this: `advisor_schedule.rs` `holds_input` (mouse until
+`0xd`), `holds_keys` (keys until the flush), and `request_skip`;
+`main.rs` asks on a left or right press, or on Escape's release. The gate's
+`skip` case asserts actions `0xc, 0xb, 0xd`, voices first + short, and one
+cut voice. One difference remains: the original's hook swallows the
+clicks for every window, but the port blocks only the galaxy map
+(`map_state.input_held`), so an egui window or menu can still take the click
+that skips. It is not changed here, because of the next point.
+
+**Open: on Windows NT the hooks may not install.** `SetWindowsHookExA`
+with `dwThreadId` 0 (a global hook) and `hMod` NULL fails on NT-family
+Windows with `ERROR_HOOK_NEEDS_HMOD` (1428), and Wine returns the same.
+Only `WH_*_LL` hooks are exempt. If so, on the A0 VM (Windows 10) neither a
+click nor Escape skips the briefing, and clicks are not swallowed. The
+handles in `DAT_006b14ac` and `DAT_006b14b0` would be 0. This is from the
+API contract and was not observed. Windows 95/98 behaviour is not
+established either.
+
+The A0 captures that would settle it:
+1. Windows 10 VM, new Alliance game with ALBRIEF.DLL restored. Take QMP
+   screenshots every 0.5 s from the first voice. Left-click once in the
+   galaxy view about 3 s into 1155, and keep going 20 s. Record audio with
+   `-audiodev wav` and save the QMP clock. A skip shows the droid switching
+   to clip 1165's frames, then the Message Index at about 1 to 2 s plus
+   1165's length. No skip shows 1220's frames at about 9.9 s.
+2. The same with Escape pressed and released instead of a click, and the
+   Empire once (EMBRIEF 1157).
+3. Optional: the same on Windows 98 (or 95), for the hooks as designed.
+
+### Proposed status (Round 7)
+
+- PRE-05-C004: **partial**. Every voice gap, the first included, matches
+  A0 in the gate. The voices' sound is not compared, because A0 has no
+  audio.
+- PRE-05-C005: **partial**. The port follows the traced hooks, but there is
+  no A0 skip, and on Windows 10 the hooks may not install at all.
+
+### Round 7 run (Linux, Chromium, headless)
+
+`briefing-2026-11-12T06-51-05-575Z`, on this tree's build
+(`web/open-rebellion.wasm` sha256 `1676a333…0501a2ca2f`, load average
+2.4 at the start): **all four cases pass.**
+
+- Alliance: droid 83 of 85 exact (2,512 crops; misses `b104` 435 and
+  `b121` 543). All 12 gaps are asserted. The first, 1155 to 1220, is
+  9.57 s against A0's 9.15 s, an excess of 0.42 s on a 0.48 s tolerance.
+  1220 to 1221 is 5.23 s against 5.06 s. The rest are 0.01 to 0.35 s over
+  A0.
+- Empire: droid 96 of 98 exact (2,626 crops; misses `e063` 416 and `e094`
+  539). All 15 gaps are asserted. The first, 1147 to 1220, is 11.72 s
+  against 11.43 s, 0.29 s on a 0.53 s tolerance.
+- Skip: both sides give actions `0xc, 0xb, 0xd` and cut the first voice.
+
+The port's gaps run longer than A0's by 0.0 to 0.42 s. That fits the
+port's 67 ms tick against A0's fitted 66 ms, plus a voice-limited clip's
+tick or two. The Alliance's first gap has the least margin, 0.06 s. On a
+loaded machine it is the first assertion likely to fail.
+
+Tests:
+- `cargo test -p rebellion-render`: 1,489 passed.
+- Mutants (`--re voice_started`): 2 mutants, 2 caught.
+- The `played` branch is not among the mutants cargo-mutants generates.
+  Reverting it by hand fails the new test.

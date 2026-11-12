@@ -28,11 +28,15 @@ if side == 'empire':
     defs = list(range(0x1033, 0x1041)) + list(range(0x107c, 0x1083))
     box, corner = (28, 352, 110, 480), (0, 347)
     series = [(lambda n: True, 2.0)]
+    briefing = {1147, 1220, 1221, 1222, 1223, 1224, 1149, 1150, 1151, 1152, 1153, 1225, 1226,
+                1155, 1156, 1160}
 else:
     dll, folder = 'albrief-dll', 'briefing-alliance'
     defs = list(range(0x103b, 0x1049)) + list(range(0x107c, 0x1083))
     box, corner = (536, 344, 606, 452), (541, 337)
     series = [(lambda n: n < 'b100', 1.5), (lambda n: n >= 'b100', 3.0)]
+    briefing = {1155, 1220, 1221, 1222, 1223, 1224, 1157, 1158, 1159, 1160, 1161, 1225, 1226,
+                1163, 1164, 1168}
 
 
 def bmp(i):
@@ -106,7 +110,10 @@ for keep, period in series:
     for k, name in enumerate(chosen):
         # A clip's first and last frames are left out: the first is also
         # the idle still, the last holds while its voice plays on.
-        hits = [m for m in matches[name] if 0 < m[1] < m[2] - 1]
+        # Only the voices of message 0x29 / 0x4a play (briefing.mjs
+        # FULL_WAVES): a frame that is also another clip's (1220's first 76
+        # are 1156's, 1225's first 173 are 1162's) dates the briefing's.
+        hits = [m for m in matches[name] if 0 < m[1] < m[2] - 1 and m[0] in briefing]
         if len({m[0] for m in hits}) == 1:
             seen.append((k * period, hits[0][0], hits[0][1]))
     pairs = [(a, b) for a, b in zip(seen, seen[1:]) if a[1] == b[1]]
