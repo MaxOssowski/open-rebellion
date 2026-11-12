@@ -23,6 +23,7 @@ use rebellion_core::manufacturing::{BuildableKind, ManufacturingState};
 use rebellion_core::missions::{
     MemberTransit, MissionMember, MissionState, MissionTarget, MissionTargetPick,
 };
+use rebellion_core::squadrons::{SquadronPlace, SquadronTransit};
 use rebellion_core::troop_transport::{RegimentLeg, RegimentTransit};
 use rebellion_core::world::GameWorld;
 
@@ -199,6 +200,16 @@ pub enum DefensesItem {
         nth: u32,
     },
     Defense(DefenseFacilityKey),
+    /// The `nth` squadron of `class` travelling to `system`'s planet by
+    /// Move, arriving on day `arrival`: `FUN_00556390` puts it in its
+    /// destination at once, in hyperspace (`+0x50` bit 4). port: the port
+    /// holds it in `SquadronTransits` until it lands.
+    TravellingSquadron {
+        system: SystemKey,
+        class: FighterKey,
+        arrival: u64,
+        nth: u32,
+    },
     /// The `index`th unit queued or travelling for `system`: a squadron or
     /// a defense facility not yet completed (`+0x50` bit 2 clear), or a
     /// facility en route until `arrival` (bit 4).
@@ -224,6 +235,16 @@ impl DefensesItem {
                 Some(MenuObject::PlanetFighter { system, class })
             }
             Self::Defense(key) => Some(MenuObject::DefenseFacility(key)),
+            Self::TravellingSquadron {
+                system,
+                class,
+                arrival,
+                ..
+            } => Some(MenuObject::TravellingFighter {
+                to: SquadronPlace::Planet(system),
+                class,
+                arrival,
+            }),
             Self::Pending {
                 system,
                 kind,
@@ -254,6 +275,9 @@ pub struct DefensesProduction<'a> {
     /// The regiments travelling by Move (`TroopTransportState::transits`):
     /// those bound for a planet's surface list there en route.
     pub regiments: &'a [RegimentTransit],
+    /// The squadrons travelling by Move (`SquadronTransits::transits`):
+    /// those bound for a planet list there en route.
+    pub squadrons: &'a [SquadronTransit],
 }
 
 /// What `FUN_0042c3b0(.., 0, 1)` draws under a row's mini: a personnel's
@@ -326,10 +350,12 @@ fn row_marks(
             .troops
             .get(key)
             .map_or(MiniObject::Craft, |troop| MiniObject::Regiment(troop.class_dat_id)),
-        DefensesItem::Squadron { .. } | DefensesItem::Defense(_) | DefensesItem::Pending { .. } => {
-            MiniObject::Craft
-        }
+        DefensesItem::Squadron { .. }
+        | DefensesItem::TravellingSquadron { .. }
+        | DefensesItem::Defense(_)
+        | DefensesItem::Pending { .. } => MiniObject::Craft,
     };
+    let en_route = en_route || matches!(row.item, DefensesItem::TravellingSquadron { .. });
     crate::fleet_window::mini_marks(object, row.mini, en_route, injured)
 }
 
@@ -620,7 +646,12 @@ impl DefensesWindowState {
             // port: a mission names a squadron aboard a fleet only
             // (MissionTarget::Fighter), so one on a planet is no target,
             // and an unfinished unit is a queue entry.
-            Some(DefensesItem::Squadron { .. } | DefensesItem::Pending { .. }) | None => {}
+            Some(
+                DefensesItem::Squadron { .. }
+                | DefensesItem::TravellingSquadron { .. }
+                | DefensesItem::Pending { .. },
+            )
+            | None => {}
         }
         Some(pick)
     }
@@ -832,7 +863,7 @@ fn page_rows(
     if side != faction_side(player) && !opposing_contents_visible(world, fog, player, system) {
         return Vec::new();
     }
-    let mut rows = built_rows(world, missions, production.regiments, side, system, page);
+    let mut rows = built_rows(world, missions, production, side, system, page);
     rows.extend(pending_rows(world, production, side, system, page));
     rows
 }
@@ -917,7 +948,7 @@ fn defense_page_family(page: DefensesPage, family: u8) -> bool {
 fn built_rows(
     world: &GameWorld,
     missions: &MissionState,
-    regiments: &[RegimentTransit],
+    production: DefensesProduction<'_>,
     side: u8,
     system: SystemKey,
     page: DefensesPage,
@@ -937,7 +968,11 @@ fn built_rows(
             let travelling = missions
                 .en_route()
                 .iter()
-                .filter(|transit| transit.to == system && transit.abode.is_none())
+                .filter(|transit| {
+                    transit.to == system
+                        && transit.abode.is_none()
+                        && crate::quadrant_icons::bound_fleet(missions, transit).is_none()
+                })
                 .filter_map(|transit| {
                     let side = match transit.member {
                         MissionMember::Character(key) => {
@@ -991,7 +1026,8 @@ fn built_rows(
             .iter()
             .copied()
             .chain(
-                regiments
+                production
+                    .regiments
                     .iter()
                     .filter(|transit| transit.leg == RegimentLeg::Surface(system))
                     .map(|transit| transit.troop),
@@ -1009,28 +1045,48 @@ fn built_rows(
                 })
             })
             .collect(),
-        // FUN_005039d0: the squadrons on the planet (0x1c..0x1f).
-        DefensesPage::Squadrons => value
-            .fighters
-            .iter()
-            .filter_map(|entry| {
-                let class = world.fighter_classes.get(entry.class)?;
-                if fleet_side(class.is_alliance) != side {
-                    return None;
-                }
-                let mini = fighter_mini_id(class.dat_id)?;
-                Some((0..entry.count).map(move |nth| DefensesRow {
-                    item: DefensesItem::Squadron {
-                        system,
-                        class: entry.class,
-                        nth,
-                    },
-                    mini,
-                    label: class.name.clone(),
-                }))
-            })
-            .flatten()
-            .collect(),
+        // FUN_005039d0: the squadrons on the planet (0x1c..0x1f). One on its
+        // way there by Move is already in it (FUN_00556390), as a regiment
+        // is (A0 2026-11-11-regiment-en-route/00). port: after the planet's
+        // own.
+        DefensesPage::Squadrons => {
+            let travelling = production
+                .squadrons
+                .iter()
+                .filter(|transit| transit.to == SquadronPlace::Planet(system))
+                .map(|transit| (transit.class, transit.count, Some(transit.arrival_tick)));
+            value
+                .fighters
+                .iter()
+                .map(|entry| (entry.class, entry.count, None))
+                .chain(travelling)
+                .filter_map(|(key, count, arrival)| {
+                    let class = world.fighter_classes.get(key)?;
+                    if fleet_side(class.is_alliance) != side {
+                        return None;
+                    }
+                    let mini = fighter_mini_id(class.dat_id)?;
+                    Some((0..count).map(move |nth| DefensesRow {
+                        item: match arrival {
+                            None => DefensesItem::Squadron {
+                                system,
+                                class: key,
+                                nth,
+                            },
+                            Some(arrival) => DefensesItem::TravellingSquadron {
+                                system,
+                                class: key,
+                                arrival,
+                                nth,
+                            },
+                        },
+                        mini,
+                        label: class.name.clone(),
+                    }))
+                })
+                .flatten()
+                .collect()
+        }
         // FUN_00527050, keeping families 0x24 and 0x25 (page 4) or 0x22 and
         // 0x23 (page 5).
         DefensesPage::Shields | DefensesPage::Batteries => value
@@ -1798,6 +1854,7 @@ mod tests {
             manufacturing: Box::leak(Box::default()),
             deliveries: Box::leak(Box::default()),
             regiments: &[],
+            squadrons: &[],
         }
     }
 
@@ -1953,6 +2010,43 @@ mod tests {
     }
 
     #[test]
+    fn a_member_on_its_way_aboard_a_fleet_is_the_fleets_not_the_planets() {
+        // A Move onto a fleet lands its member in the fleet, the Move's
+        // target container (+0x74, FUN_00556390), at once; the page walks
+        // the system's own children only (FUN_00513050 never descends), so
+        // the member is the Fleet window's (quadrant_icons::fleet_arrivals).
+        let (mut world, system, mut missions) = stocked();
+        let rider = add_character(&mut world, system, "Rider", true);
+        world.characters[rider].current_system = None;
+        let fleet = rebellion_core::ids::FleetKey::default();
+        let id = missions.dispatch(MissionRequest::single(
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            rider,
+            system,
+            None,
+            0,
+        ));
+        assert!(missions.set_target_fleet(id, fleet));
+        missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::Character(rider),
+            mission_id: id,
+            to: system,
+            arrival: 9,
+            abode: None,
+        });
+        let fog = seen(system);
+        assert!(
+            !labels(&world, &fog, &missions, system, DefensesPage::Personnel)
+                .contains(&"Rider".to_owned())
+        );
+        assert_eq!(
+            crate::quadrant_icons::fleet_arrivals(&missions),
+            [(MissionMember::Character(rider), fleet)]
+        );
+    }
+
+    #[test]
     fn members_on_their_way_take_the_en_route_mark_over_their_backdrop() {
         // A0 specforces/03: Mon Calamari's travelling Garm Bel Iblis and
         // Adar Tallon sit on STRATEGY 11501 (the en route mark, FUN_0042c3b0
@@ -2057,6 +2151,7 @@ mod tests {
             manufacturing: &manufacturing,
             deliveries: &deliveries,
             regiments: &[],
+            squadrons: &[],
         };
         let fog = seen(system);
         let rows = |page| {
@@ -2164,6 +2259,7 @@ mod tests {
             manufacturing: &manufacturing,
             deliveries: &deliveries,
             regiments: &[],
+            squadrons: &[],
         };
         let fog = seen(system);
         let built = labels(&world, &fog, &missions, system, DefensesPage::Regiments).len();
@@ -2192,6 +2288,88 @@ mod tests {
             Some(MenuObject::PendingTroop {
                 system,
                 class: DatId::new(ALLIANCE_ARMY)
+            })
+        );
+    }
+
+    #[test]
+    fn squadrons_travelling_to_the_planet_list_after_its_own_with_the_en_route_mark() {
+        // FUN_00556390 puts a squadron sent by Move in its destination at
+        // once, in hyperspace (+0x50 bit 4), as A0 2026-11-11-regiment-en-
+        // route/00 shows for a regiment; FUN_005039d0 lists it there and
+        // FUN_0042c3b0 draws a craft's own en route mark (mini + 0x1000).
+        let (mut world, system, missions) = stocked();
+        let xwing = world.systems[system].fighters[0].class;
+        let tie = world.systems[system].fighters[1].class;
+        let other = world.systems.insert(world.systems[system].clone());
+        let transit = |class, count, to| SquadronTransit {
+            class,
+            count,
+            origin: other,
+            to,
+            arrival_tick: 77,
+        };
+        let squadrons = [
+            transit(xwing, 2, SquadronPlace::Planet(system)),
+            transit(xwing, 1, SquadronPlace::Planet(other)),
+            // The other side's travel lists on its own side's page.
+            transit(tie, 1, SquadronPlace::Planet(system)),
+        ];
+        let manufacturing = ManufacturingState::default();
+        let deliveries = DeliveryState::default();
+        let rows = page_rows(
+            &world,
+            &seen(system),
+            &missions,
+            DefensesProduction {
+                manufacturing: &manufacturing,
+                deliveries: &deliveries,
+                regiments: &[],
+                squadrons: &squadrons,
+            },
+            Faction::Alliance,
+            system,
+            DefensesPage::Squadrons,
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.item).collect::<Vec<_>>(),
+            [
+                DefensesItem::Squadron {
+                    system,
+                    class: xwing,
+                    nth: 0
+                },
+                DefensesItem::Squadron {
+                    system,
+                    class: xwing,
+                    nth: 1
+                },
+                DefensesItem::TravellingSquadron {
+                    system,
+                    class: xwing,
+                    arrival: 77,
+                    nth: 0
+                },
+                DefensesItem::TravellingSquadron {
+                    system,
+                    class: xwing,
+                    arrival: 77,
+                    nth: 1
+                },
+            ]
+        );
+        let travelling = &rows[2];
+        assert_eq!(
+            row_marks(&world, &[], &[], travelling),
+            [(DllSource::Gokres, travelling.mini + 0x1000)]
+        );
+        assert_eq!(row_marks(&world, &[], &[], &rows[0]), []);
+        assert_eq!(
+            travelling.item.menu_object(),
+            Some(MenuObject::TravellingFighter {
+                to: SquadronPlace::Planet(system),
+                class: xwing,
+                arrival: 77
             })
         );
     }
@@ -2246,6 +2424,7 @@ mod tests {
                 manufacturing: &manufacturing,
                 deliveries: &deliveries,
                 regiments: &regiments,
+                squadrons: &[],
             },
             Faction::Alliance,
             system,
@@ -2302,6 +2481,7 @@ mod tests {
             manufacturing: &manufacturing,
             deliveries: &deliveries,
             regiments: &[],
+            squadrons: &[],
         };
         let rows = page_rows(
             &world,

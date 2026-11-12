@@ -1163,7 +1163,9 @@ pub fn original_encyclopedia_object(
                 FIGHTER_FAMILY,
             ));
         }
-        MenuObject::PlanetFighter { class, .. } | MenuObject::PendingFighter { class, .. } => {
+        MenuObject::PlanetFighter { class, .. }
+        | MenuObject::PendingFighter { class, .. }
+        | MenuObject::TravellingFighter { class, .. } => {
             return Some(class_entry(
                 world.fighter_classes.get(class)?.dat_id,
                 FIGHTER_FAMILY,

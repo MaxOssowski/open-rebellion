@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 109;
+const SCENARIO_COUNT: u8 = 111;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -377,6 +377,21 @@ pub enum Scenario {
     /// open. The quadrant gate's second system is Coruscant
     /// (`quadrant_systems`).
     CoruscantSquadrons = 108,
+    /// The primary system, the player's, on its Defenses window's Fighter
+    /// Squadrons page: one A-wing (TIE Fighter) squadron travelling there by
+    /// Move from the third system, which `FUN_00556390` puts in its
+    /// destination at once, in hyperspace, as A0 2026-11-11-regiment-en-
+    /// route/00 shows for a regiment. A second one travels to the second
+    /// system, emptied of the defenses icon's objects, in the open sector
+    /// window (`quadrant_systems`), whose defenses icon it alone lights
+    /// (`FUN_0045ce80`).
+    SquadronEnroute = 109,
+    /// As `SquadronLoad` without squadrons on the planet, the fleet's hold
+    /// empty: a regiment, an A-wing (TIE Fighter) squadron and a character
+    /// of the player's on their way into the fleet by Move from a system in
+    /// another sector. `FUN_00556390` puts each in the fleet at once, in
+    /// hyperspace, so its Fleet window lists them (`regiment-unload.md`).
+    FleetArrivals = 110,
 }
 
 impl Scenario {
@@ -491,6 +506,8 @@ impl Scenario {
             106 => Self::CoruscantSeized,
             107 => Self::AdvancedBases,
             108 => Self::CoruscantSquadrons,
+            109 => Self::SquadronEnroute,
+            110 => Self::FleetArrivals,
             _ => return None,
         })
     }
@@ -518,6 +535,7 @@ impl Scenario {
                 | Self::RegimentUnloadRefused
                 | Self::FleetJoin
                 | Self::ProductionDestination
+                | Self::FleetArrivals
         )
     }
 
@@ -546,6 +564,7 @@ impl Scenario {
             || self == Self::ReconTargeting
             || self == Self::SpecialForceEnroute
             || self == Self::RegimentEnroute
+            || self == Self::SquadronEnroute
             || self == Self::ResearchTargeting
             || self == Self::TroopResearchTargeting
             || self == Self::UprisingTargeting
@@ -1067,6 +1086,11 @@ pub fn apply(
             troop_transport,
             primary,
         );
+        if request.scenario == Scenario::FleetArrivals {
+            if let Some(fleet) = world.fleets.keys().next() {
+                send_member_aboard(request, world, missions, fleet);
+            }
+        }
     }
     if request.scenario == Scenario::FleetWindowA0 {
         place_kimanan(request, world, cockpit, movement, troop_transport, fleets);
@@ -1368,6 +1392,7 @@ pub fn apply(
             | Scenario::ReconTargeting
             | Scenario::SpecialForceEnroute
             | Scenario::RegimentEnroute
+            | Scenario::SquadronEnroute
             | Scenario::ResearchTargeting
             | Scenario::TroopResearchTargeting
             | Scenario::UprisingTargeting
@@ -1404,8 +1429,84 @@ pub fn apply(
             system_keys.get(2).copied(),
         );
     }
+    if request.scenario == Scenario::SquadronEnroute {
+        place_squadron_enroute(
+            request,
+            world,
+            troop_transport,
+            defenses,
+            (primary, secondary),
+            system_keys.get(2).copied(),
+        );
+    }
 
     let _ = manufacturing;
+}
+
+/// The `SquadronEnroute` scenario: the side's FIGHTSD 1 (A-wing) or 5 (TIE
+/// Fighter) squadron sent by Move from `origin` to `primary`'s planet,
+/// whose Defenses window shows its Fighter Squadrons page with the
+/// travelling squadron alone (the planet's own of the side leave it), and
+/// another to `secondary`, the player's with nothing the defenses icon
+/// counts.
+fn place_squadron_enroute(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    troop_transport: &mut TroopTransportState,
+    defenses: &mut DefensesWindowState,
+    (primary, secondary): (SystemKey, SystemKey),
+    origin: Option<SystemKey>,
+) {
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let side = rebellion_core::dat::Faction::of_alliance(alliance);
+    let index = if alliance { 1 } else { 5 };
+    let Some(class) = world
+        .fighter_classes
+        .iter()
+        .find(|(_, class)| class.dat_id.index() == index && class.is_alliance == alliance)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    let classes = &world.fighter_classes;
+    world.systems[primary].fighters.retain(|entry| {
+        classes
+            .get(entry.class)
+            .is_none_or(|value| value.is_alliance != alliance)
+    });
+    let empty = (secondary != primary).then_some(secondary);
+    if let Some(secondary) = empty {
+        let value = &mut world.systems[secondary];
+        value.control = ControlKind::Controlled(side);
+        value.ground_units.clear();
+        value.fighters.clear();
+        value.defense_facilities.clear();
+        value.special_forces.clear();
+        for character in world.characters.values_mut() {
+            if character.current_system == Some(secondary) {
+                character.current_system = Some(primary);
+            }
+        }
+    }
+    if let Some(origin) = origin.filter(|&origin| origin != primary && origin != secondary) {
+        world.systems[origin].control = ControlKind::Controlled(side);
+        rebellion_core::squadrons::add(&mut world.systems[origin].fighters, class, 2);
+        for to in std::iter::once(primary).chain(empty) {
+            let _ = troop_transport.squadrons.move_squadrons(
+                world,
+                alliance,
+                class,
+                1,
+                rebellion_core::squadrons::SquadronPlace::Planet(origin),
+                rebellion_core::squadrons::SquadronPlace::Planet(to),
+                0,
+            );
+        }
+    }
+    defenses.show_page(
+        primary,
+        rebellion_render::defenses_window::DefensesPage::Squadrons,
+    );
 }
 
 /// The `RegimentEnroute` scenario: TROOPSD 2 (the Alliance Army Regiment)
@@ -1944,6 +2045,11 @@ fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(Syste
         Scenario::CoruscantSeized | Scenario::CoruscantSquadrons => {
             let coruscant = coruscant(world)?;
             Some((loading_target(world, coruscant)?, coruscant))
+        }
+        // The second system, in the open sector window, both times.
+        Scenario::SquadronEnroute => {
+            let second = world.systems.keys().nth(1)?;
+            Some((second, second))
         }
         _ => None,
     }
@@ -2768,6 +2874,7 @@ pub fn emit_status_rows(
             Some(
                 object @ (StatusObject::PendingFacility { .. }
                 | StatusObject::PendingFighter { .. }
+                | StatusObject::TravellingFighter { .. }
                 | StatusObject::PendingTroop { .. }
                 | StatusObject::Producer { .. }),
             ),
@@ -3433,6 +3540,106 @@ fn loading_regiment(world: &GameWorld, primary: SystemKey) -> Option<TroopKey> {
     world.systems.get(primary)?.ground_units.first().copied()
 }
 
+/// The `FleetArrivals` variant: a regiment and the side's FIGHTSD 1 (5)
+/// squadron of the player's at `origin`, in another sector, sent by Move
+/// into `fleet`.
+fn place_fleet_arrivals(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    troop_transport: &mut TroopTransportState,
+    fleet: rebellion_core::ids::FleetKey,
+    origin: SystemKey,
+    alliance: bool,
+) {
+    let side = rebellion_core::dat::Faction::of_alliance(alliance);
+    world.systems[origin].control = ControlKind::Controlled(side);
+    world.systems[origin].exploration_status = ExplorationStatus::Explored;
+    let class_dat_id =
+        rebellion_core::ids::DatId::new(if alliance { 0x1000_0001 } else { 0x1000_0006 });
+    let troop = world.troops.insert(TroopUnit {
+        class_dat_id,
+        is_alliance: alliance,
+        regiment_strength: 100,
+    });
+    world.systems[origin].ground_units.push(troop);
+    let _ = troop_transport.move_regiment(
+        world,
+        movement,
+        &std::collections::HashSet::new(),
+        troop,
+        rebellion_core::troop_transport::RegimentTarget::Fleet(fleet),
+        0,
+    );
+    let index = if alliance { 1 } else { 5 };
+    if let Some(class) = world
+        .fighter_classes
+        .iter()
+        .find(|(_, class)| class.dat_id.index() == index && class.is_alliance == alliance)
+        .map(|(key, _)| key)
+    {
+        rebellion_core::squadrons::add(&mut world.systems[origin].fighters, class, 1);
+        let _ = troop_transport.squadrons.move_squadrons(
+            world,
+            alliance,
+            class,
+            1,
+            rebellion_core::squadrons::SquadronPlace::Planet(origin),
+            rebellion_core::squadrons::SquadronPlace::Fleet(fleet),
+            0,
+        );
+    }
+}
+
+/// The `FleetArrivals` variant's character: the player's first recruited
+/// one off the map, on a Move whose target container is `fleet`
+/// (`MissionState::set_target_fleet`), arriving at its system on day 99.
+fn send_member_aboard(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    missions: &mut MissionState,
+    fleet: rebellion_core::ids::FleetKey,
+) {
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let Some(to) = world.fleets.get(fleet).map(|value| value.location) else {
+        return;
+    };
+    let Some(rider) = world
+        .characters
+        .iter()
+        .find(|(_, character)| {
+            character.is_alliance == alliance && character.recruited && !character.is_killed
+        })
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    world.characters[rider].current_system = None;
+    for value in world.fleets.values_mut() {
+        value.characters.retain(|&key| key != rider);
+    }
+    let faction = if alliance {
+        rebellion_core::missions::MissionFaction::Alliance
+    } else {
+        rebellion_core::missions::MissionFaction::Empire
+    };
+    let id = missions.dispatch(rebellion_core::missions::MissionRequest::single(
+        rebellion_core::missions::MissionKind::Diplomacy,
+        faction,
+        rider,
+        to,
+        None,
+        0,
+    ));
+    missions.set_target_fleet(id, fleet);
+    missions.push_transit(rebellion_core::missions::MemberTransit {
+        member: MissionMember::Character(rider),
+        mission_id: id,
+        to,
+        arrival: 99,
+        abode: None,
+    });
+}
+
 /// The regiment-loading scenarios: the player's first fleet, alone at the
 /// player's primary system with one capital ship that carries regiments, and
 /// one of the player's regiments first on the surface. The Defenses window
@@ -3501,7 +3708,10 @@ fn place_loading_fleet(
     }
     // One carrier of the player's side that can enter hyperspace, of
     // fighters in the squadron variant.
-    let squadrons = request.scenario == Scenario::SquadronLoad;
+    let squadrons = matches!(
+        request.scenario,
+        Scenario::SquadronLoad | Scenario::FleetArrivals
+    );
     let carrier = world
         .capital_ship_classes
         .iter()
@@ -3615,9 +3825,19 @@ fn place_loading_fleet(
         let _ = troop_transport.embark(world, fleet, &aboard);
     }
 
+    if request.scenario == Scenario::FleetArrivals {
+        place_fleet_arrivals(
+            world,
+            movement,
+            troop_transport,
+            fleet,
+            elsewhere,
+            player_is_alliance,
+        );
+    }
     // The squadron variant: two of the player's squadrons, of its side's
     // first fighter class, on the primary planet.
-    if squadrons {
+    if request.scenario == Scenario::SquadronLoad {
         for system in [primary, target] {
             world.systems[system].fighters.clear();
         }
@@ -10709,6 +10929,7 @@ mod tests {
                     &fog,
                     &applied.missions,
                     &applied.movement,
+                    rebellion_render::quadrant_icons::Travellers::default(),
                     player,
                     system,
                     quadrant,
@@ -10937,6 +11158,7 @@ mod tests {
                         manufacturing: &manufacturing,
                         deliveries: &deliveries,
                         regiments: &[],
+                        squadrons: &[],
                     },
                     economy: &economy,
                 },
@@ -11023,6 +11245,7 @@ mod tests {
                         manufacturing: &manufacturing,
                         deliveries: &deliveries,
                         regiments: &[],
+                        squadrons: &[],
                     },
                     economy: &economy,
                 },
@@ -11066,6 +11289,7 @@ mod tests {
                             manufacturing: &manufacturing,
                             deliveries: &deliveries,
                             regiments: &[],
+                            squadrons: &[],
                         },
                         economy: &economy,
                     },
@@ -11204,6 +11428,7 @@ mod tests {
                         manufacturing: &manufacturing,
                         deliveries: &deliveries,
                         regiments: &[],
+                        squadrons: &[],
                     },
                     economy: &economy,
                 },
@@ -11341,6 +11566,103 @@ mod tests {
         assert!(recon.transport.transits().is_empty());
     }
 
+    // FUN_00556390 puts a squadron sent by Move in its destination at once.
+    #[test]
+    fn the_squadron_enroute_scenario_moves_a_squadron_to_the_primary_planet() {
+        for (faction, index, alliance) in [
+            (CockpitFaction::Alliance, 1, true),
+            (CockpitFaction::Empire, 5, false),
+        ] {
+            let applied =
+                apply_to_loading_world_with(request(Scenario::SquadronEnroute, faction), |world| {
+                    for (raw, alliance) in [(0x1c00_0001, true), (0x1c00_0005, false)] {
+                        world
+                            .fighter_classes
+                            .insert(rebellion_core::world::FighterClass {
+                                dat_id: rebellion_core::ids::DatId::new(raw),
+                                is_alliance: alliance,
+                                is_empire: !alliance,
+                                ..Default::default()
+                            });
+                    }
+                });
+            let mut keys = applied.world.systems.keys();
+            let (primary, secondary) = (keys.next().unwrap(), keys.next().unwrap());
+            let [first, second] = applied.transport.squadrons.transits() else {
+                panic!("{:?}", applied.transport.squadrons.transits());
+            };
+            for (transit, to) in [(first, primary), (second, secondary)] {
+                assert_eq!(
+                    transit.to,
+                    rebellion_core::squadrons::SquadronPlace::Planet(to)
+                );
+                assert_ne!(transit.origin, to);
+                assert!(transit.arrival_tick > 0);
+                let class = &applied.world.fighter_classes[transit.class];
+                assert_eq!((class.dat_id.index(), class.is_alliance), (index, alliance));
+            }
+            let empty = &applied.world.systems[secondary];
+            assert!(empty.ground_units.is_empty() && empty.fighters.is_empty());
+            assert!(empty.defense_facilities.is_empty() && empty.special_forces.is_empty());
+        }
+    }
+
+    // FUN_00556390 puts each object sent by Move into its target container,
+    // here the fleet, at once (regiment-unload.md).
+    #[test]
+    fn the_fleet_arrivals_scenario_sends_a_regiment_squadron_and_character_aboard() {
+        for (faction, index) in [(CockpitFaction::Alliance, 1), (CockpitFaction::Empire, 5)] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let applied =
+                apply_to_loading_world_with(request(Scenario::FleetArrivals, faction), |world| {
+                    for (raw, alliance) in [(0x1c00_0001, true), (0x1c00_0005, false)] {
+                        world
+                            .fighter_classes
+                            .insert(rebellion_core::world::FighterClass {
+                                dat_id: rebellion_core::ids::DatId::new(raw),
+                                is_alliance: alliance,
+                                is_empire: !alliance,
+                                hyperdrive: 1,
+                                ..Default::default()
+                            });
+                    }
+                    let here = world.systems.keys().next().unwrap();
+                    world.characters.insert(rebellion_core::world::Character {
+                        name: "Rider".into(),
+                        is_alliance: alliance,
+                        is_empire: !alliance,
+                        recruited: true,
+                        current_system: Some(here),
+                        ..Default::default()
+                    });
+                });
+            let fleet = applied.world.fleets.keys().next().unwrap();
+            let [regiment] = applied.transport.transits() else {
+                panic!("{faction:?} {:?}", applied.transport.transits());
+            };
+            assert_eq!(
+                regiment.leg,
+                rebellion_core::troop_transport::RegimentLeg::Fleet(fleet)
+            );
+            let [squadron] = applied.transport.squadrons.transits() else {
+                panic!("{faction:?} {:?}", applied.transport.squadrons.transits());
+            };
+            assert_eq!(
+                squadron.to,
+                rebellion_core::squadrons::SquadronPlace::Fleet(fleet)
+            );
+            assert_eq!(
+                applied.world.fighter_classes[squadron.class].dat_id.index(),
+                index
+            );
+            let arrivals = rebellion_render::quadrant_icons::fleet_arrivals(&applied.missions);
+            assert_eq!(arrivals.len(), 1, "{faction:?}");
+            assert_eq!(arrivals[0].1, fleet);
+            assert!(applied.transport.cargo(fleet).is_empty());
+            assert!(applied.world.fleets[fleet].fighters.is_empty());
+        }
+    }
+
     // FUN_00465bb0's destroyed branch reads "Name - Killed" (0x8798); Steam
     // guide guide-023 lists "Ackbar - Killed" in the Personnel Finder.
     #[test]
@@ -11443,6 +11765,8 @@ mod tests {
                 Scenario::TroopResearchTargeting,
                 Scenario::SpecialForceEnroute,
                 Scenario::RegimentEnroute,
+                Scenario::SquadronEnroute,
+                Scenario::FleetArrivals,
             ]
         );
     }

@@ -127,6 +127,15 @@ pub enum MenuObject {
         system: SystemKey,
         class: FighterKey,
     },
+    /// A squadron of `class` travelling by Move to `to`, a planet (the
+    /// Defenses window) or a fleet (the Fleet window), until day `arrival`
+    /// (`0x1c..0x1f`, `+0x50` bit 4): `FUN_00556390` puts it in its
+    /// destination at once.
+    TravellingFighter {
+        to: rebellion_core::squadrons::SquadronPlace,
+        class: FighterKey,
+        arrival: u64,
+    },
     /// A Defenses window regiment in training for `system` (`0x10..0x13`,
     /// `+0x50` bit 2 clear), by its class.
     PendingTroop {
@@ -159,6 +168,7 @@ impl MenuObject {
             | Self::Headquarters(_)
             | Self::PendingFacility { .. }
             | Self::PendingFighter { .. }
+            | Self::TravellingFighter { .. }
             | Self::PendingTroop { .. }
             | Self::Mission(_) => None,
         }
@@ -192,6 +202,7 @@ impl MenuObject {
             | Self::Headquarters(_)
             | Self::PendingFacility { .. }
             | Self::PendingFighter { .. }
+            | Self::TravellingFighter { .. }
             | Self::PendingTroop { .. }
             | Self::Mission(_) => None,
         }
@@ -252,6 +263,9 @@ impl MenuObject {
             }),
             Self::PendingFighter { system, class } => {
                 Some(StatusObject::PendingFighter { system, class })
+            }
+            Self::TravellingFighter { to, class, arrival } => {
+                Some(StatusObject::TravellingFighter { to, class, arrival })
             }
             Self::PendingTroop { system, class } => {
                 Some(StatusObject::PendingTroop { system, class })
@@ -653,10 +667,14 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         // An unfinished squadron keeps them (A0 pending-facility/24); its
         // Scrap names no target, so it is grey. port: its Move rows are grey
         // too, where A0 offers them: an unfinished unit is a queue entry.
+        // One in hyperspace keeps them all grey, as an en route regiment's
+        // are (A0 2026-11-11-regiment-en-route/03; FUN_004f9860 refuses an
+        // object in hyperspace).
         Some(
             MenuObject::Fighter { .. }
             | MenuObject::PlanetFighter { .. }
-            | MenuObject::PendingFighter { .. },
+            | MenuObject::PendingFighter { .. }
+            | MenuObject::TravellingFighter { .. },
         ) => &[MOVE, CONFIRMED_MOVE, SCRAP],
         // Every facility class (defenses, yards, mines and refineries)
         // keeps the base object's order list, slot +0x3c (FUN_005399e0):
@@ -2160,6 +2178,39 @@ mod tests {
             Some(StatusObject::PendingFighter {
                 system: SystemKey::default(),
                 class: FighterKey::default(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_squadron_in_hyperspace_greys_its_move_rows_and_scrap() {
+        // FUN_00502fe0's list, as for a squadron on the planet; an object in
+        // hyperspace takes no order (FUN_004f9860), so Move, Confirmed Move
+        // and Scrap are grey, as A0 2026-11-11-regiment-en-route/03 shows
+        // them on an en route regiment.
+        let travelling = MenuObject::TravellingFighter {
+            to: rebellion_core::squadrons::SquadronPlace::Planet(SystemKey::default()),
+            class: FighterKey::default(),
+            arrival: 9,
+        };
+        let movable = OrderGates {
+            squadron_move: true,
+            ..MISSION_GATE
+        };
+        let rows = object_menu_rows(Some(travelling), movable);
+        assert_eq!(
+            labels(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"]
+        );
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(travelling.scrap_target(), None);
+        assert_eq!(travelling.mission_member(), None);
+        assert_eq!(
+            travelling.status_object(),
+            Some(StatusObject::TravellingFighter {
+                to: rebellion_core::squadrons::SquadronPlace::Planet(SystemKey::default()),
+                class: FighterKey::default(),
+                arrival: 9,
             })
         );
     }

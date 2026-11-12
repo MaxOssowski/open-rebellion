@@ -5944,6 +5944,10 @@ async fn main() {
                                 fog_state,
                                 &mission_state,
                                 &movement_state,
+                                rebellion_render::quadrant_icons::Travellers {
+                                    regiments: troop_transport_state.transits(),
+                                    squadrons: troop_transport_state.squadrons.transits(),
+                                },
                                 cockpit_state.faction,
                                 cockpit_layout,
                                 command,
@@ -5968,6 +5972,10 @@ async fn main() {
                         ctx,
                         &world,
                         &movement_state,
+                        rebellion_render::quadrant_icons::Travellers {
+                            regiments: troop_transport_state.transits(),
+                            squadrons: troop_transport_state.squadrons.transits(),
+                        },
                         fog_state,
                         &mut sector_window_state,
                         cockpit_state.faction,
@@ -6422,6 +6430,8 @@ async fn main() {
                         }
                     }
 
+                    fleet_window_state
+                        .set_arrivals(rebellion_render::quadrant_icons::fleet_arrivals(&mission_state));
                     for action in draw_fleet_windows(
                         ctx,
                         &world,
@@ -6719,6 +6729,7 @@ async fn main() {
                             manufacturing: &mfg_state,
                             deliveries: &delivery_state,
                             regiments: troop_transport_state.transits(),
+                            squadrons: troop_transport_state.squadrons.transits(),
                         },
                         &economy_state,
                         &mut defenses_window_state,
@@ -9557,6 +9568,7 @@ async fn main() {
                             manufacturing: &mfg_state,
                             deliveries: &delivery_state,
                             regiments: troop_transport_state.transits(),
+                            squadrons: troop_transport_state.squadrons.transits(),
                         },
                         economy: &economy_state,
                     },

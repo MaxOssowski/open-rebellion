@@ -15,6 +15,7 @@ use rebellion_core::ids::{
 use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, ProductionArea};
 use rebellion_core::missions::{MissionFaction, MissionMember, MissionState, MissionTarget};
 use rebellion_core::movement::MovementState;
+use rebellion_core::squadrons::SquadronPlace;
 use rebellion_core::troop_transport::{RegimentLeg, TroopTransportState};
 use rebellion_core::world::{CapitalShipClass, GameWorld, ShipInstance};
 
@@ -98,6 +99,14 @@ pub enum StatusObject {
     PendingFighter {
         system: SystemKey,
         class: FighterKey,
+    },
+    /// `0x1c..0x1f`, `FUN_004444c0`: a squadron of `class` travelling by
+    /// Move to `to`, a planet or a fleet, until day `arrival` (`+0x50` bit
+    /// 4).
+    TravellingFighter {
+        to: SquadronPlace,
+        class: FighterKey,
+        arrival: u64,
     },
     /// `0x50..0x7f`, `FUN_00445c60`: an active mission by its id.
     Mission(u64),
@@ -847,6 +856,29 @@ pub fn planet_fighter_rows(
     let value = world.systems.get(system)?;
     let class = world.fighter_classes.get(class)?;
     let mut rows = vec![row("Attached: ", value.name.clone())];
+    squadron_class_rows(&mut rows, class);
+    Some(rows)
+}
+
+/// [`fighter_rows`] for a squadron of `class` on its way to `to`:
+/// `FUN_004444c0` names its container, the destination planet's system or
+/// fleet (`FUN_00556390` moves it there at once), then `FUN_004fd2b0`'s
+/// ETA.
+#[must_use]
+pub fn travelling_fighter_rows(
+    sources: StatusSources<'_>,
+    to: SquadronPlace,
+    class: FighterKey,
+    arrival: u64,
+) -> Option<Vec<StatusRow>> {
+    let world = sources.world;
+    let attached = match to {
+        SquadronPlace::Planet(system) => world.systems.get(system)?.name.clone(),
+        SquadronPlace::Fleet(fleet) => fleet_label(world, fleet)?,
+    };
+    let class = world.fighter_classes.get(class)?;
+    let mut rows = vec![row("Attached: ", attached)];
+    eta(&mut rows, Some(arrival));
     squadron_class_rows(&mut rows, class);
     Some(rows)
 }
@@ -1618,6 +1650,34 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                     picture(fighter_mini_id(fighter.dat_id)),
                     fighter.name.clone(),
                     planet_fighter_rows(sources, system, class)?,
+                )
+            }
+        }
+        // FUN_004444c0 on a squadron in hyperspace: FUN_0042c3b0(.., 1, 1)
+        // lays its own en route mark (portrait + 0x1000) under the
+        // portrait. The window stays only while the squadron travels.
+        StatusObject::TravellingFighter { to, class, arrival } => {
+            let travelling = sources
+                .transport
+                .squadrons
+                .transits()
+                .iter()
+                .any(|transit| {
+                    transit.class == class && transit.arrival_tick == arrival && transit.to == to
+                });
+            if !travelling {
+                return None;
+            }
+            let fighter = world.fighter_classes.get(class)?;
+            let portrait = picture(fighter_mini_id(fighter.dat_id));
+            StatusView {
+                marks: craft_marks(portrait, true, false),
+                ..view(
+                    "Fighter Squadron Status",
+                    side_index(fighter.is_alliance),
+                    portrait,
+                    fighter.name.clone(),
+                    travelling_fighter_rows(sources, to, class, arrival)?,
                 )
             }
         }
@@ -2972,6 +3032,63 @@ mod tests {
             .enqueue(here, QueueItem::new(BuildableKind::Fighter(tie), 5));
         assert!(status_view(states.sources(&world), pending(awing)).is_none());
         assert!(status_view(states.sources(&world), pending(tie)).is_some());
+    }
+
+    #[test]
+    fn a_travelling_squadron_is_attached_to_its_destination_with_its_eta() {
+        // FUN_004444c0 with FUN_00556390: a squadron in hyperspace is in its
+        // destination's container, then FUN_004fd2b0's "ETA Destination:";
+        // FUN_0042c3b0(.., 1, 1) lays its own en route mark (portrait +
+        // 0x1000) under the portrait. It has no "Status:" row.
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Hoth",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let there = system(&mut world, "Bespin", ControlKind::Uncontrolled);
+        let xwing = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                name: "X-wing".into(),
+                is_alliance: true,
+                ..Default::default()
+            });
+        let mut states = States::new();
+        let mut value = serde_json::to_value(&states.transport).unwrap();
+        value["squadrons"]["transits"].as_array_mut().unwrap().push(
+            serde_json::to_value(rebellion_core::squadrons::SquadronTransit {
+                class: xwing,
+                count: 1,
+                origin: here,
+                to: rebellion_core::squadrons::SquadronPlace::Planet(there),
+                arrival_tick: 20,
+            })
+            .unwrap(),
+        );
+        states.transport = serde_json::from_value(value).unwrap();
+        let travelling = |arrival| StatusObject::TravellingFighter {
+            to: rebellion_core::squadrons::SquadronPlace::Planet(there),
+            class: xwing,
+            arrival,
+        };
+
+        let view = status_view(states.sources(&world), travelling(20)).unwrap();
+        assert_eq!(view.title, "Fighter Squadron Status");
+        assert_eq!(view.name, "X-wing");
+        let portrait = fighter_mini_id(DatId::new(0x1c00_0001)).unwrap() - 0x4000;
+        assert_eq!(view.marks, [(DllSource::Gokres, portrait + 0x1000)]);
+        assert_eq!(
+            super::tests::rows(&view.rows[..3]),
+            vec![
+                ("Attached: ", "Bespin"),
+                ("ETA Destination:", "Day 20"),
+                ("Maintenance Cost:", "0"),
+            ]
+        );
+        // Once it has landed the window has nothing to show.
+        assert!(status_view(states.sources(&world), travelling(21)).is_none());
     }
 
     #[test]

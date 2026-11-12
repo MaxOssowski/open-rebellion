@@ -51,6 +51,12 @@ const RECON_TARGETING = 63;
 // 104 SpecialForceEnroute: ReconTargeting with an Infiltrators team (the
 // Empire's Imperial Commandos) travelling to the primary system.
 const SPECIAL_FORCE_ENROUTE = 104;
+// 110 SquadronEnroute: the primary system's Fighter Squadrons page with an
+// A-wing (TIE Fighter) squadron travelling there by Move.
+const SQUADRON_ENROUTE = 110;
+// 111 FleetArrivals: SquadronLoad's fleet with a regiment, a squadron and a
+// character on their way into it by Move, its hold empty.
+const FLEET_ARRIVALS = 111;
 // 105 RegimentEnroute: the primary system's Trooper Regiments page with an
 // Alliance (Imperial) Army Regiment travelling there, then one in training.
 const REGIMENT_ENROUTE = 105;
@@ -81,6 +87,16 @@ function sourceDirectory() {
   ].filter(Boolean);
   const directory = candidates.find((candidate) => fs.existsSync(path.join(candidate, "11554.bmp")));
   if (!directory) throw new Error("owned STRATEGY.DLL BMP extraction is unavailable; set REBELLION_STRATEGY_BMP_DIR");
+  return directory;
+}
+
+function gokresDirectory() {
+  const candidates = [
+    process.env.REBELLION_GOKRES_BMP_DIR,
+    path.join(root, "data/base/ui/gokres-dll/BMP"),
+  ].filter(Boolean);
+  const directory = candidates.find((candidate) => fs.existsSync(path.join(candidate, "17472.bmp")));
+  if (!directory) throw new Error("owned GOKRES.DLL BMP extraction is unavailable; set REBELLION_GOKRES_BMP_DIR");
   return directory;
 }
 
@@ -484,6 +500,66 @@ const cases = [
       states: [false, false, true, true, false] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
+  // The en route squadron: FUN_00556390 puts a squadron sent by Move in its
+  // destination at once, in hyperspace (+0x50 bit 4), so the destination's
+  // Fighter Squadrons page lists it (FUN_005039d0), as A0
+  // 2026-11-11-regiment-en-route/00 shows for a regiment. Its cell is the
+  // mini over its own en route mark (FUN_0042c3b0, the mini + 0x1000);
+  // its menu greys Move, Confirmed Move and Scrap as the en route
+  // regiment's does (A0 /03); its Status (FUN_004444c0) is attached to the
+  // destination with FUN_004fd2b0's ETA and the portrait's own en route mark
+  // (portrait + 0x1000). No A0 capture of a travelling squadron.
+  {
+    name: "squadron-en-route",
+    code: SQUADRON_ENROUTE,
+    family: "TravellingFighter",
+    rows: [["Attached: "], ["ETA Destination:"], ["Maintenance Cost:"], ["Squadron Size:"], ["Hyperdrive Rating:"],
+      ["Maximum Shield Strength:"], ["Sub-Light Engine Rating:"], ["Maneuverability:"], ["Detection Rating:"],
+      ["Bombardment Value:"], ["Weapons Rating:"], [" Laser Rating:"], [" Ion Cannon:"], [" Torpedoes:"]],
+    // GOKRES 17984 (A-wing) and 18048 (TIE Fighter) less 0x4000, plus 0x1000.
+    marks: { alliance: [["Gokres", 5696]], empire: [["Gokres", 5760]] },
+    cellComposite: { alliance: 17984, empire: 18048 },
+    // The second squadron travels to the second system, which holds
+    // nothing else the defenses icon counts (FUN_0045ce80): its icon shows,
+    // the side's STRATEGY art (FUN_0045ca80), in every unkeyed pixel.
+    defensesIcon: { alliance: 10773, empire: 10781 },
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"],
+      states: [false, false, true, true, false] },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
+  // Units on their way into a fleet (FUN_00556390 into the fleet at once;
+  // regiment-unload.md): its Fighters, Troops and Personnel tabs light and
+  // list them although its hold is empty, each over its en route mark. The
+  // squadron's menu greys Move, Confirmed Move and Scrap; its Status is
+  // attached to the fleet with the ETA. No A0 capture.
+  {
+    name: "fleet-squadron-en-route",
+    code: FLEET_ARRIVALS,
+    family: "TravellingFighter",
+    rows: [["Attached: "], ["ETA Destination:"], ["Maintenance Cost:"], ["Squadron Size:"], ["Hyperdrive Rating:"],
+      ["Maximum Shield Strength:"], ["Sub-Light Engine Rating:"], ["Maneuverability:"], ["Detection Rating:"],
+      ["Bombardment Value:"], ["Weapons Rating:"], [" Laser Rating:"], [" Ion Cannon:"], [" Torpedoes:"]],
+    marks: { alliance: [["Gokres", 5696]], empire: [["Gokres", 5760]] },
+    cellComposite: { alliance: 17984, empire: 18048 },
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"],
+      states: [false, false, true, true, false] },
+    target: async (page) => {
+      const opened = await openFleetWindow(page);
+      await click(page, point(opened.fleet_entry));
+      const fleet = await fleetLoad(page, (o) => o.selected === "fleet" && o.troops_tab && o.fighters_tab);
+      assert.deepEqual(fleet.enabled, [true, true, true, true], JSON.stringify(fleet));
+      await click(page, point(fleet.troops_tab));
+      const troops = await fleetLoad(page, (o) => o.tab === "Troops" && o.items.length > 0);
+      assert.equal(troops.items.length, 1, JSON.stringify(troops));
+      await click(page, { x: Math.round(fleet.troops_tab[0] + 32), y: Math.round(fleet.troops_tab[1]) });
+      const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0);
+      assert.equal(personnel.items.length, 1, JSON.stringify(personnel));
+      await click(page, point(fleet.fighters_tab));
+      const fighters = await fleetLoad(page, (o) => o.tab === "Fighters" && o.items.length > 0 && o.first_item);
+      assert.equal(fighters.items.length, 1, JSON.stringify(fighters));
+      return point(fighters.first_item);
+    },
+  },
   // The regiment in training, the page's second cell: A0 02 reads
   // "Training" with no ETA row, the picture over 11514 and the unfinished
   // mark 11571 (11573 for side 2). A0 01's menu offers Move and Confirmed
@@ -589,22 +665,93 @@ async function inspect(server, source, faction, testCase, executable) {
     // The listed cell's mini and marks against A0, at the best offset near
     // the target (the cell's top left is up to 70 by 50 from it).
     let cellCheck = null;
+    // Or the cell composed from the owned GOKRES bitmaps (testCase.cellComposite):
+    // the en route mark (the mini + 0x1000), then the mini keyed over it;
+    // pixels where both are the blue key show the window and are skipped.
+    let cellReference = null;
     if (testCase.a0Cell && faction.name === testCase.a0Cell.side) {
       const cell = testCase.a0Cell;
+      const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/status", cell.file)));
+      const skip = new Set(cell.skip.map(([x, y]) => `${x},${y}`));
+      cellReference = { cell, skip, at: (x, y) => ((cell.y + y) * a0.width + cell.x + x) * 4, data: a0.data, label: "A0" };
+    } else if (testCase.cellComposite) {
+      const mini = testCase.cellComposite[faction.name];
+      const gokres = (id) => {
+        const bytes = fs.readFileSync(path.join(gokresDirectory(), `${id}.bmp`));
+        return decodeIndexedBmp(bytes, bytes.readInt32LE(18), Math.abs(bytes.readInt32LE(22)));
+      };
+      const face = gokres(mini);
+      const mark = gokres(mini + 0x1000);
+      // Both at the cell's mini origin; a fighter's 66-wide mini covers
+      // the 61-wide mark.
+      const width = Math.max(face.width, mark.width);
+      const height = Math.max(face.height, mark.height);
+      const opaque = (image, x, y) => {
+        if (x >= image.width || y >= image.height) return null;
+        const i = (y * image.width + x) * 4;
+        const blue = image.data[i] === 0 && image.data[i + 1] === 0 && image.data[i + 2] === 255;
+        return blue ? null : image.data.subarray(i, i + 4);
+      };
+      const composite = new PNG({ width, height });
+      const skip = new Set();
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const top = opaque(face, x, y) ?? opaque(mark, x, y);
+          if (top) composite.data.set(top, (y * width + x) * 4);
+          else skip.add(`${x},${y}`);
+        }
+      }
+      fs.writeFileSync(path.join(directory, "cell-expected.png"), PNG.sync.write(composite));
+      cellReference = { cell: { width, height }, skip, at: (x, y) => (y * width + x) * 4, data: composite.data, label: `GOKRES ${mini + 0x1000} under ${mini}` };
+    }
+    // The defenses icon of the quadrant setup's second system against the
+    // side's STRATEGY art, its blue key skipped.
+    let iconCheck = null;
+    if (testCase.defensesIcon) {
+      await page.waitForFunction(() => window.__openRebellionInterfaceQuadrantSetup, null, { timeout: 10_000 });
+      const setup = await page.evaluate(() => window.__openRebellionInterfaceQuadrantSetup);
+      const entry = setup.quadrants.find((q) => q.system_dat_id === setup.second_dat_id && q.quadrant === "defenses");
+      assert.ok(entry, JSON.stringify(setup));
+      // The art at the icon's top left, at its own size (paint_native).
+      const [left, top] = entry.rect.map(Math.round);
+      const id = testCase.defensesIcon[faction.name];
+      const bytes = fs.readFileSync(path.join(source, `${id}.bmp`));
+      const art = decodeIndexedBmp(bytes, bytes.readInt32LE(18), Math.abs(bytes.readInt32LE(22)));
+      const { width, height } = art;
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await page.waitForTimeout(300);
+      const shot = await page.screenshot({ animations: "disabled" });
+      fs.writeFileSync(path.join(directory, "defenses-icon-screen.png"), shot);
+      const screen = PNG.sync.read(shot);
+      let checked = 0;
+      let differing = 0;
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const i = (y * width + x) * 4;
+          if (art.data[i] === 0 && art.data[i + 1] === 0 && art.data[i + 2] === 255) continue;
+          checked += 1;
+          const j = ((top + y) * screen.width + left + x) * 4;
+          if ([0, 1, 2].some((k) => art.data[i + k] !== screen.data[j + k])) differing += 1;
+        }
+      }
+      iconCheck = { id, rect: entry.rect, checked, differing };
+      assert.ok(checked > 0 && differing === 0, `the defenses icon differs from STRATEGY ${id}: ${JSON.stringify(iconCheck)}`);
+    }
+    if (cellReference) {
+      const { cell, skip } = cellReference;
       await page.mouse.move(2, 2);
       await frames(page);
       await page.waitForTimeout(300);
       const port = PNG.sync.read(await page.screenshot({ animations: "disabled" }));
-      const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/status", cell.file)));
-      const skip = new Set(cell.skip.map(([x, y]) => `${x},${y}`));
       const differing = (ox, oy) => {
         let count = 0;
         for (let y = 0; y < cell.height; y += 1) {
           for (let x = 0; x < cell.width; x += 1) {
             if (skip.has(`${x},${y}`)) continue;
-            const i = ((cell.y + y) * a0.width + cell.x + x) * 4;
+            const i = cellReference.at(x, y);
             const j = ((oy + y) * port.width + ox + x) * 4;
-            if ([0, 1, 2].some((k) => a0.data[i + k] !== port.data[j + k])) count += 1;
+            if ([0, 1, 2].some((k) => cellReference.data[i + k] !== port.data[j + k])) count += 1;
           }
         }
         return count;
@@ -616,9 +763,9 @@ async function inspect(server, source, faction, testCase, executable) {
           if (!best || count < best.differing) best = { x: ox, y: oy, differing: count };
         }
       }
-      cellCheck = { pixels: cell.width * cell.height - skip.size, ...best };
+      cellCheck = { reference: cellReference.label, pixels: cell.width * cell.height - skip.size, ...best };
       fs.writeFileSync(path.join(directory, "cell-port.png"), PNG.sync.write(crop(PNG.sync.write(port), { x: best.x, y: best.y, width: cell.width, height: cell.height })));
-      assert.equal(best.differing, 0, `the listed cell differs from A0: ${JSON.stringify(cellCheck)}`);
+      assert.equal(best.differing, 0, `the listed cell differs from ${cellReference.label}: ${JSON.stringify(cellCheck)}`);
     }
     // A right release on the window off its bands, no band selected, opens
     // the pop-up for nothing (FUN_004534f0 -> FUN_004ac5c0): A0
@@ -839,7 +986,7 @@ async function inspect(server, source, faction, testCase, executable) {
       menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
       assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
     }
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, cellCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, cellCheck, iconCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

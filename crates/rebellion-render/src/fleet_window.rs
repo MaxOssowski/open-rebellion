@@ -14,9 +14,10 @@ use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::fleet_join;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{CharacterKey, DatId, FleetKey, SpecialForceKey, SystemKey, TroopKey};
-use rebellion_core::missions::{MissionTarget, MissionTargetPick};
+use rebellion_core::missions::{MissionMember, MissionTarget, MissionTargetPick};
 use rebellion_core::movement::MovementState;
-use rebellion_core::troop_transport::TroopTransportState;
+use rebellion_core::squadrons::SquadronPlace;
+use rebellion_core::troop_transport::{RegimentLeg, TroopTransportState};
 use rebellion_core::world::{CapitalShipClass, ControlKind, GameWorld, ShipInstance};
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -620,6 +621,13 @@ enum ItemObject {
     },
     /// A squadron, by its entry's index in the fleet's `fighters`.
     Fighter { fleet: FleetKey, index: usize },
+    /// A squadron of `class` on its way into `fleet` by Move, arriving on
+    /// day `arrival`.
+    TravellingFighter {
+        fleet: FleetKey,
+        class: rebellion_core::ids::FighterKey,
+        arrival: u64,
+    },
     /// A Personnel tab character (manual p. 111: drag a character onto a
     /// system or fleet; p. 56: right-click it for Command).
     Character(rebellion_core::ids::CharacterKey),
@@ -632,6 +640,15 @@ impl ItemObject {
     const fn menu_object(self) -> MenuObject {
         match self {
             Self::Fighter { fleet, index } => MenuObject::Fighter { fleet, index },
+            Self::TravellingFighter {
+                fleet,
+                class,
+                arrival,
+            } => MenuObject::TravellingFighter {
+                to: SquadronPlace::Fleet(fleet),
+                class,
+                arrival,
+            },
             Self::Fleet(fleet) => MenuObject::Fleet(fleet),
             Self::Regiment(troop) => MenuObject::Troop(troop),
             Self::Character(character) => MenuObject::Character(character),
@@ -666,6 +683,9 @@ pub struct FleetWindowState {
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
     created: bool,
+    /// The characters and special forces on their way into a fleet by Move
+    /// (`quadrant_icons::fleet_arrivals`), which its Personnel tab lists.
+    arrivals: Vec<(MissionMember, FleetKey)>,
 }
 
 impl Default for FleetWindowState {
@@ -677,11 +697,18 @@ impl Default for FleetWindowState {
             hidden: Vec::new(),
             drag: None,
             created: false,
+            arrivals: Vec::new(),
         }
     }
 }
 
 impl FleetWindowState {
+    /// The members on their way into fleets this frame
+    /// (`quadrant_icons::fleet_arrivals`).
+    pub fn set_arrivals(&mut self, arrivals: Vec<(MissionMember, FleetKey)>) {
+        self.arrivals = arrivals;
+    }
+
     /// When this kind last raised a window, while one is open: its claim
     /// on the shared focus ([`crate::window_focus::shared_focus`]).
     pub fn focus_stamp(&self) -> Option<u64> {
@@ -970,8 +997,9 @@ impl FleetWindowState {
                 .collect(),
             selected,
             tab: window.tab,
-            enabled: FleetWindowTab::ALL.map(|tab| tab_enabled(world, transport, selected, tab)),
-            items: right_items(world, transport, selected, window.tab)
+            enabled: FleetWindowTab::ALL
+                .map(|tab| tab_enabled(world, transport, &self.arrivals, selected, tab)),
+            items: right_items(world, transport, &self.arrivals, selected, window.tab)
                 .into_iter()
                 .map(|item| item.label)
                 .collect(),
@@ -1059,10 +1087,10 @@ impl FleetWindowState {
             }
         } else if in_rect(RIGHT_LIST, local) {
             let row = right_row_at(local.1, window.right_scroll);
-            right_target(world, transport, window, row).or_else(|| {
+            right_target(world, transport, &self.arrivals, window, row).or_else(|| {
                 window
                     .selected_item
-                    .and_then(|index| right_target(world, transport, window, index))
+                    .and_then(|index| right_target(world, transport, &self.arrivals, window, index))
             })
         } else {
             None
@@ -1139,8 +1167,9 @@ impl FleetWindowState {
                 FleetWindowAction::DragCharacter { character, point }
             }
             // port: a special force's drag is not ported (nor from the
-            // Defenses window); its menu's Move targets instead.
-            ItemObject::SpecialForce(_) => return None,
+            // Defenses window); its menu's Move targets instead. A squadron
+            // in hyperspace takes no order (FUN_004f9860).
+            ItemObject::SpecialForce(_) | ItemObject::TravellingFighter { .. } => return None,
             ItemObject::Ship {
                 fleet,
                 index,
@@ -1502,6 +1531,7 @@ fn drop_target(
 fn tab_enabled(
     world: &GameWorld,
     transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
     selected: Option<FleetWindowEntry>,
     tab: FleetWindowTab,
 ) -> bool {
@@ -1527,12 +1557,29 @@ fn tab_enabled(
     let Some(value) = world.fleets.get(fleet) else {
         return false;
     };
+    // What is on its way in by Move is in the fleet already
+    // (FUN_00556390), so it lights its tab too.
     match tab {
         FleetWindowTab::CapitalShips => true,
-        FleetWindowTab::Fighters => value.fighters.iter().any(|entry| entry.count > 0),
-        FleetWindowTab::Troops => transport.carried_count(fleet) > 0,
+        FleetWindowTab::Fighters => {
+            value.fighters.iter().any(|entry| entry.count > 0)
+                || transport
+                    .squadrons
+                    .transits()
+                    .iter()
+                    .any(|transit| transit.to == SquadronPlace::Fleet(fleet) && transit.count > 0)
+        }
+        FleetWindowTab::Troops => {
+            transport.carried_count(fleet) > 0
+                || transport
+                    .transits()
+                    .iter()
+                    .any(|transit| transit.leg == RegimentLeg::Fleet(fleet))
+        }
         FleetWindowTab::Personnel => {
-            !value.characters.is_empty() || !value.special_forces.is_empty()
+            !value.characters.is_empty()
+                || !value.special_forces.is_empty()
+                || arrivals.iter().any(|(_, to)| *to == fleet)
         }
     }
 }
@@ -1593,6 +1640,10 @@ struct RightItem {
     damaged: bool,
     /// A captive character (`+0xac` bit 0), marked over its mini.
     captive: bool,
+    /// On its way into the fleet by Move (`+0x50` bit 4): `FUN_00556390`
+    /// puts it in the fleet at once, so the fleet lists it with its en
+    /// route mark although the fleet is in orbit.
+    en_route: bool,
     /// The regiment or ship the item stands for.
     object: Option<ItemObject>,
 }
@@ -1625,10 +1676,11 @@ fn ship_target(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<Missi
 fn right_target(
     world: &GameWorld,
     transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
     window: &OpenFleetWindow,
     index: usize,
 ) -> Option<Option<ItemTarget>> {
-    let item = right_items(world, transport, window.selected, window.tab)
+    let item = right_items(world, transport, arrivals, window.selected, window.tab)
         .into_iter()
         .nth(index)?;
     Some(match item.object {
@@ -1650,7 +1702,7 @@ fn right_target(
         Some(ItemObject::SpecialForce(key)) => {
             Some(ItemTarget::Object(MissionTarget::SpecialForce(key)))
         }
-        Some(ItemObject::Fleet(_)) | None => None,
+        Some(ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. }) | None => None,
     })
 }
 
@@ -1666,6 +1718,7 @@ fn ship_item_row(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<usi
 fn right_items(
     world: &GameWorld,
     transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
     selected: Option<FleetWindowEntry>,
     tab: FleetWindowTab,
 ) -> Vec<RightItem> {
@@ -1678,7 +1731,13 @@ fn right_items(
         let Some(own) = cargo.get(index) else {
             return Vec::new();
         };
-        let items = right_items(world, transport, Some(FleetWindowEntry::Fleet(fleet)), tab);
+        let items = right_items(
+            world,
+            transport,
+            arrivals,
+            Some(FleetWindowEntry::Fleet(fleet)),
+            tab,
+        );
         return match tab {
             FleetWindowTab::CapitalShips => Vec::new(),
             FleetWindowTab::Fighters => {
@@ -1725,6 +1784,7 @@ fn right_items(
                 contents: contents.get(index).copied().unwrap_or(0),
                 damaged: crate::status_rows::damaged(ship, class),
                 captive: false,
+                en_route: false,
                 object: Some(ItemObject::Ship {
                     fleet,
                     index,
@@ -1732,35 +1792,79 @@ fn right_items(
                 }),
             })
             .collect(),
-        // port: the port keeps squadrons as counts per class.
-        FleetWindowTab::Fighters => value
-            .fighters
-            .iter()
-            .enumerate()
-            .filter_map(|(index, entry)| {
-                Some((index, world.fighter_classes.get(entry.class)?, entry.count))
-            })
-            .flat_map(|(index, class, count)| {
-                (0..count).map(move |_| RightItem {
-                    mini: fighter_mini_id(class.dat_id),
-                    kind: MiniObject::Craft,
-                    label: class.name.clone(),
-                    no_hyperdrive: false,
-                contents: 0,
-                    damaged: false,
-                    captive: false,
-                    object: Some(ItemObject::Fighter { fleet, index }),
+        // port: the port keeps squadrons as counts per class. Squadrons on
+        // their way into the fleet by Move follow its own: FUN_00556390
+        // puts them in the fleet at once, in hyperspace.
+        FleetWindowTab::Fighters => {
+            let travelling = transport
+                .squadrons
+                .transits()
+                .iter()
+                .filter(|transit| transit.to == SquadronPlace::Fleet(fleet))
+                .map(|transit| {
+                    (
+                        transit.class,
+                        transit.count,
+                        ItemObject::TravellingFighter {
+                            fleet,
+                            class: transit.class,
+                            arrival: transit.arrival_tick,
+                        },
+                    )
+                });
+            value
+                .fighters
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    (
+                        entry.class,
+                        entry.count,
+                        ItemObject::Fighter { fleet, index },
+                    )
                 })
-            })
-            .collect(),
+                .chain(travelling)
+                .filter_map(|(class, count, object)| {
+                    Some((world.fighter_classes.get(class)?, count, object))
+                })
+                .flat_map(|(class, count, object)| {
+                    (0..count).map(move |_| RightItem {
+                        mini: fighter_mini_id(class.dat_id),
+                        kind: MiniObject::Craft,
+                        label: class.name.clone(),
+                        no_hyperdrive: false,
+                        contents: 0,
+                        damaged: false,
+                        captive: false,
+                        en_route: matches!(object, ItemObject::TravellingFighter { .. }),
+                        object: Some(object),
+                    })
+                })
+                .collect()
+        }
+        // Regiments on their way into the fleet by Move follow its cargo
+        // (FUN_00556390, `regiment-unload.md`).
         FleetWindowTab::Troops => transport
             .cargo(fleet)
             .iter()
-            .filter_map(|&key| Some((key, world.troops.get(key)?)))
-            .filter_map(|(key, troop)| {
-                Some((key, troop.class_dat_id, troop_mini(troop.class_dat_id)?))
+            .map(|&key| (key, false))
+            .chain(
+                transport
+                    .transits()
+                    .iter()
+                    .filter(|transit| transit.leg == RegimentLeg::Fleet(fleet))
+                    .map(|transit| (transit.troop, true)),
+            )
+            .filter_map(|(key, en_route)| Some((key, en_route, world.troops.get(key)?)))
+            .filter_map(|(key, en_route, troop)| {
+                Some((
+                    key,
+                    en_route,
+                    troop.class_dat_id,
+                    troop_mini(troop.class_dat_id)?,
+                ))
             })
-            .map(|(key, class, (mini, label))| RightItem {
+            .map(|(key, en_route, class, (mini, label))| RightItem {
                 mini: Some(mini),
                 kind: MiniObject::Regiment(class),
                 label: label.to_owned(),
@@ -1768,6 +1872,7 @@ fn right_items(
                 contents: 0,
                 damaged: false,
                 captive: false,
+                en_route,
                 object: Some(ItemObject::Regiment(key)),
             })
             .collect(),
@@ -1784,6 +1889,7 @@ fn right_items(
                 // FUN_004f7800: an injured character is damaged.
                 damaged: character.injury > 0,
                 captive: character.is_captive,
+                en_route: false,
                 object: Some(ItemObject::Character(key)),
             })
             // hyp: the special forces after the characters.
@@ -1798,11 +1904,56 @@ fn right_items(
                 contents: 0,
                     damaged: false,
                     captive: false,
+                    en_route: false,
                     object: Some(ItemObject::SpecialForce(key)),
                 })
             }))
+            // A member on its way aboard by Move is in the fleet already
+            // (FUN_00556390 into the Move's target container +0x74), with
+            // its en route mark (FUN_0042c3b0 +0x50 bit 4).
+            .chain(
+                arrivals
+                    .iter()
+                    .filter(|(_, to)| *to == fleet)
+                    .filter_map(|&(member, _)| travelling_member_item(world, member)),
+            )
             .collect(),
     }
+}
+
+/// A Personnel tab row for `member` on its way into the fleet.
+fn travelling_member_item(world: &GameWorld, member: MissionMember) -> Option<RightItem> {
+    Some(match member {
+        MissionMember::Character(key) => {
+            let character = world.characters.get(key)?;
+            RightItem {
+                mini: character_picture(character),
+                kind: MiniObject::Character,
+                label: character.name.clone(),
+                no_hyperdrive: false,
+                contents: 0,
+                damaged: character.injury > 0,
+                captive: character.is_captive,
+                en_route: true,
+                object: Some(ItemObject::Character(key)),
+            }
+        }
+        MissionMember::SpecialForce(key) => {
+            let unit = world.special_forces.get(key)?;
+            let (mini, label) = crate::system_window::special_force_mini(unit.class_dat_id)?;
+            RightItem {
+                mini: Some(mini),
+                kind: MiniObject::SpecialForce(unit.class_dat_id),
+                label: label.to_owned(),
+                no_hyperdrive: false,
+                contents: 0,
+                damaged: false,
+                captive: false,
+                en_route: true,
+                object: Some(ItemObject::SpecialForce(key)),
+            }
+        }
+    })
 }
 
 /// The two numbers tabs `0x67` and `0x68` print into the picture panel: the
@@ -2008,6 +2159,7 @@ pub fn draw_fleet_windows(
 ) -> Vec<FleetWindowAction> {
     state.prepare_faction(faction);
     let windows = state.windows.clone();
+    let arrivals = state.arrivals.clone();
     let focused_system = windows
         .last()
         .filter(|_| state.focus.holds())
@@ -2020,6 +2172,7 @@ pub fn draw_fleet_windows(
             movement,
             fog,
             transport,
+            &arrivals,
             window,
             focused_system == Some(window.system),
             faction,
@@ -2143,6 +2296,7 @@ fn draw_fleet_window(
     movement: &MovementState,
     fog: &FogState,
     transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
     window: &OpenFleetWindow,
     focused: bool,
     faction: CockpitFaction,
@@ -2766,7 +2920,7 @@ fn draw_fleet_window(
                 let strip_side = if side == viewer { viewer } else { other };
                 let base = side_art(TAB_BASE, strip_side);
                 for tab in shown_tabs(selected) {
-                    let enabled = tab_enabled(world, transport, selected, tab);
+                    let enabled = tab_enabled(world, transport, arrivals, selected, tab);
                     let rect = tab_rect(local, scale, tab);
                     let id = tab_resource(base, tab, tab == window.tab, enabled);
                     // The control clips the 29-row art to 28 (`FUN_00602d30`).
@@ -2827,7 +2981,7 @@ fn draw_fleet_window(
                     selected,
                     Some(FleetWindowEntry::Fleet(fleet)) if movement.is_in_transit(fleet)
                 );
-                let shown_items = right_items(world, transport, selected, window.tab);
+                let shown_items = right_items(world, transport, arrivals, selected, window.tab);
                 let content = right_content(shown_items.len());
                 let bar = crate::list_scroll_bar::ScrollBar::new(
                     LIST_BAR_ART,
@@ -2861,7 +3015,8 @@ fn draw_fleet_window(
                         );
                     }
                     if let Some(mini) = item.mini {
-                        let marks = mini_marks(item.kind, mini, travelling, item.damaged);
+                        let marks =
+                            mini_marks(item.kind, mini, travelling || item.en_route, item.damaged);
                         let captive = item.captive.then(|| captive_mark(mini));
                         for (source, id) in marks
                             .into_iter()
@@ -3579,7 +3734,7 @@ pub(crate) mod tests {
         transport.embark(&mut world, fleet, &troops).unwrap();
         let ship = |index| Some(FleetWindowEntry::Ship { fleet, index });
         let labels = |index, tab| {
-            right_items(&world, &transport, ship(index), tab)
+            right_items(&world, &transport, &[], ship(index), tab)
                 .into_iter()
                 .map(|item| item.label)
                 .collect::<Vec<_>>()
@@ -3611,13 +3766,167 @@ pub(crate) mod tests {
         });
         world.fleets[fleet].special_forces.push(unit);
         let objects = |index| {
-            right_items(&world, &transport, ship(index), FleetWindowTab::Personnel)
+            right_items(&world, &transport, &[], ship(index), FleetWindowTab::Personnel)
                 .into_iter()
                 .map(|item| item.object)
                 .collect::<Vec<_>>()
         };
         assert_eq!(objects(1), [Some(ItemObject::Character(officer))]);
         assert_eq!(objects(0), [Some(ItemObject::SpecialForce(unit))]);
+    }
+
+    #[test]
+    fn units_on_their_way_aboard_are_listed_with_the_en_route_mark_and_light_their_tabs() {
+        // FUN_00556390 puts a regiment, squadron or member sent by Move into
+        // its target container at once, in hyperspace (+0x50 bit 4;
+        // regiment-unload.md), so the fleet's tabs list it after its own and
+        // FUN_0042c3b0 marks it en route although the fleet is in orbit.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 2);
+        let other = add_fleet(&mut world, system, true, 2);
+        // A third fleet with only an empty transit on its way.
+        let third = add_fleet(&mut world, system, true, 2);
+        let troop = add_troop(&mut world, system);
+        let xwing = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x1c00_0003),
+                name: "X-wing".into(),
+                is_alliance: true,
+                ..Default::default()
+            });
+        let character = world.characters.insert(rebellion_core::world::Character {
+            name: "Wedge".into(),
+            ..Default::default()
+        });
+        let selected = Some(FleetWindowEntry::Fleet(fleet));
+        let empty = TroopTransportState::default();
+        for tab in [
+            FleetWindowTab::Fighters,
+            FleetWindowTab::Troops,
+            FleetWindowTab::Personnel,
+        ] {
+            assert!(!tab_enabled(&world, &empty, &[], selected, tab), "{tab:?}");
+        }
+
+        let mut value = serde_json::to_value(&empty).unwrap();
+        value["transit"].as_array_mut().unwrap().push(
+            serde_json::to_value(rebellion_core::troop_transport::RegimentTransit {
+                troop,
+                origin: system,
+                leg: RegimentLeg::Fleet(fleet),
+                arrival_tick: 9,
+            })
+            .unwrap(),
+        );
+        for (to, count) in [(fleet, 1), (other, 1), (third, 0)] {
+            value["squadrons"]["transits"].as_array_mut().unwrap().push(
+                serde_json::to_value(rebellion_core::squadrons::SquadronTransit {
+                    class: xwing,
+                    count,
+                    origin: system,
+                    to: SquadronPlace::Fleet(to),
+                    arrival_tick: 9,
+                })
+                .unwrap(),
+            );
+        }
+        let transport: TroopTransportState = serde_json::from_value(value).unwrap();
+        let arrivals = [(MissionMember::Character(character), fleet)];
+        for tab in [
+            FleetWindowTab::Fighters,
+            FleetWindowTab::Troops,
+            FleetWindowTab::Personnel,
+        ] {
+            assert!(
+                tab_enabled(&world, &transport, &arrivals, selected, tab),
+                "{tab:?}"
+            );
+        }
+        let listed = |tab| right_items(&world, &transport, &arrivals, selected, tab);
+        let [regiment] = &listed(FleetWindowTab::Troops)[..] else {
+            panic!("{:?}", listed(FleetWindowTab::Troops));
+        };
+        assert_eq!(regiment.object, Some(ItemObject::Regiment(troop)));
+        assert!(regiment.en_route);
+        let [squadron] = &listed(FleetWindowTab::Fighters)[..] else {
+            panic!("{:?}", listed(FleetWindowTab::Fighters));
+        };
+        let object = squadron.object.unwrap();
+        assert_eq!(
+            object.menu_object(),
+            MenuObject::TravellingFighter {
+                to: SquadronPlace::Fleet(fleet),
+                class: xwing,
+                arrival: 9,
+            }
+        );
+        assert!(squadron.en_route);
+        let [member] = &listed(FleetWindowTab::Personnel)[..] else {
+            panic!("{:?}", listed(FleetWindowTab::Personnel));
+        };
+        assert_eq!(member.object, Some(ItemObject::Character(character)));
+        assert!(member.en_route);
+        // FUN_004f7800: an injured character is damaged.
+        assert!(!member.damaged);
+        let mut hurt = world.clone();
+        hurt.characters[character].injury = 3;
+        assert!(travelling_member_item(&hurt, MissionMember::Character(character)).unwrap().damaged);
+        // The other fleet lists only its own squadron, and no member.
+        let theirs = Some(FleetWindowEntry::Fleet(other));
+        assert_eq!(
+            right_items(
+                &world,
+                &transport,
+                &arrivals,
+                theirs,
+                FleetWindowTab::Fighters
+            )
+            .len(),
+            1
+        );
+        assert!(!tab_enabled(
+            &world,
+            &transport,
+            &arrivals,
+            theirs,
+            FleetWindowTab::Personnel
+        ));
+        assert!(!tab_enabled(
+            &world,
+            &transport,
+            &arrivals,
+            theirs,
+            FleetWindowTab::Troops
+        ));
+        // An empty squadron transit lights nothing and lists nothing.
+        let last = Some(FleetWindowEntry::Fleet(third));
+        assert!(!tab_enabled(
+            &world,
+            &transport,
+            &arrivals,
+            last,
+            FleetWindowTab::Fighters
+        ));
+        assert!(right_items(&world, &transport, &arrivals, last, FleetWindowTab::Fighters).is_empty());
+        // The window reads the arrivals the frame hands it.
+        let mut state = opened(&world, system);
+        assert!(state.select(system, FleetWindowEntry::Fleet(fleet)));
+        let personnel = |state: &FleetWindowState| {
+            state
+                .report(
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog(system),
+                    &transport,
+                    system,
+                )
+                .unwrap()
+                .enabled[3]
+        };
+        assert!(!personnel(&state));
+        state.set_arrivals(arrivals.to_vec());
+        assert!(personnel(&state));
     }
 
     #[test]
@@ -3632,12 +3941,14 @@ pub(crate) mod tests {
         assert!(!tab_enabled(
             &world,
             &transport,
+            &[],
             selected,
             FleetWindowTab::Troops
         ));
         assert!(tab_enabled(
             &world,
             &transport,
+            &[],
             selected,
             FleetWindowTab::CapitalShips
         ));
@@ -3647,6 +3958,7 @@ pub(crate) mod tests {
         assert!(tab_enabled(
             &world,
             &transport,
+            &[],
             selected,
             FleetWindowTab::Troops
         ));
@@ -3655,7 +3967,7 @@ pub(crate) mod tests {
             Some((1, 2))
         );
         assert_eq!(
-            right_items(&world, &transport, selected, FleetWindowTab::Troops),
+            right_items(&world, &transport, &[], selected, FleetWindowTab::Troops),
             [RightItem {
                 mini: Some(17_472),
                 kind: MiniObject::Regiment(DatId::new(0x1000_0001)),
@@ -3664,6 +3976,7 @@ pub(crate) mod tests {
                 contents: 0,
                 damaged: false,
                 captive: false,
+                en_route: false,
                 object: Some(ItemObject::Regiment(troop)),
             }]
         );
@@ -3672,6 +3985,7 @@ pub(crate) mod tests {
         assert!(!tab_enabled(
             &world,
             &transport,
+            &[],
             ship,
             FleetWindowTab::CapitalShips
         ));
@@ -4917,6 +5231,7 @@ pub(crate) mod tests {
         let items = right_items(
             &world,
             &transport,
+            &[],
             Some(FleetWindowEntry::Fleet(fleet)),
             FleetWindowTab::CapitalShips,
         );
@@ -5248,7 +5563,7 @@ pub(crate) mod tests {
         };
         run(&world, &transport, &mut state, CockpitFaction::Alliance, click(at(40.0, 50.0)));
         assert_eq!(state.selection(system).unwrap().0, Some(FleetWindowEntry::Fleet(fleet)));
-        assert!(!tab_enabled(&world, &transport, Some(FleetWindowEntry::Fleet(fleet)), FleetWindowTab::Fighters));
+        assert!(!tab_enabled(&world, &transport, &[], Some(FleetWindowEntry::Fleet(fleet)), FleetWindowTab::Fighters));
         assert_eq!(tabs(&mut state, 147.0), FleetWindowTab::Fighters);
         let report = state
             .report(&world, &rebellion_core::movement::MovementState::default(), &fog(system), &transport, system)
@@ -5630,9 +5945,9 @@ pub(crate) mod tests {
         let troops: Vec<_> = (0..2).map(|_| add_troop(&mut world, system)).collect();
         transport.embark(&mut world, fleet, &troops).unwrap();
         let ship = |index| Some(FleetWindowEntry::Ship { fleet, index });
-        assert!(!tab_enabled(&world, &transport, ship(0), FleetWindowTab::Troops));
-        assert!(tab_enabled(&world, &transport, ship(1), FleetWindowTab::Troops));
-        assert!(!tab_enabled(&world, &transport, ship(1), FleetWindowTab::Personnel));
+        assert!(!tab_enabled(&world, &transport, &[], ship(0), FleetWindowTab::Troops));
+        assert!(tab_enabled(&world, &transport, &[], ship(1), FleetWindowTab::Troops));
+        assert!(!tab_enabled(&world, &transport, &[], ship(1), FleetWindowTab::Personnel));
         assert_eq!(
             shown_tabs(ship(1)).collect::<Vec<_>>(),
             [FleetWindowTab::Fighters, FleetWindowTab::Troops, FleetWindowTab::Personnel]
@@ -5645,10 +5960,10 @@ pub(crate) mod tests {
             count: 1,
             carrier: None,
         });
-        assert!(!tab_enabled(&world, &transport, ship(1), FleetWindowTab::Fighters));
+        assert!(!tab_enabled(&world, &transport, &[], ship(1), FleetWindowTab::Fighters));
         world.capital_ship_classes[carrier].fighter_capacity = 1;
-        assert!(tab_enabled(&world, &transport, ship(1), FleetWindowTab::Fighters));
-        assert!(!tab_enabled(&world, &transport, ship(0), FleetWindowTab::Fighters));
+        assert!(tab_enabled(&world, &transport, &[], ship(1), FleetWindowTab::Fighters));
+        assert!(!tab_enabled(&world, &transport, &[], ship(0), FleetWindowTab::Fighters));
 
         let mut state = opened(&world, system);
         state.select(system, ship(1).unwrap());
@@ -5951,7 +6266,7 @@ pub(crate) mod tests {
         world.fleets[fleet].characters.push(character);
         let selected = Some(FleetWindowEntry::Fleet(fleet));
         let item = |world: &GameWorld| {
-            right_items(world, &transport, selected, FleetWindowTab::Personnel)[0].clone()
+            right_items(world, &transport, &[], selected, FleetWindowTab::Personnel)[0].clone()
         };
         assert!(!item(&world).damaged);
         world.characters[character].injury = 1;
@@ -6568,7 +6883,7 @@ pub(crate) mod tests {
         let fleet = add_fleet(&mut world, system, true, 1);
         let transport = TroopTransportState::default();
         let selected = Some(FleetWindowEntry::Fleet(fleet));
-        let lit = |world: &GameWorld, tab| tab_enabled(world, &transport, selected, tab);
+        let lit = |world: &GameWorld, tab| tab_enabled(world, &transport, &[], selected, tab);
         assert!(!lit(&world, FleetWindowTab::Fighters));
         assert!(!lit(&world, FleetWindowTab::Personnel));
 
@@ -6609,6 +6924,7 @@ pub(crate) mod tests {
         assert!(tab_enabled(
             &world,
             &transport,
+            &[],
             selected,
             FleetWindowTab::Personnel
         ));
@@ -6618,7 +6934,7 @@ pub(crate) mod tests {
         });
         world.fleets[fleet].characters.push(character);
 
-        let items = right_items(&world, &transport, selected, FleetWindowTab::Personnel);
+        let items = right_items(&world, &transport, &[], selected, FleetWindowTab::Personnel);
         assert_eq!(
             items
                 .iter()
@@ -6642,7 +6958,7 @@ pub(crate) mod tests {
         let transport = TroopTransportState::default();
         let selected = Some(FleetWindowEntry::Fleet(fleet));
         let labels = |world: &GameWorld| {
-            right_items(world, &transport, selected, FleetWindowTab::CapitalShips)
+            right_items(world, &transport, &[], selected, FleetWindowTab::CapitalShips)
                 .into_iter()
                 .map(|item| item.label)
                 .collect::<Vec<_>>()
@@ -6664,7 +6980,7 @@ pub(crate) mod tests {
         let transport = TroopTransportState::default();
         let selected = Some(FleetWindowEntry::Fleet(fleet));
         let flags = |world: &GameWorld| {
-            right_items(world, &transport, selected, FleetWindowTab::CapitalShips)
+            right_items(world, &transport, &[], selected, FleetWindowTab::CapitalShips)
                 .iter()
                 .map(|item| item.no_hyperdrive)
                 .collect::<Vec<_>>()
@@ -6689,7 +7005,7 @@ pub(crate) mod tests {
         let transport = TroopTransportState::default();
         let selected = Some(FleetWindowEntry::Fleet(fleet));
         let flags = |world: &GameWorld| {
-            right_items(world, &transport, selected, FleetWindowTab::CapitalShips)
+            right_items(world, &transport, &[], selected, FleetWindowTab::CapitalShips)
                 .iter()
                 .map(|item| item.no_hyperdrive)
                 .collect::<Vec<_>>()

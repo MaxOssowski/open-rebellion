@@ -13,10 +13,22 @@ use rebellion_core::fog::FogState;
 use rebellion_core::ids::SystemKey;
 use rebellion_core::missions::{MissionMember, MissionState};
 use rebellion_core::movement::MovementState;
+use rebellion_core::squadrons::{SquadronPlace, SquadronTransit};
+use rebellion_core::troop_transport::{RegimentLeg, RegimentTransit};
 use rebellion_core::world::GameWorld;
 
 use crate::fleet_window::{control_side, faction_side, fleet_side, icon_side};
 use crate::system_window::opposing_contents_visible;
+
+/// The regiments and squadrons travelling by Move
+/// (`TroopTransportState::transits`, `SquadronTransits::transits`).
+/// `FUN_00556390` puts each in its destination at once, so a walk of the
+/// destination's regiments or squadrons finds it there.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Travellers<'a> {
+    pub regiments: &'a [RegimentTransit],
+    pub squadrons: &'a [SquadronTransit],
+}
 
 /// One of the four overlay items, by its kind (`flag >> 16`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -69,12 +81,17 @@ pub const fn quadrant_art(quadrant: Quadrant, side: u8) -> Option<(u32, u32)> {
 }
 
 /// The side a quadrant item shows, or `None` when it is hidden.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Each rule reads its own state: the missions, fleets and travellers."
+)]
 #[must_use]
 pub fn quadrant_side(
     world: &GameWorld,
     fog: &FogState,
     missions: &MissionState,
     movement: &MovementState,
+    travellers: Travellers<'_>,
     player: Faction,
     system: SystemKey,
     quadrant: Quadrant,
@@ -86,8 +103,10 @@ pub fn quadrant_side(
         Quadrant::System => (contents.manufacturing_and_production() > 0).then(|| contents.side()),
         // FUN_0045ce80: the system's side bits while it has defense
         // facilities, regiments, squadrons, or personnel off a visible
-        // mission.
-        Quadrant::Defenses => (contents.defenses(missions) > 0).then(|| contents.side()),
+        // mission, those on their way there included.
+        Quadrant::Defenses => {
+            (contents.defenses(missions, travellers) > 0).then(|| contents.side())
+        }
         // FUN_0045ccc0, ported in `fleet_window`.
         Quadrant::Fleets => match icon_side(world, movement, fog, player, system) {
             (_, 0) => None,
@@ -225,7 +244,7 @@ pub fn defenses_move_team(
     let arrivals = missions
         .en_route()
         .iter()
-        .filter(|transit| transit.abode.is_none());
+        .filter(|transit| transit.abode.is_none() && bound_fleet(missions, transit).is_none());
     let mut members: Vec<MissionMember> = Vec::new();
     for (member, member_side, _) in
         system_members(world, system).chain(transit_members(world, arrivals, system))
@@ -255,18 +274,25 @@ pub(crate) fn missions_side(
 }
 
 /// The quadrant item's two bitmaps, or `None` when it is not drawn.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Each rule reads its own state: the missions, fleets and travellers."
+)]
 #[must_use]
 pub fn quadrant_icon(
     world: &GameWorld,
     fog: &FogState,
     missions: &MissionState,
     movement: &MovementState,
+    travellers: Travellers<'_>,
     player: Faction,
     system: SystemKey,
     quadrant: Quadrant,
 ) -> Option<(u32, u32)> {
-    quadrant_side(world, fog, missions, movement, player, system, quadrant)
-        .and_then(|side| quadrant_art(quadrant, side))
+    quadrant_side(
+        world, fog, missions, movement, travellers, player, system, quadrant,
+    )
+    .and_then(|side| quadrant_art(quadrant, side))
 }
 
 /// What the player sees at a system: every side's objects where the System
@@ -339,8 +365,11 @@ impl<'a> SystemContents<'a> {
 
     /// `FUN_0045ce80`'s sum: defense facilities (`FUN_00526fd0`), regiments
     /// (`FUN_00504c40`), squadrons (`FUN_005039d0`), and each member of
-    /// families `0x30..0x40` with no mission key or on a hidden mission.
-    fn defenses(&self, missions: &MissionState) -> usize {
+    /// families `0x30..0x40` with no mission key or on a hidden mission. A
+    /// regiment or squadron on its way here by Move is already in the
+    /// system (`FUN_00556390`; A0 2026-11-11-regiment-en-route/00 lists one
+    /// in its destination's Defenses window), so it counts.
+    fn defenses(&self, missions: &MissionState, travellers: Travellers<'_>) -> usize {
         let Some(value) = self.world.systems.get(self.system) else {
             return 0;
         };
@@ -350,22 +379,39 @@ impl<'a> SystemContents<'a> {
                 .get(**key)
                 .is_some_and(|facility| self.seen(crate::fleet_window::faction_side(facility.side)))
         });
-        let regiments = value.ground_units.iter().filter(|key| {
-            self.world
-                .troops
-                .get(**key)
-                .is_some_and(|troop| self.seen(fleet_side(troop.is_alliance)))
-        });
+        let travelling_regiments = travellers
+            .regiments
+            .iter()
+            .filter(|transit| transit.leg == RegimentLeg::Surface(self.system))
+            .map(|transit| transit.troop);
+        let regiments = value
+            .ground_units
+            .iter()
+            .copied()
+            .chain(travelling_regiments)
+            .filter(|key| {
+                self.world
+                    .troops
+                    .get(*key)
+                    .is_some_and(|troop| self.seen(fleet_side(troop.is_alliance)))
+            });
+        let travelling_squadrons = travellers
+            .squadrons
+            .iter()
+            .filter(|transit| transit.to == SquadronPlace::Planet(self.system))
+            .map(|transit| (transit.class, transit.count));
         let squadrons: usize = value
             .fighters
             .iter()
-            .filter(|entry| {
+            .map(|entry| (entry.class, entry.count))
+            .chain(travelling_squadrons)
+            .filter(|(class, _)| {
                 self.world
                     .fighter_classes
-                    .get(entry.class)
+                    .get(*class)
                     .is_some_and(|class| self.seen(fleet_side(class.is_alliance)))
             })
-            .map(|entry| entry.count as usize)
+            .map(|(_, count)| count as usize)
             .sum();
         let keys = mission_keys(missions);
         let idle = self
@@ -388,14 +434,49 @@ impl<'a> SystemContents<'a> {
         &'b self,
         missions: &'b MissionState,
     ) -> impl Iterator<Item = (MissionMember, u8, bool)> + 'b {
-        // One bound for an abode goes into the abode, not the system, as
-        // the Defenses window lists it (`defenses_window`).
-        let arrivals = missions.en_route().iter().filter(|transit| transit.abode.is_none());
+        // One bound for an abode or a fleet goes into it, not the system,
+        // as the Defenses window lists it (`defenses_window`).
+        let arrivals = missions
+            .en_route()
+            .iter()
+            .filter(|transit| transit.abode.is_none() && bound_fleet(missions, transit).is_none());
         self.members().chain(
             transit_members(self.world, arrivals, self.system)
                 .filter(|(_, side, _)| self.seen(*side)),
         )
     }
+}
+
+/// The fleet a member's Move lands it aboard (the mission's target
+/// container `+0x74`, `MissionState::set_target_fleet`): `FUN_00556390`
+/// puts the member in that fleet at once, so it is the fleet's child, not
+/// its system's, while it travels (`object-state-flags.md`: a walk never
+/// descends).
+pub(crate) fn bound_fleet(
+    missions: &MissionState,
+    transit: &rebellion_core::missions::MemberTransit,
+) -> Option<rebellion_core::ids::FleetKey> {
+    if transit.abode.is_some() {
+        return None;
+    }
+    missions
+        .missions()
+        .iter()
+        .find(|mission| mission.id == transit.mission_id)?
+        .target_fleet
+}
+
+/// The members on their way into a fleet ([`bound_fleet`]), each with the
+/// fleet, in departure order: its Fleet window lists them.
+#[must_use]
+pub fn fleet_arrivals(
+    missions: &MissionState,
+) -> Vec<(MissionMember, rebellion_core::ids::FleetKey)> {
+    missions
+        .en_route()
+        .iter()
+        .filter_map(|transit| Some((transit.member, bound_fleet(missions, transit)?)))
+        .collect()
 }
 
 /// The living members whose transit ends at `system`, each with its side
@@ -607,6 +688,7 @@ mod tests {
             &fog,
             missions,
             &rebellion_core::movement::MovementState::default(),
+            Travellers::default(),
             player,
             system,
             quadrant,
@@ -837,6 +919,132 @@ mod tests {
         world.systems[system].special_forces.push(force);
         assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(1));
         assert_eq!(alliance_side(&world, system, Quadrant::System), None);
+    }
+
+    #[test]
+    fn a_regiment_or_squadron_on_its_way_lights_its_destinations_defenses_icon() {
+        // FUN_0045ce80 counts the system's regiments (FUN_00504c40) and
+        // squadrons (FUN_005039d0); FUN_00556390 puts one sent by Move in
+        // its destination at once (A0 2026-11-11-regiment-en-route/00).
+        let (mut world, system) = alliance_world();
+        let other = world.systems.insert(world.systems[system].clone());
+        let regiment = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let xwing = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_alliance: true,
+                ..Default::default()
+            });
+        let regiments = |to| {
+            [RegimentTransit {
+                troop: regiment,
+                origin: other,
+                leg: RegimentLeg::Surface(to),
+                arrival_tick: 9,
+            }]
+        };
+        let squadrons = |to| {
+            [SquadronTransit {
+                class: xwing,
+                count: 1,
+                origin: other,
+                to: SquadronPlace::Planet(to),
+                arrival_tick: 9,
+            }]
+        };
+        let defenses = |travellers| {
+            quadrant_side(
+                &world,
+                &FogState::new(Faction::Alliance),
+                &MissionState::new(),
+                &rebellion_core::movement::MovementState::default(),
+                travellers,
+                Faction::Alliance,
+                system,
+                Quadrant::Defenses,
+            )
+        };
+        assert_eq!(defenses(Travellers::default()), None);
+        let to_here = regiments(system);
+        let elsewhere = regiments(other);
+        assert_eq!(
+            defenses(Travellers {
+                regiments: &to_here,
+                squadrons: &[],
+            }),
+            Some(1)
+        );
+        assert_eq!(
+            defenses(Travellers {
+                regiments: &elsewhere,
+                squadrons: &[],
+            }),
+            None
+        );
+        let to_here = squadrons(system);
+        let elsewhere = squadrons(other);
+        assert_eq!(
+            defenses(Travellers {
+                regiments: &[],
+                squadrons: &to_here,
+            }),
+            Some(1)
+        );
+        assert_eq!(
+            defenses(Travellers {
+                regiments: &[],
+                squadrons: &elsewhere,
+            }),
+            None
+        );
+    }
+
+    #[test]
+    fn a_member_on_its_way_aboard_a_fleet_counts_for_the_fleet_not_the_system() {
+        // FUN_00556390 puts a Move's member in the target container +0x74,
+        // here a fleet, and FUN_0045ce80's walks (FUN_00513050) never
+        // descend into it: the defenses icon and its Move team leave the
+        // member out; one bound for the system counts.
+        let (mut world, system) = alliance_world();
+        let rider = add_character(&mut world, system, true);
+        world.characters[rider].current_system = None;
+        let mut missions = MissionState::new();
+        let id = missions.dispatch(MissionRequest::single(
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            rider,
+            system,
+            None,
+            0,
+        ));
+        missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::Character(rider),
+            mission_id: id,
+            to: system,
+            arrival: 9,
+            abode: None,
+        });
+        // The dispatched mission's team holds the rider; a hidden Move keeps
+        // the rider idle (FUN_0045ce80's +0x78 bit 8 test).
+        world.characters[rider].on_hidden_mission = true;
+        let team = |missions: &MissionState| {
+            defenses_move_team(&world, missions, Faction::Alliance, system).members
+        };
+        assert_eq!(
+            side(&world, &missions, Faction::Alliance, system, Quadrant::Defenses),
+            Some(1)
+        );
+        assert_eq!(team(&missions), [MissionMember::Character(rider)]);
+        assert!(missions.set_target_fleet(id, rebellion_core::ids::FleetKey::default()));
+        assert_eq!(
+            side(&world, &missions, Faction::Alliance, system, Quadrant::Defenses),
+            None
+        );
+        assert!(team(&missions).is_empty());
     }
 
     #[test]
@@ -1114,6 +1322,7 @@ mod tests {
                 &fog,
                 &missions,
                 &rebellion_core::movement::MovementState::default(),
+                Travellers::default(),
                 Faction::Alliance,
                 system,
                 Quadrant::System
@@ -1127,6 +1336,7 @@ mod tests {
                 &fog,
                 &missions,
                 &rebellion_core::movement::MovementState::default(),
+                Travellers::default(),
                 Faction::Alliance,
                 system,
                 Quadrant::System
@@ -1142,6 +1352,7 @@ mod tests {
                 &blind,
                 &missions,
                 &rebellion_core::movement::MovementState::default(),
+                Travellers::default(),
                 Faction::Alliance,
                 system,
                 Quadrant::System
@@ -1171,6 +1382,7 @@ mod tests {
                 &fog,
                 &missions,
                 &rebellion_core::movement::MovementState::default(),
+                Travellers::default(),
                 Faction::Alliance,
                 system,
                 Quadrant::System
@@ -1183,6 +1395,7 @@ mod tests {
                 &fog,
                 &missions,
                 &rebellion_core::movement::MovementState::default(),
+                Travellers::default(),
                 Faction::Alliance,
                 system,
                 Quadrant::Defenses
