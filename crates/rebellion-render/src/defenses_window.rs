@@ -62,8 +62,26 @@ const TAB_SIZE: (f32, f32) = (36.0, 33.0);
 /// The list (`FUN_00607ea0`, id `0xcb`) and its 70 by 70 grid cells.
 const LIST: (f32, f32, f32, f32) = (7.0, 81.0, 222.0, 210.0);
 const CELL: f32 = 70.0;
+/// `FUN_00609ae0` wraps a row before a cell would pass the list's width
+/// less a shown bar: 222 - 10 leaves three columns either way.
 const COLUMNS: usize = 3;
-const VISIBLE_ROWS: usize = 3;
+/// The list's scroll bar (`FUN_004a8790`: `FUN_0060a490(.., 0x29cc, ..)`):
+/// STRATEGY RCDATA 10700, `[10, 10701, 10702, 10703, 10704, 10705, 10706,
+/// 10707, 10708, 10684]`. A0 2026-11-11-icon-menu-topic/05 and 06 show it
+/// at the list's right edge, window x 219..228 from y 81, for Coruscant's
+/// ten TIE Fighter squadrons.
+const LIST_BAR_ART: crate::list_scroll_bar::BarArt = crate::list_scroll_bar::BarArt {
+    width: 10,
+    track: 10_701,
+    up: [10_702, 10_703],
+    down: [10_704, 10_705],
+    top: 10_706,
+    middle: 10_707,
+    bottom: 10_708,
+};
+/// The list's arrow step: `FUN_004a8790` passes 10 as `FUN_00607ea0`'s
+/// step (`+0xc0`).
+const LIST_STEP: f32 = 10.0;
 /// The text rect's offset in a cell (`+0xe8`, `+0xec`) and its right trim.
 const TEXT_OFFSET: (f32, f32) = (1.0, 27.0);
 const TEXT_RIGHT_TRIM: f32 = 3.0;
@@ -323,7 +341,7 @@ struct DefensesRow {
     label: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 struct OpenDefensesWindow {
     system: SystemKey,
     logical_position: (i16, i16),
@@ -331,6 +349,12 @@ struct OpenDefensesWindow {
     /// port: one selected row; the list's own selection rules
     /// (`FUN_00609410`) are untraced.
     selected: Option<DefensesItem>,
+    /// The list's first visible pixel (`+0xc4`) and a press held on its
+    /// bar. A new page keeps it: `FUN_004a90d0` empties the list
+    /// (`FUN_005f5b20`) and lays it out (`FUN_0060a280`), and the layout
+    /// only clamps it to the range (`FUN_00609ae0`); the draw clamps it.
+    scroll: f32,
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// Where the window was when a press on its surface took it
     /// (`crate::window_move`).
     moving: MoveAnchor,
@@ -422,6 +446,8 @@ impl DefensesWindowState {
             ),
             page: DefensesPage::Personnel,
             selected: None,
+            scroll: 0.0,
+            scroll_hold: None,
             moving: None,
         });
         self.focus.take();
@@ -495,6 +521,7 @@ impl DefensesWindowState {
             window_screen_rect(window, layout),
             layout.scale,
             index,
+            window.scroll,
         ))
     }
 
@@ -538,8 +565,8 @@ impl DefensesWindowState {
 
     /// What a Mission released over the Defenses window egui draws as
     /// `layer` targets (`+0x68`, `FUN_004aa380`): the object in the list
-    /// cell under `point`, else the window's system. `None` when `layer` is
-    /// none of them.
+    /// cell under `point` where the list shows it, else the window's
+    /// system. `None` when `layer` is none of them.
     #[must_use]
     pub fn mission_target(
         &self,
@@ -557,7 +584,7 @@ impl DefensesWindowState {
             .find(|window| area_id(window.system) == layer.id)?;
         let player = cockpit_faction(self.faction);
         let screen = window_screen_rect(window, layout);
-        let item = page_rows(
+        let rows = page_rows(
             world,
             fog,
             missions,
@@ -565,12 +592,21 @@ impl DefensesWindowState {
             player,
             window.system,
             window.page,
-        )
-        .into_iter()
-        .take(COLUMNS * VISIBLE_ROWS)
-        .enumerate()
-        .find(|(index, _)| rect_contains(cell_rect(screen, layout.scale, *index), point))
-        .map(|(_, row)| row.item);
+        );
+        let bar = list_bar(rows.len(), window.scroll);
+        let scroll = bar_first(&bar, window.scroll);
+        let width = rows_width(&bar);
+        let in_list = rect_contains(
+            logical_rect(screen, layout.scale, LIST.0, LIST.1, width, LIST.3),
+            point,
+        );
+        let item = rows
+            .into_iter()
+            .enumerate()
+            .find(|(index, _)| {
+                in_list && rect_contains(cell_rect(screen, layout.scale, *index, scroll), point)
+            })
+            .map(|(_, row)| row.item);
         let mut pick = MissionTargetPick::from(window.system);
         match item {
             Some(DefensesItem::Character(key)) => pick.character = Some(key),
@@ -1074,19 +1110,59 @@ fn tab_rect(window: egui::Rect, scale: f32, page: DefensesPage) -> egui::Rect {
 }
 
 /// The `index`th grid cell (`FUN_00609ae0`): row-major from the list's
-/// corner, three to a row.
+/// corner, three to a row, the list showing from pixel `scroll`.
 #[expect(clippy::cast_precision_loss, reason = "Cell indexes are small.")]
-fn cell_rect(window: egui::Rect, scale: f32, index: usize) -> egui::Rect {
+fn cell_rect(window: egui::Rect, scale: f32, index: usize, scroll: f32) -> egui::Rect {
     let column = (index % COLUMNS) as f32;
     let row = (index / COLUMNS) as f32;
     logical_rect(
         window,
         scale,
         LIST.0 + column * CELL,
-        LIST.1 + row * CELL,
+        LIST.1 + row * CELL - scroll,
         CELL,
         CELL,
     )
+}
+
+/// The grid's height for `rows` rows (`FUN_00609ae0`): a cell's height per
+/// started line of three.
+#[expect(clippy::cast_precision_loss, reason = "Row counts are small.")]
+fn list_content(rows: usize) -> f32 {
+    rows.div_ceil(COLUMNS) as f32 * CELL
+}
+
+/// The list's bar for `rows` rows shown from pixel `scroll`
+/// (`FUN_0060a490` with RCDATA 10700, the list's own rectangle).
+fn list_bar(rows: usize, scroll: f32) -> crate::list_scroll_bar::ScrollBar {
+    crate::list_scroll_bar::ScrollBar::new(
+        LIST_BAR_ART,
+        LIST.0,
+        LIST.1,
+        LIST.2,
+        LIST.3,
+        list_content(rows),
+        scroll,
+    )
+}
+
+/// The first visible pixel `bar` shows: `scroll` within its range, or 0
+/// once everything fits and the bar hides (`FUN_00609ae0` clamps `+0xc4`).
+fn bar_first(bar: &crate::list_scroll_bar::ScrollBar, scroll: f32) -> f32 {
+    if bar.visible() {
+        scroll.clamp(0.0, bar.max)
+    } else {
+        0.0
+    }
+}
+
+/// The width of the list the rows take: all of it, less a shown bar.
+fn rows_width(bar: &crate::list_scroll_bar::ScrollBar) -> f32 {
+    if bar.visible() {
+        bar.x - LIST.0
+    } else {
+        LIST.2
+    }
 }
 
 #[derive(Default)]
@@ -1106,6 +1182,8 @@ struct WindowDrawResult {
     drag: Option<DefensesDrag>,
     /// The pointer's travel since a press on the window's surface.
     travel: Option<egui::Vec2>,
+    /// The list's first visible pixel and bar hold after this frame.
+    scroll: Option<(f32, Option<crate::list_scroll_bar::Hold>)>,
 }
 
 /// Draw every open Defenses window.
@@ -1195,6 +1273,10 @@ pub fn draw_defenses_windows(
             }
             if let Some(item) = result.select {
                 open.selected = Some(item);
+            }
+            if let Some((first, hold)) = result.scroll {
+                open.scroll = first;
+                open.scroll_hold = hold;
             }
         }
         if result.focus {
@@ -1404,16 +1486,22 @@ fn draw_defenses_window(
 
             // The list: each row's image keyed at its cell's corner, the
             // frame over the mini while selected (`FUN_0060bd00`), and its
-            // name word-wrapped from (1, 27). port: the scroll bar
-            // (`FUN_0060a490`) is not drawn, so only the first nine cells show.
+            // name word-wrapped from (1, 27), shown from the bar's first
+            // pixel.
             let list = logical_rect(local, scale, LIST.0, LIST.1, LIST.2, LIST.3);
             let list_painter = painter.with_clip_rect(list);
+            let bar = list_bar(rows.len(), window.scroll);
+            let scroll = bar_first(&bar, window.scroll);
+            let width = rows_width(&bar);
+            // The bar is a child window over the list's right edge
+            // (FUN_0060fa80): it takes its own presses.
+            let rows_area = logical_rect(local, scale, LIST.0, LIST.1, width, LIST.3);
             // The list control under the rows (FUN_006083c0): a left or
             // right press on its empty space clears the selection
             // (FUN_006094b0), and a right release there opens the menu for
             // the empty selection.
             let list_response = ui.interact(
-                list,
+                rows_area,
                 ui.id().with((window.system, "list")),
                 egui::Sense::click(),
             );
@@ -1430,7 +1518,8 @@ fn draw_defenses_window(
                 result.focus = true;
             }
             if list_response.secondary_clicked() {
-                if let Some(point) = release_point.filter(|point| rect_contains(list, *point)) {
+                if let Some(point) = release_point.filter(|point| rect_contains(rows_area, *point))
+                {
                     result.object_menu = Some((None, canvas_point(layout, point)));
                 }
             }
@@ -1441,8 +1530,12 @@ fn draw_defenses_window(
             } else {
                 ROW_FRAME[1]
             };
-            for (index, row) in rows.iter().take(COLUMNS * VISIBLE_ROWS).enumerate() {
-                let cell = cell_rect(local, scale, index);
+            for (index, row) in rows.iter().enumerate() {
+                let cell = cell_rect(local, scale, index, scroll);
+                // Only a cell with a row of pixels in the list shows.
+                if cell.min.y >= list.max.y || cell.max.y <= list.min.y {
+                    continue;
+                }
                 let selected = window.selected == Some(row.item);
                 // FUN_0042c3b0: an injured character's damage mark under
                 // its mini (`+0x50` bit `0x200`, FUN_004f7800).
@@ -1492,12 +1585,13 @@ fn draw_defenses_window(
                     color,
                     crate::theme::GdiAlign::Left,
                 );
+                let cell_area = cell.intersect(rows_area);
                 let response = ui.interact(
-                    cell.intersect(list),
+                    cell_area,
                     ui.id().with((window.system, "row", index)),
                     egui::Sense::click(),
                 );
-                if exact_clicked(&response, cell) {
+                if exact_clicked(&response, cell_area) {
                     result.select = Some(row.item);
                     result.focus = true;
                 }
@@ -1520,7 +1614,7 @@ fn draw_defenses_window(
                             .flatten()
                     }),
                 ) {
-                    if response.is_pointer_button_down_on() && rect_contains(cell, press) {
+                    if response.is_pointer_button_down_on() && rect_contains(cell_area, press) {
                         result.drag = Some(DefensesDrag {
                             character,
                             press,
@@ -1533,11 +1627,31 @@ fn draw_defenses_window(
                         row.item.menu_object(),
                         response
                             .interact_pointer_pos()
-                            .filter(|point| rect_contains(cell.intersect(list), *point)),
+                            .filter(|point| rect_contains(cell_area, *point)),
                     ) {
                         result.object_menu = Some((Some(object), canvas_point(layout, point)));
                     }
                 }
+            }
+            // The bar (FUN_0060a490) shows once the rows pass the list's
+            // height; its arrows, track and thumb scroll it.
+            if bar.visible() {
+                let mut hold = window.scroll_hold;
+                let first = crate::list_scroll_bar::ui_bar(
+                    ui,
+                    cache,
+                    local,
+                    scale,
+                    LIST_BAR_ART,
+                    LIST,
+                    list_content(rows.len()),
+                    scroll,
+                    &mut hold,
+                    LIST_STEP,
+                );
+                result.scroll = Some((first, hold));
+            } else if window.scroll != 0.0 || window.scroll_hold.is_some() {
+                result.scroll = Some((0.0, None));
             }
 
             if window_response.clicked() || clicked.iter().any(|&value| value) {
@@ -3103,23 +3217,149 @@ mod tests {
         assert_eq!(state.screen_rect(scaled(), missing), None);
     }
 
-    #[test]
-    fn a_page_shows_only_its_first_nine_cells_without_the_scroll_bar() {
-        // port: FUN_0060a490's scroll bar is not drawn, so three rows of
-        // three cells show; the ninth sits at (147, 221).
+    /// The Alliance personnel `stocked` lists with `extras` more
+    /// characters, and the window open on them.
+    fn crowded(extras: usize) -> (GameWorld, SystemKey, MissionState, Vec<DefensesItem>) {
         let (mut world, system, missions) = stocked();
-        for index in 0..8 {
+        for index in 0..extras {
             add_character(&mut world, system, &format!("Extra {index}"), true);
         }
+        let items = page_rows(
+            &world,
+            &seen(system),
+            &missions,
+            idle(),
+            Faction::Alliance,
+            system,
+            DefensesPage::Personnel,
+        )
+        .into_iter()
+        .map(|row| row.item)
+        .collect();
+        (world, system, missions, items)
+    }
+
+    #[test]
+    fn a_page_past_three_rows_shows_the_list_bar_at_the_lists_right_edge() {
+        // FUN_004a8790 gives the list (7, 81, 222 by 210) the bar of RCDATA
+        // 10700 (FUN_0060a490 with 0x29cc): 10 wide at x 219, its 13-wide
+        // arrows one column left (FUN_0060fa80), the thumb from the track's
+        // top (FUN_0060fca0). A0 2026-11-11-icon-menu-topic/05 shows it so
+        // for Coruscant's ten squadrons.
+        let (world, system, missions, items) = crowded(9);
+        // Eleven characters, then the special force.
+        assert_eq!(items.len(), 12);
+        assert!(matches!(items[11], DefensesItem::SpecialForce(_)));
         let mut state = opened(&world, system);
-        let run = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
-        let minis: Vec<_> = run
+        let drawn = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        for (id, x, y) in [
+            (LIST_BAR_ART.up[0], 218.0, 81.0),
+            (LIST_BAR_ART.down[0], 218.0, 282.0),
+            (LIST_BAR_ART.track, 219.0, 90.0),
+            (LIST_BAR_ART.top, 219.0, 90.0),
+        ] {
+            assert!(
+                drawn.painted.contains(&(id, at(x, y))),
+                "{id} at ({x}, {y})"
+            );
+        }
+        // Three full rows show; the fourth starts below the list.
+        let minis = drawn
             .painted
             .iter()
             .filter(|(id, _)| *id == 18_176 + 832)
-            .collect();
-        assert_eq!(minis.len(), 9);
-        assert!(run.painted.contains(&(18_176 + 832, at(147.0, 221.0))));
+            .count();
+        assert_eq!(minis, 9);
+        // Two lines fit: no bar (FUN_0060b5d0).
+        let (world, system, missions, items) = crowded(3);
+        assert_eq!(items.len(), 6);
+        let mut state = opened(&world, system);
+        let drawn = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        assert!(!drawn
+            .painted
+            .iter()
+            .any(|(id, _)| *id == LIST_BAR_ART.track));
+    }
+
+    #[test]
+    fn the_list_bar_scrolls_the_last_cells_into_view_and_onto_their_targets() {
+        // Twelve rows take four lines, 280 pixels: the bar scrolls 280 + 5 -
+        // 210 = 75 (FUN_00609ae0). Its down arrow steps 10 (FUN_004a8790's
+        // step); a press below the thumb pages by the list's height, to the
+        // end. A0 2026-11-11-icon-menu-topic/06: scrolled to the end, the
+        // second line shows from y 81 - 5 and the last below it.
+        let (world, system, missions, items) = crowded(9);
+        let mut state = opened(&world, system);
+        run(&world, &missions, &mut state, click(at(224.0, 286.0)));
+        assert_eq!(state.windows[0].scroll, 10.0);
+        run(&world, &missions, &mut state, click(at(224.0, 270.0)));
+        assert_eq!(state.windows[0].scroll, 75.0);
+        let drawn = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        // The thumb's top: 81 + 9 + (192 - 141) at the end.
+        assert!(drawn
+            .painted
+            .contains(&(LIST_BAR_ART.top, at(219.0, 141.0))));
+        // The twelfth cell, the last line's third, at (147, 81 + 210 - 75).
+        let last = state.cell_screen_rect(scaled(), system, 11).unwrap();
+        assert_eq!(last.min, at(147.0, 216.0));
+        let minis = drawn
+            .painted
+            .iter()
+            .filter(|(id, _)| *id == 18_176 + 832)
+            .count();
+        // The first line has gone; the other three show, part of the
+        // second's cut by the list's top: the fourth to the eleventh
+        // characters, then the special force.
+        assert_eq!(minis, 8);
+        // A mission released on it targets it; one on the bar, nothing.
+        let fog = seen(system);
+        let layer = egui::LayerId::new(egui::Order::Foreground, area_id(system));
+        let pick = |point| {
+            state
+                .mission_target(&world, &fog, &missions, idle(), scaled(), layer, point)
+                .unwrap()
+        };
+        let DefensesItem::Character(character) = items[10] else {
+            panic!("{:?}", items[10]);
+        };
+        let eleventh = state.cell_screen_rect(scaled(), system, 10).unwrap();
+        assert_eq!(pick(eleventh.center()).character, Some(character));
+        assert_eq!(pick(at(224.0, 230.0)), MissionTargetPick::from(system));
+        // A click on it selects it, and the list keeps its place.
+        run(&world, &missions, &mut state, click(eleventh.center()));
+        assert_eq!(state.windows[0].selected, Some(items[10]));
+        assert_eq!(state.windows[0].scroll, 75.0);
+        // The bar is a child window over the list (FUN_0060fa80): a press
+        // on its up arrow scrolls and leaves the list's selection alone
+        // (FUN_006094b0 clears it only for the list's own empty space).
+        run(&world, &missions, &mut state, click(at(224.0, 85.0)));
+        assert_eq!(state.windows[0].scroll, 65.0);
+        assert_eq!(state.windows[0].selected, Some(items[10]));
+        // A right release on the bar opens no menu for the list.
+        let menus = run(&world, &missions, &mut state, right_click(at(224.0, 230.0)));
+        assert!(
+            !menus
+                .actions
+                .iter()
+                .any(|action| matches!(action, DefensesWindowAction::OpenObjectMenu { .. })),
+            "{:?}",
+            menus.actions
+        );
+    }
+
+    #[test]
+    fn a_new_page_keeps_the_lists_place_within_its_range() {
+        // FUN_004a90d0 empties and lays out the list (FUN_005f5b20,
+        // FUN_0060a280); FUN_00609ae0 only clamps +0xc4, to 0 when the
+        // page fits.
+        let (world, system, missions, _) = crowded(9);
+        let mut state = opened(&world, system);
+        state.windows[0].scroll = 40.0;
+        run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        assert_eq!(state.windows[0].scroll, 40.0);
+        assert!(state.show_page(system, DefensesPage::Regiments));
+        run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        assert_eq!(state.windows[0].scroll, 0.0);
     }
 
     // A0 garrison-clean/test-day483-yavin-regiments: each title button's

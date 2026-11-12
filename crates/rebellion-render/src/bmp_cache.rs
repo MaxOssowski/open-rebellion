@@ -2266,15 +2266,16 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 11_103..=11_110
                 | 11_117..=11_120
                 // The list scroll bars' arrows (RCDATA 0x299a, 10653,
-                // 0x29fc, 10699), strobe buttons too (FUN_00602150 from the
-                // bar's FUN_0060b179/FUN_0060b24e): A0 kinds/31 shows the
-                // track under their blue bottom-left pixel.
+                // 0x29fc, 10699, 10700), strobe buttons too (FUN_00602150
+                // from the bar's FUN_0060b179/FUN_0060b24e): A0 kinds/31
+                // shows the track under their blue bottom-left pixel.
                 | 10_658
                 | 10_660
                 | 10_662
                 | 10_664
                 | 10_685..=10_688
                 | 10_692..=10_695
+                | 10_702..=10_705
                 | 10_750..=10_753
                 // The move confirmation's checkmark and X (FUN_0044f180's
                 // controls 0x14, 0x15): A0 fleet3/11 shows the panel behind
