@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 108;
+const SCENARIO_COUNT: u8 = 109;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -371,6 +371,12 @@ pub enum Scenario {
     /// Selection scenario's stands, so each facility page shows the base's
     /// built picture first (`FUN_00458fe0`: 9010, 9018, 9026).
     AdvancedBases = 107,
+    /// Coruscant the Empire's with ten TIE Fighter squadrons on its Fighter
+    /// Squadrons page, as A0 2026-11-11-icon-menu-topic/05 and 06 show its
+    /// Defenses window with the list's scroll bar, and its sector window
+    /// open. The quadrant gate's second system is Coruscant
+    /// (`quadrant_systems`).
+    CoruscantSquadrons = 108,
 }
 
 impl Scenario {
@@ -484,6 +490,7 @@ impl Scenario {
             105 => Self::EnemyAssaultTaken,
             106 => Self::CoruscantSeized,
             107 => Self::AdvancedBases,
+            108 => Self::CoruscantSquadrons,
             _ => return None,
         })
     }
@@ -1090,6 +1097,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::CoruscantSeized {
         place_coruscant_seized(request, world, movement, sectors);
+    }
+    if request.scenario == Scenario::CoruscantSquadrons {
+        place_coruscant_squadrons(request, world, sectors);
     }
     if request.scenario == Scenario::FleetWindowBlockade {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
@@ -1893,16 +1903,45 @@ fn place_coruscant_seized(
     sectors.open_for_system(world, coruscant, request.faction);
 }
 
+/// The `CoruscantSquadrons` scenario: Coruscant the Empire's, its
+/// squadrons there ten TIE Fighter squadrons, as A0
+/// 2026-11-11-icon-menu-topic/05 lists on its Fighter Squadrons page: four
+/// lines of the list's three, past its 210 pixels, so the list shows its
+/// bar (`FUN_004a8790`: `FUN_0060a490` with RCDATA 10700).
+fn place_coruscant_squadrons(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    sectors: &mut SectorWindowState,
+) {
+    let Some(coruscant) = coruscant(world) else {
+        return;
+    };
+    let Some(tie) = world
+        .fighter_classes
+        .iter()
+        .find(|(_, value)| !value.is_alliance && value.name == "TIE Fighter")
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    let value = &mut world.systems[coruscant];
+    value.control = ControlKind::Controlled(Faction::Empire);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.fighters.retain(|entry| entry.carrier.is_some());
+    rebellion_core::squadrons::add(&mut value.fighters, tie, 10);
+    sectors.open_for_system(world, coruscant, request.faction);
+}
+
 /// The quadrant gate's two systems: in `Quadrants` the primary and its
-/// sector's next system, in `CoruscantSeized` the sector's first other
-/// system and Coruscant.
+/// sector's next system, in `CoruscantSeized` and `CoruscantSquadrons` the
+/// sector's first other system and Coruscant.
 fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(SystemKey, SystemKey)> {
     match request.scenario {
         Scenario::Quadrants => {
             let primary = world.systems.keys().next()?;
             Some((primary, loading_target(world, primary)?))
         }
-        Scenario::CoruscantSeized => {
+        Scenario::CoruscantSeized | Scenario::CoruscantSquadrons => {
             let coruscant = coruscant(world)?;
             Some((loading_target(world, coruscant)?, coruscant))
         }
@@ -5919,7 +5958,7 @@ impl QuadrantWatch {
                     side: report.side,
                     page: defenses_page_name(report.page),
                     counts: report.counts,
-                    cells: (0..report.rows.len().min(9))
+                    cells: (0..report.rows.len())
                         .filter_map(|index| {
                             windows.defenses.cell_screen_rect(layout, system, index)
                         })
@@ -10908,6 +10947,95 @@ mod tests {
         };
         assert_eq!((window.side, window.page), (1, "personnel"));
         assert_eq!(window.counts, [0, 1, 0, 0, 0]);
+    }
+
+    /// A0 2026-11-11-icon-menu-topic/05 (the VM's Empire game): Coruscant's
+    /// Fighter Squadrons page lists ten TIE Fighter squadrons, past the
+    /// list's three lines, and the fixture reports every cell's rect.
+    #[test]
+    fn the_coruscant_squadrons_scenario_lists_ten_tie_fighters_there_with_every_cell() {
+        let request = request(Scenario::CoruscantSquadrons, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let held = world.systems.keys().nth(1).unwrap();
+            world.systems[held].name = "Coruscant".into();
+            // The Empire's other classes and the Alliance's own TIE-named
+            // one are not the squadrons placed.
+            for (raw, name, is_alliance) in [
+                (0x1c00_0006, "TIE Interceptor", false),
+                (0x1c00_0001, "TIE Fighter", true),
+            ] {
+                world
+                    .fighter_classes
+                    .insert(rebellion_core::world::FighterClass {
+                        dat_id: rebellion_core::ids::DatId::new(raw),
+                        name: name.into(),
+                        is_alliance,
+                        is_empire: !is_alliance,
+                        ..Default::default()
+                    });
+            }
+            world
+                .fighter_classes
+                .insert(rebellion_core::world::FighterClass {
+                    dat_id: rebellion_core::ids::DatId::new(0x1c00_0005),
+                    name: "TIE Fighter".into(),
+                    is_empire: true,
+                    ..Default::default()
+                });
+        });
+        let world = &applied.world;
+        let held = super::coruscant(world).unwrap();
+        assert_eq!(
+            world.systems[held].control,
+            ControlKind::Controlled(Faction::Empire)
+        );
+        let [entry] = &world.systems[held].fighters[..] else {
+            panic!("{:?}", world.systems[held].fighters);
+        };
+        assert_eq!((entry.count, entry.carrier), (10, None));
+        assert_eq!(world.fighter_classes[entry.class].dat_id.raw(), 0x1c00_0005);
+        let setup = quadrant_setup(request, world, &applied.sectors).unwrap();
+        assert_eq!(setup.second_dat_id, world.systems[held].dat_id.raw());
+
+        let mut fog_alliance = FogState::new(Faction::Alliance);
+        let mut fog = FogState::new(Faction::Empire);
+        fog.reveal(held);
+        reveal(request, world, &mut fog_alliance, &mut fog);
+        let economy = EconomyState::default();
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::default();
+        let deliveries = rebellion_core::delivery::DeliveryState::default();
+        let missions_windows = MissionsWindowState::default();
+        let mut defenses = DefensesWindowState::default();
+        let layout = CockpitState::new(CockpitFaction::Empire).layout_for(640.0, 480.0);
+        assert!(defenses.open(world, held, (203, 91), CockpitFaction::Empire, layout));
+        assert!(defenses.show_page(held, DefensesPage::Squadrons));
+        let shown = QuadrantWatch::default()
+            .next(
+                request,
+                world,
+                &QuadrantWindows {
+                    systems: &applied.systems,
+                    defenses: &defenses,
+                    missions_windows: &missions_windows,
+                    fog: &fog,
+                    missions: &applied.missions,
+                    production: rebellion_render::DefensesProduction {
+                        manufacturing: &manufacturing,
+                        deliveries: &deliveries,
+                        regiments: &[],
+                    },
+                    economy: &economy,
+                },
+            )
+            .unwrap();
+        let [window] = &shown.defenses_windows[..] else {
+            panic!("{:?}", shown.defenses_windows);
+        };
+        assert_eq!((window.side, window.page), (2, "squadrons"));
+        assert_eq!(window.rows.len(), 10);
+        // The tenth cell, the fourth line's first, starts below the list.
+        assert_eq!(window.cells.len(), 10);
+        assert_eq!(window.cells[9][1] - window.cells[0][1], 210.0);
     }
 
     #[test]

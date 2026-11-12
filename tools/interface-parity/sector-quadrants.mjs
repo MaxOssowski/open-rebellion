@@ -27,6 +27,9 @@ const QUADRANTS = 50;
 // CoruscantSeized: Coruscant the Alliance's, as A0 coruscant-676/14; the
 // setup's second system is Coruscant. A case with `scenario` runs it.
 const CORUSCANT_SEIZED = 107;
+// CoruscantSquadrons: the Empire's Coruscant with ten TIE Fighter
+// squadrons, as A0 2026-11-11-icon-menu-topic/05; the second system again.
+const CORUSCANT_SQUADRONS = 109;
 const factions = [
   { name: "alliance", byte: 1, side: 1, other: 2, galaxyRight: 540 },
   { name: "empire", byte: 2, side: 2, other: 1, galaxyRight: 600 },
@@ -1663,6 +1666,110 @@ const cases = [
       assert.ok(label.a0 && label.port && [0, 1, 3].every((k) => Math.abs(label.a0[k] - label.port[k]) <= 1)
         && labelRatio > 0.85 && labelRatio < 1.15, `the page name against A0: ${JSON.stringify({ ...label, labelRatio })}`);
       return { at, window, checks, a0: { whole, name: { ...name, ratio }, label: { ...label, ratio: labelRatio } } };
+    },
+  },
+  {
+    name: "defenses-list-bar",
+    scenario: CORUSCANT_SQUADRONS,
+    factions: ["empire"],
+    // A0 2026-11-11-icon-menu-topic/05 and 06 (the VM's Empire game):
+    // Coruscant's Defenses window at (203, 91) on its Fighter Squadrons
+    // page, ten TIE Fighter squadrons in four lines of three, past the
+    // list's 210 pixels. FUN_004a8790 gives the list the bar of RCDATA 10700
+    // (FUN_0060a490 with 0x29cc) at its right edge, window x 219..228 from
+    // y 81: 05 shows it from the top, 06 at the end (280 + 5 - 210 = 75,
+    // FUN_00609ae0), the last line's squadron selected. The port's bar
+    // against both, every pixel; the scrolled squadrons' minis against 06.
+    async run(page, faction, setup, directory, source) {
+      const { dat, window } = await openDefenses(page, setup, "second");
+      assert.equal(window.side, 2, JSON.stringify(window));
+      assert.equal(window.counts[2], 10, JSON.stringify(window));
+      const origin = corner(window);
+      const tab = window.tabs.find(([name]) => name === "squadrons")[1];
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await click(page, { x: tab[0] + 18, y: tab[1] + 16 });
+      const squadrons = defensesWindow(await until(page, "the squadrons tab opens its page",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.page === "squadrons"), dat), dat);
+      assert.equal(squadrons.rows.length, 10, JSON.stringify(squadrons));
+      assert.equal(squadrons.cells.length, 10, JSON.stringify(squadrons));
+      assert.equal(squadrons.cells[9][1], origin[1] + 81 + 210, JSON.stringify(squadrons.cells));
+      const a0Dir = path.join(root, ".artifacts/a0-vm/2026-11-11-icon-menu-topic");
+      const a0Top = path.join(a0Dir, "05-tie-menu-move-white.png");
+      const a0End = path.join(a0Dir, "06-last-tie-menu-move-white.png");
+      const a0Origin = [203, 91];
+      // Each region's pixels, window-relative, against A0's.
+      const regionDiff = (port, a0File, regions) => {
+        const a0 = PNG.sync.read(fs.readFileSync(a0File));
+        const rgb = (png, x, y) => {
+          const i = (y * png.width + x) * 4;
+          return (png.data[i] << 16) | (png.data[i + 1] << 8) | png.data[i + 2];
+        };
+        let compared = 0;
+        const differing = [];
+        for (const [rx, ry, rw, rh] of regions) {
+          for (let y = ry; y < ry + rh; y += 1) {
+            for (let x = rx; x < rx + rw; x += 1) {
+              compared += 1;
+              if (rgb(port, origin[0] + x, origin[1] + y) !== rgb(a0, a0Origin[0] + x, a0Origin[1] + y)) {
+                differing.push([x, y]);
+              }
+            }
+          }
+        }
+        return { a0: path.basename(a0File), compared, differing: differing.length, first: differing.slice(0, 12) };
+      };
+      const bar = [219, 81, 10, 210];
+      let screenshot = await stableScreen(page, directory, "top");
+      const top = regionDiff(screenshot, a0Top, [bar]);
+      assert.ok(top.compared === 2100 && top.differing === 0, `the bar from the top against A0 05: ${JSON.stringify(top)}`);
+
+      // The down arrow steps the list by 10 (FUN_004a8790's step).
+      await click(page, { x: origin[0] + 224, y: origin[1] + 286 });
+      const stepped = defensesWindow(await until(page, "the down arrow scrolls the list by its step",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value[0] && w.cells[0][1] === value[1]),
+        [dat, origin[1] + 81 - 10]), dat);
+      // A press on the track below the thumb pages by the list's height,
+      // clamped to the end (FUN_0060fd50).
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await click(page, { x: origin[0] + 224, y: origin[1] + 260 });
+      const end = defensesWindow(await until(page, "the track pages the list to its end",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value[0] && w.cells[9][1] === value[1]),
+        [dat, origin[1] + 81 + 210 - 75]), dat);
+      const last = end.cells[9];
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await click(page, { x: last[0] + 30, y: last[1] + 12 });
+      const selected = defensesWindow(await until(page, "a click selects the tenth squadron",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.selected === 9), dat), dat);
+      assert.equal(selected.cells[9][1], last[1], "the selection keeps the list's place");
+      screenshot = await stableScreen(page, directory, "end");
+      // A0 06's minis of the second and third lines, above their names
+      // (TIE Fighter, FUN_004a9ab0; the text keeps its accepted width
+      // deviation): the second line cut by the list's top at 81 - 5.
+      const minis = [];
+      for (const column of [0, 1, 2]) {
+        minis.push([7 + 70 * column, 81, 70, 76 + 27 - 81]);
+        minis.push([7 + 70 * column, 146, 70, 27]);
+      }
+      const atEnd = regionDiff(screenshot, a0End, [bar]);
+      const scrolled = regionDiff(screenshot, a0End, minis);
+      assert.ok(atEnd.compared === 2100 && atEnd.differing === 0, `the bar at the end against A0 06: ${JSON.stringify(atEnd)}`);
+      assert.ok(scrolled.compared > 5000 && scrolled.differing === 0, `the scrolled minis against A0 06: ${JSON.stringify(scrolled)}`);
+      const frame = resource(source, 10579);
+      const selectedChecks = [
+        { id: 10579, ...compareIcon(screenshot, selected.cells[9], frame, "tenth-selected-frame", directory) },
+      ];
+      assertExact(selectedChecks);
+      // The bar is a child window over the list (FUN_0060fa80): its up
+      // arrow scrolls back a step and leaves the selection alone.
+      await click(page, { x: origin[0] + 224, y: origin[1] + 85 });
+      const back = defensesWindow(await until(page, "the up arrow scrolls back a step",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value[0] && w.cells[9][1] === value[1]),
+        [dat, last[1] + 10]), dat);
+      assert.equal(back.selected, 9, JSON.stringify(back));
+      return { window: squadrons, stepped: stepped.cells[0], end: end.cells, back: back.cells[9], a0: { top, atEnd, scrolled }, selectedChecks };
     },
   },
   {
