@@ -164,3 +164,7 @@ Typed decompile: `FUN_00516730`, `FUN_004fcf50`, `FUN_0051dce0`,
 
 No code changed, so no tests, mutants or provenance scan ran, and no
 browser gate covers this case.
+
+## Batch b199
+
+The full gate batch b199 (2026-11-12 13:25-15:05) passed 28 of 30 gates, the workspace (3631 tests) and fixture tests (159), and 172 tactical battle checks, 0 failed. fleet-window (move-and-carry: the regiment did not board in time) and status-window (fighter: Status did not open in time) failed under a load average near 24 from three agents' builds; rerun alone they pass (fleet-window-2026-11-12T14-08-10-312Z-2322992 2/2, status-window-2026-11-12T14-08-44-749Z-2323466 whole gate).

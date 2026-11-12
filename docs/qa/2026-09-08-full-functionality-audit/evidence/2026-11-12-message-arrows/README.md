@@ -233,3 +233,7 @@ disabled art is blitted keyed like the enabled art. The port drew 10921
 and 10950 opaque; `bmp_cache.rs` now keys 10919..10921 and 10948..10950
 (test `the_message_windows_disabled_scroll_arrows_key_out_their_blue`,
 which fails without the change).
+
+## Batch b199
+
+The full gate batch b199 (2026-11-12 13:25-15:05) passed 28 of 30 gates, the workspace (3631 tests) and fixture tests (159), and 172 tactical battle checks, 0 failed. fleet-window (move-and-carry: the regiment did not board in time) and status-window (fighter: Status did not open in time) failed under a load average near 24 from three agents' builds; rerun alone they pass (fleet-window-2026-11-12T14-08-10-312Z-2322992 2/2, status-window-2026-11-12T14-08-44-749Z-2323466 whole gate).

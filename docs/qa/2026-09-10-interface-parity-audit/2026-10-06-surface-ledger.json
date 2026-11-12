@@ -3248,7 +3248,7 @@
         {
           "id": "CMD-08-C004",
           "requirement": "summary",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-summary-headline-and-message-arrows/",
@@ -3256,7 +3256,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-event-messages/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-message-arrows/README.md"
           ],
-          "note": "Not yet identified against the manual's summary state. 2026-11-09: identified: the manual's Message Summary screen (p. 79, Fig. 3.19) is the Message Index's mode 2, the open message, compared with A0 for many messages in message-display.mjs (picture, title, text, rail), with Display Message back to the list and Display to the subject. Its arrows 0x96/0x9a (FUN_004665f0, FUN_0046a200) now step through the Conflict list in message-display.mjs (Linux): Assault on Coruscant -> Assault on Umgul and back. Which arrow goes to the older message is inferred from the art (and agrees with the 2026-11-08 VM handling), with no A0 capture of a step. Batch b148: 23 of 23 interface gates on Linux, tactical matrix 2026-11-09T02-31-18-762Z-605154 148 of 148, workspace tests 3492 passed, 4 mutants caught. 2026-11-09 (b149): mode 2's title strip 0x2ab5 and text area 0x2ab4 also lie under the frame (A0 empire-game3/joins-enemy: the base's colour at all 27 and 45 overlapping pixels); shell_layers now paints the panes before the base for both modes. 2026-11-11 b192: no A0 of a Message Summary arrow press; which arrow goes to the older message is still inferred. Capture needed: one open message before and after one press of arrow 0x96 or 0x9a. 2026-11-12 trace: the direction is settled — 0x96 calls row vtable +0xc (FUN_004ad730, next row = older) and 0x9a +0x10 (FUN_004ad750, newer); rows are newest first (FUN_00468ab0). The port matches. Open: the disabled arrow art at the list ends (FUN_0046a200: 10921, 10950) is not drawn by the port. b198: the port now shows the disabled arrow art at the list ends (10921 on 0x96 at the oldest, 10950 on 0x9a at the newest; FUN_0046a200); its colour keying needs one A0 with the newest message open."
+          "note": "Not yet identified against the manual's summary state. 2026-11-09: identified: the manual's Message Summary screen (p. 79, Fig. 3.19) is the Message Index's mode 2, the open message, compared with A0 for many messages in message-display.mjs (picture, title, text, rail), with Display Message back to the list and Display to the subject. Its arrows 0x96/0x9a (FUN_004665f0, FUN_0046a200) now step through the Conflict list in message-display.mjs (Linux): Assault on Coruscant -> Assault on Umgul and back. Which arrow goes to the older message is inferred from the art (and agrees with the 2026-11-08 VM handling), with no A0 capture of a step. Batch b148: 23 of 23 interface gates on Linux, tactical matrix 2026-11-09T02-31-18-762Z-605154 148 of 148, workspace tests 3492 passed, 4 mutants caught. 2026-11-09 (b149): mode 2's title strip 0x2ab5 and text area 0x2ab4 also lie under the frame (A0 empire-game3/joins-enemy: the base's colour at all 27 and 45 overlapping pixels); shell_layers now paints the panes before the base for both modes. 2026-11-11 b192: no A0 of a Message Summary arrow press; which arrow goes to the older message is still inferred. Capture needed: one open message before and after one press of arrow 0x96 or 0x9a. 2026-11-12 trace: the direction is settled — 0x96 calls row vtable +0xc (FUN_004ad730, next row = older) and 0x9a +0x10 (FUN_004ad750, newer); rows are newest first (FUN_00468ab0). The port matches. Open: the disabled arrow art at the list ends (FUN_0046a200: 10921, 10950) is not drawn by the port. b198: the port now shows the disabled arrow art at the list ends (10921 on 0x96 at the oldest, 10950 on 0x9a at the newest; FUN_0046a200); its colour keying needs one A0 with the newest message open. b199: A0 2026-11-12-afternoon/10-msg (one message open, both ends) shows 10950 at (429,64) and 10921 at (452,64), 0 of 125 pixels off, keyed (no key blue); the port now draws and keys them (bmp_cache 10919..10921, 10948..10950; 5adad9f1). Direction traced earlier (FUN_004ad730/FUN_004ad750)."
         },
         {
           "id": "CMD-08-C005",
@@ -7695,15 +7695,16 @@
         {
           "id": "OBJ-13-C008",
           "requirement": "Coruscant controlled",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-seat-of-power/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-loyalty-coruscant-hq/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-ship-contents-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-title-key-pixel/README.md"
           ],
-          "note": "Coruscant's side and SeatOfPower (FUN_005617b0, 0x230 message) are ported; unit tests only, no browser or A0 of the state. 2026-11-07 (A0 VM, the Empire game, day 676..679, a0-vm/coruscant-676/12..14): when Get Immediate Result gave the Alliance Coruscant, closing the result played the movie with the caption 'The Alliance has seized the Imperial capital system of Coruscant.' (TEXTSTRA 0x7171, MDATA.103 per movie-flow.md), and the game went on (Standard victory also needs the Emperor and Vader): Coruscant's window shows the Alliance's red title. The port plays 103 under 0x7171 (story_messages); no browser case reaches the state. 2026-11-11 b191: sector-quadrants.mjs defenses-other-side: the Empire's Defenses window title row for an Alliance-held system matches A0 coruscant-676/14 (0 of 813 pixels outside the name; name start within a pixel; run sector-quadrants-2026-11-11T16-47-05-922Z-1422686). The fixture system is not Coruscant; the title buttons' bottom-left key pixel is unsettled in A0 (black here, green or red elsewhere).",
+          "note": "Coruscant's side and SeatOfPower (FUN_005617b0, 0x230 message) are ported; unit tests only, no browser or A0 of the state. 2026-11-07 (A0 VM, the Empire game, day 676..679, a0-vm/coruscant-676/12..14): when Get Immediate Result gave the Alliance Coruscant, closing the result played the movie with the caption 'The Alliance has seized the Imperial capital system of Coruscant.' (TEXTSTRA 0x7171, MDATA.103 per movie-flow.md), and the game went on (Standard victory also needs the Emperor and Vader): Coruscant's window shows the Alliance's red title. The port plays 103 under 0x7171 (story_messages); no browser case reaches the state. 2026-11-11 b191: sector-quadrants.mjs defenses-other-side: the Empire's Defenses window title row for an Alliance-held system matches A0 coruscant-676/14 (0 of 813 pixels outside the name; name start within a pixel; run sector-quadrants-2026-11-11T16-47-05-922Z-1422686). The fixture system is not Coruscant; the title buttons' bottom-left key pixel is unsettled in A0 (black here, green or red elsewhere). b199: the title buttons' key pixel traced to the window surface 10577 (FUN_004a8790 -> FUN_006075b0 +0xa4, FUN_00606c90/FUN_00602150, FUN_00602d30), black whatever the strip's side or focus, as A0; new fixture CoruscantSeized and sector-quadrants case empire/coruscant-seized open Coruscant's own Defenses window after the Alliance takes it: 0 of 64,881 pixels off A0 coruscant-676/14 outside the title name, page label and A0's pointer (run sector-quadrants-2026-11-12T12-12-19-417Z-1228710, 33/33).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8615,9 +8616,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-retreat/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-evt-02-c008-cause/README.md"
           ],
-          "note": "Retreat disabled by an enemy gravity well (FUN_00516730) is unit-tested only; the browser fixture keeps Retreat enabled and no A0 shows the disabled art. 2026-11-06: A0 battle-clean/20 (an unedited Alliance game, Battle at Umgul) shows Retreat disabled with 10976, the Alliance's disabled art after the b107 fix; the cause there is not shown, so the rule is not compared. 2026-11-08 (A0 VM, the Empire game, day 768, a0-vm/sluis-van-768/01..04): the Empire's Battle at Sluis Van alert shows Retreat disabled as 10973 at (137, 348), the port's BATTLE_ALERT_RETREAT_EMPIRE_DISABLED, every pixel; the Alliance's Fleet 55 (Freedom, X-wing, A-wings) carries no gravity well the forces list shows, so the cause (FUN_00516730: a mover, an autoroute) is still not compared.",
+          "note": "Retreat disabled by an enemy gravity well (FUN_00516730) is unit-tested only; the browser fixture keeps Retreat enabled and no A0 shows the disabled art. 2026-11-06: A0 battle-clean/20 (an unedited Alliance game, Battle at Umgul) shows Retreat disabled with 10976, the Alliance's disabled art after the b107 fix; the cause there is not shown, so the rule is not compared. 2026-11-08 (A0 VM, the Empire game, day 768, a0-vm/sluis-van-768/01..04): the Empire's Battle at Sluis Van alert shows Retreat disabled as 10973 at (137, 348), the port's BATTLE_ALERT_RETREAT_EMPIRE_DISABLED, every pixel; the Alliance's Fleet 55 (Freedom, X-wing, A-wings) carries no gravity well the forces list shows, so the cause (FUN_00516730: a mover, an autoroute) is still not compared. 2026-11-12 trace: Retreat needs no enemy gravity-well capital ship, a movable viewer fleet and a destination the search accepts; the search tests the fleet itself (FUN_005571c0/FUN_00553410 refuse other side, unfinished 0x20, destroyed, en route) and always offers the battle system. A0 Sluis Van's Freedom is a Mon Calamari Cruiser (no well); the cause is either a hidden CC-7700 in the scrolled forces list or an unfinished member of Empire Fleet 2 — the captures cannot tell. The port leaves unfinished products out of fleets (architecture question).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9030,14 +9032,15 @@
         {
           "id": "TAC-01-C008",
           "requirement": "planet backdrop",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-camera-backdrop/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-planet-backdrop/README.md"
           ],
-          "note": "Planet decal e wide at (2e,0,0) (FUN_005d4d10); A0 TAC-01-C008 corner (105,298) vs port (105,297), planet top right; exact planet framing (random offsets taken at centre, port:) remains open. 2026-11-12: production-umgul-backdrop turns left 16 times as A0; holocube corner (108,297) vs A0 (106,298); planet edges up to 16 px off (random offsets, port: centre). b197: the tactical scene projects into the original's 440x438 viewport (tactical_scene_viewport); 1052 of 1148 holocube pixels land on A0's; planet framing (random offsets) remains open.",
+          "note": "Planet decal e wide at (2e,0,0) (FUN_005d4d10); A0 TAC-01-C008 corner (105,298) vs port (105,297), planet top right; exact planet framing (random offsets taken at centre, port:) remains open. 2026-11-12: production-umgul-backdrop turns left 16 times as A0; holocube corner (108,297) vs A0 (106,298); planet edges up to 16 px off (random offsets, port: centre). b197: the tactical scene projects into the original's 440x438 viewport (tactical_scene_viewport); 1052 of 1148 holocube pixels land on A0's; planet framing (random offsets) remains open. b199: the planet and Death Star decal offsets are drawn from the original's own stream (FUN_005d4d10 local stream, FUN_005f56b0/FUN_005f5750 srand(time) seed, FUN_005f5700 draws, planet y/z then Death Star y/z); the original's framing is random per battle, so the fixture pins a clock whose draw is A0's (6,5): all five planet edges land on A0's pixels on both sides (production-umgul-backdrop, edges within 2 px asserted). Note: production battles frame differently each time, as the original.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
