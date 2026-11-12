@@ -296,8 +296,20 @@ function composeExpected(source, faction, state) {
     if (state.damaged) blit(expected, resource(source, 10427 + faction.art), left, 42, { keyed: true });
     blit(expected, picture, left, 42, { keyed: true });
     const base = 10409 + faction.art;
+    const pane = resource(source, 10407 + faction.art);
     [1, 33, 65, 97].forEach((x, k) => {
       const id = k === state.tab ? base + 7 + k : !state.enabled[k] ? base + 3 + k : base + k;
+      // Each tab's backdrop is the strip's copy of the pane read from
+      // (0, 0) (FUN_004a6980 -> FUN_0060da10(strip, pane, 2, 67)), so its
+      // column c shows the pane at window x 99 + c; a 30-wide art leaves
+      // column 30 showing it.
+      for (let row = 0; row < 28; row += 1) {
+        for (let column = 0; column < 31; column += 1) {
+          const from = ((67 + row) * pane.width + 2 + column) * 4;
+          const to = ((96 + row) * expected.width + 99 + x + column) * 4;
+          expected.data.set(pane.data.subarray(from, from + 4), to);
+        }
+      }
       blit(expected, resource(source, id), 99 + x, 96, { width: 31, height: 28 });
     });
   }
@@ -2222,10 +2234,13 @@ const cases = [
     // day 676): Fleet 5, Corellian Corvette 2, with Admiral Bel Iblis
     // aboard (10406 under the fleet and the corvette, FUN_004a67a0).
     // What differs (2026-11-01): the GDI text's hinting and A0's cursor
-    // over the clicked tab.
+    // over the clicked tab. The ceilings are the counts measured on
+    // 2026-11-12 once the tabs' column 30 showed the strip's pane
+    // (FUN_0060da10), 2 fewer per tab than before; the counts were the
+    // same in every run since 2026-11-11.
     run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-vjun",
       a0Fleet2Dir && ((tab) => path.join(a0Fleet2Dir, `vjun-fleet5-admiral-${tab}.png`)),
-      { ships: 1700, fighters: 1250, troops: 1250, personnel: 1600 }),
+      { ships: 1578, fighters: 1125, troops: 1125, personnel: 1486 }),
   },
   {
     name: "a0-coruscant",

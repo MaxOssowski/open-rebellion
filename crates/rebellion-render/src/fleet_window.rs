@@ -372,6 +372,8 @@ const LEFT_LIST: (f32, f32, f32, f32) = (4.0, 29.0, 91.0, 266.0);
 const RIGHT_LIST: (f32, f32, f32, f32) = (101.0, 127.0, 133.0, 164.0);
 const PICTURE_PANEL: (f32, f32, f32, f32) = (100.0, 42.0, 125.0, 49.0);
 const TAB_STRIP: (f32, f32) = (99.0, 96.0);
+/// The right pane's art at (97, 29) (`FUN_004a6980`'s `FUN_0060da10` offset).
+const PANE_ORIGIN: (f32, f32) = (97.0, 29.0);
 const TAB_X: [f32; 4] = [1.0, 33.0, 65.0, 97.0];
 const TAB_SIZE: (f32, f32) = (31.0, 28.0);
 const LEFT_ITEM_HEIGHT: f32 = 50.0;
@@ -1938,6 +1940,21 @@ fn window_screen_rect(window: &OpenFleetWindow, layout: CockpitLayout) -> egui::
     )
 }
 
+/// Where the pane art 10407 (or its side's) is placed so `tab`'s control
+/// shows it as its backdrop. `FUN_004a6980` hands the strip the pane through
+/// `FUN_0060da10(strip, pane, 99 - 97, 96 - 29)`: the strip's surface
+/// becomes the pane from (2, 67), and each tab's backdrop (`+0xa4`) that
+/// surface read at (0, 0) (`+0x10c` = `+0x110` = 0), whatever the tab's x.
+/// So a tab's column c shows the pane at window x 99 + c: the pane's origin
+/// moves by the tab's x in the strip. `FUN_00602d30` composes the art over
+/// that backdrop, and only a 30-wide art (10409, 10412, ...) leaves its
+/// column 30 showing: A0 fleet2/vjun-fleet5-admiral-* show the pane's
+/// window (129, 96) black at (130, 96) and (129, 122) at (226, 122).
+fn tab_backdrop_origin(tab: FleetWindowTab) -> (f32, f32) {
+    let x = TAB_X[tab.index() as usize];
+    (PANE_ORIGIN.0 + x, PANE_ORIGIN.1)
+}
+
 fn tab_rect(window: egui::Rect, scale: f32, tab: FleetWindowTab) -> egui::Rect {
     logical_rect(
         window,
@@ -2255,7 +2272,12 @@ fn draw_fleet_window(
             // player's art for its own side, the other art otherwise.
             if let Some(side) = selected_side {
                 let art_side = if side == viewer { viewer } else { other };
-                paint(cache, side_art(PANE_ART, art_side), 97.0, 29.0);
+                paint(
+                    cache,
+                    side_art(PANE_ART, art_side),
+                    PANE_ORIGIN.0,
+                    PANE_ORIGIN.1,
+                );
             }
 
             // The left list: fleet entries, and ships while expanded.
@@ -2741,13 +2763,28 @@ fn draw_fleet_window(
 
                 // The strip: the player's base for its own side, the other
                 // base otherwise.
-                let base = side_art(TAB_BASE, if side == viewer { viewer } else { other });
+                let strip_side = if side == viewer { viewer } else { other };
+                let base = side_art(TAB_BASE, strip_side);
                 for tab in shown_tabs(selected) {
                     let enabled = tab_enabled(world, transport, selected, tab);
                     let rect = tab_rect(local, scale, tab);
                     let id = tab_resource(base, tab, tab == window.tab, enabled);
                     // The control clips the 29-row art to 28 (`FUN_00602d30`).
                     let tab_painter = painter.with_clip_rect(rect);
+                    // Its backdrop first: what a 30-wide art leaves of the
+                    // 31-wide control (column 30) shows it.
+                    let (pane_x, pane_y) = tab_backdrop_origin(tab);
+                    paint_native(
+                        &tab_painter,
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        side_art(PANE_ART, strip_side),
+                        local,
+                        scale,
+                        pane_x,
+                        pane_y,
+                    );
                     paint_native(
                         &tab_painter,
                         ctx,
@@ -5640,6 +5677,48 @@ pub(crate) mod tests {
             "{:?}",
             output.texts
         );
+    }
+
+    // FUN_004a6980 -> FUN_0060da10(strip, pane, 2, 67): each tab's backdrop
+    // is the strip's copy of the pane read from (0, 0), so its column c
+    // shows the pane at window x 99 + c. A0 fleet2/vjun-fleet5-admiral-*
+    // show it in the 30-wide Capital Ships and Personnel tabs' column 30:
+    // black at (130, 96) and (226, 122), where the pane itself is (59, 59,
+    // 59) and (30, 29, 24).
+    #[test]
+    fn each_tab_shows_the_pane_from_the_strips_left_edge_under_its_art() {
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+        }
+        let painted = run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        )
+        .painted;
+        for (pane_x, tab_x) in [
+            (98.0, 100.0),
+            (130.0, 132.0),
+            (162.0, 164.0),
+            (194.0, 196.0),
+        ] {
+            let pane = painted
+                .iter()
+                .position(|&entry| entry == (PANE_ART, at(pane_x, 29.0)));
+            let art = painted
+                .iter()
+                .position(|&(id, point)| (10409..=10419).contains(&id) && point == at(tab_x, 96.0));
+            assert!(
+                pane.zip(art).is_some_and(|(pane, art)| pane < art),
+                "{pane_x}: {pane:?} {art:?} in {painted:?}"
+            );
+        }
     }
 
     #[test]
