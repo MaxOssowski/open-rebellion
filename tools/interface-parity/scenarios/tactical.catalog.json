@@ -583,6 +583,19 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Locates the holocube's near corner and the planet's lit box after 16 Rotate Left presses and compares them with A0 TAC-01-C008 for the Empire at 640 x 480."
+    },
+    {
+      "slug": "production-capital-panel-missions-tip",
+      "description": "A0 TAC-03-C012's battle (one Medium Transport against one Victory Destroyer at Mon Calamari, paused) with Task Force 1 selected: the pointer rests on the capital-ship panel's Missions button and its tip shows. It supports CMD-11-C030, which another gate maps: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65829, "empire": 66085 },
+      "execution_kind": "journey",
+      "tactical_proof": false,
+      "production_participants": true,
+      "hull_scale_presentation": true,
+      "capital_panel_tip": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "Selects Task Force 1, rests the pointer at A0's (562, 255) on the Missions button and compares the tip's box with A0 TAC-03-C012 for the Alliance at 640 x 480: its place at the pointer plus (0, 21), its height, and its width within the accepted text deviation."
     }
   ]
 }

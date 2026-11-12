@@ -4730,12 +4730,114 @@ async function probeTacticalUmgulBackdrop(page, viewport, folder, ready, faction
     // the port's centre, port:).
     assert.ok(port.planet_left.y40 !== null && port.planet_left.y40 > 300,
       `${faction}: no planet at the top right ${JSON.stringify(port)}`);
-    // The corner within 3 pixels, the unit test's tolerance
-    // (the_camera_orbits_the_vertical_axis_as_the_original_captures_show);
-    // the 1-pixel offset left is the open item of the cell.
-    assert.ok(port.corner && Math.abs(port.corner.x - probe.a0.corner.x) <= 3
-      && Math.abs(port.corner.y - probe.a0.corner.y) <= 3,
+    // The corner within 1 pixel: the 3-wide row's first pixel falls on
+    // either side of the corner as the GL and D3D line rules differ.
+    assert.ok(port.corner && Math.abs(port.corner.x - probe.a0.corner.x) <= 1
+      && Math.abs(port.corner.y - probe.a0.corner.y) <= 1,
     `${faction}: the holocube corner ${JSON.stringify(port.corner)} is not near A0's`);
+    // The lines through the retained-mode viewport (17, 30, 440, 438)
+    // (tactical_scene_viewport): at least 90% of the port's blue line
+    // pixels lie on A0's, and every one within a pixel of A0's. With the
+    // aperture-wide projection, 120 of 1,153 did.
+    const lines = (image) => {
+      const set = new Set();
+      for (let y = 30; y < 468; y++) {
+        for (let x = 17; x < 457; x++) {
+          const k = (y * 640 + x) * 4;
+          if (image.data[k + 2] > 150 && image.data[k] < 60 && image.data[k + 1] < 60) set.add(y * 640 + x);
+        }
+      }
+      return set;
+    };
+    const a0Lines = lines(PNG.sync.read(fs.readFileSync(a0Path)));
+    const portLines = [...lines(PNG.sync.read(turned))];
+    const onA0 = portLines.filter((key) => a0Lines.has(key)).length;
+    const nearA0 = portLines.filter((key) => [-641, -640, -639, -1, 0, 1, 639, 640, 641]
+      .some((step) => a0Lines.has(key + step))).length;
+    probe.lines = { a0: a0Lines.size, port: portLines.length, on_a0: onA0, within_one_pixel: nearA0 };
+    assert.ok(portLines.length > 0 && onA0 >= 0.9 * portLines.length && nearA0 === portLines.length,
+      `${faction}: the holocube's lines are off A0's ${JSON.stringify(probe.lines)}`);
+  }
+  return [probe];
+}
+
+// A0 TAC-03-C012 (Wine): the Alliance's paused battle at Mon Calamari, Task
+// Force 1 (one Medium Transport) selected, the pointer at (562, 255) on the
+// capital-ship panel's Missions button. Its tip (TEXTTACT, the shared
+// win_tooltip box) stands at the pointer plus (0, 21): (562, 276), 52 by
+// 19. The probe selects Task Force 1 (72, 10), rests the pointer at A0's
+// place and compares the box. Only the Alliance has an A0 capture; the
+// Empire's panel has the same layout, so its box is held to the same rule.
+async function probeTacticalCapitalPanelTip(page, viewport, folder, faction) {
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const at = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const taskForce = at(72, 10);
+  await page.mouse.move(taskForce.x, taskForce.y);
+  await page.mouse.down({ button: "left" });
+  await page.waitForTimeout(100);
+  await page.mouse.up({ button: "left" });
+  await page.waitForTimeout(300);
+  const away = at(320, 300);
+  await page.mouse.move(away.x, away.y, { steps: 4 });
+  await page.waitForTimeout(300);
+  const pointer = [562, 255];
+  const missions = at(...pointer);
+  await page.mouse.move(missions.x, missions.y, { steps: 4 });
+  await page.waitForTimeout(1000);
+  const shown = await stableInteractionFrame(page, folder, "capital-panel-missions-tip");
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  if (!native) return [{ type: "capital-panel-missions-tip", pointer }];
+  // win_tooltip.rs FILL and BORDER, the colours A0 shows.
+  const fill = [255, 251, 240];
+  const border = [128, 128, 128];
+  const tipBox = (image, [px, py]) => {
+    const same = (x, y, colour) => {
+      const k = (y * image.width + x) * 4;
+      return colour.every((value, index) => image.data[k + index] === value);
+    };
+    for (let y = py; y < Math.min(image.height - 1, py + 40); y++) {
+      for (let x = Math.max(0, px - 220); x < Math.min(image.width - 1, px + 160); x++) {
+        if (!same(x, y, border) || !same(x + 1, y + 1, fill)) continue;
+        let y1 = y + 1;
+        while (y1 < image.height && same(x, y1, border)) y1 += 1;
+        let x1 = x + 1;
+        while (x1 < image.width && same(x1, y1 - 1, border)) x1 += 1;
+        return { x, y, width: x1 - x, height: y1 - y };
+      }
+    }
+    return null;
+  };
+  const port = tipBox(PNG.sync.read(shown), pointer);
+  const a0Path = path.join(root, ".artifacts/interface-parity/a0/TAC-03-C012/original.png");
+  const probe = { type: "capital-panel-missions-tip", pointer, port };
+  assert.ok(port, `${faction}: no tip below the Missions button`);
+  if (fs.existsSync(a0Path)) {
+    const a0 = tipBox(PNG.sync.read(fs.readFileSync(a0Path)), pointer);
+    probe.a0 = a0;
+    assert.deepEqual([port.x, port.y, port.height], [a0.x, a0.y, a0.height],
+      `${faction}: the Missions tip ${JSON.stringify(port)} is not at A0's ${JSON.stringify(a0)}`);
+    // The text's width is the accepted Liberation Sans deviation.
+    assert.ok(Math.abs(port.width - a0.width) <= Math.ceil(a0.width * 0.12),
+      `${faction}: the Missions tip is ${port.width} wide, A0's ${a0.width}`);
+    if (port.width === a0.width) {
+      // The frame, pixel for pixel; A0's pointer covers one top pixel.
+      const portImage = PNG.sync.read(shown);
+      const a0Image = PNG.sync.read(fs.readFileSync(a0Path));
+      let checked = 0;
+      let differ = 0;
+      for (let y = a0.y; y < a0.y + a0.height; y++) {
+        for (let x = a0.x; x < a0.x + a0.width; x++) {
+          if (y !== a0.y && y !== a0.y + a0.height - 1 && x !== a0.x && x !== a0.x + a0.width - 1) continue;
+          const k = (y * 640 + x) * 4;
+          checked += 1;
+          if ([0, 1, 2].some((i) => portImage.data[k + i] !== a0Image.data[k + i])) differ += 1;
+        }
+      }
+      probe.frame = { checked, differ };
+      assert.ok(differ <= 1, `${faction}: the tip's frame differs from A0's ${JSON.stringify(probe.frame)}`);
+    }
   }
   return [probe];
 }
@@ -6367,6 +6469,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? await probeTacticalNavigationCameraPresentation(
           page, viewport, folder, stable, consoleLines, ready,
         )
+        : scenario.capital_panel_tip
+        ? await probeTacticalCapitalPanelTip(page, viewport, folder, faction)
         : scenario.umgul_backdrop
         ? await probeTacticalUmgulBackdrop(page, viewport, folder, ready, faction)
         : scenario.battle_last_ship_lost
@@ -7434,20 +7538,21 @@ async function main() {
         "production-battle-alert-retreat",
         "production-battle-withdrawal-report",
         "production-battle-last-ship-lost",
-        "production-umgul-backdrop"]);
+        "production-umgul-backdrop",
+        "production-capital-panel-missions-tip"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(35).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(36).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined]);
+        undefined, undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 42 }, (_, index) => index === 5));
+      Array.from({ length: 43 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 42 }, (_, index) => index === 6));
+      Array.from({ length: 43 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });
