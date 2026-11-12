@@ -179,3 +179,7 @@ fail with the FLEETSD filter disabled and pass with it;
 `the_fleet_topic_steps_through_all_databases_by_its_name` replaces the
 unlisted-entry test. No WASM rebuild, gate or A0 capture yet; the A0
 capture above is still open.
+
+## Batch b198
+
+The full gate batch b198 (2026-11-12 10:16-11:30) passed 29 of 30 gates, the workspace (3620 tests) and fixture tests (158), and 172 tactical battle checks, 0 failed. The one failure was fleet-window.mjs fleet-encyclopedia, which still expected the old fleet object 0x0800_0000; the expectation now names the class 0x0800_0004 (FUN_004f7d50) and both sides pass (run fleet-window-2026-11-12T10-36-04-649Z-764990).

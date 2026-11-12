@@ -200,3 +200,7 @@ Still open: 10921 and 10950 are drawn without the colour key. 10950 is
 asserted opaque in `bmp_cache.rs` from an earlier check, and the keying of
 both needs the A0 capture named above (newest message open). No WASM build
 or browser gate was run.
+
+## Batch b198
+
+The full gate batch b198 (2026-11-12 10:16-11:30) passed 29 of 30 gates, the workspace (3620 tests) and fixture tests (158), and 172 tactical battle checks, 0 failed. The one failure was fleet-window.mjs fleet-encyclopedia, which still expected the old fleet object 0x0800_0000; the expectation now names the class 0x0800_0004 (FUN_004f7d50) and both sides pass (run fleet-window-2026-11-12T10-36-04-649Z-764990).
