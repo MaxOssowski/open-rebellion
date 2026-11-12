@@ -132,3 +132,110 @@ WASM of this tree (`wasm_sha256`
 ## Save format
 
 Unchanged.
+
+## Round 2: Coruscant itself after it changes hands
+
+This round closes the first open item above: a browser case now opens
+Coruscant's own Defenses window after the Alliance takes it.
+
+### The fixture
+
+`interface_test_fixture.rs`, new scenario `CoruscantSeized` (index 106,
+fixture code 107 | side << 8, so 619 for the Empire). It copies the state
+that A0 `coruscant-676/14` shows:
+
+- Coruscant is held by the Alliance, explored and populated.
+- It has one Alliance Army Regiment (`0x1000_0001`) and nothing else of the
+  Alliance's. Its defence facilities are cleared. Every fleet, regiment,
+  special force and character that stood there moves to a system in another
+  sector.
+- Both fogs reveal Coruscant (`reveal`). In A0 the Empire sees the
+  regiment: its Trooper Regiments tab shows as full.
+- Its sector window is open. The quadrant setup and watch use the new
+  `quadrant_systems`, which makes Coruscant the second system and the
+  sector's first other system the primary. Only `Quadrants` places the
+  sector marks.
+
+`main.rs` is unchanged.
+
+Unit test:
+`interface_test_fixture::tests::the_seized_coruscant_scenario_leaves_the_alliance_one_regiment_there_in_the_empires_sight`.
+With the `place_coruscant_seized` call removed it fails on the side. With
+the Empire fog's reveal removed it fails on the counts (`[0, 0, 0, 0, 0]`
+against `[0, 1, 0, 0, 0]`).
+
+### The gate case
+
+`sector-quadrants.mjs`, case `empire/coruscant-seized`. A case may now name
+its own `scenario` and `factions`. Only the Empire runs this one, because A0
+is the Empire's game. The case double-clicks Coruscant's defenses quadrant
+and checks the following:
+
+- The window shows side 1 on the Personnel page, with counts
+  `[0, 1, 0, 0, 0]`, no rows and no garrison line.
+- The five tabs match STRATEGY.DLL 10571 (Personnel, pressed), 10563
+  (Regiments, full), 10558, 10555 and 10552 (empty). Each tab compares
+  1187 pixels and 0 differ.
+- The whole 235 by 304 window matches A0 `14-after-movie.png` at (200, 91).
+  Every pixel is compared except three masks:
+  - the title's name, (19, 2, 180, 16);
+  - the page name, (2, 54, 231, 13);
+  - A0's mouse pointer, (118, 157, 26, 26).
+
+  64881 pixels are compared and 0 differ. Without the pointer mask, 179
+  pixels differ, all in x 120..141 and y 159..180, which is the pointer
+  only. The list is empty in both windows, so the 10577 backdrop under it
+  is compared too. This includes the red strip, the title buttons and
+  their black key pixels, the tab row and the frame.
+- The name's black ink is at A0 (20, 5)..(81, 14) and at port
+  (20, 6)..(81, 14), width ratio 1.00. Both name Coruscant.
+- The page name's white ink is at (89, 54)..(144, 63) in both, ratio 1.00.
+- The port opens the window at (200, 91), where A0's stood.
+
+Runs on Linux (Arch Chromium, headless, 640 by 480). The interface-test
+WASM `wasm_sha256` is
+`b2d60208ea455efb50ff77178eb6b8a01a1a065b92f885228a2cac57937b427f` and the
+runtime pack is `3f3f6876a255da49d10ec37220f6b492e5a8239b2555497f0cc84ac7e175f98c`.
+The run directories are in the agent worktree's
+`.artifacts/interface-parity/`.
+
+| Run | Cases | Result |
+| --- | --- | --- |
+| `sector-quadrants-2026-11-12T12-12-06-892Z-1223448` | `--only=empire/coruscant-seized` | 1 of 1 pass; `result.json` SHA-256 `9d2b98c487da20556cc6e3584e465f6f1aa746387e466964ecc3007920e708cc`; screen `coruscant-screen.png` SHA-256 `9ef933b8c4761dbbc64e62da8eab423dc03b363c8026158b1fc9d83ad127c419` (inspected) |
+| `sector-quadrants-2026-11-12T12-12-19-417Z-1228710` | the whole gate | 33 of 33 pass, including `empire/coruscant-seized` (0 of 64881) and `empire/defenses-other-side` (0 of 816); `result.json` SHA-256 `9c1fe4026b41cc4f9d0de9c278176bea6785960a138eed950d0045601beb28de` |
+
+Two earlier runs failed while the case was being tuned. The pointer mask
+was too small in `...T12-11-05-778Z-1195361`, where 16 pixels differed. The
+compared-count threshold was too high in `...T12-11-54-173Z-1217209`, where
+0 differed but the check required more than 65000 compared pixels.
+
+The A0 file (`c09a8f48...`) was copied into the worktree's
+`.artifacts/a0-vm/coruscant-676/` for these runs. `result.json` records the
+comparison, so it did run. Without the file the case returns
+`a0: "skipped: A0 file missing"`.
+
+### Checks
+
+- `cargo test -p rebellion-app`: 159 passed, 3 ignored.
+- `cargo check --workspace`: ok.
+- `rustfmt --check`: none of the reported diffs are in the new code.
+- `cargo mutants` on the new code in `interface_test_fixture.rs`
+  (`place_coruscant_seized`, `quadrant_systems`, `reveal`, `quadrant_setup`,
+  decode arm 106, the `apply` hook): every mutant in it is caught. The first
+  pass missed three:
+  - the sector test that picks the system the contents move to;
+  - the character-move filter;
+  - the `Quadrants`-only marks.
+
+  The test now checks each of them. The regex also matched two mutants in
+  `FleetLoadWatch::next` (6566, 6569), which is earlier code outside this
+  change, and both survive.
+- Not run: the full batch, `run.mjs` and the tactical gates (other agents).
+
+### Still open for OBJ-13-C008
+
+- The Create Mission dialog's red key pixel (`menus2/11`) is another
+  window and is not traced here.
+- The fixture places A0's state directly. The browser does not play the
+  seizure itself, the battle and the 0x7171 movie. The port's
+  SeatOfPower and story-message path for it is covered by unit tests only.
