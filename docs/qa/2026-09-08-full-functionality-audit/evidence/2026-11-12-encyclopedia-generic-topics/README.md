@@ -183,3 +183,18 @@ capture above is still open.
 ## Batch b198
 
 The full gate batch b198 (2026-11-12 10:16-11:30) passed 29 of 30 gates, the workspace (3620 tests) and fixture tests (158), and 172 tactical battle checks, 0 failed. The one failure was fleet-window.mjs fleet-encyclopedia, which still expected the old fleet object 0x0800_0000; the expectation now names the class 0x0800_0004 (FUN_004f7d50) and both sides pass (run fleet-window-2026-11-12T10-36-04-649Z-764990).
+
+## A0 capture 2026-11-12 (afternoon)
+
+Windows 10 VM, the Alliance game at day 217, no fleet's Encyclopedia opened
+first. F7 opens the index on All Databases; typing "Fla" and two presses of
+the list's down arrow show the F rows. Captures stay in `.artifacts`:
+
+| Capture | SHA-256 | Shows |
+| --- | --- | --- |
+| `a0-vm/2026-11-12-afternoon/01-f7.png` | `01f26caf1be4ebf33d8ad973f146a508c070b1fe70146c61c3df8e8fd288ad06` | F7: All Databases |
+| `a0-vm/2026-11-12-afternoon/03-fleet-row.png` | `d5efa579c2fb34292a28cf88f014026479b35f0492a7323631df642b16892e5c` | ... Filve, Flax, **Fleet** |
+| `a0-vm/2026-11-12-afternoon/06-ships-f.png` | `b8da0d5f924ac00e23d420e6def1a630c989bc21849b624ad0f7f4d6751f6ee0` | Ship Database: Death Star, then Galleon — no Fleet |
+
+This confirms the trace: Fleet is in every index from the start of the game,
+under All Databases only, right after Flax.
