@@ -88,8 +88,10 @@ window's selection (slot `+0x58`) and moves it against the drop window
 - `FUN_00422ce0`'s `0x29a` handler reads `GetAsyncKeyState(VK_CONTROL)`
   before its switch on the source window's type, so Ctrl makes the drop
   `0x202` for types 4 (Fleet) and 10 (Defenses) alike; both are ported.
-- The drag image follows the pointer for the right list and the Defenses
-  list. port: a left list drag draws no image.
+- The drag image follows the pointer for every list: the Fleet window's
+  right list, its left list (2026-11-13: the pressed entry, which the
+  press selects, with frame 10401 and its mini and marks, no text) and the
+  Defenses list.
 - A menu opened on a selected item takes the whole selection
   (`ObjectMenuState::with_team`); Encyclopedia and Status grey for more than
   one (`FUN_0051d990`). port: only Move, Confirmed Move, a ships team's

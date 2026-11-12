@@ -853,6 +853,30 @@ struct ItemDrag {
     press: egui::Pos2,
 }
 
+/// A held drag's image (`FUN_00609960`): the selected items' images, moved
+/// by `offset` with the pointer, from the left list or the right.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DragImage {
+    offset: egui::Vec2,
+    /// The left list entry pressed, which the press selected
+    /// (`FUN_006083c0`, case `0x201`); `None` for the right list.
+    left: Option<ItemObject>,
+}
+
+impl DragImage {
+    /// Whether the image holds left list `entry`.
+    fn holds(self, entry: FleetWindowEntry) -> bool {
+        match (self.left, entry) {
+            (Some(ItemObject::Fleet(dragged)), FleetWindowEntry::Fleet(fleet)) => dragged == fleet,
+            (
+                Some(ItemObject::Ship { fleet: dragged, index: at, .. }),
+                FleetWindowEntry::Ship { fleet, index },
+            ) => dragged == fleet && at == index,
+            _ => false,
+        }
+    }
+}
+
 /// How a held left press ended ([`FleetWindowState::end_drag`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum DragEnd {
@@ -1403,14 +1427,18 @@ impl FleetWindowState {
         self.drag.is_some()
     }
 
-    /// How far the pointer has moved since a right list press held on
-    /// `system`'s window: the list drags on the first move with the button
-    /// down (`FUN_006083c0`, case `0x200`). port: a left list drag draws no
-    /// image.
-    fn drag_offset(&self, ctx: &egui::Context, system: SystemKey) -> Option<egui::Vec2> {
-        let drag = self.drag.filter(|drag| drag.system == system && drag.left.is_none())?;
+    /// How far the pointer has moved since a list press held on `system`'s
+    /// window, and whether the press was on the left list: the list drags
+    /// on the first move with the button down (`FUN_006083c0`, case
+    /// `0x200`), each `CoolDragList` with its own drag image
+    /// (`FUN_00609960`).
+    fn drag_offset(&self, ctx: &egui::Context, system: SystemKey) -> Option<DragImage> {
+        let drag = self.drag.filter(|drag| drag.system == system)?;
         let offset = ctx.input(|input| input.pointer.latest_pos())? - drag.press;
-        (offset != egui::Vec2::ZERO).then_some(offset)
+        (offset != egui::Vec2::ZERO).then_some(DragImage {
+            offset,
+            left: drag.left,
+        })
     }
 
     /// End a held press on the left release (`FUN_006083c0`, case
@@ -2857,7 +2885,7 @@ fn draw_fleet_window(
     faction: CockpitFaction,
     layout: CockpitLayout,
     cache: &mut BmpCache,
-    drag_image: Option<egui::Vec2>,
+    drag_image: Option<DragImage>,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(system) = world.systems.get(window.system) else {
@@ -3044,6 +3072,10 @@ fn draw_fleet_window(
                 let (bx, by, bw, bh) = left_bar.rect();
                 logical_rect(local, scale, bx, by, bw, bh)
             };
+            // While a left list drag is held, the selected entry's image
+            // follows the pointer (FUN_00609960 copies each selected item's
+            // selected image, FUN_0060bd00, into the list-sized drag bitmap;
+            // FUN_0060df00 moves it), its text not included.
             for (row, entry) in entries.iter().enumerate() {
                 let Some(top) = left_row_top(row, left_scroll) else {
                     continue;
@@ -3056,6 +3088,16 @@ fn draw_fleet_window(
                     LEFT_LIST.2,
                     LEFT_ITEM_HEIGHT,
                 );
+                // The image and whether it takes the selected frame.
+                let mut targets = vec![(list_painter.clone(), item, selected == Some(*entry))];
+                if let Some(image) = drag_image.filter(|image| image.holds(*entry)) {
+                    targets.push((
+                        ctx.layer_painter(drag_layer())
+                            .with_clip_rect(list.translate(image.offset)),
+                        item.translate(image.offset),
+                        true,
+                    ));
+                }
                 let side = world
                     .fleets
                     .get(entry.fleet())
@@ -3069,55 +3111,58 @@ fn draw_fleet_window(
                         if expanded {
                             paint_line(&list_painter, item, scale, (2.0, 6.0), (2.0, 50.0));
                         }
-                        if selected == Some(*entry) {
-                            paint_native(
-                                &list_painter,
-                                ctx,
-                                cache,
-                                DllSource::Strategy,
-                                side_art(FLEET_SELECTED, side),
-                                item,
-                                scale,
-                                0.0,
-                                0.0,
-                            );
-                        }
-                        for id in fleet_entry_layers(
-                            side,
-                            movement.is_in_transit(fleet),
-                            fleet_damaged(world, fleet),
-                        ) {
-                            paint_native(
-                                &list_painter,
-                                ctx,
-                                cache,
-                                DllSource::Strategy,
-                                id,
-                                item,
-                                scale,
-                                5.0,
-                                5.0,
-                            );
-                        }
                         // hyp: the entry shows its ships' indicators, as
                         // A0 menus/23 marks Fleet 1's regiments under its
                         // frame at (41, 33) (FUN_004a3d40 draws the ships').
                         let flags = ship_contents(world, transport, arrivals, fleet)
                             .into_iter()
                             .fold(0, |all, flags| all | flags);
-                        paint_contents(&list_painter, ctx, cache, item, scale, side, flags, 33.0);
-                        if fleet_stranded(world, fleet) {
-                            paint_native(
-                                &list_painter,
-                                ctx,
-                                cache,
-                                DllSource::Strategy,
-                                side_art(NO_HYPERDRIVE, side),
-                                item,
-                                scale,
-                                9.0,
-                                33.0,
-                            );
+                        for (target, item, chosen) in &targets {
+                            let item = *item;
+                            if *chosen {
+                                paint_native(
+                                    target,
+                                    ctx,
+                                    cache,
+                                    DllSource::Strategy,
+                                    side_art(FLEET_SELECTED, side),
+                                    item,
+                                    scale,
+                                    0.0,
+                                    0.0,
+                                );
+                            }
+                            for id in fleet_entry_layers(
+                                side,
+                                movement.is_in_transit(fleet),
+                                fleet_damaged(world, fleet),
+                            ) {
+                                paint_native(
+                                    target,
+                                    ctx,
+                                    cache,
+                                    DllSource::Strategy,
+                                    id,
+                                    item,
+                                    scale,
+                                    5.0,
+                                    5.0,
+                                );
+                            }
+                            paint_contents(target, ctx, cache, item, scale, side, flags, 33.0);
+                            if fleet_stranded(world, fleet) {
+                                paint_native(
+                                    target,
+                                    ctx,
+                                    cache,
+                                    DllSource::Strategy,
+                                    side_art(NO_HYPERDRIVE, side),
+                                    item,
+                                    scale,
+                                    9.0,
+                                    33.0,
+                                );
+                            }
                         }
                         if let Some(label) = fleet_label(world, fleet) {
                             // port: FUN_004c7e10's item draws the name;
@@ -3155,14 +3200,14 @@ fn draw_fleet_window(
                         // A0 fleet2/umgul-corvette1-selected: a selected
                         // ship's entry takes the fleet's frame 10401 at its
                         // origin, over the tree line.
-                        if selected == Some(*entry) {
+                        for (target, item, _) in targets.iter().filter(|(_, _, chosen)| *chosen) {
                             paint_native(
-                                &list_painter,
+                                target,
                                 ctx,
                                 cache,
                                 DllSource::Strategy,
                                 side_art(FLEET_SELECTED, side),
-                                item,
+                                *item,
                                 scale,
                                 0.0,
                                 0.0,
@@ -3195,45 +3240,50 @@ fn draw_fleet_window(
                                     movement.is_in_transit(fleet),
                                     damaged,
                                 );
-                                for (source, id) in marks
-                                    .into_iter()
-                                    .chain(std::iter::once((DllSource::Gokres, mini)))
-                                {
-                                    paint_native(
-                                        &list_painter,
-                                        ctx,
-                                        cache,
-                                        source,
-                                        id,
-                                        item,
-                                        scale,
-                                        5.0,
-                                        15.0,
-                                    );
+                                for (target, item, _) in &targets {
+                                    for &(source, id) in marks
+                                        .iter()
+                                        .chain(std::iter::once(&(DllSource::Gokres, mini)))
+                                    {
+                                        paint_native(
+                                            target,
+                                            ctx,
+                                            cache,
+                                            source,
+                                            id,
+                                            *item,
+                                            scale,
+                                            5.0,
+                                            15.0,
+                                        );
+                                    }
                                 }
                             }
                             let flags = ship_contents(world, transport, arrivals, fleet)
                                 .get(index)
                                 .copied()
                                 .unwrap_or(0);
-                            paint_contents(&list_painter, ctx, cache, item, scale, side, flags, 33.0);
                             let stranded = world
                                 .fleets
                                 .get(fleet)
                                 .and_then(|value| value.capital_ships.get(index))
                                 .is_some_and(|ship| stranded(class, ship));
-                            if stranded {
-                                paint_native(
-                                    &list_painter,
-                                    ctx,
-                                    cache,
-                                    DllSource::Strategy,
-                                    side_art(NO_HYPERDRIVE, side),
-                                    item,
-                                    scale,
-                                    9.0,
-                                    33.0,
-                                );
+                            for (target, item, _) in &targets {
+                                let item = *item;
+                                paint_contents(target, ctx, cache, item, scale, side, flags, 33.0);
+                                if stranded {
+                                    paint_native(
+                                        target,
+                                        ctx,
+                                        cache,
+                                        DllSource::Strategy,
+                                        side_art(NO_HYPERDRIVE, side),
+                                        item,
+                                        scale,
+                                        9.0,
+                                        33.0,
+                                    );
+                                }
                             }
                         }
                     }
@@ -3565,7 +3615,8 @@ fn draw_fleet_window(
                     // drag bitmap, FUN_0060dbb0 / FUN_0060df00).
                     let chosen = shown_keys[row].is_some_and(|key| window.selected_items.contains(key));
                     let mut targets = vec![(right_painter.clone(), cell)];
-                    if let (true, Some(offset)) = (chosen, drag_image) {
+                    let right_drag = drag_image.filter(|image| image.left.is_none()).map(|image| image.offset);
+                    if let (true, Some(offset)) = (chosen, right_drag) {
                         targets.push((
                             ctx.layer_painter(drag_layer())
                                 .with_clip_rect(right.translate(offset)),
@@ -5543,6 +5594,51 @@ pub(crate) mod tests {
         let frame = side_art(RIGHT_ITEM_SELECTED, 1);
         assert!(held.painted.contains(&(frame, at(102.0, 128.0))));
         assert!(held.painted.contains(&(frame, at(82.0, 148.0))));
+    }
+
+    #[test]
+    fn a_held_left_list_drag_paints_the_selected_entry_where_the_pointer_moved() {
+        // FUN_006083c0 case 0x200: every CoolDragList copies its selected
+        // items' images (FUN_00609960) into its drag bitmap, which follows
+        // the pointer (FUN_0060df00); the Fleet window's left list too.
+        let (world, transport, system, _, _) = fleet_with_regiment();
+        let mut state = opened(&world, system);
+        let start = at(40.0, 40.0);
+        let mut frames = hover(start);
+        frames.extend([
+            vec![press(start, true)],
+            vec![egui::Event::PointerMoved(at(60.0, 70.0))],
+        ]);
+        let held = run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        let frame = side_art(FLEET_SELECTED, 1);
+        // The entry's image, 20 by 30 on from its place at the list's (4, 29).
+        assert!(held.painted.contains(&(frame, at(24.0, 59.0))), "{:?}", held.painted);
+    }
+
+    #[test]
+    fn a_left_drag_image_holds_only_the_pressed_entry() {
+        let (mut world, system) = world(ControlKind::Uncontrolled);
+        let (one, two) = (
+            add_fleet(&mut world, system, true, 0),
+            add_fleet(&mut world, system, true, 0),
+        );
+        let image = |left| DragImage {
+            offset: egui::Vec2::ZERO,
+            left,
+        };
+        let fleet = image(Some(ItemObject::Fleet(one)));
+        assert!(fleet.holds(FleetWindowEntry::Fleet(one)));
+        assert!(!fleet.holds(FleetWindowEntry::Fleet(two)));
+        assert!(!fleet.holds(FleetWindowEntry::Ship { fleet: one, index: 0 }));
+        let ship = image(Some(ItemObject::Ship {
+            fleet: one,
+            index: 1,
+            roster: 0,
+        }));
+        assert!(ship.holds(FleetWindowEntry::Ship { fleet: one, index: 1 }));
+        assert!(!ship.holds(FleetWindowEntry::Ship { fleet: one, index: 0 }));
+        assert!(!ship.holds(FleetWindowEntry::Ship { fleet: two, index: 1 }));
+        assert!(!image(None).holds(FleetWindowEntry::Fleet(one)));
     }
 
     #[test]
