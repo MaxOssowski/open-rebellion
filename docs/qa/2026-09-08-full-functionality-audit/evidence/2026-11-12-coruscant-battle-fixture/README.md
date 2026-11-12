@@ -423,9 +423,109 @@ the original's eye sits closer:
 
 The fitted 0.8 is still not put into the code.
 
+### The two leads, traced (same day, 15:20-15:30)
+
+This is a static trace again. No code changed, and nothing ran in a
+browser.
+
+**1. Which hull F1 follows: the carrier, in every branch.**
+
+The disassembly of `FUN_005aafc0` (`0x5aafc0..0x5ab0d3`) corrects the
+decompile:
+
+- The F-key index i (0..7) reads slot i of the tactical manager
+  `DAT_006bc468` (`+0x164 + 4i`, `FUN_0059f5d0`). That gives the group,
+  through `FUN_005a6460`.
+- `FUN_005a5fb0` is `jmp [vt+8]` on the current input state
+  `DAT_006bc464`. The states return:
+  - one unit (`0x66bce8`, `0x005a5920`): 0xe;
+  - several units (`0x66bc98`, `0x005a5980`): 0x10;
+  - a task force (`0x66bc48`, `0x005a3a10`): slot `+0x54` + 1;
+  - a fighter group (`0x66bbf8`, `0x005a48c0`): `+0x54` + 9;
+  - the idle state (`0x66be30`, `0x005a5b60`): 0.
+- Only a selected task force returns 1..8. Then the followed id is
+  `[manager+4] + 0xd4 + 0x18`. It is not a commander's flagship:
+  `FUN_00583c40` is only a `+4` getter, called on the manager.
+  `manager+4` is the selected unit. When a task force is selected,
+  `FUN_005a33d0` sets it to the unit whose id is the group's `+0x70`, the
+  id passed to the group's constructor `FUN_005c9db0`.
+- Otherwise the followed id is the group's `+0x6c`:
+  - `Class_0066cd28_vt28` (`0x005cb3e0`) sets it to the first member
+    added;
+  - `vt8` (`0x005ca1a0`) sets it outright;
+  - `vt30` (`0x005cb510`), when that member leaves, moves it to the next
+    member in the `+0x1c` list.
+- A0's trace selects Red Group (a fighter-group state, 9..12) before F1.
+  So A0 takes the `+0x6c` branch.
+- Task Force 1 has one capital member, the Escort Carrier. Both branches
+  name that one hull. The port's "first live hull" picks the same one.
+
+This lead does not explain the 1.25.
+
+**2. The second object: the force's attack target.**
+
+- Both capital force vtables (`0x66cd28` and `0x66bf70`) have vt `+0x44` =
+  `0x005cb990`. It returns:
+  - the first entry of `+0x74` (its `+0x18` id) if there is one;
+  - else the id of the first node of `+0x8c`;
+  - else 0.
+- `Class_0066cd28_vt20` (`0x005cb430`) adds a fighter group to `+0x74`
+  (`lea 0x74(%esi)` at `0x5cb445`, `FUN_005c5ca0`).
+- `vt2c` (`0x005cb460`) adds a capital ship to `+0x8c` (`lea 0x8c(%esi)`
+  at `0x5cb475`, `FUN_005d1ff0`).
+- So the second object is the force's current attack target: a fighter
+  group first, then a capital ship.
+- SetOrder (`Class_0066cd28_vt48`, `0x005ca6d0`) clears `+0x74` for every
+  order. It also clears `+0x8c` for orders 1-6.
+- The constructor `FUN_005c9db0` leaves the order (`+0x64`) and its
+  executor (`+0x60`) at 0, and does not add to either list.
+
+A0's trace gives Task Force 1 no order. Only Red Group gets one: Escort,
+on the carrier. So unless the original targets for a force with no order,
+which this pass did not find, `piVar4` is 0. `0x005d9b10` then takes the
+branch the port runs: SetPosition(-e, e, 2e), then SetOrientation along
+the nose.
+
+If a target did exist, the eye would be (e·x/d, e·y/d, 2e), at e·√5. That
+is 0.913 times the port's e·√6 distance, not the fitted 0.80. LookAt would
+also turn the camera off the nose, while the fit matched the nose
+direction to a mean of 1.3 px. So this branch does not fit the capture
+either.
+
+**Also confirmed:** the frame calls are the `IDirect3DRMFrame` (v1/v2)
+slots:
+
+- SetOrientation `+0xf0`, SetPosition `+0xf4`;
+- LookAt `+0x90`, GetPosition `+0x60`, GetOrientation `+0x7c`;
+- Move `+0x94` on the scene.
+
+`Frame3` would put LookAt at `+0x8c`.
+
+**Result.** Static tracing now accounts for every input to the chase eye:
+
+- the followed hull (the carrier);
+- e (the base + 1 box times 3, larger X/Y span, 3.855);
+- the branch (no target, so (-e, e, 2e));
+- the hull frame (unit axes);
+- the parent frame (an unscaled root);
+- front and field (0.1 and 0.02).
+
+All of them match the port, and none explains the 1.25. What is left needs
+evidence at runtime:
+
+- a read of the chase's `+0x34` and the camera frame's position in the
+  original (Windows VM debugger or a Frida/DLL hook on `0x005d9ba4`);
+- or a check of how `d3drm.dll` turns front and field into a projection.
+  The free camera's front of 1.0 hides any dependence on front. The chase
+  is the first view with front 0.1.
+
+The second one is a hypothesis only. Nothing here changes the code.
+
 ### Verdict
 
 TAC-04-C014 stays partial. The box question from the second stage is
-settled: the port reads the same value as the original. The cell needs one
-of the two open items above traced, or a runtime read of `+0x34` in the
-original. The lead's batch reruns the gate on the unchanged code.
+settled: the port reads the same value as the original. Both open items
+are now traced. Neither explains the gap: F1 follows the carrier, and with
+no attack target the eye is (-e, e, 2e). The cell needs a runtime read in
+the original of the chase's `+0x34` and the camera's position. The lead's
+batch reruns the gate on the unchanged code.
