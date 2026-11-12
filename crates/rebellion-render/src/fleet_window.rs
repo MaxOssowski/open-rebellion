@@ -3136,6 +3136,12 @@ pub(crate) enum KeyPixel {
     /// child blitted keyed over its parent (`FUN_00602d30` ->
     /// `FUN_005fd0f0`), the title strip a sibling that does not show through.
     Background(u32),
+    /// The window's background bitmap at another point (`x`, `y`): the
+    /// button composes its art over the background surface it was given,
+    /// read at the button's own position in its parent (`FUN_00602d30`
+    /// copies `+0xa4` from (`+0x10c`, `+0x110`)), and that parent is not
+    /// the window.
+    BackgroundAt(u32, u16, u16),
     /// The key colour itself: the button is blitted plain.
     Colour(egui::Color32),
 }
@@ -3173,6 +3179,17 @@ pub(crate) fn paint_key_pixel(
             scale,
             0.0,
             0.0,
+        ),
+        KeyPixel::BackgroundAt(id, from_x, from_y) => paint_native(
+            &painter.with_clip_rect(pixel),
+            ctx,
+            cache,
+            DllSource::Strategy,
+            id,
+            parent,
+            scale,
+            x - f32::from(from_x),
+            y - f32::from(from_y),
         ),
         // A mesh, which egui does not feather: a filled 1 by 1 rect
         // shows nothing at scale 1 (fleet-window.mjs a0-empty).

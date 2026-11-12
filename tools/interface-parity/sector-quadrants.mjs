@@ -1646,11 +1646,12 @@ const cases = [
       // pixel but the text (title, "Target:", the target's and the agent's
       // names) and what each game's state draws (A0 lists two missions, the
       // second selected; the target's picture). A0 shows 11165's grey under
-      // the title buttons' key pixels (FUN_00602d30 -> FUN_005fd0f0).
-      // Open: under the tabs' key pixels A0 shows (166, 202, 240) at
-      // (105, 142) and (90, 88, 94) at (166, 142), the port the
-      // background's black; the strip's own backdrop (FUN_0060d590) is not
-      // traced. Those two pixels are the only ones allowed to differ.
+      // the title buttons' key pixels (FUN_00602d30 -> FUN_005fd0f0), and
+      // under the tabs' key pixels 11165 at the tabs' strip positions,
+      // (166, 202, 240) at (105, 142) and (90, 88, 94) at (166, 142): each
+      // tab copies its backdrop from the window's surface at its own (x, y)
+      // in the strip (FUN_0049f540 -> FUN_00602150, FUN_00602d30). No pixel
+      // may differ.
       const missionsA0 = path.join(root, ".artifacts/a0-vm/mission-reports/missions-window-enroute-day276.png");
       let whole = null;
       if (faction.side === 2 && fs.existsSync(missionsA0)) {
@@ -1658,10 +1659,8 @@ const cases = [
           [19, 2, 180, 14], [5, 24, 90, 100], [109, 25, 113, 14], [108, 37, 122, 50],
           [109, 91, 113, 16], [107, 180, 117, 14],
         ]);
-        const open = new Set(["105,142", "166,142"]);
-        assert.ok(whole.compared > 45_000 && whole.differing <= 2
-          && whole.first.every((pixel) => open.has(pixel.join(","))),
-        `the whole Missions window: ${JSON.stringify(whole)}`);
+        assert.ok(whole.compared > 45_000 && whole.differing === 0,
+          `the whole Missions window: ${JSON.stringify(whole)}`);
       }
       // A0 mission-reports/missions-window-enroute-day276 (the Empire's
       // "Mission at Chandrila", Jerjerrod in hyperspace): the Empire's

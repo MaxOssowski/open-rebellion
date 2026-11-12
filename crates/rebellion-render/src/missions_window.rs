@@ -883,6 +883,18 @@ fn window_screen_rect(window: &OpenMissionsWindow, layout: CockpitLayout) -> egu
     )
 }
 
+/// What `tab`'s key pixel, its art's bottom-left corner, shows: the window's
+/// background 11165 at the tab's position inside the strip, not inside the
+/// window (`FUN_00602d30`; see the paint call).
+fn tab_key_pixel(tab: MissionsTab) -> KeyPixel {
+    // The tab's x in the strip (MissionsTab::x) and the strip's last row.
+    let x = match tab {
+        MissionsTab::Agents => 0,
+        MissionsTab::Decoys => 61,
+    };
+    KeyPixel::BackgroundAt(BACKGROUND, x, 15)
+}
+
 fn tab_rect(window: egui::Rect, scale: f32, tab: MissionsTab) -> egui::Rect {
     logical_rect(
         window,
@@ -1331,6 +1343,24 @@ fn draw_missions_window(
                             scale,
                             0.0,
                             0.0,
+                        );
+                        // The tab is a CoolStrobeButton in the strip,
+                        // keyed on its first DIB pixel over the window's
+                        // surface 11165 read at its strip position
+                        // (FUN_0049f540 hands FUN_00602150 the window's
+                        // +0xa4; FUN_00602d30 copies it from (+0x10c,
+                        // +0x110), the tab's (x, 0) in the strip): A0
+                        // mission-reports/missions-window-enroute-day276
+                        // shows 11165's (0, 15) and (61, 15).
+                        paint_key_pixel(
+                            &painter,
+                            ctx,
+                            cache,
+                            local,
+                            scale,
+                            TAB_STRIP.0 + tab.x(),
+                            TAB_STRIP.1 + TAB_SIZE.1 - 1.0,
+                            tab_key_pixel(tab),
                         );
                     }
                     let response = ui.interact(
@@ -2568,6 +2598,40 @@ mod tests {
         for x in [3.0, 204.0, 218.0] {
             assert!(
                 pixels.contains(&(KeyPixel::Background(BACKGROUND), at(x, 16.0))),
+                "{x} in {pixels:?}"
+            );
+        }
+    }
+
+    // A0 mission-reports/missions-window-enroute-day276: under the Agents
+    // and Decoys tabs' key pixels (their art's bottom-left corners, window
+    // (105, 142) and (166, 142)) A0 shows (166, 202, 240) and (90, 88, 94):
+    // 11165 at (0, 15) and (61, 15), where 11165 is black at (105, 142) and
+    // (166, 142). FUN_0049f540 gives each tab (FUN_00602150) the window's
+    // surface +0xa4, and FUN_00602d30 copies its backdrop from it at the
+    // tab's own (x, y) in the strip (+0x10c, +0x110), not in the window.
+    #[test]
+    fn the_tabs_key_pixels_show_the_background_at_their_strip_position() {
+        let (world, system, missions, _) = busy();
+        let mut state = opened(&world, &missions, system);
+        crate::fleet_window::tests::KEY_PIXELS.with(|pixels| pixels.borrow_mut().clear());
+        let output = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        let pixels = crate::fleet_window::tests::KEY_PIXELS.with(|pixels| pixels.take());
+        // Each repaint places 11165 so its (tab x, 15) lands on the key
+        // pixel: both at the strip's corner (105, 127).
+        assert_eq!(
+            output
+                .painted
+                .iter()
+                .filter(|&&entry| entry == (BACKGROUND, at(105.0, 127.0)))
+                .count(),
+            2,
+            "{:?}",
+            output.painted
+        );
+        for (x, from_x) in [(105.0, 0), (166.0, 61)] {
+            assert!(
+                pixels.contains(&(KeyPixel::BackgroundAt(BACKGROUND, from_x, 15), at(x, 142.0))),
                 "{x} in {pixels:?}"
             );
         }
