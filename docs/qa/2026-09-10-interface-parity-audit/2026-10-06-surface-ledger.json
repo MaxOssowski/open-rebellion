@@ -3864,9 +3864,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-cmd-10-c010/README.md"
           ],
-          "note": "2026-11-04: the controls' class has a disabled bit (+0xc4 bit 2, set by vtable +0x10 FUN_006028a0 and cleared by +0xc FUN_00602880): FUN_006035f0 then misses every press and FUN_00602d30 paints the disabled art (+0x9c, else the normal art). The galaxy view disables all seven controls and shows the wait cursor at creation (FUN_00422ce0 WM_CREATE -> FUN_0042d570) and enables them only when the game is ready (FUN_00422620 -> FUN_0042d4d0, from FUN_00415420 and the load slot); nothing else calls either. The port draws the cockpit only after loading ends, so no control is ever shown disabled. Not observed in A0 during a load."
+          "note": "2026-11-04: the controls' class has a disabled bit (+0xc4 bit 2, set by vtable +0x10 FUN_006028a0 and cleared by +0xc FUN_00602880): FUN_006035f0 then misses every press and FUN_00602d30 paints the disabled art (+0x9c, else the normal art). The galaxy view disables all seven controls and shows the wait cursor at creation (FUN_00422ce0 WM_CREATE -> FUN_0042d570) and enables them only when the game is ready (FUN_00422620 -> FUN_0042d4d0, from FUN_00415420 and the load slot); nothing else calls either. The port draws the cockpit only after loading ends, so no control is ever shown disabled. Not observed in A0 during a load. 2026-11-13 trace: the seven controls have no disabled bitmap (FUN_00602150 zeroes +0x9c and FUN_00427270 never sets it; STRATEGY holds only each normal/pressed pair), so a disabled control paints its rest art and only IDC_WAIT and the missed press show the state; F1-F7 are not gated by the bit. The port builds or restores the campaign within one frame before the cockpit is drawn (GameMode::GameSetup, PanelAction::LoadGame, synchronous localStorage load), so the state cannot arise; proposed excluded."
         },
         {
           "id": "CMD-10-C011",
