@@ -2283,9 +2283,9 @@ async fn main() {
                 game_mode = GameMode::MainMenu;
             } else if game_mode == GameMode::Galaxy {
                 if tactical_state.battle_summary_open() {
-                    // port: the summary takes the focus (FUN_0042a640's
-                    // SetFocus); its key slot is not traced, so Escape
-                    // neither closes it nor leaves the campaign.
+                    // The summary has the focus (FUN_0042a640's SetFocus):
+                    // its own key slot closes it (FUN_004710f0, 0x1b), drawn
+                    // with the window; the campaign is not left.
                 } else if targeting.is_some() {
                     // port: Escape cancels targeting, as command 0x15e does
                     // in mode 2; no traced key posts 0x15e.
@@ -5116,6 +5116,9 @@ async fn main() {
                 // The Battle Summary is one too (manual p. 64, "Modal vs.
                 // Modaless Windows"): FUN_0046f140 passes 1 as FUN_00606380's
                 // +0xb8, the flag FUN_00460090 sets on the System Finder.
+                // FUN_00422ce0's WM_KEYDOWN drops F1..F7 (0x70..0x76) while
+                // any child in the view's list has that bit; the gate below
+                // holds the cockpit's F-keys and F6 with it.
                 let window_modal_open = fleet_finder_state.is_open()
                     || troop_finder_state.is_open()
                     || personnel_finder_state.is_open()

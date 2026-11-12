@@ -780,6 +780,8 @@ pub struct TacticalState {
     strategic_results_applied: bool,
     /// The battle's report was already handed out (`take_summary_log`).
     summary_logged: bool,
+    /// The summary was drawn over the tactical view (logged once).
+    summary_over_tactical_logged: bool,
     /// Whether the authentic Battle Options panel owns the right-hand housing.
     battle_options_open: bool,
     /// Captured Battle Options control. Dispatch occurs only on a matching release.
@@ -927,6 +929,7 @@ impl Default for TacticalState {
             battle_alert_pressed: None,
             strategic_results_applied: false,
             summary_logged: false,
+            summary_over_tactical_logged: false,
             battle_options_open: false,
             battle_options_pressed: None,
             command_control_pressed: None,
@@ -1044,6 +1047,7 @@ impl TacticalState {
         self.battle_alert_pressed = None;
         self.strategic_results_applied = false;
         self.summary_logged = false;
+        self.summary_over_tactical_logged = false;
         self.battle_options_open = false;
         self.battle_options_pressed = None;
         self.command_control_pressed = None;
@@ -7450,6 +7454,51 @@ impl BattleResultCategory {
     }
 }
 
+/// A key the Battle Summary's own key slot answers (`FUN_004710f0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BattleSummaryKey {
+    /// `0x1b`: slot `+0x30` closes the window, then `FUN_0041ce80` ends the
+    /// battle's done choice, as the Close button `0xc9` does.
+    Close,
+    /// `0x25` (left) or `0x27` (right): the category bar's neighbour.
+    Step { right: bool },
+}
+
+/// The summary's key slot (`FUN_004710f0`): Escape, then the arrows. Every
+/// other key goes to the Command Center's `WM_KEYDOWN` (`+0x20` slot
+/// `+0x14`), where `FUN_00422ce0` drops F1..F7 while a modal window is up.
+fn battle_summary_key(escape: bool, left: bool, right: bool) -> Option<BattleSummaryKey> {
+    if escape {
+        Some(BattleSummaryKey::Close)
+    } else if left || right {
+        Some(BattleSummaryKey::Step { right })
+    } else {
+        None
+    }
+}
+
+/// The category an arrow selects (`FUN_004710f0` on the bar `+0x160`): the
+/// nearest visible button before (left) or after (right) the selected one;
+/// none when every one of them is hidden (the bar shows on the forces pages
+/// only); the first button when the selected one has no neighbour that way.
+fn battle_category_after_arrow(
+    current: BattleResultCategory,
+    right: bool,
+    bar_shown: bool,
+) -> Option<BattleResultCategory> {
+    let all = BattleResultCategory::ALL;
+    let index = all.iter().position(|category| *category == current).unwrap_or(0);
+    let neighbour = if right {
+        all.get(index + 1)
+    } else {
+        index.checked_sub(1).and_then(|before| all.get(before))
+    };
+    match neighbour {
+        Some(category) => bar_shown.then_some(*category),
+        None => Some(all[0]),
+    }
+}
+
 fn winner_is_alliance(session: &BattleSession) -> Option<bool> {
     match session.winner {
         Some(CombatWinner::Attacker) => Some(session.attacker_is_alliance),
@@ -9781,6 +9830,10 @@ fn draw_original_battle_results(
 
     // The frame is painted with each page, over its art (`frame_over_page`).
     if backdrop {
+        if !state.summary_over_tactical_logged {
+            state.summary_over_tactical_logged = true;
+            macroquad::logging::info!("[tactical-results] summary_window over=tactical_view");
+        }
         draw_battle_window_backdrop(cache, canvas, player_alliance, state.strategy_underlay.as_ref());
     }
 
@@ -9953,6 +10006,41 @@ fn draw_original_battle_results(
             );
         }
     }
+    // The window's key slot (vtable 0x65a300 +0x4c, FUN_004710f0): Escape
+    // closes it as Close does; the arrows step the category bar.
+    let forces_page = matches!(
+        state.battle_result_tab,
+        BattleResultTab::AllianceForces | BattleResultTab::ImperialForces
+    );
+    match battle_summary_key(
+        is_key_pressed(KeyCode::Escape),
+        is_key_pressed(KeyCode::Left),
+        is_key_pressed(KeyCode::Right),
+    ) {
+        Some(BattleSummaryKey::Close) => {
+            macroquad::logging::info!("[tactical-results] key=escape status=closed");
+            action = TacticalAction::ReturnToGalaxy;
+        }
+        Some(BattleSummaryKey::Step { right }) => {
+            if let Some(category) =
+                battle_category_after_arrow(state.battle_result_category, right, forces_page)
+            {
+                select_resetting_scroll(
+                    &mut state.battle_result_category,
+                    &mut state.battle_result_scroll,
+                    category,
+                );
+                macroquad::logging::info!(
+                    "[tactical-results] tab={} category={} key={}",
+                    state.battle_result_tab.label(),
+                    category.label(),
+                    if right { "right" } else { "left" }
+                );
+            }
+        }
+        None => {}
+    }
+
     if matches!(
         state.battle_result_tab,
         BattleResultTab::AllianceForces | BattleResultTab::ImperialForces
@@ -9978,6 +10066,15 @@ fn draw_original_battle_results(
         }
     }
     action
+}
+
+/// Whether a tactical frame draws the Battle Summary: only when the battle
+/// had already ended as the frame began (the app moves such a battle to the
+/// Command Center first). The frame whose step ends the battle draws the
+/// battle itself (FUN_0040a050 state 0x16 closes the module before
+/// FUN_0042a640 opens the summary on the Command Center).
+const fn battle_frame_draws_summary(results_at_start: bool) -> bool {
+    results_at_start
 }
 
 /// The Battle Summary window's rect on the 640 x 480 strategy screen: its
@@ -10058,6 +10155,14 @@ fn draw_tactical_frame(
     }
 
     let mut action = TacticalAction::None;
+    // The original never shows the summary in the tactical view: state
+    // 0x16 closes the module (FUN_005975a0) before FUN_0042a640 creates the
+    // summary on the Command Center. A battle that ends in this frame's
+    // step draws its last frame here; the app opens the summary next frame.
+    let results_at_start = state
+        .session
+        .as_ref()
+        .is_some_and(|session| session.phase == BattlePhase::Results);
 
     // 0. Advance combat if in Combat phase (mutable borrow).
     {
@@ -10090,9 +10195,10 @@ fn draw_tactical_frame(
         .as_ref()
         .is_some_and(|session| session.phase == BattlePhase::Results)
     {
-        // The step that ended the battle: the app moves the summary onto
-        // the Command Center from the next frame (`battle_summary_open`).
-        return draw_original_battle_results(state, bmp_cache, world, troop_transport, true);
+        if battle_frame_draws_summary(results_at_start) {
+            // A caller that keeps a finished battle in the tactical view.
+            return draw_original_battle_results(state, bmp_cache, world, troop_transport, true);
+        }
     }
 
     // 1. Paint the unscaled-source tactical shell first, then put the battle
@@ -11007,6 +11113,14 @@ fn draw_tactical_frame(
         }
     }
 
+    // The battle ended in this frame's step: its controls take no input.
+    if state
+        .session
+        .as_ref()
+        .is_some_and(|session| session.phase == BattlePhase::Results)
+    {
+        return TacticalAction::None;
+    }
     action
 }
 
@@ -14722,6 +14836,47 @@ mod tests {
         assert!(result_session.ships[1].alive);
         assert!(result_session.fighters[0].alive);
         assert!(!result_session.fighters[1].alive);
+    }
+
+    #[test]
+    fn the_step_that_ends_the_battle_draws_the_battle_not_the_summary() {
+        // FUN_0040a050 state 0x16 closes the tactical module (FUN_005975a0)
+        // before FUN_00488b90 -> FUN_0042a640 creates the summary on the
+        // Command Center: the original never shows it in the tactical view.
+        assert!(!battle_frame_draws_summary(false));
+        // A battle already in its results when the frame began (a caller
+        // that keeps it in the tactical view) still shows its window.
+        assert!(battle_frame_draws_summary(true));
+    }
+
+    #[test]
+    fn escape_closes_the_battle_summary_and_the_arrows_step_its_category_bar() {
+        // FUN_004710f0 (vtable 0x65a300 +0x4c): 0x1b closes the window as
+        // the Close button 0xc9 does (slot +0x30, FUN_0041ce80); 0x25 / 0x27
+        // press the bar +0x160's previous / next visible button, or its
+        // first when the selected one has no neighbour that way.
+        assert_eq!(battle_summary_key(true, true, false), Some(BattleSummaryKey::Close));
+        assert_eq!(
+            battle_summary_key(false, true, false),
+            Some(BattleSummaryKey::Step { right: false })
+        );
+        assert_eq!(
+            battle_summary_key(false, false, true),
+            Some(BattleSummaryKey::Step { right: true })
+        );
+        assert_eq!(battle_summary_key(false, false, false), None);
+
+        use BattleResultCategory::{CapitalShips, Fighters, Personnel, Troops};
+        assert_eq!(battle_category_after_arrow(Fighters, true, true), Some(Troops));
+        assert_eq!(battle_category_after_arrow(Fighters, false, true), Some(CapitalShips));
+        // No neighbour that way: the first button.
+        assert_eq!(battle_category_after_arrow(Personnel, true, true), Some(CapitalShips));
+        assert_eq!(battle_category_after_arrow(CapitalShips, false, true), Some(CapitalShips));
+        // The bar hidden (the summary and Display pages): a neighbour is
+        // skipped as invisible, so nothing changes, but an end still
+        // selects the first.
+        assert_eq!(battle_category_after_arrow(Fighters, true, false), None);
+        assert_eq!(battle_category_after_arrow(Personnel, true, false), Some(CapitalShips));
     }
 
     #[test]
