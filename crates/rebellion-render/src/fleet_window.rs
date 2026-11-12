@@ -5004,6 +5004,91 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_right_lists_cells_and_hits_follow_its_125_by_50_items() {
+        // Our own layout of FUN_004a4b10's right list: 125 by 50 items one
+        // under another, 133 wide (RIGHT_LIST).
+        assert_eq!(
+            right_cells(3),
+            [
+                (0, (0.0, 0.0), (125.0, 50.0)),
+                (1, (0.0, 50.0), (125.0, 50.0)),
+                (2, (0.0, 100.0), (125.0, 50.0)),
+            ]
+        );
+        assert_eq!(right_hit((0.0, 0.0), 3), Some(0));
+        assert_eq!(right_hit((10.0, 149.0), 3), Some(2));
+        assert_eq!(right_hit((10.0, 150.0), 3), None);
+        assert_eq!(right_hit((RIGHT_LIST.2, 10.0), 3), None);
+        assert_eq!(right_hit((-1.0, 10.0), 3), None);
+        assert_eq!(right_hit((10.0, -1.0), 3), None);
+        assert_eq!(right_hit((RIGHT_LIST.2 - 1.0, 10.0), 3), Some(0));
+    }
+
+    #[test]
+    fn a_drop_carries_its_own_fleets_ships_and_squadrons_and_every_member() {
+        // FUN_00422ce0 moves the selection as one order; the right list
+        // holds one tab's objects.
+        let (mut world, system) = world(ControlKind::Uncontrolled);
+        let (one, two) = (
+            add_fleet(&mut world, system, true, 0),
+            add_fleet(&mut world, system, true, 0),
+        );
+        let point = egui::pos2(1.0, 2.0);
+        let ship = |fleet, index| ItemObject::Ship {
+            fleet,
+            index,
+            roster: 7,
+        };
+        assert_eq!(
+            right_drop(&[ship(one, 0), ship(two, 1), ship(one, 2)], point),
+            Some(FleetWindowAction::DragShip {
+                fleet: one,
+                ships: vec![0, 2],
+                roster: 7,
+                point,
+            })
+        );
+        let fighter = |fleet, index| ItemObject::Fighter { fleet, index };
+        assert_eq!(
+            right_drop(&[fighter(one, 0), fighter(two, 1), fighter(one, 3)], point),
+            Some(FleetWindowAction::DragSquadron {
+                fleet: one,
+                indices: vec![0, 3],
+                point,
+            })
+        );
+        let person = world.characters.insert(Default::default());
+        let unit = world.special_forces.insert(rebellion_core::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        assert_eq!(
+            right_drop(
+                &[ItemObject::Character(person), ItemObject::SpecialForce(unit)],
+                point
+            ),
+            Some(FleetWindowAction::DragMembers {
+                members: vec![
+                    MissionMember::Character(person),
+                    MissionMember::SpecialForce(unit)
+                ],
+                point,
+            })
+        );
+        assert_eq!(
+            left_drop(ship(two, 4), point),
+            Some(FleetWindowAction::DragShip {
+                fleet: two,
+                ships: vec![4],
+                roster: 7,
+                point,
+            })
+        );
+    }
+
+    #[test]
     fn a_held_right_list_drag_paints_the_selected_items_where_the_pointer_moved() {
         // FUN_006083c0 case 0x200: the selected items' images (FUN_00609960),
         // the frame 10420 included, follow the pointer (FUN_0060df00).

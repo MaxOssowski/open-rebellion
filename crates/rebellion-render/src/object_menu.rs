@@ -1929,6 +1929,15 @@ mod tests {
             .with_team(vec![ship(0), ship(2)]);
         assert_eq!(enabled(&menu.rows), ["Move", "Confirmed Move", "Create Fleet"]);
         assert_eq!(menu.team(), [ship(0), ship(2)]);
+        // Characters together keep Mission (one team, FUN_00487c50).
+        let mut world = rebellion_core::world::GameWorld::default();
+        let (a, b) = (
+            world.characters.insert(Default::default()),
+            world.characters.insert(Default::default()),
+        );
+        let both = ObjectMenuState::new(Some(MenuObject::Character(a)), MISSION_GATE, (0, 0))
+            .with_team(vec![MenuObject::Character(a), MenuObject::Character(b)]);
+        assert!(enabled(&both.rows).contains(&"Mission"), "{:?}", enabled(&both.rows));
         // One object keeps its single menu.
         let one = ObjectMenuState::new(Some(ship(0)), gates, (0, 0)).with_team(vec![ship(0)]);
         assert_eq!(
