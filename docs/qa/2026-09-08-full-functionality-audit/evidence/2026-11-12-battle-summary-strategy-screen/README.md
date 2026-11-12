@@ -94,15 +94,16 @@ while the summary is open. Read: spot-checked; that `FUN_0041e320`'s and
   map takes no pointer over it;
 - its score (MDATA.308/309/314/315) plays over the Command Center; the
   galaxy theme is not restarted under it;
-- Escape does nothing while it is open (port: its key slot is not traced;
-  before, Escape in the galaxy would have left for the main menu);
+- Escape closes it (see "Keys" below); the galaxy's own Escape chain
+  does nothing while it is open (before, it would have left for the main
+  menu);
 - a tactical fixture that opens on the summary reports ready over the
   Command Center.
 
-The frame in which the battle's last step runs still draws the summary
-over the tactical backdrop, once; the next frame moves it to the Command
-Center. The Battle Alert is unchanged (still over the screen copy or the
-shell).
+The frame in which the battle's last step runs draws the battle, not the
+summary (see "The battle's last frame" below); the next frame opens the
+summary on the Command Center. The Battle Alert is unchanged (still over
+the screen copy or the shell).
 
 No save-format change.
 
@@ -194,14 +195,86 @@ sample stalled while cargo ran beside the gate.
 - **Z-order.** The summary is drawn over every strategy window. In the
   original a later window could be raised over it; the port's z-order
   across window kinds is unchanged (not approved).
-- **Keys.** The galaxy's F-key accelerators still open the Finders while
-  the summary is open (they open under it). Whether the original's
-  accelerators answer while a modal window is up is not traced; neither
-  is the summary's own key slot (Escape does nothing).
+- **Alt accelerators.** Accelerator table 11 (Alt+1..9 GID displays,
+  Alt+P/G/U/A/... ) goes through `TranslateAcceleratorA` in the message
+  loop (`FUN_00413560`) as `WM_COMMAND`, not through the `WM_KEYDOWN`
+  check below; whether the Command Center refuses those commands while a
+  modal window is up is not traced. The port still answers them.
 - **The Empire's side** has no A0 capture of the summary; only the modal
   probe and the report text run for it.
-- **One frame** of the summary over the tactical backdrop when the battle
-  ends (see above).
+
+## Follow-up (2026-11-12, second pass): keys and the battle's last frame
+
+### Keys
+
+Read-in-full: the summary's key slot and the Command Center's `WM_KEYDOWN`.
+
+- The summary's slot `+0x4c` (vtable `0x65a300`, `FUN_004710f0`):
+  - `0x1b` (Escape): slot `+0x30` (`Class_0065a300_vt30`: stops the
+    score, restores the galaxy's, closes), then `FUN_0041ce80` and
+    `FUN_00401240`: exactly the Close button `0xc9` of `FUN_00470ea0`.
+  - `0x25` / `0x27` (left / right): on the category bar `+0x160`
+    (Capital Ships `0x65` .. Personnel `0x68`), press the nearest visible
+    button before / after the selected one (`FUN_0060d7e0(id, 1)`). When
+    the selected one has no neighbour that way, press the first. The bar
+    is shown on the forces pages only, so elsewhere an arrow changes
+    nothing unless the selection is at an end.
+  - every other key goes to the parent's slot `+0x14` as `WM_KEYDOWN`
+    (`0x100`): the Command Center's `FUN_00422ce0`.
+- `FUN_00422ce0`'s `WM_KEYDOWN`: for `0x70..0x76` (F1..F7) it walks the
+  view's child list (`FUN_005f5060`, `+0x10` next) and returns at once
+  when a child has `+0xb8 & 1`, the modal bit the summary and the Finders
+  carry. Otherwise F1 posts `0x133` (Game Options), F2 `FUN_0042a000`, F3
+  `FUN_0042a0c0`, F4 `FUN_0042a4d0`, F5 `FUN_0042a180`, F6
+  `FUN_0042a240(1, 0x79)`, F7 `FUN_00429f30`. So no F-key opens anything
+  while the summary is open. The message loop (`FUN_00413560`) translates
+  accelerators against the main window before dispatch.
+
+The port: F1..F5 and F7 reach the cockpit only through
+`handle_cockpit_egui_input`, and F6 through the rail's `speed_input`; both
+are skipped while `modal_window_open`, which since the first pass holds
+the summary. So the port already followed the original here; the first
+pass's open point ("F-keys still open the Finders") was wrong. New:
+Escape and the arrows in `draw_original_battle_results`
+(`battle_summary_key`, `battle_category_after_arrow`).
+
+### The battle's last frame
+
+`FUN_0040a050` state `0x16` applies the module's result and closes it
+(`FUN_005975a0`); only after that, with the Command Center visible again,
+does `FUN_00488b90` -> `FUN_0042a640` create the summary. The original
+never shows the summary in the tactical view. The port's frame whose step
+ended the battle drew the summary over the tactical backdrop once; it now
+draws the battle's last state and takes no input from it
+(`battle_frame_draws_summary`); the summary opens over the Command Center
+next frame. A summary drawn over the tactical view now logs
+`[tactical-results] summary_window over=tactical_view`.
+
+### Tests
+
+- `the_step_that_ends_the_battle_draws_the_battle_not_the_summary`: fails
+  when the helper returns the old behaviour (always draw; shown).
+- `escape_closes_the_battle_summary_and_the_arrows_step_its_category_bar`
+  (new API, does not compile without the change).
+- Browser, `production-battle-last-ship-lost`: no `over=tactical_view`
+  log; F2, F6 and F7 while the summary is open open nothing
+  (`command=0x12d`, `0x131`, `destination=message_index`) and leave the
+  frame unchanged.
+- Browser, `production-battle-withdrawal-report`: Escape closes the
+  summary (`key=escape status=closed`), the result is applied, the
+  campaign is not left, and the frame changes.
+
+Checks: `cargo test -p rebellion-app -p rebellion-render` (app 160, render
+1,495, 0 failures), `cargo check --workspace`, `provenance-scan check` (0
+uncited). `cargo mutants --in-place` on `battle_summary_key`,
+`battle_category_after_arrow` and `battle_frame_draws_summary`: all
+caught (the misses listed are in untouched drawing helpers, as before).
+
+Gate runs (Linux, 640 x 480), rebuilt from this tree:
+
+- `2026-11-12T13-11-56-655Z-1661539`: `production-battle-last-ship-lost`, 2 of 2.
+- `2026-11-12T13-13-56-000Z-1700314`: `production-battle-results-presentation`, 2 of 2.
+- `2026-11-12T13-14-11-290Z-1705182`: `production-battle-withdrawal-report`, 2 of 2.
 
 ## Proposed status
 
