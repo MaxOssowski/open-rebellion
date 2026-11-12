@@ -24,6 +24,9 @@ const a0Dir = process.argv.find((arg) => arg.startsWith("--a0="))?.slice(5);
 const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-test.wasm"];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 const QUADRANTS = 50;
+// CoruscantSeized: Coruscant the Alliance's, as A0 coruscant-676/14; the
+// setup's second system is Coruscant. A case with `scenario` runs it.
+const CORUSCANT_SEIZED = 107;
 const factions = [
   { name: "alliance", byte: 1, side: 1, other: 2, galaxyRight: 540 },
   { name: "empire", byte: 2, side: 2, other: 1, galaxyRight: 600 },
@@ -1595,6 +1598,74 @@ const cases = [
     },
   },
   {
+    name: "coruscant-seized",
+    scenario: CORUSCANT_SEIZED,
+    factions: ["empire"],
+    // A0 coruscant-676/14-after-movie (the VM's Empire game, day 679): after
+    // Get Immediate Result gave the Alliance Coruscant, the Empire's player
+    // opened Coruscant's Defenses window (FUN_004a8790) at (200, 91). It
+    // shows the system's side (+0x148, the Alliance): the red strip 10299
+    // (FUN_004a9800), Personnel pressed over an empty list, Trooper
+    // Regiments full, the other tabs empty (FUN_004a9ce0). The fixture
+    // leaves the Alliance one regiment there, in the Empire's sight.
+    async run(page, faction, setup, directory, source) {
+      const { at, window } = await openDefenses(page, setup, "second");
+      assert.equal(window.side, 1, JSON.stringify(window));
+      assert.equal(window.page, "personnel", JSON.stringify(window));
+      assert.deepEqual(window.counts, [0, 1, 0, 0, 0], JSON.stringify(window));
+      assert.deepEqual(window.rows, [], JSON.stringify(window));
+      assert.equal(window.garrison, null);
+      const screenshot = await stableScreen(page, directory, "coruscant");
+      const checks = compareTabs(screenshot, source, window, directory, "coruscant");
+      assertExact(checks);
+      const a0File = path.join(root, ".artifacts/a0-vm/coruscant-676/14-after-movie.png");
+      if (!fs.existsSync(a0File)) return { at, window, checks, a0: "skipped: A0 file missing" };
+      // The whole 235 by 304 window against A0's, every pixel but the text
+      // (the title's name from (19, 2), FUN_004a9800; the page name
+      // "Personnel" centred under the tabs) and A0's mouse pointer, which
+      // stood over the empty list (all 179 other differing pixels lie in
+      // x 120..141, y 159..180). The list is empty in both, so its
+      // backdrop (10577) is compared.
+      const whole = wholeWindow(screenshot, window.origin, a0File, [200, 91], [
+        [19, 2, 180, 16], [2, 54, 231, 13], [118, 157, 26, 26],
+      ]);
+      assert.ok(whole.compared > 64_000 && whole.differing === 0,
+        `the whole Defenses window of Coruscant against A0: ${JSON.stringify(whole)}`);
+      // The name's ink, black on the strip: A0 and the port both name
+      // Coruscant. Its box's left, top and bottom within a pixel of A0's,
+      // its width within 15% (the accepted text-width deviation).
+      const shot = PNG.sync.read(fs.readFileSync(a0File));
+      const ink = (png, [ox, oy]) => {
+        let box = null;
+        for (let y = 2; y < 18; y += 1) for (let x = 19; x < 199; x += 1) {
+          const i = ((oy + y) * png.width + ox + x) * 4;
+          if (![0, 1, 2].every((k) => png.data[i + k] < 64)) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+        return box;
+      };
+      const name = { a0: ink(shot, [200, 91]), port: ink(screenshot, window.origin) };
+      const ratio = name.a0 && name.port ? (name.port[2] - name.port[0] + 1) / (name.a0[2] - name.a0[0] + 1) : 0;
+      assert.ok(name.a0 && name.port && [0, 1, 3].every((k) => Math.abs(name.a0[k] - name.port[k]) <= 1)
+        && ratio > 0.85 && ratio < 1.15, `Coruscant's name against A0: ${JSON.stringify({ ...name, ratio })}`);
+      // The page name's white ink in the same way.
+      const white = (png, [ox, oy]) => {
+        let box = null;
+        for (let y = 54; y < 67; y += 1) for (let x = 2; x < 233; x += 1) {
+          const i = ((oy + y) * png.width + ox + x) * 4;
+          if (![0, 1, 2].every((k) => png.data[i + k] > 200)) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+        return box;
+      };
+      const label = { a0: white(shot, [200, 91]), port: white(screenshot, window.origin) };
+      const labelRatio = label.a0 && label.port ? (label.port[2] - label.port[0] + 1) / (label.a0[2] - label.a0[0] + 1) : 0;
+      assert.ok(label.a0 && label.port && [0, 1, 3].every((k) => Math.abs(label.a0[k] - label.port[k]) <= 1)
+        && labelRatio > 0.85 && labelRatio < 1.15, `the page name against A0: ${JSON.stringify({ ...label, labelRatio })}`);
+      return { at, window, checks, a0: { whole, name: { ...name, ratio }, label: { ...label, ratio: labelRatio } } };
+    },
+  },
+  {
     name: "missions-en-route",
     // The second system's agent is in hyperspace to it. FUN_00556430 and
     // FUN_00556390 put it in the target's container at once
@@ -1903,7 +1974,7 @@ async function inspect(server, source, faction, testCase, executable) {
       }
     });
 
-    const fixtureCode = QUADRANTS | (faction.byte << 8);
+    const fixtureCode = (testCase.scenario ?? QUADRANTS) | (faction.byte << 8);
     await page.goto(`${serverOrigin}/?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
     await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
     const ready = await page.evaluate(() => window.__openRebellionInterfaceReady);
@@ -2010,6 +2081,7 @@ async function main() {
     for (const faction of factions) {
       for (const testCase of cases) {
         if (only.length && !only.includes(`${faction.name}/${testCase.name}`)) continue;
+        if (testCase.factions && !testCase.factions.includes(faction.name)) continue;
         results.push(await inspect(server, source, faction, testCase, executable));
       }
     }
