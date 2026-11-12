@@ -81,6 +81,10 @@ const UMGUL_BACKDROP_SCENARIO: u32 = 42;
 /// Escort Carrier with one X-wing and one Y-wing squadron, against the
 /// home fleet the galaxy places at Coruscant.
 const CORUSCANT_CHASE_SCENARIO: u32 = 43;
+/// The last-ship battle with MDATA.104 (Death Star Sabotaged) queued: it
+/// plays once the battle ends, over the open Battle Summary (the queue
+/// drains while the clock is not held: `FUN_00488b90`, `FUN_0041dc10`).
+const BATTLE_SUMMARY_STORY_MOVIE_SCENARIO: u32 = 44;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -145,6 +149,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub battle_alert_retreat: bool,
     pub battle_withdrawal_report: bool,
     pub battle_last_ship_lost: bool,
+    pub summary_story_movie: bool,
     pub umgul_backdrop: bool,
     pub coruscant_chase: bool,
     pub subsystem_field_command_presentation: bool,
@@ -383,7 +388,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | BATTLE_WITHDRAWAL_REPORT_SCENARIO
         | BATTLE_LAST_SHIP_LOST_SCENARIO
         | UMGUL_BACKDROP_SCENARIO
-        | CORUSCANT_CHASE_SCENARIO => (
+        | CORUSCANT_CHASE_SCENARIO
+        | BATTLE_SUMMARY_STORY_MOVIE_SCENARIO => (
             false,
             true,
             false,
@@ -427,12 +433,18 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         tactical_audio_presentation: scenario == TACTICAL_AUDIO_PRESENTATION_SCENARIO,
         hull_scale_presentation: matches!(
             scenario,
-            HULL_SCALE_PRESENTATION_SCENARIO | BATTLE_LAST_SHIP_LOST_SCENARIO
+            HULL_SCALE_PRESENTATION_SCENARIO
+                | BATTLE_LAST_SHIP_LOST_SCENARIO
+                | BATTLE_SUMMARY_STORY_MOVIE_SCENARIO
         ),
         attack_target_lost_presentation: scenario == ATTACK_TARGET_LOST_PRESENTATION_SCENARIO,
         battle_alert_retreat: scenario == BATTLE_ALERT_RETREAT_SCENARIO,
         battle_withdrawal_report: scenario == BATTLE_WITHDRAWAL_REPORT_SCENARIO,
-        battle_last_ship_lost: scenario == BATTLE_LAST_SHIP_LOST_SCENARIO,
+        battle_last_ship_lost: matches!(
+            scenario,
+            BATTLE_LAST_SHIP_LOST_SCENARIO | BATTLE_SUMMARY_STORY_MOVIE_SCENARIO
+        ),
+        summary_story_movie: scenario == BATTLE_SUMMARY_STORY_MOVIE_SCENARIO,
         umgul_backdrop: scenario == UMGUL_BACKDROP_SCENARIO,
         coruscant_chase: scenario == CORUSCANT_CHASE_SCENARIO,
         subsystem_field_command_presentation: scenario
@@ -995,6 +1007,15 @@ pub(crate) fn apply(
     #[cfg(feature = "interface-test-fixtures")]
     if request.battle_last_ship_lost {
         tactical.configure_last_alliance_ship_lost_fixture();
+    }
+    #[cfg(feature = "interface-test-fixtures")]
+    if request.summary_story_movie {
+        // FUN_0048d470's caption (TEXTSTRA 0x71be) is not what this
+        // fixture checks; the movie's music is.
+        messages.queue_story_movie(rebellion_render::StoryMovie {
+            movie: 104,
+            caption: "The Rebel Alliance has sabotaged the Death Star at Endor.".to_owned(),
+        });
     }
     #[cfg(feature = "interface-test-fixtures")]
     if request.empty_space_presentation {
@@ -1872,7 +1893,10 @@ mod tests {
         assert!(!decode(0x10128).unwrap().battle_last_ship_lost);
         assert!(decode(0x1012a).unwrap().umgul_backdrop);
         assert!(!decode(0x10129).unwrap().umgul_backdrop);
-        assert!(decode(0x1012c).is_none());
+        assert!(decode(0x1012c).unwrap().battle_last_ship_lost);
+        assert!(decode(0x1012c).unwrap().summary_story_movie);
+        assert!(!decode(0x10129).unwrap().summary_story_movie);
+        assert!(decode(0x1012d).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
     }

@@ -98,3 +98,14 @@ Ported: `audio::battle_alert_music` and `battle_summary_music`, and
 show, and restores the galaxy's or the menu's score when they close.
 `scripts/build-wasm.sh` stages the six tracks for the browser. The
 tactical battle itself keeps the port's MDATA.307 cue.
+
+The summary's track plays once (`FUN_00470e70` clears `+0x188`). A story
+movie over the open summary stops it (`FUN_00422ce0` 0x482,
+`FUN_00610c00(0)`), and the movie's end starts the galaxy view's score
+(0x402: `FUN_00422cb0` -> `FUN_00417520(FUN_0041d3b0())`), not the
+summary's. The summary's Close (`FUN_004727a0`, vtable `0x65a300` slot
+0x30) stops the music and starts the galaxy view's again. The story queue
+drains while the summary is open: `FUN_0041dc10` tests only the Pause
+hold (`FUN_0041e300`), not the game's `+0x14` day hold. Ported 2026-11-13
+(`screen_score` in main.rs; story-movie.mjs `--case=summary`). Game Options
+over a battle window keeps its track; Restart gives the main menu its own.

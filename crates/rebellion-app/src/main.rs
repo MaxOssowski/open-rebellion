@@ -339,9 +339,64 @@ fn music_context_after_cutscene(kind: &CutsceneKind) -> Option<MusicContext> {
 /// creates only after the intro's movies (`FUN_004138a0`'s 0x405: MDATA.000
 /// (0x65) -> state 2, MDATA.001 (0x66) -> state 3), and the other movies
 /// stop the music first (`FUN_00610c00(0)`; ghidra/notes/movie-flow.md).
+/// After the side's movie the game's galaxy window starts it at its
+/// creation (`FUN_00422ce0`: `FUN_004173c0`, `FUN_00422cb0`), so the
+/// frames that load the campaign stay silent too.
 #[cfg(any(test, target_arch = "wasm32"))]
 fn score_may_start(mode: &GameMode) -> bool {
-    !matches!(mode, GameMode::Cutscene { .. })
+    !matches!(mode, GameMode::Cutscene { .. } | GameMode::GameSetup)
+}
+
+/// What the battle windows' score does this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScreenScore {
+    /// Nothing changes.
+    Keep,
+    /// The window's own track starts (the Battle Alert's or the Battle
+    /// Summary's, `FUN_00417610`).
+    Play(rebellion_render::MusicTrack),
+    /// The window closed: the galaxy view's or the menu's score starts
+    /// again (the summary's close, `FUN_004727a0`: `FUN_00417640`, then
+    /// `FUN_00417520(FUN_0041d3b0())`).
+    Restore,
+}
+
+/// The battle windows' score for this frame, from the track the screen
+/// asks for (`screen_music`) and the one it last started (`playing`,
+/// updated here). A movie leaves both alone: the summary plays its track
+/// only at its first paint (`FUN_00471200` -> `FUN_00470e70` clears
+/// `+0x188`), so a story movie over it returns to the galaxy view's score
+/// (`FUN_00422ce0`'s 0x402: `FUN_00422cb0`), not the summary's. Game
+/// Options over a battle window holds it too: on return the window goes
+/// on with its track, and a Restart to the main menu gives the menu its
+/// own score.
+fn screen_score(
+    mode: &GameMode,
+    screen_music: Option<rebellion_render::MusicTrack>,
+    playing: &mut Option<rebellion_render::MusicTrack>,
+) -> ScreenScore {
+    match mode {
+        GameMode::Cutscene { .. } => {
+            // A summary that opened on the movie's own frame has painted
+            // too: the 0x482 handler pumps messages until the animations
+            // end before the movie starts.
+            *playing = screen_music;
+            return ScreenScore::Keep;
+        }
+        GameMode::MainMenu | GameMode::Galaxy | GameMode::TacticalCombat => {}
+        GameMode::GameOptions { .. } | GameMode::GameSetup | GameMode::MultiplayerSetup => {
+            return ScreenScore::Keep;
+        }
+    }
+    if screen_music == *playing {
+        return ScreenScore::Keep;
+    }
+    *playing = screen_music;
+    match screen_music {
+        Some(track) => ScreenScore::Play(track),
+        None if matches!(mode, GameMode::MainMenu | GameMode::Galaxy) => ScreenScore::Restore,
+        None => ScreenScore::Keep,
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -495,6 +550,110 @@ mod audio_source_tests {
         }
         assert!(score_may_start(&GameMode::MainMenu));
         assert!(score_may_start(&GameMode::Galaxy));
+    }
+
+    #[test]
+    fn the_side_movie_leaves_the_score_off_until_the_galaxy_view_shows() {
+        // The side's movie (state 7) stops the music; the game's galaxy
+        // window starts it at its creation (FUN_00422ce0: FUN_004173c0,
+        // FUN_00422cb0 -> FUN_00417520). The frames between, while the
+        // campaign loads, play no score.
+        assert!(!score_may_start(&GameMode::GameSetup));
+    }
+
+    #[test]
+    fn a_story_movie_over_the_battle_summary_returns_to_the_galaxy_score() {
+        use rebellion_render::MusicTrack;
+        // MDATA.308, the Alliance viewer's win (FUN_0046f360, 0x006a8478).
+        let summary = MusicTrack::Original(12);
+        let story = GameMode::Cutscene {
+            kind: CutsceneKind::Story(102),
+        };
+        let mut playing = None;
+        // The summary's first paint plays its track once (FUN_00471200 ->
+        // FUN_00470e70 clears +0x188).
+        assert_eq!(
+            screen_score(&GameMode::Galaxy, Some(summary), &mut playing),
+            ScreenScore::Play(summary)
+        );
+        // FUN_00422ce0's 0x482 stops the music for the movie; its 0x402
+        // starts the galaxy view's again (FUN_00422cb0), and the summary,
+        // already painted, does not replay its track.
+        assert_eq!(
+            screen_score(&story, Some(summary), &mut playing),
+            ScreenScore::Keep
+        );
+        assert_eq!(
+            screen_score(&GameMode::Galaxy, Some(summary), &mut playing),
+            ScreenScore::Keep
+        );
+        // Its Close stops and restarts the galaxy view's (FUN_004727a0).
+        assert_eq!(
+            screen_score(&GameMode::Galaxy, None, &mut playing),
+            ScreenScore::Restore
+        );
+        assert_eq!(playing, None);
+
+        // A summary that opens on the movie's first frame has painted
+        // before the movie too (0x482 pumps messages until the animations
+        // end), so the movie's end does not start its track either.
+        let mut playing = None;
+        assert_eq!(
+            screen_score(&story, Some(summary), &mut playing),
+            ScreenScore::Keep
+        );
+        assert_eq!(
+            screen_score(&GameMode::Galaxy, Some(summary), &mut playing),
+            ScreenScore::Keep
+        );
+    }
+
+    #[test]
+    fn the_battle_alert_closing_into_the_battle_leaves_no_score_to_restore() {
+        use rebellion_render::MusicTrack;
+        // MDATA.307, the Alliance viewer's Battle Alert (FUN_0044f860).
+        let alert = MusicTrack::Original(10);
+        let mut playing = None;
+        assert_eq!(
+            screen_score(&GameMode::TacticalCombat, Some(alert), &mut playing),
+            ScreenScore::Play(alert)
+        );
+        // The battle has no score (FUN_00450540 -> FUN_00417640); nothing
+        // gives the galaxy's back under it.
+        assert_eq!(
+            screen_score(&GameMode::TacticalCombat, None, &mut playing),
+            ScreenScore::Keep
+        );
+        assert_eq!(playing, None);
+    }
+
+    #[test]
+    fn game_options_over_the_battle_summary_keep_its_score_until_the_menu() {
+        use rebellion_render::MusicTrack;
+        // MDATA.315, the Empire viewer's loss (FUN_0046f360, 0x006a8478).
+        let summary = MusicTrack::Original(15);
+        let options = GameMode::GameOptions {
+            origin: GameOptionsOrigin::CommandCenter,
+        };
+        let mut playing = None;
+        assert_eq!(
+            screen_score(&GameMode::Galaxy, Some(summary), &mut playing),
+            ScreenScore::Play(summary)
+        );
+        // The summary painted once (FUN_00470e70); Game Options and the
+        // return to it do not start its track again.
+        assert_eq!(screen_score(&options, None, &mut playing), ScreenScore::Keep);
+        assert_eq!(
+            screen_score(&GameMode::Galaxy, Some(summary), &mut playing),
+            ScreenScore::Keep
+        );
+        // Restart leaves for the main menu, whose window starts its own
+        // score (FUN_00405050 WM_CREATE: FUN_004173c0, FUN_00417520).
+        assert_eq!(screen_score(&options, None, &mut playing), ScreenScore::Keep);
+        assert_eq!(
+            screen_score(&GameMode::MainMenu, None, &mut playing),
+            ScreenScore::Restore
+        );
     }
 }
 
@@ -2002,6 +2161,11 @@ async fn main() {
                 // after the battle show the fleets that remain there.
                 FogSystem::seed(&mut fog_alliance_state, &world);
                 FogSystem::seed(&mut fog_empire_state, &world);
+                // The queued story movie needs a clock that is not paused
+                // (FUN_0041dc10); the summary itself holds the days.
+                if request.summary_story_movie {
+                    choose_game_speed(&mut clock, GameSpeed::Fast);
+                }
                 false
             }
             Err(error) => {
@@ -9387,8 +9551,10 @@ async fn main() {
 
         // 6. Route the recovered tactical score and event cue. The Battle
         // Alert and the Battle Summary play their own original score.
+        // A story movie over the summary keeps it open (`screen_score`).
         let screen_music = if game_mode == GameMode::TacticalCombat
-            || (game_mode == GameMode::Galaxy && tactical_state.battle_summary_open())
+            || (matches!(game_mode, GameMode::Galaxy | GameMode::Cutscene { .. })
+                && tactical_state.battle_summary_open())
         {
             tactical_state.screen_music()
         } else {
@@ -9436,8 +9602,9 @@ async fn main() {
             }
             tactical_music_active = false;
         }
-        if screen_music != screen_music_playing {
-            if let Some(track) = screen_music {
+        match screen_score(&game_mode, screen_music, &mut screen_music_playing) {
+            ScreenScore::Keep => {}
+            ScreenScore::Play(track) => {
                 #[cfg(not(target_arch = "wasm32"))]
                 audio_engine.play_music(track, &sounds_dir, &audio_vol);
                 #[cfg(target_arch = "wasm32")]
@@ -9461,7 +9628,8 @@ async fn main() {
                     },
                     audio_vol.muted || audio_vol.music_muted
                 );
-            } else if matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy) {
+            }
+            ScreenScore::Restore => {
                 // Leaving a battle window for the galaxy or the menu
                 // restores their score.
                 #[cfg(not(target_arch = "wasm32"))]
@@ -9481,7 +9649,6 @@ async fn main() {
                     engine.load_music_bytes(rebellion_render::MusicTrack::MainTheme, bytes);
                 }
             }
-            screen_music_playing = screen_music;
         }
 
         if tactical_audio_context {

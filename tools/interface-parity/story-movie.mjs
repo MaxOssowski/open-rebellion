@@ -235,6 +235,104 @@ async function run(browser, base, faction) {
   }
 }
 
+// A story movie over the Battle Summary. The summary plays its track once,
+// at its first paint (FUN_00471200 -> FUN_00470e70 clears +0x188); the
+// movie stops it (FUN_00422ce0's 0x482, FUN_00610c00(0)) and its end starts
+// the galaxy view's score (0x402: FUN_004173c0, FUN_00422cb0 ->
+// FUN_00417520(FUN_0041d3b0())), not the summary's again. The tactical
+// fixture 0x1012c is the last-ship battle (A0 TAC-01-C013) with MDATA.104
+// queued, which plays once the battle ends and the summary is open.
+const SUMMARY_STORY_MOVIE = (1 << 16) | (1 << 8) | 44;
+
+async function runSummary(browser, base) {
+  const directory = path.join(OUT, "battle-summary");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const log = [];
+  const errors = [];
+  const shots = [];
+  page.on("console", (message) => {
+    log.push(message.text());
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  await page.addInitScript(() => {
+    window.__openRebellionLoops = [];
+    window.__openRebellionActiveLoops = new Set();
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...rest) {
+      if (this.loop) {
+        window.__openRebellionLoops.push({
+          seconds: this.buffer?.duration ?? null,
+          stem: window.__openRebellionCutscene?.state === 1 ? window.__openRebellionCutscene.stem : null,
+        });
+        window.__openRebellionActiveLoops.add(this);
+      }
+      return start.apply(this, rest);
+    };
+    const stop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.stop = function (...rest) {
+      window.__openRebellionActiveLoops.delete(this);
+      return stop.apply(this, rest);
+    };
+  });
+  const shot = async (label) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    shots.push({ label, sha256: createHash("sha256").update(bytes).digest("hex") });
+    return bytes;
+  };
+  try {
+    await page.goto(`${base}?fixture-code=${SUMMARY_STORY_MOVIE}`);
+    await until(page, "the tactical fixture is ready",
+      () => Boolean(window.__openRebellionInterfaceReady?.status), 60_000);
+    // The pause control resumes the battle (a click, which also unlocks
+    // the page's WebAudio); the Alliance's last hull then dies.
+    await page.mouse.move(575, 319);
+    await page.mouse.down();
+    await page.waitForTimeout(100);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    await page.mouse.move(2, 2);
+    await until(page, "the battle ends in its summary",
+      () => window.__openRebellionCutscene?.state === 1, 180_000);
+    const summaryScore = log.filter((line) => line.includes("[audio] context=battle_window"));
+    assert.equal(summaryScore.length, 1, `the summary plays its track once: ${summaryScore}`);
+    await until(page, "MDATA.104 plays over the summary", () => {
+      const c = window.__openRebellionCutscene;
+      return c?.state === 1 && c.stem === "104" && document.querySelector("video")?.currentTime > 1.0;
+    });
+    const summaryStarts = await page.evaluate(() => window.__openRebellionLoops.slice());
+    assert.equal(await page.evaluate(() => window.__openRebellionActiveLoops.size), 0, "no score under the movie");
+    await shot("movie");
+    const movieAt = log.length;
+    await page.locator("#glcanvas").focus();
+    await page.keyboard.press("Escape");
+    await until(page, "the galaxy view returns", () => !document.querySelector("video"));
+    await until(page, "one score sounds after the movie",
+      () => window.__openRebellionActiveLoops.size === 1, 15_000);
+    await page.waitForTimeout(1500);
+    await shot("after-movie");
+    const starts = await page.evaluate(() => window.__openRebellionLoops.slice());
+    const after = starts.slice(summaryStarts.length);
+    assert.equal(await page.evaluate(() => window.__openRebellionActiveLoops.size), 1, "one score at a time");
+    assert.equal(after.length, 1, `one score starts after the movie: ${JSON.stringify(after)}`);
+    assert.ok(log.slice(movieAt).every((line) => !line.includes("[audio] context=battle_window")),
+      "the summary's track does not play again");
+    const scoreAfter = log.slice(movieAt).filter((line) => line.includes("[audio] score started"));
+    assert.deepEqual(scoreAfter, ["[audio] score started mode=Galaxy track=Some(MainTheme)"],
+      `the galaxy view's score, not the summary's: ${JSON.stringify(starts)}`);
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "battle-summary", status: "pass", starts, summary_score: summaryScore, shots };
+  } catch (error) {
+    await shot("failure").catch(() => {});
+    return { faction: "battle-summary", status: "fail", error: String(error.stack || error), errors };
+  } finally {
+    await fs.writeFile(path.join(directory, "console.log"), log.join("\n"));
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -246,7 +344,11 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  for (const faction of FACTIONS) results.push(await run(browser, base, faction));
+  if (args.case !== "summary") {
+    for (const faction of FACTIONS) results.push(await run(browser, base, faction));
+  }
+  // `--case=summary` runs only the story movie over the Battle Summary.
+  if (!args.faction) results.push(await runSummary(browser, base));
 } finally {
   await browser.close();
   server.close();

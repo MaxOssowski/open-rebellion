@@ -255,7 +255,7 @@ const CASES = {
   // it starts its own again: the credits' callback LAB_00406520 restarts
   // the menu's (FUN_004173c0, FUN_00417520), and the game started after the
   // side's movie (state 8) plays the galaxy view's.
-  async "movies-hold-the-score"(page, shot) {
+  async "movies-hold-the-score"(page, shot, log) {
     const sounding = () => window.__openRebellionActiveLoops.size;
     await waitStem(page, "000", "the logos play");
     await page.locator("#glcanvas").focus();
@@ -290,7 +290,76 @@ const CASES = {
     const starts = await page.evaluate(() => window.__openRebellionLoops.slice());
     assert.equal(starts.length, 3, JSON.stringify(starts));
     assert.ok(starts.every(({ stem }) => stem === null), `no score starts under a movie: ${JSON.stringify(starts)}`);
-    return { credits, new_game: newGame, starts, starts_after_credits: afterCredits };
+    // The galaxy window starts it at its creation (FUN_00422ce0:
+    // FUN_004173c0, FUN_00422cb0), not the frames that load the campaign.
+    const started = log.filter((line) => line.includes("[audio] score started mode="))
+      .map((line) => line.match(/mode=(\w+)/)[1]);
+    assert.deepEqual(started, ["MainMenu", "MainMenu", "Galaxy"], JSON.stringify(started));
+    return { credits, new_game: newGame, starts, starts_after_credits: afterCredits, started_modes: started };
+  },
+  // Back to the main menu from a game (Game Options' Restart) and a saved
+  // game loaded from the menu's Game Options: one score sounds at each
+  // screen, never two and never none (the menu's window and the galaxy
+  // window each start theirs at creation: FUN_00405050, FUN_00422ce0).
+  async "menu-and-load-keep-one-score"(page, shot, log) {
+    const sounding = () => window.__openRebellionActiveLoops.size;
+    const click = async ([x, y]) => {
+      await page.mouse.move(x, y);
+      await page.waitForTimeout(300);
+      await page.mouse.down();
+      await page.waitForTimeout(150);
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      await page.mouse.move(2, 470);
+      await page.waitForTimeout(800);
+    };
+    const inGame = () => !document.querySelector("video")
+      && !(document.getElementById("main-menu-semantics")?.dataset.active === "true");
+    await waitStem(page, "000", "the logos play");
+    await page.locator("#glcanvas").focus();
+    await page.mouse.click(320, 240);
+    await waitStem(page, "001", "the cinematic plays");
+    await page.keyboard.press("Escape");
+    await waitFor(page, menuActive, "the main menu");
+    await waitFor(page, () => window.__openRebellionActiveLoops.size === 1, "the menu's score sounds", 10_000);
+    await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(8));
+    await waitStem(page, "004", "the Empire's movie plays before the game");
+    await page.keyboard.press("Escape");
+    await waitFor(page, inGame, "the game starts after the movie");
+    await waitFor(page, () => window.__openRebellionActiveLoops.size === 1, "the galaxy view's score sounds", 15_000);
+    await page.waitForTimeout(1000);
+    // Game Options (F1), save "t" on the first row (FUN_00406b80 0x6f),
+    // close the saved message, then Restart (no question after a save).
+    await page.keyboard.press("F1");
+    await page.waitForTimeout(1000);
+    await page.mouse.click(180, 91);
+    await page.keyboard.type("t");
+    await page.waitForTimeout(200);
+    await page.mouse.click(55, 91);
+    await page.waitForTimeout(1500);
+    assert.ok(log.some((line) => line.includes("save_state_fingerprint slot=0")), "the first row saves slot 0");
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(500);
+    assert.equal(await page.evaluate(sounding), 1, "one score under Game Options");
+    await click([97, 402]);
+    if (!(await page.evaluate(menuActive))) await click([280, 301]);
+    await waitFor(page, menuActive, "Restart returns to the main menu", 15_000);
+    await page.waitForTimeout(2000);
+    const atMenu = await page.evaluate(sounding);
+    await shot("menu-after-restart");
+    assert.equal(atMenu, 1, "one score at the main menu after Restart");
+    // Load/Options (0x68), then Load on slot 0: the game opens at once.
+    await click([431, 250]);
+    await click([305, 91]);
+    await waitFor(page, inGame, "the saved game opens", 15_000);
+    assert.ok(log.some((line) => line.includes("[campaign] restored slot=0")), "the save is restored");
+    await page.waitForTimeout(2000);
+    const afterLoad = await page.evaluate(sounding);
+    await shot("galaxy-after-load");
+    assert.equal(afterLoad, 1, "one score in the loaded game");
+    const starts = await page.evaluate(() => window.__openRebellionLoops.slice());
+    assert.ok(starts.every(({ stem }) => stem === null), `no score starts under a movie: ${JSON.stringify(starts)}`);
+    return { at_menu: atMenu, after_load: afterLoad, starts };
   },
   // FUN_005f6920: a movie the video manager cannot open shows
   // MessageBoxA(path, "PathName unknown to VideoManager", 0x1010) and the
@@ -446,7 +515,7 @@ async function run(browser, base, name) {
   };
   try {
     await page.goto(base);
-    const checks = await CASES[name](page, shot);
+    const checks = await CASES[name](page, shot, log);
     assert.deepEqual(errors, [], errors.join("; "));
     return { name, status: "pass", checks, shots,
       cutscene_log: log.filter((line) => line.includes("[cutscene]") || line.includes("[main_menu]")
