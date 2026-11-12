@@ -82,6 +82,27 @@ function whiteBox(png, [l, t, r, b]) {
   }
   return box;
 }
+// The galaxy view's caption under each window (FUN_00425d00 draws it into
+// the view's picture, FUN_004593e0 copies that under the window, shaded):
+// A0 shows "Popular Support" (255, 0, 0) there as (91, 67, 51), from x 252
+// to the left window's buttons and from the right window's edge to x 342.
+// Its ink box, as reddish pixels (the port's glyphs are anti-aliased
+// Liberation), in each half's title rows left of its buttons.
+const CAPTION_COLUMNS = { left: [62, 264], right: [302, 504] };
+function captionBox(png, [x0, x1]) {
+  let box = null;
+  for (let y = 37; y < 58; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const i = (y * png.width + x) * 4;
+      const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+      if (r >= 75 && r - b >= 25 && r - g >= 12) {
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+          : [x, y, x, y];
+      }
+    }
+  }
+  return box;
+}
 // [A0 frame, the click before it, the halves holding a window]
 const STEPS = [
   ["01-first", [252, 162], ["left"]],
@@ -135,6 +156,41 @@ function differing(port, a0, [rx, ry, rw, rh], left) {
     }
   }
   return count;
+}
+// The pixels of `region` outside `masks` that differ, grouped into patches
+// (pixels within 2 of each other): their count, total and largest size.
+function patchesOutside(port, a0, [rx, ry, rw, rh], masks) {
+  const masked = (x, y) => masks.some(([mx, my, mw, mh]) => x >= mx && y >= my && x < mx + mw && y < my + mh);
+  const rest = new Set();
+  let compared = 0;
+  for (let y = ry; y < ry + rh; y += 1) {
+    for (let x = rx; x < rx + rw; x += 1) {
+      if (masked(x, y)) continue;
+      compared += 1;
+      if (rgb(port, x, y) !== rgb(a0, x, y)) rest.add(`${x},${y}`);
+    }
+  }
+  const patches = [];
+  while (rest.size) {
+    const [first] = rest;
+    rest.delete(first);
+    const stack = [first.split(",").map(Number)];
+    let [l, t, r, b, count] = [...stack[0], ...stack[0], 0];
+    while (stack.length) {
+      const [x, y] = stack.pop();
+      count += 1;
+      [l, t, r, b] = [Math.min(l, x), Math.min(t, y), Math.max(r, x), Math.max(b, y)];
+      for (let dy = -2; dy <= 2; dy += 1) {
+        for (let dx = -2; dx <= 2; dx += 1) {
+          const key = `${x + dx},${y + dy}`;
+          if (rest.delete(key)) stack.push([x + dx, y + dy]);
+        }
+      }
+    }
+    patches.push([l, t, r - l + 1, b - t + 1, count]);
+  }
+  return { compared, patches: patches.length, pixels: patches.reduce((sum, patch) => sum + patch[4], 0),
+    largest: patches.reduce((most, patch) => [Math.max(most[0], patch[2]), Math.max(most[1], patch[3])], [0, 0]) };
 }
 // The title's yellow ink box.
 function inkBox(png, [x0, y0, w, h]) {
@@ -196,6 +252,7 @@ try {
         expected: halves.includes(half),
         differing: regions.map((region) => differing(port, a0, region, HALVES[half])),
         ink: { a0: inkBox(a0, shape.title), port: inkBox(port, shape.title) },
+        caption: { a0: captionBox(a0, CAPTION_COLUMNS[half]), port: captionBox(port, CAPTION_COLUMNS[half]) },
       };
     }
     if (frame === "04-left") {
@@ -204,7 +261,24 @@ try {
       step.names = Object.fromEntries(Object.entries(CHURBA_NAMES)
         .map(([name, box]) => [name, { a0: box, port: whiteBox(port, box) }]));
     }
+    if (frame === "04-left") {
+      // The whole Churba window (60, 35, 235 by 360) against A0. Its ten
+      // systems are unexplored in both games, so beyond the parts above
+      // only the shaded galaxy behind may differ: the galaxy markers under
+      // the window are each game's own. The title row (title and shaded
+      // caption, checked by ink) and the ten names (Liberation's glyphs)
+      // are left out. Each differing patch must be a marker's size or two
+      // markers' stacked (a cross is 7 by 7, a diamond 9 by 9); a wrong
+      // shade, background or picture would make one large patch.
+      const masks = [[62, 37, 231, 21]];
+      for (const [l, t, r, b] of Object.values(CHURBA_NAMES)) masks.push([l - 8, t - 3, r - l + 17, b - t + 7]);
+      step.whole = patchesOutside(port, a0, [62, 37, 231, 356], masks);
+    }
     result.steps.push(step);
+    if (step.whole) {
+      assert.ok(step.whole.largest[0] <= 16 && step.whole.largest[1] <= 26 && step.whole.pixels < 700,
+        `04-left: the whole Churba window ${JSON.stringify(step.whole)}`);
+    }
     if (step.planets) {
       assert.ok(Object.values(step.planets).every((count) => count === 0),
         `04-left planets: ${JSON.stringify(step.planets)}`);
@@ -240,10 +314,17 @@ try {
       };
       assert.deepEqual(step.selection, { planet: 0, name: 0 }, `a selected planet changes: ${JSON.stringify(step.selection)}`);
     }
-    for (const [half, { expected, differing: counts, ink }] of Object.entries(step.halves)) {
+    for (const [half, { expected, differing: counts, ink, caption }] of Object.entries(step.halves)) {
       if (!expected) {
         assert.equal(ink.port, null, `${frame} ${half}: the port shows a window A0 does not`);
         continue;
+      }
+      // The shaded caption: left, top and bottom within a pixel, the right
+      // end within 3 (the accepted text width deviation).
+      {
+        const [a, p] = [caption.a0, caption.port];
+        assert.ok(a && p && [0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 1) && Math.abs(a[2] - p[2]) <= 3,
+          `${frame} ${half}: shaded caption ${JSON.stringify(caption)}`);
       }
       assert.deepEqual(counts, counts.map(() => 0), `${frame} ${half}: ${JSON.stringify(step.halves[half])}`);
       const [a, p] = [ink.a0, ink.port];

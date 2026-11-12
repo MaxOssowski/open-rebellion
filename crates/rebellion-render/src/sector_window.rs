@@ -87,6 +87,9 @@ pub struct SectorWindowState {
     gid_markers: std::collections::HashMap<SystemKey, u32>,
     /// The markers the galaxy view drew and their screen centres.
     drawn_gid_markers: Vec<(u32, [f32; 2])>,
+    /// The caption the galaxy view drew (`FUN_00425d00`), which the
+    /// windows' copy of the view shows shaded.
+    gid_caption: Option<crate::GidCaption>,
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_00429ce0` then calls `FUN_0041d2d0`).
     created: bool,
@@ -100,6 +103,7 @@ impl Default for SectorWindowState {
             backdrop: crate::bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM,
             gid_markers: std::collections::HashMap::new(),
             drawn_gid_markers: Vec::new(),
+            gid_caption: None,
             created: false,
         }
     }
@@ -128,6 +132,13 @@ impl SectorWindowState {
     /// view shows shaded (`GalaxyMapState::drawn_gid_markers`).
     pub fn set_drawn_gid_markers(&mut self, markers: &[(u32, [f32; 2])]) {
         self.drawn_gid_markers = markers.to_vec();
+    }
+
+    /// Take the caption the galaxy view drew ([`crate::gid_caption`]),
+    /// which the windows' copy of the view shows shaded (A0
+    /// sector-windows/02-second: "Popular Support" under both windows).
+    pub fn set_gid_caption(&mut self, caption: Option<crate::GidCaption>) {
+        self.gid_caption = caption;
     }
 
     /// Open the selected system's parent sector (`FUN_00429ce0`;
@@ -530,6 +541,7 @@ pub fn draw_sector_windows(
             state.backdrop,
             &state.gid_markers,
             &state.drawn_gid_markers,
+            state.gid_caption.as_ref(),
         );
         if result.focus {
             focused = Some(window.sector);
@@ -620,6 +632,7 @@ fn draw_sector_window(
     backdrop: u32,
     gid_markers: &std::collections::HashMap<SystemKey, u32>,
     drawn_gid_markers: &[(u32, [f32; 2])],
+    gid_caption: Option<&crate::GidCaption>,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(sector) = world.sectors.get(window.sector) else {
@@ -702,6 +715,19 @@ fn draw_sector_window(
                             egui::Color32::WHITE,
                         );
                     }
+                }
+            }
+            // The view's caption (FUN_00425d00 draws it into the view's
+            // picture), shaded with the rest of the copy: A0
+            // sector-windows/02-second shows "Popular Support" (255, 0, 0)
+            // as (91, 67, 51) under both windows, the starfield palette's
+            // entry FUN_005fddd0's table maps red to.
+            if let Some(caption) = gid_caption {
+                let [red, green, blue, _] = caption.color.to_array();
+                if let Some([red, green, blue]) =
+                    cache.shaded_palette_color(DllSource::Strategy, backdrop, [red, green, blue])
+                {
+                    caption.paint(ui.painter(), egui::Color32::from_rgb(red, green, blue));
                 }
             }
             // FUN_00459e30 frames the window with FUN_00607740's tiles, as
@@ -3504,6 +3530,83 @@ mod tests {
             (max - expected_max).length() < 1e-3,
             "{max:?} {expected_max:?}"
         );
+    }
+
+    // FUN_004593e0's copy of the galaxy view holds the caption the view drew
+    // (FUN_00425d00), shaded: A0 sector-windows/02-second shows "Popular
+    // Support" (255, 0, 0) as (91, 67, 51) under both windows, the
+    // starfield palette's entry FUN_005fddd0's table maps red to.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_window_shows_the_views_caption_under_it_shaded() {
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-sector-shaded-caption-{}",
+            std::process::id()
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("903.bmp"),
+            crate::bmp_cache::tests::indexed_bmp(&[[36, 37, 71], [255, 0, 0], [91, 67, 51]]),
+        )
+        .unwrap();
+        let (world, system, _) = fixture_world();
+        let layout = layout(2.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let window = window_screen_rect(CockpitFaction::Alliance, state.windows[0].column, layout);
+        state.set_gid_caption(Some(crate::GidCaption {
+            text: "Popular Support".into(),
+            rect: egui::Rect::from_min_size(window.min, egui::vec2(window.width(), 60.0)),
+            scale: 2.0,
+            color: egui::Color32::from_rgb(255, 0, 0),
+        }));
+        let fog = FogState::new(Faction::Alliance);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        cache.set_base_path(&base);
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let mut caption = String::new();
+        for index in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1040.0),
+                )),
+                time: Some(f64::from(index) * 0.05),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                let _ = draw_sector_windows(
+                    ctx,
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                );
+            });
+            caption = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text)
+                        if text.galley.job.sections[0].format.color
+                            == egui::Color32::from_rgb(91, 67, 51) =>
+                    {
+                        Some(text.galley.text().to_owned())
+                    }
+                    _ => None,
+                })
+                .collect();
+        }
+        std::fs::remove_dir_all(base).unwrap();
+        assert_eq!(caption.replace(' ', ""), "PopularSupport");
     }
 
     #[test]

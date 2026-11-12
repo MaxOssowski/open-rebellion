@@ -1749,6 +1749,18 @@ impl BmpCache {
         self.shaded_textures.get(&key)?.as_ref()
     }
 
+    /// `color` drawn into a picture with this bitmap's palette, as the
+    /// sector window's shaded copy shows it ([`shaded_palette_color`]).
+    pub fn shaded_palette_color(
+        &self,
+        source: DllSource,
+        resource_id: u32,
+        color: [u8; 3],
+    ) -> Option<[u8; 3]> {
+        let palette = bmp_palette(&self.load_original_bytes(source, resource_id)?)?;
+        Some(shaded_palette_color(&palette, color))
+    }
+
     fn ensure_hit_mask(&mut self, source: DllSource, resource_id: u32) {
         let key = (source, resource_id);
         if !self.hit_masks.contains_key(&key) {
@@ -2393,6 +2405,29 @@ pub fn sector_shade_table(palette: &[[u8; 3]]) -> Vec<usize> {
             best
         })
         .collect()
+}
+
+/// `color` drawn into an 8-bit picture with `palette`, then shaded as the
+/// sector window shades its copy of the galaxy view: GDI draws it as the
+/// palette entry nearest it (the lowest index on a tie), and
+/// `FUN_005fe050` maps that entry through [`sector_shade_table`].
+#[must_use]
+pub fn shaded_palette_color(palette: &[[u8; 3]], color: [u8; 3]) -> [u8; 3] {
+    let distance = |entry: &[u8; 3]| -> i32 {
+        entry
+            .iter()
+            .zip(color)
+            .map(|(&a, b)| (i32::from(a) - i32::from(b)).pow(2))
+            .sum()
+    };
+    let Some((index, _)) = palette
+        .iter()
+        .enumerate()
+        .min_by_key(|&(_, entry)| distance(entry))
+    else {
+        return sector_shade(color);
+    };
+    palette[sector_shade_table(palette)[index]]
 }
 
 /// An 8-bit BMP's palette, as RGB (its `RGBQUAD`s after the info header).
@@ -3553,6 +3588,19 @@ pub(crate) mod tests {
         assert_eq!(table[2], 3);
         let gray = [[59, 59, 59], [36, 37, 71]];
         assert_eq!(sector_shade_table(&gray), [0, 0]);
+    }
+
+    // A colour drawn into the starfield takes its nearest palette entry
+    // (GDI), which FUN_005fe050 maps through FUN_005fddd0's table: red
+    // (255, 0, 0) becomes (91, 67, 51), as A0 sector-windows/02-second
+    // shows the shaded "Popular Support".
+    #[test]
+    fn a_colour_shades_through_its_nearest_palette_entry() {
+        let palette = [[36, 37, 71], [250, 3, 0], [91, 67, 51], [92, 50, 90]];
+        assert_eq!(shaded_palette_color(&palette, [255, 0, 0]), [91, 67, 51]);
+        // An entry already shaded maps to the nearest of its own shade.
+        assert_eq!(shaded_palette_color(&palette, [36, 37, 71]), [36, 37, 71]);
+        assert_eq!(shaded_palette_color(&[], [255, 0, 0]), [92, 50, 50]);
     }
 
     /// A 2 by 1, 8-bit BMP with `palette`, pixels 0 and 1.

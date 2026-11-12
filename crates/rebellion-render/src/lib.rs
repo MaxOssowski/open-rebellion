@@ -625,23 +625,62 @@ pub fn draw_gid_caption(
     mode: GidMode,
     caption: Option<&str>,
 ) {
-    if !mode.is_active() {
+    let Some(caption) = gid_caption(cam, faction, mode, caption) else {
         return;
-    }
+    };
     let painter = ctx.layer_painter(egui::LayerId::background());
+    caption.paint(&painter, caption.color);
+}
+
+/// The GID caption as the galaxy view draws it (`FUN_00425d00`): its
+/// text, text box, scale and colour. The sector windows' copy of the view
+/// shows it too, shaded (`FUN_004593e0`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GidCaption {
+    pub text: String,
+    pub rect: egui::Rect,
+    pub scale: f32,
+    pub color: egui::Color32,
+}
+
+impl GidCaption {
+    /// Paint the caption in `color`.
+    pub fn paint(&self, painter: &egui::Painter, color: egui::Color32) {
+        theme::paint_gdi_text(
+            painter,
+            self.rect,
+            self.scale,
+            DEFAULT_FONT,
+            &self.text,
+            color,
+            (theme::GdiAlign::Center, theme::GdiVAlign::Top),
+        );
+    }
+}
+
+/// The caption [`draw_gid_caption`] paints, or `None` with the display off.
+#[must_use]
+pub fn gid_caption(
+    cam: CameraView,
+    faction: CockpitFaction,
+    mode: GidMode,
+    caption: Option<&str>,
+) -> Option<GidCaption> {
+    if !mode.is_active() {
+        return None;
+    }
     // A briefing mark names its system instead (FUN_0041d890).
-    theme::paint_gdi_text(
-        &painter,
-        egui::Rect::from_center_size(
+    Some(GidCaption {
+        text: caption
+            .unwrap_or(mode.caption(faction == CockpitFaction::Alliance))
+            .to_owned(),
+        rect: egui::Rect::from_center_size(
             gid_caption_anchor(cam) + egui::vec2(0.0, 15.0 * cam.display_scale),
             egui::vec2(cam.viewport_width, 30.0 * cam.display_scale),
         ),
-        cam.display_scale,
-        DEFAULT_FONT,
-        caption.unwrap_or(mode.caption(faction == CockpitFaction::Alliance)),
-        crate::game_menu::faction_text_color(faction),
-        (theme::GdiAlign::Center, theme::GdiVAlign::Top),
-    );
+        scale: cam.display_scale,
+        color: crate::game_menu::faction_text_color(faction),
+    })
 }
 
 /// The game's default font (the game root's `+0xb0`, `FUN_00603850`), which
@@ -1710,6 +1749,35 @@ mod interaction_tests {
         );
         assert!(caption(GidMode::DisplayOff).is_empty());
     }
+    // FUN_00425d00, cases 0x13/0x15: the loyal-systems caption names the
+    // viewer's own side (SquakeNet narration frames 0129, Alliance, and
+    // 0714, Empire), and the sector windows' copy takes the same text.
+    #[test]
+    fn the_gid_caption_for_the_sector_windows_follows_the_viewer() {
+        let (x, y, w, h) = cockpit::galaxy_aperture(CockpitFaction::Alliance);
+        let camera = galaxy_camera(
+            (x * 2.0, y * 2.0, w * 2.0, h * 2.0),
+            2.0,
+            CockpitFaction::Alliance,
+        );
+        let text = |faction| {
+            gid_caption(camera, faction, GidMode::OwnLoyalSystems, None)
+                .map(|caption| caption.text)
+        };
+        assert_eq!(
+            text(CockpitFaction::Alliance).as_deref(),
+            Some("Systems Loyal to the Alliance")
+        );
+        assert_eq!(
+            text(CockpitFaction::Empire).as_deref(),
+            Some("Systems Loyal to the Empire")
+        );
+        assert_eq!(
+            gid_caption(camera, CockpitFaction::Alliance, GidMode::DisplayOff, None),
+            None
+        );
+    }
+
     #[test]
     fn the_gid_caption_hangs_from_the_aperture_top_centre() {
         // FUN_00425d00: format 1 from the galaxy view's top left, across its
