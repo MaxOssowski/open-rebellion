@@ -4726,10 +4726,21 @@ async function probeTacticalUmgulBackdrop(page, viewport, folder, ready, faction
   const a0Path = path.join(root, ".artifacts/interface-parity/a0/TAC-01-C008/original.png");
   if (faction === "empire" && fs.existsSync(a0Path)) {
     probe.a0 = measure(PNG.sync.read(fs.readFileSync(a0Path)));
-    // The planet stands at the top right in both (its random offsets are
-    // the port's centre, port:).
+    // The planet stands at the top right in both.
     assert.ok(port.planet_left.y40 !== null && port.planet_left.y40 > 300,
       `${faction}: no planet at the top right ${JSON.stringify(port)}`);
+    // Its frame's offsets come from a stream seeded by the clock second
+    // (FUN_005d4d10, FUN_005f5750). The fixture pins a second whose draws
+    // are A0's (UMGUL_A0_BACKDROP_CLOCK), so every edge lies within 2
+    // pixels of A0's. With the frame at the centre of its range they were
+    // up to 14 pixels off.
+    const edges = [["planet_left", "y30"], ["planet_left", "y40"], ["planet_left", "y60"],
+      ["planet_bottom", "x420"], ["planet_bottom", "x450"]];
+    probe.planet_edge_misses = Object.fromEntries(edges.map(([edge, at]) =>
+      [`${edge}.${at}`, port[edge][at] === null || probe.a0[edge][at] === null
+        ? null : port[edge][at] - probe.a0[edge][at]]));
+    assert.ok(Object.values(probe.planet_edge_misses).every((miss) => miss !== null && Math.abs(miss) <= 2),
+      `${faction}: the planet's edges are off A0's ${JSON.stringify(probe.planet_edge_misses)}`);
     // The corner within 1 pixel: the 3-wide row's first pixel falls on
     // either side of the corner as the GL and D3D line rules differ.
     assert.ok(port.corner && Math.abs(port.corner.x - probe.a0.corner.x) <= 1
