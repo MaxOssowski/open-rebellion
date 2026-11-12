@@ -396,8 +396,44 @@ try {
   const before = await storage();
   const saves = () => consoleLog.filter((line) => line.includes("save_state_fingerprint slot=0")).length;
   const savedOnce = saves();
+  // The overwrite question (REBDLOG 0x121a.., FUN_00406b80) and the saved
+  // notice (0x1217, FUN_00408240) against A0 2026-11-12-afternoon/21, 22:
+  // a save over the Alliance game's slot "test" from the galaxy. Pixels
+  // outside the text bands and A0's pointer must match; each band's ink
+  // within a pixel. 23 shows the notice's one button's tip, "Yes" (0x1300,
+  // FUN_00408240 passes it), a (255, 251, 240) box with a (128, 128, 128)
+  // border at (318, 317), 24 by 19: the pointer (318, 296) plus (0, 21).
+  const SAVE_A0 = path.join(ROOT, ".artifacts/a0-vm/2026-11-12-afternoon");
+  const readA0 = (name) => fs.readFile(path.join(SAVE_A0, name))
+    .then((bytes) => PNG.sync.read(bytes)).catch(() => null);
+  const [a0Overwrite, a0Saved, a0SavedTip] = await Promise.all(
+    ["21-save-press.png", "22-after-yes.png", "23-ok-tip.png"].map(readA0));
+  const BANDS = [[157, 177, 325, 61], [157, 239, 325, 25]];
+  const compareSaveDialog = (label, png, a0, pointer) => {
+    if (!a0) {
+      result[label] = "no A0";
+      return;
+    }
+    let differing = 0;
+    let checked = 0;
+    for (let y = DIALOG[1]; y < DIALOG[1] + DIALOG[3]; y += 1) {
+      for (let x = DIALOG[0]; x < DIALOG[0] + DIALOG[2]; x += 1) {
+        if (BANDS.some((band) => inside(x, y, band)) || inside(x, y, pointer)) continue;
+        checked += 1;
+        if (!same(png, x, y, a0, x, y)) differing += 1;
+      }
+    }
+    const ink = BANDS.map((band) => ({ a0: inkBox(a0, band, cream), port: inkBox(png, band, cream) }));
+    result[label] = { checked, differing, ink };
+    assert.equal(differing, 0, `${differing} of ${checked} ${label} pixels differ from A0`);
+    for (const { a0: a, port: p } of ink) {
+      assert.equal(Boolean(a), Boolean(p), `${label}: ink ${p} vs A0 ${a}`);
+      if (a) assert.ok(a.every((v, i) => Math.abs(v - p[i]) <= 1), `${label}: ink ${p} vs A0 ${a}`);
+    }
+  };
   // Overwrite: No keeps the save, Yes writes it again.
-  await confirm("overwrite", [55, 91], false);
+  await confirm("overwrite", [55, 91], false,
+    (png) => compareSaveDialog("overwrite_question", png, a0Overwrite, [40, 80, 40, 25]));
   assert.equal(saves(), savedOnce, "a refused overwrite does not save");
   assert.deepEqual(await storage(), before, "a refused overwrite keeps the stored save");
   const afterNo = await shot("overwrite-refused");
@@ -406,6 +442,31 @@ try {
   assert.equal(saves(), savedOnce + 1, "an accepted overwrite saves");
   const overwritten = await shot("overwrite-notice");
   assert.ok(dialogShown(overwritten), "the overwrite shows the saved message");
+  compareSaveDialog("saved_notice", overwritten, a0Saved, [270, 290, 50, 40]);
+  if (a0SavedTip) {
+    await page.mouse.move(318, 296, { steps: 4 });
+    await page.waitForTimeout(1200);
+    const tipped = await shot("overwrite-notice-tip");
+    const TIP = [318, 317, 24, 19];
+    let border = 0;
+    let borderChecked = 0;
+    for (let y = TIP[1]; y < TIP[1] + TIP[3]; y += 1) {
+      for (let x = TIP[0]; x < TIP[0] + TIP[2]; x += 1) {
+        if (y !== TIP[1] && y !== TIP[1] + TIP[3] - 1 && x !== TIP[0] && x !== TIP[0] + TIP[2] - 1) continue;
+        borderChecked += 1;
+        if (!same(tipped, x, y, a0SavedTip, x, y)) border += 1;
+      }
+    }
+    const black = ([r, g, b]) => r + g + b < 60;
+    const tipInk = (png) => inkBox(png, [TIP[0] + 1, TIP[1] + 1, TIP[2] - 2, TIP[3] - 2], black);
+    result.saved_notice_tip = { border_checked: borderChecked, border_differing: border,
+      ink: { a0: tipInk(a0SavedTip), port: tipInk(tipped) } };
+    assert.equal(border, 0, `${border} of ${borderChecked} tip border pixels differ from A0`);
+    const [a, p] = [tipInk(a0SavedTip), tipInk(tipped)];
+    assert.ok(a && p && a.every((v, i) => Math.abs(v - p[i]) <= 1), `tip "Yes" ink ${p} vs A0 ${a}`);
+    await page.mouse.move(2, 470, { steps: 4 });
+    await page.waitForTimeout(300);
+  }
   // Escape leaves it (Class_006589a8_vt4c), Enter closes it.
   await page.keyboard.press("Escape");
   await page.waitForTimeout(300);
