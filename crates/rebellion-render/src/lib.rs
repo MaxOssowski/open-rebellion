@@ -155,7 +155,10 @@ pub use tactical_assets::install_native_tactical_assets;
 pub use tactical_assets::install_native_tactical_lod_family;
 #[cfg(feature = "interface-test-fixtures")]
 pub use tactical_assets::TacticalLodView;
-pub use tactical_view::{draw_tactical_view, TacticalAction, TacticalState};
+pub use tactical_view::{
+    battle_summary_window_rect, draw_battle_summary_window, draw_tactical_view, TacticalAction,
+    TacticalState,
+};
 pub use video_player::{VideoError, VideoPlayer};
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]

@@ -2546,6 +2546,61 @@ impl TacticalState {
         self.session.is_some()
     }
 
+    /// Whether the battle has ended and its Battle Summary is open: from
+    /// then on it is a window of the strategy screen (`FUN_0042a640`).
+    #[must_use]
+    pub fn battle_summary_open(&self) -> bool {
+        !self.battle_alert_open
+            && self
+                .session
+                .as_ref()
+                .is_some_and(|session| session.phase == BattlePhase::Results)
+    }
+
+    /// The open Battle Summary window's rect on a screen of this size (the
+    /// strategy screen's 640 x 480 fit), in screen pixels.
+    #[must_use]
+    pub fn battle_summary_screen_rect(&self, screen: (f32, f32)) -> Option<Rect> {
+        let session = self.session.as_ref().filter(|_| self.battle_summary_open())?;
+        let canvas = TacticalCanvas::new(screen.0, screen.1);
+        let rect = battle_summary_window_rect(player_is_alliance(session));
+        let (x, y) = canvas.point(rect.x, rect.y);
+        Some(Rect::new(x, y, rect.w * canvas.scale, rect.h * canvas.scale))
+    }
+
+    /// Whether a screen point lies on the open Battle Summary window, on a
+    /// screen of this size.
+    #[must_use]
+    pub fn battle_summary_contains_screen_point(
+        &self,
+        screen: (f32, f32),
+        point: (f32, f32),
+    ) -> bool {
+        self.battle_summary_screen_rect(screen).is_some_and(|rect| {
+            NativeRect::new(rect.x, rect.y, rect.w, rect.h).contains(point.0, point.1)
+        })
+    }
+
+    /// Hold the pointer over the open Battle Summary from the strategy
+    /// screen's egui windows and controls under it: the summary is drawn
+    /// over them, after the egui pass. port: the summary stays on top of
+    /// every strategy window (the windows' z-order across kinds is the
+    /// port's own).
+    pub fn battle_summary_input_hold(&self, ctx: &egui_macroquad::egui::Context) {
+        use egui_macroquad::egui;
+        let Some(rect) = self.battle_summary_screen_rect((screen_width(), screen_height())) else {
+            return;
+        };
+        let screen =
+            egui::Rect::from_min_size(egui::pos2(rect.x, rect.y), egui::vec2(rect.w, rect.h));
+        egui::Area::new(egui::Id::new("battle_summary_input_hold"))
+            .order(egui::Order::Tooltip)
+            .fixed_pos(screen.min)
+            .show(ctx, |ui| {
+                ui.allocate_rect(screen, egui::Sense::click_and_drag());
+            });
+    }
+
     /// Whether the pre-battle source surface still owns tactical entry.
     #[must_use]
     pub const fn battle_alert_open(&self) -> bool {
@@ -9714,6 +9769,7 @@ fn draw_original_battle_results(
     cache: &mut BmpCache,
     world: &GameWorld,
     troop_transport: &TroopTransportState,
+    backdrop: bool,
 ) -> TacticalAction {
     let canvas = TacticalCanvas::new(screen_width(), screen_height());
     let session = state.session.as_ref().expect("active result session");
@@ -9724,7 +9780,9 @@ fn draw_original_battle_results(
     let text_color = battle_window_text_color(player_alliance);
 
     // The frame is painted with each page, over its art (`frame_over_page`).
-    draw_battle_window_backdrop(cache, canvas, player_alliance, state.strategy_underlay.as_ref());
+    if backdrop {
+        draw_battle_window_backdrop(cache, canvas, player_alliance, state.strategy_underlay.as_ref());
+    }
 
     let (screen_mouse_x, screen_mouse_y) = mouse_position();
     let mouse = canvas.logical_pointer(screen_mouse_x, screen_mouse_y);
@@ -9922,6 +9980,41 @@ fn draw_original_battle_results(
     action
 }
 
+/// The Battle Summary window's rect on the 640 x 480 strategy screen: its
+/// top left where it opens (A0 TAC-01-C013, TAC-07-C001 and TAC-07-C002),
+/// and `FUN_0046f140`'s size, `0x1d6` by `0x14b` (470 by 331).
+#[must_use]
+pub fn battle_summary_window_rect(player_alliance: bool) -> Rect {
+    let (x, y) = if player_alliance {
+        BATTLE_WINDOW_ALLIANCE
+    } else {
+        BATTLE_WINDOW_EMPIRE
+    };
+    Rect::new(x, y, 470.0, 331.0)
+}
+
+/// Draw the Battle Summary as a window over the strategy screen the app has
+/// already drawn, then the shared tooltip over it.
+///
+/// The original opens it after the battle as a child window of the Command
+/// Center (`FUN_0042a640` on `DAT_006b14cc`: `FUN_0046f140`, then
+/// `FUN_005ffce0`, `FUN_005f4f10` and `SetFocus`), as the System Finder's
+/// `FUN_0042a000` opens its window: no backdrop of its own.
+///
+/// # Panics
+/// Panics if no battle is in its results.
+pub fn draw_battle_summary_window(
+    state: &mut TacticalState,
+    bmp_cache: &mut BmpCache,
+    world: &GameWorld,
+    troop_transport: &TroopTransportState,
+) -> TacticalAction {
+    assert!(state.battle_summary_open(), "no Battle Summary to draw");
+    let action = draw_original_battle_results(state, bmp_cache, world, troop_transport, false);
+    paint_tactical_tip(TacticalCanvas::new(screen_width(), screen_height()));
+    action
+}
+
 /// Draw the tactical combat view (macroquad), then the shared tooltip over
 /// it.
 ///
@@ -9997,7 +10090,9 @@ fn draw_tactical_frame(
         .as_ref()
         .is_some_and(|session| session.phase == BattlePhase::Results)
     {
-        return draw_original_battle_results(state, bmp_cache, world, troop_transport);
+        // The step that ended the battle: the app moves the summary onto
+        // the Command Center from the next frame (`battle_summary_open`).
+        return draw_original_battle_results(state, bmp_cache, world, troop_transport, true);
     }
 
     // 1. Paint the unscaled-source tactical shell first, then put the battle
@@ -14627,6 +14722,63 @@ mod tests {
         assert!(result_session.ships[1].alive);
         assert!(result_session.fighters[0].alive);
         assert!(!result_session.fighters[1].alive);
+    }
+
+    #[test]
+    fn the_battle_summary_becomes_a_470_by_331_strategy_window_when_the_battle_ends() {
+        // FUN_00488b90 -> FUN_0041d730 -> FUN_0042a640 creates the summary
+        // once the battle's result is in, as a child window of the Command
+        // Center (DAT_006b14cc); FUN_0046f140 gives it 0x1d6 by 0x14b. A0
+        // TAC-01-C013 shows it at (62, 49) over the Alliance's Command
+        // Center, A0 TAC-07-C002 the Empire's battle windows at (125, 52).
+        assert_eq!(battle_summary_window_rect(true), Rect::new(62.0, 49.0, 470.0, 331.0));
+        assert_eq!(battle_summary_window_rect(false), macroquad::prelude::Rect::new(125.0, 52.0, 470.0, 331.0));
+
+        let mut state = TacticalState {
+            session: Some(test_session(Vec::new(), Vec::new(), true)),
+            ..TacticalState::default()
+        };
+        let native = (640.0, 480.0);
+        // In the battle there is no summary.
+        assert!(!state.battle_summary_open());
+        assert!(!state.battle_summary_contains_screen_point(native, (100.0, 100.0)));
+
+        state.session.as_mut().unwrap().phase = BattlePhase::Results;
+        assert!(state.battle_summary_open());
+        // The Alliance's window, edges included and excluded.
+        for (point, inside) in [
+            ((62.0, 49.0), true),
+            ((61.0, 49.0), false),
+            ((62.0, 48.0), false),
+            ((531.0, 379.0), true),
+            ((532.0, 379.0), false),
+            ((531.0, 380.0), false),
+        ] {
+            assert_eq!(state.battle_summary_contains_screen_point(native, point), inside, "{point:?}");
+        }
+        // Twice the size: the strategy screen's fit doubles it.
+        assert_eq!(
+            state.battle_summary_screen_rect((1280.0, 960.0)),
+            Some(Rect::new(124.0, 98.0, 940.0, 662.0))
+        );
+        // A wider screen centres the 640 x 480 fit: 80 px each side.
+        assert_eq!(
+            state.battle_summary_screen_rect((800.0, 480.0)),
+            Some(Rect::new(142.0, 49.0, 470.0, 331.0))
+        );
+        assert!(state.battle_summary_contains_screen_point((1280.0, 960.0), (124.0, 98.0)));
+        assert!(!state.battle_summary_contains_screen_point((1280.0, 960.0), (122.0, 98.0)));
+
+        // The Empire's viewer: its window opens at (125, 52).
+        state.session.as_mut().unwrap().player_is_attacker = false;
+        assert!(!state.battle_summary_contains_screen_point(native, (100.0, 100.0)));
+        assert!(state.battle_summary_contains_screen_point(native, (125.0, 52.0)));
+
+        // The Battle Alert is the battle's other window, not the summary.
+        state.battle_alert_open = true;
+        assert!(!state.battle_summary_open());
+        assert_eq!(state.battle_summary_screen_rect(native), None);
+        assert!(!state.battle_summary_contains_screen_point(native, (125.0, 52.0)));
     }
 
     #[test]

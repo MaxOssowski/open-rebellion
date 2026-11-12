@@ -2003,6 +2003,16 @@ async fn main() {
     loop {
         let dt = get_frame_time();
         let mut targeting_cursor_drawn = false;
+        // The battle has ended: its Battle Summary is a window of the
+        // Command Center (FUN_0042a640), drawn over the live strategy screen.
+        let summary_mode = battle_summary_mode(&game_mode, tactical_state.battle_summary_open());
+        if summary_mode != game_mode {
+            game_mode = summary_mode;
+            macroquad::logging::info!("[tactical-results] summary_window owner=command_center");
+        }
+        // What the Battle Summary returns this frame, routed after the
+        // frame's screen is drawn.
+        let mut battle_summary_action: Option<TacticalAction> = None;
 
         #[cfg(target_arch = "wasm32")]
         if !browser_menu_audio_requested
@@ -2272,7 +2282,11 @@ async fn main() {
             } else if matches!(game_mode, GameMode::MultiplayerSetup) {
                 game_mode = GameMode::MainMenu;
             } else if game_mode == GameMode::Galaxy {
-                if targeting.is_some() {
+                if tactical_state.battle_summary_open() {
+                    // port: the summary takes the focus (FUN_0042a640's
+                    // SetFocus); its key slot is not traced, so Escape
+                    // neither closes it nor leaves the campaign.
+                } else if targeting.is_some() {
                     // port: Escape cancels targeting, as command 0x15e does
                     // in mode 2; no traced key posts 0x15e.
                     targeting = None;
@@ -2472,7 +2486,7 @@ async fn main() {
 
         // ── Tick the clock (Galaxy mode only) ────────────────────────────────
         let galaxy_before_ticks = game_mode == GameMode::Galaxy;
-        let tick_events = if game_mode == GameMode::Galaxy {
+        let tick_events = if galaxy_clock_runs(&game_mode, tactical_state.battle_summary_open()) {
             clock.advance(dt)
         } else {
             vec![]
@@ -5099,13 +5113,17 @@ async fn main() {
                 // `a0-vm/modal2`) takes no click on the cockpit controls, the
                 // GID control, the rail, the droids or the map until it
                 // closes.
+                // The Battle Summary is one too (manual p. 64, "Modal vs.
+                // Modaless Windows"): FUN_0046f140 passes 1 as FUN_00606380's
+                // +0xb8, the flag FUN_00460090 sets on the System Finder.
                 let window_modal_open = fleet_finder_state.is_open()
                     || troop_finder_state.is_open()
                     || personnel_finder_state.is_open()
                     || system_finder_state.is_open()
                     || status_window_state.is_open()
                     || enc_state.open
-                    || message_index.is_some();
+                    || message_index.is_some()
+                    || tactical_state.battle_summary_open();
                 // The "Resume Game Play?" alert holds the command center:
                 // A0 speed2/pause-modal-* (no sector window closes, no rail
                 // opens the index, no speed menu opens until its checkmark).
@@ -5141,7 +5159,9 @@ async fn main() {
                     || original_modal_fixture_open
                     || game_speed_ui.menu_anchor.is_some()
                     || object_menu.is_some()
-                    || pause_alert_contains_screen_point(&clock, cockpit_layout, pointer);
+                    || pause_alert_contains_screen_point(&clock, cockpit_layout, pointer)
+                    || tactical_state
+                        .battle_summary_contains_screen_point((screen_width(), screen_height()), pointer);
                 map_state.targeting = targeting.is_some();
 
                 // The starfield shows through every transparent part of the
@@ -5207,6 +5227,8 @@ async fn main() {
                 // 4. All egui panels in a single ui() + draw() pass
                 egui_macroquad::ui(|ctx| {
                     let strategic_input_enabled = !original_modal_fixture_open && !modal_window_open;
+                    // The Battle Summary lies over every strategy window.
+                    tactical_state.battle_summary_input_hold(ctx);
                     // The shared tooltip (FUN_006008e0), from the control
                     // the last frame registered, above every window.
                     {
@@ -8480,6 +8502,24 @@ async fn main() {
                     }
                 });
                 egui_macroquad::draw();
+
+                // The Battle Summary, a child window of the Command Center
+                // (FUN_0042a640 -> FUN_0046f140), over the live strategy
+                // screen: the galaxy, the cockpit and its open windows.
+                if tactical_state.battle_summary_open() {
+                    let action = rebellion_render::draw_battle_summary_window(
+                        &mut tactical_state,
+                        &mut bmp_cache,
+                        &world,
+                        &troop_transport_state,
+                    );
+                    if let Some(lines) = tactical_state.take_summary_log(&world) {
+                        macroquad::logging::info!("[tactical-results] summary lines={:?}", lines);
+                    }
+                    if !matches!(action, TacticalAction::None) {
+                        battle_summary_action = Some(action);
+                    }
+                }
             }
 
             GameMode::TacticalCombat => {
@@ -8493,15 +8533,6 @@ async fn main() {
                 if let Some(lines) = tactical_state.take_summary_log(&world) {
                     macroquad::logging::info!("[tactical-results] summary lines={:?}", lines);
                 }
-                let requested_result_system = match &tac_action {
-                    TacticalAction::OpenBattleSystem(system) => Some(*system),
-                    _ => None,
-                };
-                let requested_result_fleet = match &tac_action {
-                    TacticalAction::OpenBattleFleet(fleet) => Some(*fleet),
-                    _ => None,
-                };
-
                 // Battle Alert's Retreat (0x67) answers "simulate" with the
                 // player's retreat order (FUN_00450540, FUN_00487830).
                 let player_retreats = matches!(tac_action, TacticalAction::RetreatBeforeBattle);
@@ -8623,159 +8654,10 @@ async fn main() {
                             game_mode = GameMode::Galaxy;
                         }
                     }
-                    TacticalAction::ReturnToGalaxy
+                    action @ (TacticalAction::ReturnToGalaxy
                     | TacticalAction::OpenBattleSystem(_)
-                    | TacticalAction::OpenBattleFleet(_) => {
-                        let strategic_results_applied = tactical_state.strategic_results_applied();
-                        // Apply combat results from tactical session to GameWorld.
-                        if let Some(session) = tactical_state.end_battle() {
-                            // A blockade the battle leaves is silent (bit
-                            // 0x4000, blockade_started_message).
-                            battled_systems.insert(session.system);
-                            let battle_return = if strategic_results_applied {
-                                tactical_flow::summarize_results(&session)
-                            } else {
-                                let before = tactical_flow::persistence_snapshot(&session, &world);
-                                let result = tactical_flow::apply_results(
-                                    &session,
-                                    &mut world,
-                                    &mut troop_transport_state,
-                                );
-                                let after = tactical_flow::persistence_snapshot(&session, &world);
-                                macroquad::logging::info!(
-                                    "[tactical_results] strategic_persistence applied=true attacker_present={}->{} defender_present={}->{} attacker_capitals={}->{} defender_capitals={}->{} attacker_fighters={}->{} defender_fighters={}->{} attacker_death_star={}->{} defender_death_star={}->{}",
-                                    before.attacker_present,
-                                    after.attacker_present,
-                                    before.defender_present,
-                                    after.defender_present,
-                                    before.attacker_capital_ships,
-                                    after.attacker_capital_ships,
-                                    before.defender_capital_ships,
-                                    after.defender_capital_ships,
-                                    before.attacker_fighter_squadrons,
-                                    after.attacker_fighter_squadrons,
-                                    before.defender_fighter_squadrons,
-                                    after.defender_fighter_squadrons,
-                                    before.attacker_has_death_star,
-                                    after.attacker_has_death_star,
-                                    before.defender_has_death_star,
-                                    after.defender_has_death_star,
-                                );
-                                result
-                            };
-                            rebellion_core::squadrons::recover(
-                                &mut world,
-                                &std::mem::take(&mut battle_sorties),
-                            );
-                            if !strategic_results_applied {
-                                // FUN_00516ef0 (state 9 follows the tactical
-                                // battle too): the loser's fleets leave.
-                                let winner = match battle_return.winner {
-                                    Some(rebellion_render::CombatWinner::Attacker) => {
-                                        Some(Faction::of_alliance(session.attacker_is_alliance))
-                                    }
-                                    Some(rebellion_render::CombatWinner::Defender) => {
-                                        Some(Faction::of_alliance(!session.attacker_is_alliance))
-                                    }
-                                    Some(rebellion_render::CombatWinner::Draw) | None => None,
-                                };
-                                rebellion_core::abstract_battle::withdraw_loser(
-                                    &mut world,
-                                    &mut movement_state,
-                                    &mut troop_transport_state.squadrons,
-                                    session.system,
-                                    winner,
-                                    clock.tick,
-                                );
-                                let winner_str = match battle_return.winner {
-                                    Some(rebellion_render::CombatWinner::Attacker) => {
-                                        "Attacker victory"
-                                    }
-                                    Some(rebellion_render::CombatWinner::Defender) => {
-                                        "Defender victory"
-                                    }
-                                    Some(rebellion_render::CombatWinner::Draw) | None => "Draw",
-                                };
-                                msg_log.push(GameMessage::at_system(
-                                    session.start_tick,
-                                    format!(
-                                        "Space battle at {} — {} (tactical)",
-                                        session.system_name, winner_str
-                                    ),
-                                    MessageCategory::Combat,
-                                    session.system,
-                                ));
-
-                                advisor_combat_result(
-                                    &mut advisor_state,
-                                    &session.system_name,
-                                    battle_return.player_won,
-                                );
-                            }
-
-                            // Auto-resolve already completed bombardment and
-                            // ground resolution before presenting its result.
-                            if strategic_results_applied {
-                                game_mode = GameMode::Galaxy;
-                            } else {
-                                game_mode = GameMode::Galaxy;
-                            }
-                        } else {
-                            game_mode = GameMode::Galaxy;
-                        }
-
-                        if game_mode == GameMode::Galaxy {
-                            if let Some(system) = requested_result_system {
-                                map_state.selected_system = Some(system);
-                                if open_battle_result_sector(
-                                    &world,
-                                    system,
-                                    &mut sector_window_state,
-                                    cockpit_state.faction,
-                                ) {
-                                    macroquad::logging::info!(
-                                        "[tactical-results] sector_window system={} windows={}",
-                                        world.systems.get(system).map_or("", |s| s.name.as_str()),
-                                        sector_window_state.window_count(),
-                                    );
-                                }
-                            }
-                            // 0xca: the system's sector window, then the
-                            // fleet's Fleet window with the fleet selected,
-                            // as the Fleet Finder opens it (FUN_00429440).
-                            if let Some(fleet) = requested_result_fleet {
-                                if let Some(value) = world.fleets.get(fleet) {
-                                    let system = value.location;
-                                    map_state.selected_system = Some(system);
-                                    let _ = open_battle_result_sector(
-                                        &world,
-                                        system,
-                                        &mut sector_window_state,
-                                        cockpit_state.faction,
-                                    );
-                                    let layout = cockpit_state.layout();
-                                    if fleet_window_state.open(
-                                        &world,
-                                        system,
-                                        (85, 55),
-                                        cockpit_state.faction,
-                                        layout,
-                                    ) {
-                                        fleet_window_state.select(
-                                            system,
-                                            rebellion_render::fleet_window::FleetWindowEntry::Fleet(
-                                                fleet,
-                                            ),
-                                        );
-                                        macroquad::logging::info!(
-                                            "[tactical-results] fleet_window system={} ships={} selected=fleet",
-                                            world.systems.get(system).map_or("", |s| s.name.as_str()),
-                                            value.capital_ships.iter().filter(|ship| ship.alive).count(),
-                                        );
-                                    }
-                                }
-                            }
-                        }
+                    | TacticalAction::OpenBattleFleet(_)) => {
+                        battle_summary_action = Some(action);
                     }
                     TacticalAction::TogglePause => {
                         if let Some(ref mut session) = tactical_state.session {
@@ -8827,6 +8709,169 @@ async fn main() {
                 }
             }
 
+        }
+
+        // The Battle Summary's Close (0xc9), system (0xcb) and fleet (0xca)
+        // buttons (FUN_00470ea0): the battle's result goes to the galaxy.
+        if let Some(tac_action) = battle_summary_action.take() {
+            let requested_result_system = match &tac_action {
+                TacticalAction::OpenBattleSystem(system) => Some(*system),
+                _ => None,
+            };
+            let requested_result_fleet = match &tac_action {
+                TacticalAction::OpenBattleFleet(fleet) => Some(*fleet),
+                _ => None,
+            };
+            let strategic_results_applied = tactical_state.strategic_results_applied();
+            // Apply combat results from tactical session to GameWorld.
+            if let Some(session) = tactical_state.end_battle() {
+                // A blockade the battle leaves is silent (bit
+                // 0x4000, blockade_started_message).
+                battled_systems.insert(session.system);
+                let battle_return = if strategic_results_applied {
+                    tactical_flow::summarize_results(&session)
+                } else {
+                    let before = tactical_flow::persistence_snapshot(&session, &world);
+                    let result = tactical_flow::apply_results(
+                        &session,
+                        &mut world,
+                        &mut troop_transport_state,
+                    );
+                    let after = tactical_flow::persistence_snapshot(&session, &world);
+                    macroquad::logging::info!(
+                        "[tactical_results] strategic_persistence applied=true attacker_present={}->{} defender_present={}->{} attacker_capitals={}->{} defender_capitals={}->{} attacker_fighters={}->{} defender_fighters={}->{} attacker_death_star={}->{} defender_death_star={}->{}",
+                        before.attacker_present,
+                        after.attacker_present,
+                        before.defender_present,
+                        after.defender_present,
+                        before.attacker_capital_ships,
+                        after.attacker_capital_ships,
+                        before.defender_capital_ships,
+                        after.defender_capital_ships,
+                        before.attacker_fighter_squadrons,
+                        after.attacker_fighter_squadrons,
+                        before.defender_fighter_squadrons,
+                        after.defender_fighter_squadrons,
+                        before.attacker_has_death_star,
+                        after.attacker_has_death_star,
+                        before.defender_has_death_star,
+                        after.defender_has_death_star,
+                    );
+                    result
+                };
+                rebellion_core::squadrons::recover(
+                    &mut world,
+                    &std::mem::take(&mut battle_sorties),
+                );
+                if !strategic_results_applied {
+                    // FUN_00516ef0 (state 9 follows the tactical
+                    // battle too): the loser's fleets leave.
+                    let winner = match battle_return.winner {
+                        Some(rebellion_render::CombatWinner::Attacker) => {
+                            Some(Faction::of_alliance(session.attacker_is_alliance))
+                        }
+                        Some(rebellion_render::CombatWinner::Defender) => {
+                            Some(Faction::of_alliance(!session.attacker_is_alliance))
+                        }
+                        Some(rebellion_render::CombatWinner::Draw) | None => None,
+                    };
+                    rebellion_core::abstract_battle::withdraw_loser(
+                        &mut world,
+                        &mut movement_state,
+                        &mut troop_transport_state.squadrons,
+                        session.system,
+                        winner,
+                        clock.tick,
+                    );
+                    let winner_str = match battle_return.winner {
+                        Some(rebellion_render::CombatWinner::Attacker) => {
+                            "Attacker victory"
+                        }
+                        Some(rebellion_render::CombatWinner::Defender) => {
+                            "Defender victory"
+                        }
+                        Some(rebellion_render::CombatWinner::Draw) | None => "Draw",
+                    };
+                    msg_log.push(GameMessage::at_system(
+                        session.start_tick,
+                        format!(
+                            "Space battle at {} — {} (tactical)",
+                            session.system_name, winner_str
+                        ),
+                        MessageCategory::Combat,
+                        session.system,
+                    ));
+
+                    advisor_combat_result(
+                        &mut advisor_state,
+                        &session.system_name,
+                        battle_return.player_won,
+                    );
+                }
+
+                // Auto-resolve already completed bombardment and
+                // ground resolution before presenting its result.
+                if strategic_results_applied {
+                    game_mode = GameMode::Galaxy;
+                } else {
+                    game_mode = GameMode::Galaxy;
+                }
+            } else {
+                game_mode = GameMode::Galaxy;
+            }
+
+            if game_mode == GameMode::Galaxy {
+                if let Some(system) = requested_result_system {
+                    map_state.selected_system = Some(system);
+                    if open_battle_result_sector(
+                        &world,
+                        system,
+                        &mut sector_window_state,
+                        cockpit_state.faction,
+                    ) {
+                        macroquad::logging::info!(
+                            "[tactical-results] sector_window system={} windows={}",
+                            world.systems.get(system).map_or("", |s| s.name.as_str()),
+                            sector_window_state.window_count(),
+                        );
+                    }
+                }
+                // 0xca: the system's sector window, then the
+                // fleet's Fleet window with the fleet selected,
+                // as the Fleet Finder opens it (FUN_00429440).
+                if let Some(fleet) = requested_result_fleet {
+                    if let Some(value) = world.fleets.get(fleet) {
+                        let system = value.location;
+                        map_state.selected_system = Some(system);
+                        let _ = open_battle_result_sector(
+                            &world,
+                            system,
+                            &mut sector_window_state,
+                            cockpit_state.faction,
+                        );
+                        let layout = cockpit_state.layout();
+                        if fleet_window_state.open(
+                            &world,
+                            system,
+                            (85, 55),
+                            cockpit_state.faction,
+                            layout,
+                        ) {
+                            fleet_window_state.select(
+                                system,
+                                rebellion_render::fleet_window::FleetWindowEntry::Fleet(
+                                    fleet,
+                                ),
+                            );
+                            macroquad::logging::info!(
+                                "[tactical-results] fleet_window system={} ships={} selected=fleet",
+                                world.systems.get(system).map_or("", |s| s.name.as_str()),
+                                value.capital_ships.iter().filter(|ship| ship.alive).count(),
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // 5. Apply panel actions
@@ -9104,7 +9149,9 @@ async fn main() {
 
         // 6. Route the recovered tactical score and event cue. The Battle
         // Alert and the Battle Summary play their own original score.
-        let screen_music = if game_mode == GameMode::TacticalCombat {
+        let screen_music = if game_mode == GameMode::TacticalCombat
+            || (game_mode == GameMode::Galaxy && tactical_state.battle_summary_open())
+        {
             tactical_state.screen_music()
         } else {
             None
@@ -9128,8 +9175,9 @@ async fn main() {
             );
             tactical_music_active = true;
         } else if !tactical_audio_context && tactical_music_active {
+            // A battle window's own score follows below.
             #[cfg(not(target_arch = "wasm32"))]
-            if matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy) {
+            if screen_music.is_none() && matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy) {
                 audio_engine.play_music_for_context(
                     if game_mode == GameMode::MainMenu {
                         rebellion_render::MusicContext::MainMenu
@@ -9141,9 +9189,11 @@ async fn main() {
                 );
             }
             #[cfg(target_arch = "wasm32")]
-            if let (Some(engine), Some(bytes)) =
-                (browser_menu_audio.as_mut(), browser_main_theme.as_deref())
-            {
+            if let (true, Some(engine), Some(bytes)) = (
+                screen_music.is_none(),
+                browser_menu_audio.as_mut(),
+                browser_main_theme.as_deref(),
+            ) {
                 engine.load_music_bytes(rebellion_render::MusicTrack::MainTheme, bytes);
             }
             tactical_music_active = false;
@@ -9434,7 +9484,11 @@ async fn main() {
         }
         #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
         if let Some(request) = tactical_fixture_request {
-            if game_mode == GameMode::TacticalCombat && !interface_fixture_emitted {
+            // A fixture that opens on the Battle Summary is ready over the
+            // Command Center.
+            if (game_mode == GameMode::TacticalCombat || tactical_state.battle_summary_open())
+                && !interface_fixture_emitted
+            {
                 interface_fixture_frames += 1;
                 if interface_fixture_frames >= 3 {
                     tactical_test_fixture::emit_ready(request, &tactical_state);
@@ -13901,6 +13955,30 @@ fn answer_movie_error_box(player: &mut VideoPlayer) {
     }
 }
 
+/// The mode a frame runs in: once a battle has ended and its Battle Summary
+/// is open, the Command Center's. The original creates the summary after
+/// the tactical module returns, as a child window of the Command Center
+/// (`FUN_00488b90` -> `FUN_0041d730` -> `FUN_0042a640` on `DAT_006b14cc`,
+/// once `FUN_0042d490` finds that window visible).
+fn battle_summary_mode(mode: &GameMode, summary_open: bool) -> GameMode {
+    if summary_open && *mode == GameMode::TacticalCombat {
+        GameMode::Galaxy
+    } else {
+        mode.clone()
+    }
+}
+
+/// Whether the galaxy's clock runs this frame: in the Command Center, and
+/// not while a battle's Battle Summary is open. `FUN_0040a050`'s state 3
+/// sets the game's `+0x14`, which stops the day step (`FUN_0041e390` calls
+/// `FUN_0051dea0` only while it is 0), until state `0xc` clears it
+/// (`FUN_0041e320`). State `0xb` waits there until both players are done
+/// (`FUN_00436400`: `+0x38` = 3), which the summary's Close sets
+/// (`FUN_00470ea0` -> `FUN_0041ce80` -> `FUN_00487890`).
+fn galaxy_clock_runs(mode: &GameMode, summary_open: bool) -> bool {
+    *mode == GameMode::Galaxy && !summary_open
+}
+
 /// The Battle Summary's destinations (`FUN_00470ea0`, vtable `0x65a300`):
 /// the system button `0xcb` finds the battle's system (`FUN_004f3220`) and
 /// opens its sector window (`FUN_00429ce0`, 235 by 360); the fleet button
@@ -13964,6 +14042,39 @@ mod tactical_ground_tests {
                 target_system: system,
             }
         ));
+    }
+
+    #[test]
+    fn the_battle_summary_opens_over_the_command_center_not_the_tactical_view() {
+        // FUN_00488b90 -> FUN_0041d730 -> FUN_0042a640: once the tactical
+        // module has returned and the Command Center (DAT_006b14cc) shows
+        // again (FUN_0042d490), the summary is created as its child window.
+        assert_eq!(
+            battle_summary_mode(&GameMode::TacticalCombat, true),
+            GameMode::Galaxy
+        );
+        // The battle itself, and the Battle Alert, keep the tactical mode.
+        assert_eq!(
+            battle_summary_mode(&GameMode::TacticalCombat, false),
+            GameMode::TacticalCombat
+        );
+        // A summary open while Game Options shows stays under it.
+        let options = GameMode::GameOptions {
+            origin: GameOptionsOrigin::CommandCenter,
+        };
+        assert_eq!(battle_summary_mode(&options, true), options);
+        assert_eq!(battle_summary_mode(&GameMode::Galaxy, true), GameMode::Galaxy);
+    }
+
+    #[test]
+    fn the_galaxy_clock_holds_while_the_battle_summary_is_open() {
+        // FUN_0040a050 state 3 sets the game's +0x14, so FUN_0041e390 skips
+        // the day step (FUN_0051dea0), until state 0xc clears it
+        // (FUN_0041e320); state 0xb waits for the summary's Close
+        // (FUN_00470ea0 -> FUN_00487890 -> FUN_00436400).
+        assert!(galaxy_clock_runs(&GameMode::Galaxy, false));
+        assert!(!galaxy_clock_runs(&GameMode::Galaxy, true));
+        assert!(!galaxy_clock_runs(&GameMode::TacticalCombat, false));
     }
 
     #[test]
