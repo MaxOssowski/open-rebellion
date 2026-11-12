@@ -10251,9 +10251,14 @@ fn defenses_selection_team(
 /// `0x204` group for the regiments and squadrons, and one refusal refuses
 /// the whole order.
 ///
-/// port: a window drop's Move never asks, as the icon's does not;
-/// `FUN_00487cc0` would ask when the first selected object's container is a
-/// blockaded system of its side (open).
+/// `FUN_00487cc0` asks for a Confirmed Move, and for a Move when the first
+/// team member's container is a blockaded system (`+0x88` bit `0x20`) whose
+/// side bits are the member's: a window selection on a planet of the
+/// player's side under blockade. Its window then carries the evacuation
+/// warning (`FUN_0049a350`, 0x7056), which a Confirmed Move from any
+/// blockaded system carries too. The icon's first id is the system, whose
+/// container is a sector, so neither applies to it; nor to members aboard
+/// a fleet, whose container is their ship.
 #[expect(
     clippy::too_many_arguments,
     reason = "The order's inputs at the UI boundary, as issue_defenses_move takes them."
@@ -10356,7 +10361,14 @@ fn issue_team_move(
         .iter()
         .copied()
         .partition(|member| matches!(member, MissionMember::Character(_)));
-    if !confirmed {
+    let container = (!icon)
+        .then(|| team_container_system(world, team, from))
+        .flatten();
+    let blockaded = container.is_some_and(|system| context.blockaded.contains(&system));
+    let own_side = container
+        .and_then(|system| world.systems.get(system))
+        .is_some_and(|value| value.control.is_controlled_by(Faction::from(context.faction)));
+    if !confirmed && !(blockaded && own_side) {
         if !team.members.is_empty() {
             panel_actions.push(PanelAction::MoveMembers {
                 members: team.members.clone(),
@@ -10416,7 +10428,8 @@ fn issue_team_move(
         Some((class_name(class)?, days))
     }));
     macroquad::logging::info!(
-        "[interface] command=0x202 {source} status=asks lines={}",
+        "[interface] command={:#x} {source} status=asks lines={} blockaded={blockaded}",
+        if confirmed { 0x202 } else { 0x201 },
         lines.len()
     );
     move_confirmation_state.open(MoveConfirmation {
@@ -10439,11 +10452,51 @@ fn issue_team_move(
         troops: team.troops.clone(),
         squadrons: team.squadrons.iter().map(|&class| (class, from)).collect(),
         ships: None,
-        blockaded: false,
+        blockaded,
         destination,
         join,
         lines,
     });
+}
+
+/// The system a team's first member stands in, when its container is that
+/// system (`FUN_00487cc0` reads the first team id's `+0x1c`): a character
+/// or special force not aboard a fleet, a regiment on the planet, or a
+/// squadron leaving the planet. `None` for one aboard a fleet.
+fn team_container_system(
+    world: &GameWorld,
+    team: &rebellion_render::quadrant_icons::DefensesTeam,
+    from: SquadronPlace,
+) -> Option<SystemKey> {
+    let on_planet = |holds: &dyn Fn(&rebellion_core::world::System) -> bool| {
+        world
+            .systems
+            .iter()
+            .find(|(_, system)| holds(system))
+            .map(|(key, _)| key)
+    };
+    if let Some(&member) = team.members.first() {
+        return match member {
+            MissionMember::Character(key) => {
+                let character = world.characters.get(key)?;
+                character
+                    .current_fleet
+                    .is_none()
+                    .then_some(character.current_system)
+                    .flatten()
+            }
+            MissionMember::SpecialForce(key) => {
+                on_planet(&|system| system.special_forces.contains(&key))
+            }
+        };
+    }
+    if let Some(&troop) = team.troops.first() {
+        return on_planet(&|system| system.ground_units.contains(&troop));
+    }
+    match (team.squadrons.first(), from) {
+        (Some(_), SquadronPlace::Planet(system)) => Some(system),
+        _ => None,
+    }
 }
 
 /// A team of fleets' Move (`0x201`) or Confirmed Move (`0x202`) with its
@@ -16368,6 +16421,116 @@ mod fleet_move_tests {
         let issued = issue_fleet_drop(&w.world, &transport, drop(true), w.destination);
         let window = issued.confirmation.confirmation().expect("Ctrl asks");
         assert_eq!(window.squadrons, [(w.x_wing, SquadronPlace::Fleet(fleet))]);
+    }
+
+    /// A window team's Move (`icon` false) out of `w.origin` to
+    /// `w.destination`, with `blockaded` blockaded.
+    fn issue_blockaded_team(
+        w: &DefensesWorld,
+        transport: &TroopTransportState,
+        team: &rebellion_render::quadrant_icons::DefensesTeam,
+        place: (SystemKey, SquadronPlace),
+        icon: bool,
+        blockaded: &[SystemKey],
+    ) -> Issued {
+        let movement = MovementState::new();
+        let blockaded: HashSet<SystemKey> = blockaded.iter().copied().collect();
+        let mut issued = Issued {
+            actions: Vec::new(),
+            confirmation: MoveConfirmationState::default(),
+            log: MessageLog::new(),
+        };
+        issue_team_move(
+            &DefensesMoveContext {
+                world: &w.world,
+                movement: &movement,
+                missions: &MissionState::new(),
+                transport,
+                deliveries: &DeliveryState::new(),
+                blockaded: &blockaded,
+                faction: MissionFaction::Alliance,
+                tick: 0,
+            },
+            team,
+            place,
+            icon,
+            false,
+            ReleaseTarget::System(w.destination),
+            &mut issued.log,
+            &mut issued.confirmation,
+            &mut issued.actions,
+        );
+        issued
+    }
+
+    #[test]
+    fn a_window_teams_move_off_a_blockaded_planet_of_its_side_asks_with_the_evacuation_warning() {
+        // FUN_00487cc0 (0x201): the first team id's container (+0x1c) is a
+        // system with +0x88 bit 0x20 whose side bits are the member's, so
+        // the order asks (FUN_0048a340); FUN_0049a350 takes 0x7056 for a
+        // first member that is no fleet in a blockaded system.
+        use rebellion_render::quadrant_icons::DefensesTeam;
+        let mut w = defenses_world();
+        let transport = TroopTransportState::new();
+        let planet = (w.origin, SquadronPlace::Planet(w.origin));
+        for team in [
+            DefensesTeam {
+                troops: vec![w.troop],
+                ..DefensesTeam::default()
+            },
+            DefensesTeam {
+                squadrons: vec![w.x_wing, w.x_wing],
+                ..DefensesTeam::default()
+            },
+            DefensesTeam {
+                members: vec![
+                    MissionMember::Character(w.agent),
+                    MissionMember::SpecialForce(w.force),
+                ],
+                ..DefensesTeam::default()
+            },
+        ] {
+            let asked = issue_blockaded_team(&w, &transport, &team, planet, false, &[w.origin]);
+            assert!(asked.actions.is_empty(), "{team:?}");
+            let window = asked.confirmation.confirmation().expect("the move asks");
+            assert!(window.blockaded, "{team:?}");
+            // Not blockaded: it leaves at once.
+            let free = issue_blockaded_team(&w, &transport, &team, planet, false, &[]);
+            assert!(!free.confirmation.is_open());
+            assert!(!free.actions.is_empty());
+            // The defenses icon's first id is the system: it never asks.
+            let icon = issue_blockaded_team(&w, &transport, &team, planet, true, &[w.origin]);
+            assert!(!icon.confirmation.is_open());
+        }
+        // Another side's blockaded planet: the side bits differ, no ask.
+        w.world.systems[w.origin].control = ControlKind::Controlled(Faction::Empire);
+        let team = DefensesTeam {
+            troops: vec![w.troop],
+            ..DefensesTeam::default()
+        };
+        let other = issue_blockaded_team(&w, &transport, &team, planet, false, &[w.origin]);
+        assert!(!other.confirmation.is_open());
+    }
+
+    #[test]
+    fn regiments_aboard_a_fleet_in_a_blockaded_system_move_without_asking() {
+        // FUN_00487cc0: an embarked regiment's container is its ship, no
+        // system (regiment-unload.md).
+        let (w, fleet, transport, troops) = fleet_with_two_regiments();
+        let team = rebellion_render::quadrant_icons::DefensesTeam {
+            troops: troops.to_vec(),
+            ..Default::default()
+        };
+        let issued = issue_blockaded_team(
+            &w,
+            &transport,
+            &team,
+            (w.origin, SquadronPlace::Fleet(fleet)),
+            false,
+            &[w.origin],
+        );
+        assert!(!issued.confirmation.is_open());
+        assert_eq!(issued.actions.len(), 2);
     }
 
     #[test]

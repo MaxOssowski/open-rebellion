@@ -74,6 +74,15 @@ the rule reruns. The port recomputes every tick (`BlockadeSystem::advance`),
 so it has no stale bit and the branch stays unreachable, matching the
 original's fresh state.
 
+The branch is reachable for a window selection on a planet, whose first
+member's container is the system itself: a holder's characters, special
+forces, regiments or squadrons leaving their own blockaded planet with no
+fleet of theirs present. Since 2026-11-13 the port's `issue_team_move`
+(Defenses window drop or team menu Move) asks there with the evacuation
+warning 0x7056 (`team_container_system`); members aboard a fleet and the
+defenses icon (first id the system) never ask. port: a single object's
+Move from its menu does not ask yet.
+
 ## Port
 
 `crates/rebellion-core/src/blockade.rs` `system_is_blockaded` ports the rule
