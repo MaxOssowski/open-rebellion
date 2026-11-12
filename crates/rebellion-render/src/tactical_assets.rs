@@ -1361,6 +1361,7 @@ impl TacticalAssetRenderer {
         center: Vec3,
         world_size: f32,
     ) -> Option<(Vec2, Vec2)> {
+        let aperture = tactical_scene_viewport(aperture);
         let resource_id = 5500 + u32::from(self.palette_selector);
         if self.planet.as_ref().map(|planet| planet.resource_id) != Some(resource_id)
             && self.unavailable_planet != Some(resource_id)
@@ -1513,20 +1514,23 @@ impl TacticalAssetRenderer {
         aperture: (f32, f32, f32, f32),
         position: Vec3,
     ) -> Option<Vec2> {
+        self.project_in_scene_viewport(tactical_scene_viewport(aperture), position)
+    }
+
+    /// [`Self::project_source_position`] for a viewport already taken
+    /// from the aperture by [`tactical_scene_viewport`].
+    fn project_in_scene_viewport(
+        &self,
+        aperture: (f32, f32, f32, f32),
+        position: Vec3,
+    ) -> Option<Vec2> {
         let source_camera = self.source_camera?;
         let pose = source_camera.pose();
         let (_, _, width, height) = aperture;
-        let camera = Camera3D {
-            position: pose.position,
-            target: pose.target,
-            up: pose.up,
-            fovy: pose.fovy_radians,
-            aspect: Some(width / height),
-            z_near: pose.near,
-            z_far: pose.far,
-            ..Default::default()
-        };
-        project_world_position(camera.matrix(), position, aperture)
+        // `Camera3D::matrix` with this aspect, without a window context.
+        let matrix = Mat4::perspective_rh_gl(pose.fovy_radians, width / height, pose.near, pose.far)
+            * Mat4::look_at_rh(pose.position, pose.target, pose.up);
+        project_world_position(matrix, position, aperture)
     }
 
     /// Draw a retained-mode decal: a camera-facing texture centred on
@@ -1539,6 +1543,7 @@ impl TacticalAssetRenderer {
         center: Vec3,
         world_size: f32,
     ) -> Option<(Vec2, Vec2)> {
+        let aperture = tactical_scene_viewport(aperture);
         self.source_camera?;
         if !self.effect_textures.contains_key(&resource_id)
             && !self.unavailable_effect_textures.contains(&resource_id)
@@ -1565,8 +1570,8 @@ impl TacticalAssetRenderer {
     ) -> Option<(Vec2, Vec2)> {
         let pose = self.source_camera?.pose();
         let right = (pose.target - pose.position).cross(pose.up).normalize_or_zero();
-        let middle = self.project_source_position(aperture, center)?;
-        let edge = self.project_source_position(aperture, center + right * world_size * 0.5)?;
+        let middle = self.project_in_scene_viewport(aperture, center)?;
+        let edge = self.project_in_scene_viewport(aperture, center + right * world_size * 0.5)?;
         let half = middle.distance(edge);
         let min = middle - Vec2::splat(half);
         let size = Vec2::splat(half * 2.0);
@@ -1752,6 +1757,7 @@ impl TacticalAssetRenderer {
         aperture: (f32, f32, f32, f32),
         objects: &[TacticalRenderObject],
     ) -> TacticalDrawReport {
+        let aperture = tactical_scene_viewport(aperture);
         let mut report = TacticalDrawReport::default();
         if objects.is_empty() || self.source_camera.is_none() {
             return report;
@@ -1998,6 +2004,7 @@ impl TacticalAssetRenderer {
         aperture: (f32, f32, f32, f32),
         objects: &[TacticalFighterRenderObject],
     ) -> TacticalDrawReport {
+        let aperture = tactical_scene_viewport(aperture);
         let mut report = TacticalDrawReport::default();
         let Some(source_camera) = self.source_camera else {
             return report;
@@ -2141,6 +2148,7 @@ impl TacticalAssetRenderer {
         aperture: (f32, f32, f32, f32),
         objects: &[TacticalEffectRenderObject],
     ) -> TacticalDrawReport {
+        let aperture = tactical_scene_viewport(aperture);
         let mut report = TacticalDrawReport::default();
         let Some(source_camera) = self.source_camera else {
             return report;
@@ -2252,6 +2260,7 @@ impl TacticalAssetRenderer {
         aperture: (f32, f32, f32, f32),
         objects: &[TacticalEffectRenderObject],
     ) -> TacticalDrawReport {
+        let aperture = tactical_scene_viewport(aperture);
         let mut report = TacticalDrawReport::default();
         let Some(source_camera) = self.source_camera else {
             return report;
@@ -2373,6 +2382,7 @@ impl TacticalAssetRenderer {
         progress: f32,
         extent: f32,
     ) -> Option<(Vec2, Vec2)> {
+        let aperture = tactical_scene_viewport(aperture);
         let source_camera = self.source_camera?;
         let travel = target - origin;
         if !travel.is_finite() || travel.length_squared() <= f32::EPSILON {
@@ -2417,6 +2427,7 @@ impl TacticalAssetRenderer {
         aperture: (f32, f32, f32, f32),
         markers: &[(Vec3, Vec3)],
     ) {
+        let aperture = tactical_scene_viewport(aperture);
         let Some(source_camera) = self.source_camera else {
             return;
         };
@@ -2452,6 +2463,7 @@ impl TacticalAssetRenderer {
         aperture: (f32, f32, f32, f32),
         objects: &[TacticalProjectileRenderObject],
     ) -> TacticalDrawReport {
+        let aperture = tactical_scene_viewport(aperture);
         let mut report = TacticalDrawReport::default();
         let Some(source_camera) = self.source_camera else {
             return report;
@@ -3142,6 +3154,22 @@ fn death_star_beam_up(axis: Vec3) -> Vec3 {
 fn decal_overlaps_aperture(min: Vec2, size: Vec2, aperture: (f32, f32, f32, f32)) -> bool {
     let (x, y, width, height) = aperture;
     min.x < x + width && min.x + size.x > x && min.y < y + height && min.y + size.y > y
+}
+
+/// The retained-mode viewport inside the tactical aperture (16, 28, 444,
+/// 439 at 640 x 480, `BATTLE_APERTURE`).
+///
+/// `FUN_005c1d30` creates the scene's viewport through `FUN_005d9490` and
+/// `FUN_005d9eb0` with x, y, width and height all 0, so `CreateViewport`
+/// covers the whole device. The device draws the 440 x 438 surface whose
+/// stars are resource 5030. A0 TAC-01-C002 and TAC-01-C008 show that
+/// surface's black rect at (17, 30)-(456, 467): one column right of the
+/// aperture and two rows below it. The field's scale follows its 438-row
+/// height, not the aperture's 439.
+pub(crate) fn tactical_scene_viewport(aperture: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+    let (x, y, width, _) = aperture;
+    let scale = width / 444.0;
+    (x + scale, y + 2.0 * scale, 440.0 * scale, 438.0 * scale)
 }
 
 fn project_world_position(
@@ -4269,6 +4297,87 @@ mod tests {
             vec3(source.x, source.y, -source.z),
             (16.0, 28.0, 440.0, 440.0),
         )
+    }
+
+    // Source: FUN_005c1d30 creates the viewport through FUN_005d9490 and
+    // FUN_005d9eb0 with x, y, width and height 0: the whole 440 x 438
+    // device. A0 TAC-01-C002 and TAC-01-C008 show its black rect at
+    // (17, 30)-(456, 467) at 640 x 480.
+    #[test]
+    fn the_scene_viewport_is_the_original_devices_440_by_438_rect() {
+        assert_eq!(
+            tactical_scene_viewport((16.0, 28.0, 444.0, 439.0)),
+            (17.0, 30.0, 440.0, 438.0)
+        );
+        assert_eq!(
+            tactical_scene_viewport((32.0, 56.0, 888.0, 878.0)),
+            (34.0, 60.0, 880.0, 876.0)
+        );
+    }
+
+    // Source: A0 TAC-01-C008, the Empire's view after Rotate Left 16 times.
+    // The holocube's near vertical edge, from corner (+x, -y, +z) up to
+    // (+x, +y, +z), lights these pixels: (x, row).
+    #[test]
+    fn the_holocube_edge_after_sixteen_turns_lands_on_the_original_pixels() {
+        const A0_EDGE: [(f32, f32); 6] =
+            [(92.0, 100.0), (94.0, 136.0), (97.0, 172.0), (99.0, 208.0), (102.0, 244.0), (105.0, 280.0)];
+        let mut camera = OriginalTacticalCamera::new(true, 100.0);
+        for _ in 0..16 {
+            camera.turn_left();
+        }
+        let mut renderer = TacticalAssetRenderer::default();
+        renderer.restore_camera_state(camera);
+        let aperture = (16.0, 28.0, 444.0, 439.0);
+        let points = (0..=400)
+            .filter_map(|step| {
+                let height = -50.0 + 100.0 * f32::from(step as u16) / 400.0;
+                renderer.project_source_position(aperture, vec3(50.0, height, -50.0))
+            })
+            .collect::<Vec<_>>();
+        for (pixel_x, row) in A0_EDGE {
+            let centre = row + 0.5;
+            let point = points
+                .iter()
+                .min_by(|a, b| (a.y - centre).abs().total_cmp(&(b.y - centre).abs()))
+                .unwrap();
+            // A one-pixel line centred at x lights the pixel holding x. The
+            // original's line rasteriser is not GL's, so allow a quarter
+            // pixel either side of A0's pixel; the old aperture-wide
+            // projection put the line a whole pixel right.
+            assert!(
+                point.x > pixel_x - 0.25 && point.x < pixel_x + 1.25,
+                "row {row}: A0 lights x {pixel_x}, the port's line is at {point:?}"
+            );
+        }
+        // The bottom edge from the same corner towards (+x, -y, -z): A0
+        // lights these (column, y) pixels.
+        const A0_BOTTOM: [(f32, f32); 7] = [
+            (150.0, 307.0),
+            (200.0, 317.0),
+            (250.0, 327.0),
+            (300.0, 337.0),
+            (350.0, 347.0),
+            (400.0, 358.0),
+            (430.0, 364.0),
+        ];
+        let points = (0..=400)
+            .filter_map(|step| {
+                let depth = -50.0 + 100.0 * f32::from(step as u16) / 400.0;
+                renderer.project_source_position(aperture, vec3(50.0, -50.0, depth))
+            })
+            .collect::<Vec<_>>();
+        for (column, pixel_y) in A0_BOTTOM {
+            let centre = column + 0.5;
+            let point = points
+                .iter()
+                .min_by(|a, b| (a.x - centre).abs().total_cmp(&(b.x - centre).abs()))
+                .unwrap();
+            assert!(
+                point.y > pixel_y - 0.25 && point.y < pixel_y + 1.25,
+                "column {column}: A0 lights y {pixel_y}, the port's line is at {point:?}"
+            );
+        }
     }
 
     // Source: FUN_005d9640 (yaw about +Y, then pitch about +X, then

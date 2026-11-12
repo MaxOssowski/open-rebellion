@@ -11138,9 +11138,10 @@ fn draw_tactical_holocube(state: &TacticalState, aperture: (f32, f32, f32, f32),
         return;
     };
     let color = Color::new(0.0, 0.0, 1.0, 1.0);
-    // Keep the whole line width inside the aperture.
+    // Keep the whole line width inside the retained-mode viewport, the
+    // black rect the original's lines stay in (A0 TAC-01-C008).
     let inset = scale.ceil() * 0.5 + 0.5;
-    let (x, y, width, height) = aperture;
+    let (x, y, width, height) = crate::tactical_assets::tactical_scene_viewport(aperture);
     let inner = (x + inset, y + inset, x + width - inset, y + height - inset);
     for (from, to) in tactical_holocube_edges(session.source_layout.battle_extent) {
         let mut previous: Option<Vec2> = None;
