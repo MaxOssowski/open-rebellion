@@ -82,8 +82,12 @@ window's selection (slot `+0x58`) and moves it against the drop window
   Defenses window).
 - A drop carries the whole selection: the Defenses window's as one team
   move (`issue_team_move`, split as `FUN_0053c4b0`); the Fleet window's
-  ships as one `JoinFleet`/`MoveShips`, its characters and special forces as
-  one Move mission, its regiments and squadrons one move each (port:).
+  ships as one `JoinFleet`/`MoveShips`, its fleets as one fleet move, and
+  its regiments, squadrons, characters and special forces as one team move
+  (`fleet_drop_order`, 2026-11-13), so one refusal refuses the order.
+- `FUN_00422ce0`'s `0x29a` handler reads `GetAsyncKeyState(VK_CONTROL)`
+  before its switch on the source window's type, so Ctrl makes the drop
+  `0x202` for types 4 (Fleet) and 10 (Defenses) alike; both are ported.
 - The drag image follows the pointer for the right list and the Defenses
   list. port: a left list drag draws no image.
 - A menu opened on a selected item takes the whole selection
@@ -94,7 +98,6 @@ window's selection (slot `+0x58`) and moves it against the drop window
   union of several fleets, `FUN_004a5c00`, is not ported).
 - port: a Defenses window release inside its own list is no drop (there
   `+0x70` gives only its own system).
-- port: Ctrl+drop (`0x202`) is ported for the Defenses window only.
 
 ## Open
 

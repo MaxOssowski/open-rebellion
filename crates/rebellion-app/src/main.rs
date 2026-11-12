@@ -6667,10 +6667,19 @@ async fn main() {
                                         .with_team(team),
                                 );
                             }
-                            // FUN_00422ce0, window type 4: the fleet moves
-                            // with 0x201 against what +0x70 gives under the
-                            // point. port: Ctrl's 0x202 is not ported here.
-                            FleetWindowAction::DragFleet { fleet, point } => {
+                            // FUN_00422ce0, window type 4: the selection's
+                            // 0x201 (0x202 with Ctrl) against what +0x70
+                            // gives under the point, as one order.
+                            action @ (FleetWindowAction::DragFleet { .. }
+                            | FleetWindowAction::DragShip { .. }
+                            | FleetWindowAction::DragRegiment { .. }
+                            | FleetWindowAction::DragMembers { .. }
+                            | FleetWindowAction::DragSquadron { .. }) => {
+                                let Some((order, point, confirmed)) =
+                                    fleet_drop_order(&world, action)
+                                else {
+                                    continue;
+                                };
                                 let windows = ReleaseWindows {
                                     sector: &sector_window_state,
                                     system: &system_window_state,
@@ -6678,183 +6687,6 @@ async fn main() {
                                     defenses: &defenses_window_state,
                                     missions: &missions_window_state,
                                 };
-                                if let Some(target) = release_destination(
-                                    ctx,
-                                    &world,
-                                    &movement_state,
-                                    fog_state,
-                                    cockpit_layout,
-                                    windows,
-                                    point,
-                                ) {
-                                    issue_fleet_move(
-                                        &FleetMoveContext {
-                                            world: &world,
-                                            movement: &movement_state,
-                                            blockaded: blockade_state.blockaded_systems(),
-                                            faction: player_faction,
-                                            tick: clock.tick,
-                                            icon: false,
-                                        },
-                                        &[fleet],
-                                        false,
-                                        target,
-                                        &mut msg_log,
-                                        &mut move_confirmation_state,
-                                        &mut panel_actions,
-                                    );
-                                }
-                            }
-                            // FUN_00422ce0: the ship moves with 0x201 against
-                            // the window under the point
-                            // (ghidra/notes/fleet-join-split.md).
-                            FleetWindowAction::DragShip {
-                                fleet,
-                                ships,
-                                roster,
-                                point,
-                            } => {
-                                let windows = ReleaseWindows {
-                                    sector: &sector_window_state,
-                                    system: &system_window_state,
-                                    fleet: &fleet_window_state,
-                                    defenses: &defenses_window_state,
-                                    missions: &missions_window_state,
-                                };
-                                match release_destination(
-                                    ctx,
-                                    &world,
-                                    &movement_state,
-                                    fog_state,
-                                    cockpit_layout,
-                                    windows,
-                                    point,
-                                ) {
-                                    Some(ReleaseTarget::Fleet { fleet: target, .. }) => {
-                                        panel_actions.push(PanelAction::JoinFleet {
-                                            mover: FleetMover::Ships {
-                                                fleet,
-                                                ships,
-                                                roster,
-                                            },
-                                            target,
-                                        });
-                                    }
-                                    Some(ReleaseTarget::System(system)) => {
-                                        panel_actions.push(PanelAction::MoveShips {
-                                            fleet,
-                                            ships,
-                                            roster,
-                                            system,
-                                        });
-                                    }
-                                    None => {}
-                                }
-                            }
-                            FleetWindowAction::DragRegiment { troops, point } => {
-                                let windows = ReleaseWindows {
-                                    sector: &sector_window_state,
-                                    system: &system_window_state,
-                                    fleet: &fleet_window_state,
-                                    defenses: &defenses_window_state,
-                                    missions: &missions_window_state,
-                                };
-                                let target = match release_destination(
-                                    ctx,
-                                    &world,
-                                    &movement_state,
-                                    fog_state,
-                                    cockpit_layout,
-                                    windows,
-                                    point,
-                                ) {
-                                    Some(ReleaseTarget::System(system)) => {
-                                        RegimentTarget::System(system)
-                                    }
-                                    Some(ReleaseTarget::Fleet { fleet, .. }) => {
-                                        RegimentTarget::Fleet(fleet)
-                                    }
-                                    None => continue,
-                                };
-                                // port: each regiment's move command runs
-                                // alone; FUN_0053c1a0 would refuse them all
-                                // for one refusal.
-                                panel_actions.extend(troops.into_iter().map(|troop| {
-                                    PanelAction::MoveRegiment { troop, target }
-                                }));
-                            }
-                            // FUN_00422ce0: the members' 0x201 -> one 0x241
-                            // (FUN_0053c810) against the window under the
-                            // point.
-                            FleetWindowAction::DragMembers { members, point } => {
-                                let windows = ReleaseWindows {
-                                    sector: &sector_window_state,
-                                    system: &system_window_state,
-                                    fleet: &fleet_window_state,
-                                    defenses: &defenses_window_state,
-                                    missions: &missions_window_state,
-                                };
-                                let (system, fleet) = match release_destination(
-                                    ctx,
-                                    &world,
-                                    &movement_state,
-                                    fog_state,
-                                    cockpit_layout,
-                                    windows,
-                                    point,
-                                ) {
-                                    Some(ReleaseTarget::System(system)) => (system, None),
-                                    Some(ReleaseTarget::Fleet { fleet, system }) => {
-                                        (system, Some(fleet))
-                                    }
-                                    None => continue,
-                                };
-                                panel_actions.push(match members.as_slice() {
-                                    [MissionMember::Character(character)] => {
-                                        PanelAction::MoveCharacter {
-                                            character: *character,
-                                            system,
-                                            fleet,
-                                        }
-                                    }
-                                    [MissionMember::SpecialForce(unit)] => {
-                                        PanelAction::MoveSpecialForce {
-                                            unit: *unit,
-                                            system,
-                                            fleet,
-                                        }
-                                    }
-                                    _ => PanelAction::MoveMembers {
-                                        members,
-                                        system,
-                                        fleet,
-                                    },
-                                });
-                            }
-                            // FUN_00422ce0: the squadron's 0x201 against the
-                            // window under the point.
-                            FleetWindowAction::DragSquadron {
-                                fleet,
-                                indices,
-                                point,
-                            } => {
-                                let windows = ReleaseWindows {
-                                    sector: &sector_window_state,
-                                    system: &system_window_state,
-                                    fleet: &fleet_window_state,
-                                    defenses: &defenses_window_state,
-                                    missions: &missions_window_state,
-                                };
-                                let classes: Vec<_> = indices
-                                    .iter()
-                                    .filter_map(|&index| {
-                                        world
-                                            .fleets
-                                            .get(fleet)
-                                            .and_then(|value| value.fighters.get(index))
-                                            .map(|entry| entry.class)
-                                    })
-                                    .collect();
                                 let Some(target) = release_destination(
                                     ctx,
                                     &world,
@@ -6866,14 +6698,57 @@ async fn main() {
                                 ) else {
                                     continue;
                                 };
-                                // port: each squadron's move runs alone.
-                                panel_actions.extend(classes.into_iter().map(|class| {
-                                    PanelAction::MoveSquadron {
-                                        class,
-                                        from: SquadronPlace::Fleet(fleet),
-                                        to: target.squadron_place(),
+                                match order {
+                                    FleetDropOrder::Fleets(fleets) => issue_fleet_move(
+                                        &FleetMoveContext {
+                                            world: &world,
+                                            movement: &movement_state,
+                                            blockaded: blockade_state.blockaded_systems(),
+                                            faction: player_faction,
+                                            tick: clock.tick,
+                                            icon: false,
+                                        },
+                                        &fleets,
+                                        confirmed,
+                                        target,
+                                        &mut msg_log,
+                                        &mut move_confirmation_state,
+                                        &mut panel_actions,
+                                    ),
+                                    FleetDropOrder::Ships(team) if confirmed => confirm_ship_move(
+                                        &world,
+                                        player_faction,
+                                        team,
+                                        target,
+                                        &mut move_confirmation_state,
+                                    ),
+                                    FleetDropOrder::Ships(team) => {
+                                        panel_actions.push(ship_move_action(team, target));
                                     }
-                                }));
+                                    FleetDropOrder::Team { place, team } => issue_team_move(
+                                        &DefensesMoveContext {
+                                            world: &world,
+                                            movement: &movement_state,
+                                            missions: &mission_state,
+                                            transport: &troop_transport_state,
+                                            deliveries: &delivery_state,
+                                            blockaded: blockade_state.blockaded_systems(),
+                                            faction: player_faction,
+                                            tick: clock.tick,
+                                        },
+                                        &team,
+                                        place.unwrap_or_else(|| {
+                                            let system = target.system();
+                                            (system, SquadronPlace::Planet(system))
+                                        }),
+                                        false,
+                                        confirmed,
+                                        target,
+                                        &mut msg_log,
+                                        &mut move_confirmation_state,
+                                        &mut panel_actions,
+                                    ),
+                                }
                             }
                         }
                     }
@@ -10079,6 +9954,136 @@ fn issue_defenses_move(
     );
 }
 
+/// The order a Fleet window drop issues (`FUN_00422ce0`, window type 4):
+/// the source window's whole selection (slot `+0x58`) as one `0x201`, or
+/// `0x202` with Ctrl down. Fleets move together (`issue_fleet_move`), ships
+/// as one ship order, and the right list's regiments, squadrons, characters
+/// and special forces as one team move that `FUN_0053c4b0` splits, so one
+/// refusal refuses the whole order (`issue_team_move`).
+#[derive(Debug, PartialEq)]
+enum FleetDropOrder {
+    Fleets(Vec<FleetKey>),
+    Ships(ShipTeam),
+    Team {
+        /// The squadrons' fleet and its system; `None` for a team without
+        /// squadrons, whose move reads no place.
+        place: Option<(SystemKey, SquadronPlace)>,
+        team: rebellion_render::quadrant_icons::DefensesTeam,
+    },
+}
+
+/// A Fleet window drop's order, its release point and whether it is
+/// Confirmed Move; `None` for another action or a squadron of a fleet that
+/// is gone.
+fn fleet_drop_order(
+    world: &GameWorld,
+    action: FleetWindowAction,
+) -> Option<(FleetDropOrder, egui_macroquad::egui::Pos2, bool)> {
+    use rebellion_render::quadrant_icons::DefensesTeam;
+    match action {
+        FleetWindowAction::DragFleet {
+            fleet,
+            point,
+            confirmed,
+        } => Some((FleetDropOrder::Fleets(vec![fleet]), point, confirmed)),
+        FleetWindowAction::DragShip {
+            fleet,
+            ships,
+            roster,
+            point,
+            confirmed,
+        } => Some((
+            FleetDropOrder::Ships(ShipTeam {
+                fleet,
+                ships,
+                roster,
+            }),
+            point,
+            confirmed,
+        )),
+        FleetWindowAction::DragRegiment {
+            troops,
+            point,
+            confirmed,
+        } => Some((
+            FleetDropOrder::Team {
+                place: None,
+                team: DefensesTeam {
+                    troops,
+                    ..DefensesTeam::default()
+                },
+            },
+            point,
+            confirmed,
+        )),
+        FleetWindowAction::DragMembers {
+            members,
+            point,
+            confirmed,
+        } => Some((
+            FleetDropOrder::Team {
+                place: None,
+                team: DefensesTeam {
+                    members,
+                    ..DefensesTeam::default()
+                },
+            },
+            point,
+            confirmed,
+        )),
+        FleetWindowAction::DragSquadron {
+            fleet,
+            indices,
+            point,
+            confirmed,
+        } => {
+            let value = world.fleets.get(fleet)?;
+            let squadrons = indices
+                .iter()
+                .filter_map(|&index| value.fighters.get(index).map(|entry| entry.class))
+                .collect();
+            Some((
+                FleetDropOrder::Team {
+                    place: Some((value.location, SquadronPlace::Fleet(fleet))),
+                    team: DefensesTeam {
+                        squadrons,
+                        ..DefensesTeam::default()
+                    },
+                },
+                point,
+                confirmed,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// A ships team's Move (`0x201`) with its target: onto a fleet it joins
+/// it, onto a system the ships go there (`fleet-join-split.md`).
+fn ship_move_action(team: ShipTeam, target: ReleaseTarget) -> PanelAction {
+    let ShipTeam {
+        fleet,
+        ships,
+        roster,
+    } = team;
+    match target {
+        ReleaseTarget::Fleet { fleet: target, .. } => PanelAction::JoinFleet {
+            mover: FleetMover::Ships {
+                fleet,
+                ships,
+                roster,
+            },
+            target,
+        },
+        ReleaseTarget::System(system) => PanelAction::MoveShips {
+            fleet,
+            ships,
+            roster,
+            system,
+        },
+    }
+}
+
 /// What a menu for several objects issues.
 enum TeamMenuOrder {
     Target(TargetOrder),
@@ -10400,13 +10405,10 @@ fn issue_team_move(
             .iter()
             .zip(troop_days)
             .filter_map(|(&troop, days)| {
-                Some((
-                    rebellion_core::scrap::target_name(
-                        world,
-                        rebellion_core::scrap::ScrapTarget::Troop(troop),
-                    )?,
-                    days,
-                ))
+                // The class's name (FUN_004f6270), aboard a fleet as on a
+                // planet.
+                let class = world.troops.get(troop)?.class_dat_id;
+                Some((world.buildable_classes.get(&class)?.name.clone(), days))
             }),
     );
     lines.extend(team.squadrons.iter().filter_map(|&class| {
@@ -16218,6 +16220,196 @@ mod fleet_move_tests {
         );
         assert_eq!(deliveries.en_route()[0].side, Faction::Alliance);
         assert_eq!(gates(&w.world, &deliveries), (false, false));
+    }
+
+    /// The Alliance's fleet at its held origin carrying two regiments, and
+    /// the transport that holds them.
+    fn fleet_with_two_regiments() -> (
+        DefensesWorld,
+        FleetKey,
+        TroopTransportState,
+        [rebellion_core::ids::TroopKey; 2],
+    ) {
+        let mut w = defenses_world();
+        let class = w.world.capital_ship_classes.insert(CapitalShipClass {
+            name: "Transport".into(),
+            is_alliance: true,
+            hull: 100,
+            hyperdrive: 80,
+            troop_capacity: 4,
+            ..CapitalShipClass::default()
+        });
+        let fleet = w.world.fleets.insert(Fleet {
+            location: w.origin,
+            capital_ships: vec![ShipInstance::new(class, 100, true)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        w.world.systems[w.origin].fleets.push(fleet);
+        let second = w.world.troops.insert(w.world.troops[w.troop].clone());
+        w.world.systems[w.origin].ground_units.push(second);
+        let mut transport = TroopTransportState::new();
+        transport
+            .embark(&mut w.world, fleet, &[w.troop, second])
+            .expect("both regiments board");
+        let troops = [w.troop, second];
+        (w, fleet, transport, troops)
+    }
+
+    fn issue_fleet_drop(
+        world: &GameWorld,
+        transport: &TroopTransportState,
+        action: FleetWindowAction,
+        to: SystemKey,
+    ) -> Issued {
+        let (FleetDropOrder::Team { place, team }, _, confirmed) =
+            fleet_drop_order(world, action).expect("a drop order")
+        else {
+            panic!("a team drop");
+        };
+        let movement = MovementState::new();
+        let blockaded = HashSet::new();
+        let mut issued = Issued {
+            actions: Vec::new(),
+            confirmation: MoveConfirmationState::default(),
+            log: MessageLog::new(),
+        };
+        issue_team_move(
+            &DefensesMoveContext {
+                world,
+                movement: &movement,
+                missions: &MissionState::new(),
+                transport,
+                deliveries: &DeliveryState::new(),
+                blockaded: &blockaded,
+                faction: MissionFaction::Alliance,
+                tick: 0,
+            },
+            &team,
+            place.unwrap_or((to, SquadronPlace::Planet(to))),
+            false,
+            confirmed,
+            ReleaseTarget::System(to),
+            &mut issued.log,
+            &mut issued.confirmation,
+            &mut issued.actions,
+        );
+        issued
+    }
+
+    #[test]
+    fn regiments_dropped_from_a_fleet_window_move_as_one_order_that_one_refusal_stops() {
+        // FUN_00422ce0, window type 4: the selection's one 0x201; the
+        // regiments go in its 0x204 group (FUN_0053c4b0), whose validator
+        // FUN_0053c1a0 runs every member's, so one refusal refuses the
+        // order (FUN_00487740 -> FUN_00487c90).
+        let (w, _, transport, troops) = fleet_with_two_regiments();
+        let drop = |troops: Vec<rebellion_core::ids::TroopKey>, confirmed| {
+            FleetWindowAction::DragRegiment {
+                troops,
+                point: egui_macroquad::egui::Pos2::ZERO,
+                confirmed,
+            }
+        };
+        let both = issue_fleet_drop(&w.world, &transport, drop(troops.to_vec(), false), w.destination);
+        assert_eq!(
+            format!("{:?}", both.actions),
+            format!(
+                "{:?}",
+                troops.map(|troop| PanelAction::MoveRegiment {
+                    troop,
+                    target: RegimentTarget::System(w.destination),
+                })
+            )
+        );
+        // The second regiment is gone by the release: nothing moves.
+        let mut world = w.world.clone();
+        world.troops.remove(troops[1]);
+        let refused = issue_fleet_drop(&world, &transport, drop(troops.to_vec(), false), w.destination);
+        assert!(refused.actions.is_empty(), "{:?}", refused.actions);
+        assert!(!refused.confirmation.is_open());
+        assert_eq!(refused.log.messages().len(), 1);
+        // With Ctrl it is 0x202: one confirmation lists both.
+        let confirmed = issue_fleet_drop(&w.world, &transport, drop(troops.to_vec(), true), w.destination);
+        assert!(confirmed.actions.is_empty());
+        let window = confirmed.confirmation.confirmation().expect("the window opens");
+        assert_eq!(window.troops, troops);
+        assert_eq!(window.lines.len(), 2);
+    }
+
+    #[test]
+    fn squadrons_dropped_from_a_fleet_window_leave_their_fleet_as_one_order() {
+        // FUN_00422ce0, window type 4: the squadrons' one 0x201, out of
+        // their fleet (FUN_0053c4b0 -> FUN_0053ca50's 0x204 group).
+        let (mut w, fleet, transport, _) = fleet_with_two_regiments();
+        rebellion_core::squadrons::add(&mut w.world.fleets[fleet].fighters, w.x_wing, 2);
+        let drop = |confirmed| FleetWindowAction::DragSquadron {
+            fleet,
+            indices: vec![0],
+            point: egui_macroquad::egui::Pos2::ZERO,
+            confirmed,
+        };
+        assert_eq!(
+            fleet_drop_order(&w.world, drop(false)).map(|(order, _, confirmed)| (order, confirmed)),
+            Some((
+                FleetDropOrder::Team {
+                    place: Some((w.origin, SquadronPlace::Fleet(fleet))),
+                    team: rebellion_render::quadrant_icons::DefensesTeam {
+                        squadrons: vec![w.x_wing],
+                        ..Default::default()
+                    },
+                },
+                false
+            ))
+        );
+        let issued = issue_fleet_drop(&w.world, &transport, drop(true), w.destination);
+        let window = issued.confirmation.confirmation().expect("Ctrl asks");
+        assert_eq!(window.squadrons, [(w.x_wing, SquadronPlace::Fleet(fleet))]);
+    }
+
+    #[test]
+    fn a_fleet_windows_ctrl_drop_of_a_fleet_or_ships_is_a_confirmed_move() {
+        // FUN_00422ce0: GetAsyncKeyState(VK_CONTROL) makes the drop 0x202
+        // for window type 4 as for type 10.
+        let (world, fleets, _) = world_with_two_fleets();
+        let point = egui_macroquad::egui::Pos2::ZERO;
+        for confirmed in [false, true] {
+            assert_eq!(
+                fleet_drop_order(
+                    &world,
+                    FleetWindowAction::DragFleet {
+                        fleet: fleets[0],
+                        point,
+                        confirmed,
+                    }
+                ),
+                Some((FleetDropOrder::Fleets(vec![fleets[0]]), point, confirmed))
+            );
+            assert_eq!(
+                fleet_drop_order(
+                    &world,
+                    FleetWindowAction::DragShip {
+                        fleet: fleets[1],
+                        ships: vec![0],
+                        roster: 9,
+                        point,
+                        confirmed,
+                    }
+                ),
+                Some((
+                    FleetDropOrder::Ships(ShipTeam {
+                        fleet: fleets[1],
+                        ships: vec![0],
+                        roster: 9,
+                    }),
+                    point,
+                    confirmed
+                ))
+            );
+        }
     }
 }
 

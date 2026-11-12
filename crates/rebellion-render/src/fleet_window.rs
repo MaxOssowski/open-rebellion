@@ -565,10 +565,17 @@ fn right_hit(at: (f32, f32), rows: usize) -> Option<usize> {
         .filter(|row| *row < rows)
 }
 
-/// The drop of a left list entry (`0x29a`).
-fn left_drop(object: ItemObject, point: egui::Pos2) -> Option<FleetWindowAction> {
+/// The drop of a left list entry (`0x29a`). The galaxy view issues `0x201`,
+/// or `0x202` when Ctrl is down at the release (`confirmed`,
+/// `GetAsyncKeyState(VK_CONTROL)` in `FUN_00422ce0`, window types 4 and 10
+/// alike).
+fn left_drop(object: ItemObject, point: egui::Pos2, confirmed: bool) -> Option<FleetWindowAction> {
     match object {
-        ItemObject::Fleet(fleet) => Some(FleetWindowAction::DragFleet { fleet, point }),
+        ItemObject::Fleet(fleet) => Some(FleetWindowAction::DragFleet {
+            fleet,
+            point,
+            confirmed,
+        }),
         ItemObject::Ship {
             fleet,
             index,
@@ -578,14 +585,20 @@ fn left_drop(object: ItemObject, point: egui::Pos2) -> Option<FleetWindowAction>
             ships: vec![index],
             roster,
             point,
+            confirmed,
         }),
         _ => None,
     }
 }
 
 /// The drop of the right list's selected `objects`, all of one tab
-/// (`0x29a`): the galaxy view moves them as one order (`FUN_00422ce0`).
-fn right_drop(objects: &[ItemObject], point: egui::Pos2) -> Option<FleetWindowAction> {
+/// (`0x29a`): the galaxy view moves them as one order (`FUN_00422ce0`),
+/// `0x202` with Ctrl down (`confirmed`).
+fn right_drop(
+    objects: &[ItemObject],
+    point: egui::Pos2,
+    confirmed: bool,
+) -> Option<FleetWindowAction> {
     match *objects.first()? {
         ItemObject::Ship { fleet, roster, .. } => Some(FleetWindowAction::DragShip {
             fleet,
@@ -600,6 +613,7 @@ fn right_drop(objects: &[ItemObject], point: egui::Pos2) -> Option<FleetWindowAc
                 .collect(),
             roster,
             point,
+            confirmed,
         }),
         ItemObject::Fighter { fleet, .. } => Some(FleetWindowAction::DragSquadron {
             fleet,
@@ -611,6 +625,7 @@ fn right_drop(objects: &[ItemObject], point: egui::Pos2) -> Option<FleetWindowAc
                 })
                 .collect(),
             point,
+            confirmed,
         }),
         ItemObject::Regiment(_) => Some(FleetWindowAction::DragRegiment {
             troops: objects
@@ -621,6 +636,7 @@ fn right_drop(objects: &[ItemObject], point: egui::Pos2) -> Option<FleetWindowAc
                 })
                 .collect(),
             point,
+            confirmed,
         }),
         ItemObject::Character(_) | ItemObject::SpecialForce(_) => {
             Some(FleetWindowAction::DragMembers {
@@ -633,6 +649,7 @@ fn right_drop(objects: &[ItemObject], point: egui::Pos2) -> Option<FleetWindowAc
                     })
                     .collect(),
                 point,
+                confirmed,
             })
         }
         ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } => None,
@@ -1404,7 +1421,8 @@ impl FleetWindowState {
     /// release inside the window's own lists drops too: a ship released on
     /// another fleet's entry joins it.
     ///
-    /// port: Ctrl's Confirmed Move (`0x202`) is not ported for a drag.
+    /// With Ctrl down at the release the drop is Confirmed Move (`0x202`,
+    /// `FUN_00422ce0`).
     fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<DragEnd> {
         let (released, down, point) = ctx.input(|input| {
             (
@@ -1505,12 +1523,15 @@ pub enum FleetWindowAction {
     DragFleet {
         fleet: FleetKey,
         point: egui::Pos2,
+        /// Ctrl was down at the release: `0x202`, Confirmed Move.
+        confirmed: bool,
     },
     /// The Troops tab's selected regiments dragged (`0x29a`): the galaxy
     /// view hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
     DragRegiment {
         troops: Vec<TroopKey>,
         point: egui::Pos2,
+        confirmed: bool,
     },
     /// The Personnel tab's selected characters and special forces dragged:
     /// the same `0x201`, which expands to one Move mission order `0x241`
@@ -1518,6 +1539,7 @@ pub enum FleetWindowAction {
     DragMembers {
         members: Vec<MissionMember>,
         point: egui::Pos2,
+        confirmed: bool,
     },
     /// The Fighters tab's selected squadrons dragged: the same `0x201`, one
     /// squadron of each entry `indices` names in the fleet's `fighters`.
@@ -1525,6 +1547,7 @@ pub enum FleetWindowAction {
         fleet: FleetKey,
         indices: Vec<usize>,
         point: egui::Pos2,
+        confirmed: bool,
     },
     /// The Capital Ships tab's selected ships, or a left list ship entry,
     /// dragged: the same `0x201` for the ships
@@ -1534,6 +1557,7 @@ pub enum FleetWindowAction {
         ships: Vec<usize>,
         roster: u64,
         point: egui::Pos2,
+        confirmed: bool,
     },
     /// A right click on a list entry or item opens its object's pop-up menu
     /// (manual p. 120), at a 640 by 480 canvas point.
@@ -2627,7 +2651,9 @@ pub fn draw_fleet_windows(
                 system,
                 left: Some(object),
                 point,
-            }) if system == window.system => actions.extend(left_drop(object, point)),
+            }) if system == window.system => {
+                actions.extend(left_drop(object, point, crate::drag_list::modifiers(ctx).ctrl));
+            }
             Some(DragEnd::Drop {
                 system,
                 left: None,
@@ -2641,7 +2667,11 @@ pub fn draw_fleet_windows(
                     .filter_map(|row| items[row].object)
                     .filter(|object| !matches!(object, ItemObject::TravellingFighter { .. }))
                     .collect();
-                actions.extend(right_drop(&objects, point));
+                actions.extend(right_drop(
+                    &objects,
+                    point,
+                    crate::drag_list::modifiers(ctx).ctrl,
+                ));
                 if let Some(open) = state.window_mut(system) {
                     open.selected_items.dropped();
                 }
@@ -5251,7 +5281,7 @@ pub(crate) mod tests {
         actions
             .iter()
             .flat_map(|action| match action {
-                FleetWindowAction::DragRegiment { troops, point } => {
+                FleetWindowAction::DragRegiment { troops, point, .. } => {
                     troops.iter().map(|troop| (*troop, *point)).collect()
                 }
                 _ => Vec::new(),
@@ -5444,21 +5474,23 @@ pub(crate) mod tests {
             roster: 7,
         };
         assert_eq!(
-            right_drop(&[ship(one, 0), ship(two, 1), ship(one, 2)], point),
+            right_drop(&[ship(one, 0), ship(two, 1), ship(one, 2)], point, false),
             Some(FleetWindowAction::DragShip {
                 fleet: one,
                 ships: vec![0, 2],
                 roster: 7,
                 point,
+                confirmed: false,
             })
         );
         let fighter = |fleet, index| ItemObject::Fighter { fleet, index };
         assert_eq!(
-            right_drop(&[fighter(one, 0), fighter(two, 1), fighter(one, 3)], point),
+            right_drop(&[fighter(one, 0), fighter(two, 1), fighter(one, 3)], point, false),
             Some(FleetWindowAction::DragSquadron {
                 fleet: one,
                 indices: vec![0, 3],
                 point,
+                confirmed: false,
             })
         );
         let person = world.characters.insert(Default::default());
@@ -5471,7 +5503,8 @@ pub(crate) mod tests {
         assert_eq!(
             right_drop(
                 &[ItemObject::Character(person), ItemObject::SpecialForce(unit)],
-                point
+                point,
+                false
             ),
             Some(FleetWindowAction::DragMembers {
                 members: vec![
@@ -5479,15 +5512,17 @@ pub(crate) mod tests {
                     MissionMember::SpecialForce(unit)
                 ],
                 point,
+                confirmed: false,
             })
         );
         assert_eq!(
-            left_drop(ship(two, 4), point),
+            left_drop(ship(two, 4), point, false),
             Some(FleetWindowAction::DragShip {
                 fleet: two,
                 ships: vec![4],
                 roster: 7,
                 point,
+                confirmed: false,
             })
         );
     }
@@ -5624,7 +5659,7 @@ pub(crate) mod tests {
         let drops: Vec<_> = actions
             .iter()
             .filter_map(|action| match action {
-                FleetWindowAction::DragMembers { members, point } => Some((members.clone(), *point)),
+                FleetWindowAction::DragMembers { members, point, .. } => Some((members.clone(), *point)),
                 _ => None,
             })
             .collect();
@@ -5668,6 +5703,7 @@ pub(crate) mod tests {
                 fleet,
                 indices: vec![0],
                 point: release,
+                confirmed: false,
             }]
         );
     }
@@ -6041,6 +6077,7 @@ pub(crate) mod tests {
                 ships: vec![0],
                 roster: fleet_join::roster(&world, fleet).unwrap(),
                 point: release,
+                confirmed: false,
             }]
         );
     }
@@ -6068,6 +6105,7 @@ pub(crate) mod tests {
             [&FleetWindowAction::DragFleet {
                 fleet,
                 point: release,
+                confirmed: false,
             }]
         );
 
@@ -6085,7 +6123,61 @@ pub(crate) mod tests {
         assert!(inside.contains(&FleetWindowAction::DragFleet {
             fleet,
             point: release,
+            confirmed: false,
         }));
+    }
+
+    #[test]
+    fn a_drop_released_with_ctrl_is_a_confirmed_move_from_either_list() {
+        // FUN_00422ce0's 0x29a handler: GetAsyncKeyState(VK_CONTROL) makes
+        // the order 0x202 instead of 0x201 for window types 4 and 10 alike.
+        let (world, transport, system, fleet, troop) = fleet_with_regiment();
+        let drop = |tab, from: (f32, f32), modifiers| {
+            let mut state = opened(&world, system);
+            if let Some(window) = state.window_mut(system) {
+                window.selected = Some(FleetWindowEntry::Fleet(fleet));
+                window.tab = tab;
+            }
+            let (start, end) = (at(from.0, from.1), at(300.0, 200.0));
+            let button = |point, pressed| egui::Event::PointerButton {
+                pos: point,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers,
+            };
+            let mut frames = hover(start);
+            frames.extend([
+                vec![button(start, true)],
+                vec![egui::Event::PointerMoved(end)],
+                vec![egui::Event::PointerMoved(end), button(end, false)],
+            ]);
+            run(&world, &transport, &mut state, CockpitFaction::Alliance, frames).actions
+        };
+        for (modifiers, confirmed) in [
+            (egui::Modifiers::NONE, false),
+            (egui::Modifiers::CTRL, true),
+        ] {
+            let left = drop(FleetWindowTab::CapitalShips, (40.0, 40.0), modifiers);
+            assert!(
+                left.iter().any(|action| *action
+                    == FleetWindowAction::DragFleet {
+                        fleet,
+                        point: at(300.0, 200.0),
+                        confirmed,
+                    }),
+                "{left:?}"
+            );
+            let right = drop(FleetWindowTab::Troops, FIRST_RIGHT_ITEM, modifiers);
+            assert!(
+                right.iter().any(|action| *action
+                    == FleetWindowAction::DragRegiment {
+                        troops: vec![troop],
+                        point: at(300.0, 200.0),
+                        confirmed,
+                    }),
+                "{right:?}"
+            );
+        }
     }
 
     #[test]
