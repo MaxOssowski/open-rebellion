@@ -1204,8 +1204,8 @@ impl FleetWindowState {
             selected,
             tab: window.tab,
             enabled: FleetWindowTab::ALL
-                .map(|tab| tab_enabled(world, transport, &self.arrivals, selected, tab)),
-            items: right_items(world, transport, &self.arrivals, selected, window.tab)
+                .map(|tab| window_tab_enabled(world, movement, transport, &self.arrivals, selected, tab)),
+            items: window_items(world, movement, transport, &self.arrivals, selected, window.tab)
                 .into_iter()
                 .map(|item| item.label)
                 .collect(),
@@ -1214,7 +1214,7 @@ impl FleetWindowState {
                 rows.sort_unstable();
                 rows
             },
-            counts: tab_counts(world, transport, selected, window.tab),
+            counts: window_tab_counts(world, movement, transport, selected, window.tab),
         })
     }
 
@@ -1298,13 +1298,13 @@ impl FleetWindowState {
             }
         } else if in_rect(RIGHT_LIST, local) {
             let row = right_row_at(local.1, window.right_scroll);
-            right_target(world, transport, &self.arrivals, window, row).or_else(|| {
+            right_target(world, movement, transport, &self.arrivals, window, row).or_else(|| {
                 window
                     .selected_items
                     .items()
                     .iter()
                     .min()
-                    .and_then(|&index| right_target(world, transport, &self.arrivals, window, index))
+                    .and_then(|&index| right_target(world, movement, transport, &self.arrivals, window, index))
             })
         } else {
             None
@@ -1666,22 +1666,133 @@ fn left_entries(
     window: &OpenFleetWindow,
 ) -> Vec<FleetWindowEntry> {
     let mut entries = Vec::new();
-    for fleet in visible_fleets(world, movement, fog, player, window.system) {
+    let fleets = visible_fleets(world, movement, fog, player, window.system);
+    // Ships on their way to join a listed fleet are its members already
+    // (see `joining_fleets`): their own departing fleet is not listed.
+    let joined = |fleet: FleetKey| {
+        join_target(world, movement, fleet).is_some_and(|target| fleets.contains(&target))
+    };
+    for &fleet in fleets.iter().filter(|&&fleet| !joined(fleet)) {
         entries.push(FleetWindowEntry::Fleet(fleet));
         if window.expanded.contains(&fleet) {
-            if let Some(value) = world.fleets.get(fleet) {
-                entries.extend(
-                    value
-                        .capital_ships
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, ship)| ship.alive)
-                        .map(|(index, _)| FleetWindowEntry::Ship { fleet, index }),
-                );
+            for member in std::iter::once(fleet).chain(joining_fleets(world, movement, fleet)) {
+                if let Some(value) = world.fleets.get(member) {
+                    entries.extend(
+                        value
+                            .capital_ships
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, ship)| ship.alive)
+                            .map(|(index, _)| FleetWindowEntry::Ship { fleet: member, index }),
+                    );
+                }
             }
         }
     }
     entries
+}
+
+/// The fleets on their way to join `target`, in key order: a Move of ships
+/// or a fleet onto a fleet routes each capital ship to it (`FUN_004ffc90`
+/// expands a fleet into its ships for a fleet target), and the execute
+/// reparents each into the target at once (`FUN_004feca0` → `FUN_004f8630`;
+/// `fleet-join-split.md`), so "that ship will immediately be considered a
+/// member of the fleet but will still be in hyperspace for several days
+/// until it arrives" (manual p. 122). port: the ships travel as a fleet of
+/// their own that joins on arrival (`fleet_join::join_fleet`); while it
+/// will (`fleet_join::joins_on_arrival`), the Fleet window shows its ships
+/// and their cargo as the target's, en route.
+fn joining_fleets(world: &GameWorld, movement: &MovementState, target: FleetKey) -> Vec<FleetKey> {
+    let Some(value) = world.fleets.get(target) else {
+        return Vec::new();
+    };
+    let mut fleets: Vec<FleetKey> = movement
+        .orders()
+        .values()
+        .filter(|order| order.join == Some(target) && order.fleet != target)
+        .filter(|order| {
+            fleet_join::joins_on_arrival(world, movement, target, order.destination, value.is_alliance)
+                && world.fleets.get(order.fleet).is_some_and(|mover| mover.is_alliance == value.is_alliance)
+        })
+        .map(|order| order.fleet)
+        .collect();
+    fleets.sort_unstable();
+    fleets
+}
+
+/// The fleet whose members `fleet`'s ships are while they travel to join it
+/// ([`joining_fleets`]).
+pub(crate) fn join_target(world: &GameWorld, movement: &MovementState, fleet: FleetKey) -> Option<FleetKey> {
+    movement
+        .get(fleet)?
+        .join
+        .filter(|&target| joining_fleets(world, movement, target).contains(&fleet))
+}
+
+/// [`right_items`] of the selection with, for a fleet, the ships on their
+/// way to join it and what they carry after its own, each in hyperspace
+/// (`FUN_004f8240`: an object is en route while its container is).
+/// port: after the fleet's own (the original's list follows object keys).
+fn window_items(
+    world: &GameWorld,
+    movement: &MovementState,
+    transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
+    selected: Option<FleetWindowEntry>,
+    tab: FleetWindowTab,
+) -> Vec<RightItem> {
+    let mut items = right_items(world, transport, arrivals, selected, tab);
+    if let Some(FleetWindowEntry::Fleet(target)) = selected {
+        for fleet in joining_fleets(world, movement, target) {
+            items.extend(
+                right_items(world, transport, arrivals, Some(FleetWindowEntry::Fleet(fleet)), tab)
+                    .into_iter()
+                    .map(|item| RightItem {
+                        en_route: true,
+                        ..item
+                    }),
+            );
+        }
+    }
+    items
+}
+
+/// [`tab_enabled`] with the ships on their way to join a selected fleet.
+fn window_tab_enabled(
+    world: &GameWorld,
+    movement: &MovementState,
+    transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
+    selected: Option<FleetWindowEntry>,
+    tab: FleetWindowTab,
+) -> bool {
+    tab_enabled(world, transport, arrivals, selected, tab)
+        || matches!(selected, Some(FleetWindowEntry::Fleet(target))
+            if joining_fleets(world, movement, target).into_iter().any(|fleet| {
+                tab_enabled(world, transport, arrivals, Some(FleetWindowEntry::Fleet(fleet)), tab)
+            }))
+}
+
+/// [`tab_counts`] with the ships on their way to join a selected fleet:
+/// their slots, aboard and capacity, are the fleet's now (`FUN_004a6be0`
+/// walks the fleet's ships in mode 3).
+fn window_tab_counts(
+    world: &GameWorld,
+    movement: &MovementState,
+    transport: &TroopTransportState,
+    selected: Option<FleetWindowEntry>,
+    tab: FleetWindowTab,
+) -> Option<(u32, u32)> {
+    let (mut aboard, mut capacity) = tab_counts(world, transport, selected, tab)?;
+    if let Some(FleetWindowEntry::Fleet(target)) = selected {
+        for fleet in joining_fleets(world, movement, target) {
+            if let Some((more, room)) = tab_counts(world, transport, Some(FleetWindowEntry::Fleet(fleet)), tab) {
+                aboard = aboard.saturating_add(more);
+                capacity = capacity.saturating_add(room);
+            }
+        }
+    }
+    Some((aboard, capacity))
 }
 
 /// `+0x70` (`FUN_004a3130`) at a window-local logical point.
@@ -1923,12 +2034,13 @@ fn ship_target(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<Missi
 /// is no such item, `Some(None)` for an item no mission takes.
 fn right_target(
     world: &GameWorld,
+    movement: &MovementState,
     transport: &TroopTransportState,
     arrivals: &[(MissionMember, FleetKey)],
     window: &OpenFleetWindow,
     index: usize,
 ) -> Option<Option<ItemTarget>> {
-    let item = right_items(world, transport, arrivals, window.selected, window.tab)
+    let item = window_items(world, movement, transport, arrivals, window.selected, window.tab)
         .into_iter()
         .nth(index)?;
     Some(match item.object {
@@ -2478,7 +2590,7 @@ pub fn draw_fleet_windows(
                 left: None,
                 point,
             }) if system == window.system => {
-                let items = right_items(world, transport, &arrivals, window.selected, window.tab);
+                let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
                 // An object in hyperspace takes no order (FUN_004f9860).
                 let objects: Vec<ItemObject> = (0..items.len())
                     .filter(|row| window.selected_items.contains(*row))
@@ -2492,7 +2604,7 @@ pub fn draw_fleet_windows(
                 }
             }
             Some(DragEnd::Release { system, point }) if system == window.system => {
-                let items = right_items(world, transport, &arrivals, window.selected, window.tab).len();
+                let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab).len();
                 let local = window_screen_rect(window, layout);
                 let at = (
                     (point.x - local.min.x) / layout.scale - RIGHT_LIST.0,
@@ -2530,7 +2642,7 @@ pub fn draw_fleet_windows(
             // FUN_004a2c80), the clicked item first.
             let mut team = vec![selection];
             if row.is_some_and(|row| window.selected_items.contains(row)) {
-                let items = right_items(world, transport, &arrivals, window.selected, window.tab);
+                let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
                 team.extend(
                     items
                         .iter()
@@ -3236,7 +3348,7 @@ fn draw_fleet_window(
                         }
                     }
                 }
-                if let Some((aboard, capacity)) = tab_counts(world, transport, selected, window.tab)
+                if let Some((aboard, capacity)) = window_tab_counts(world, movement, transport, selected, window.tab)
                 {
                     // The count fonts +0x1a4 and +0x1a8 are font 10
                     // (FUN_006002b0(10), FUN_004a4b10).
@@ -3281,7 +3393,7 @@ fn draw_fleet_window(
                 let strip_side = if side == viewer { viewer } else { other };
                 let base = side_art(TAB_BASE, strip_side);
                 for tab in shown_tabs(selected) {
-                    let enabled = tab_enabled(world, transport, arrivals, selected, tab);
+                    let enabled = window_tab_enabled(world, movement, transport, arrivals, selected, tab);
                     let rect = tab_rect(local, scale, tab);
                     let id = tab_resource(base, tab, tab == window.tab, enabled);
                     // The control clips the 29-row art to 28 (`FUN_00602d30`).
@@ -3342,7 +3454,7 @@ fn draw_fleet_window(
                     selected,
                     Some(FleetWindowEntry::Fleet(fleet)) if movement.is_in_transit(fleet)
                 );
-                let shown_items = right_items(world, transport, arrivals, selected, window.tab);
+                let shown_items = window_items(world, movement, transport, arrivals, selected, window.tab);
                 let content = right_content(shown_items.len());
                 let bar = crate::list_scroll_bar::ScrollBar::new(
                     LIST_BAR_ART,
@@ -6296,6 +6408,70 @@ pub(crate) mod tests {
         );
         world.fleets[fleet].capital_ships[1].alive = false;
         assert_eq!(ship_contents(&world, &transport, &[], fleet), [0, 0, CONTENT_REGIMENTS]);
+    }
+
+    #[test]
+    fn ships_on_their_way_to_join_a_fleet_are_its_members_in_hyperspace() {
+        // Manual p. 122: a ship moved onto a fleet in another sector "will
+        // immediately be considered a member of the fleet but will still be
+        // in hyperspace"; FUN_004ffc90 routes each ship to the target fleet
+        // and FUN_004feca0 reparents it at once, so the target's entry
+        // expands to it and its tabs list it and its cargo, en route
+        // (FUN_004f8240), and its slots count (FUN_004a6be0).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let mut far = world.systems[system].clone();
+        far.name = "Bespin".into();
+        far.x += 40;
+        let elsewhere = world.systems.insert(far);
+        let target = add_fleet(&mut world, system, true, 2);
+        let mover = add_fleet(&mut world, elsewhere, true, 1);
+        world.systems[elsewhere].fleets.clear();
+        let troop = add_troop(&mut world, elsewhere);
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, mover, &[troop]).unwrap();
+        let mut movement = MovementState::default();
+        assert!(movement.order(mover, elsewhere, system, 5));
+        movement.set_join(mover, target);
+        let mut open = window(system, Some(FleetWindowEntry::Fleet(target)));
+        open.expanded.push(target);
+
+        assert_eq!(
+            left_entries(&world, &movement, &fog(system), Faction::Alliance, &open),
+            [
+                FleetWindowEntry::Fleet(target),
+                FleetWindowEntry::Ship { fleet: target, index: 0 },
+                FleetWindowEntry::Ship { fleet: mover, index: 0 },
+            ]
+        );
+        let selected = open.selected;
+        let ships = window_items(&world, &movement, &transport, &[], selected, FleetWindowTab::CapitalShips);
+        assert_eq!(
+            ships.iter().map(|item| item.en_route).collect::<Vec<_>>(),
+            [false, true]
+        );
+        assert!(matches!(ships[1].object, Some(ItemObject::Ship { fleet, index: 0, .. }) if fleet == mover));
+        let troops = window_items(&world, &movement, &transport, &[], selected, FleetWindowTab::Troops);
+        assert_eq!(troops.len(), 1);
+        assert_eq!(troops[0].object, Some(ItemObject::Regiment(troop)));
+        assert!(troops[0].en_route);
+        assert!(!tab_enabled(&world, &transport, &[], selected, FleetWindowTab::Troops));
+        assert!(window_tab_enabled(&world, &movement, &transport, &[], selected, FleetWindowTab::Troops));
+        // Transport capacities 2 and 1, one regiment aboard the mover.
+        assert_eq!(
+            window_tab_counts(&world, &movement, &transport, selected, FleetWindowTab::Troops),
+            Some((1, 3))
+        );
+
+        // A target that leaves is no longer joined on arrival: the ships
+        // are their own fleet again.
+        assert!(movement.order(target, system, elsewhere, 5));
+        open.expanded.push(mover);
+        let entries = left_entries(&world, &movement, &fog(system), Faction::Alliance, &open);
+        assert!(entries.contains(&FleetWindowEntry::Fleet(mover)), "{entries:?}");
+        assert_eq!(
+            window_items(&world, &movement, &transport, &[], selected, FleetWindowTab::CapitalShips).len(),
+            1
+        );
     }
 
     #[test]

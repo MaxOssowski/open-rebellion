@@ -718,9 +718,12 @@ pub fn ship_rows(
         0
     };
     let arrival = fleet_arrival(sources, fleet_key);
+    // A ship on its way to join a fleet is that fleet's member already
+    // (FUN_004feca0 reparents it at once; manual p. 122).
+    let member_of = crate::fleet_window::join_target(world, sources.movement, fleet_key).unwrap_or(fleet_key);
     let mut rows = vec![
         row("Class:", class.name.clone()),
-        row("Fleet:", fleet_label(world, fleet_key).unwrap_or_default()),
+        row("Fleet:", fleet_label(world, member_of).unwrap_or_default()),
         row("Status:", moving_status(arrival.is_some())),
     ];
     eta(&mut rows, arrival);
@@ -2195,6 +2198,32 @@ mod tests {
         ship.set_hits(Subsystem::Speed, 1);
         let rows = ship_rows(states.sources(&world), fleet, 0).unwrap();
         assert!(super::tests::rows(&rows).contains(&("Ship Damaged:", "Yes")));
+    }
+
+    #[test]
+    fn a_ship_on_its_way_to_join_a_fleet_names_that_fleet() {
+        // FUN_004feca0 reparents a ship moved onto a fleet into it at once
+        // (manual p. 122: "immediately be considered a member of the
+        // fleet"), so its Status names the target under Fleet while it is
+        // still Enroute.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
+        let there = system(&mut world, "Hoth", ControlKind::Controlled(Faction::Alliance));
+        let target = carrier_fleet(&mut world, here);
+        let mover = carrier_fleet(&mut world, there);
+        world.systems[there].fleets.retain(|&fleet| fleet != mover);
+        let mut states = States::new();
+        assert!(states.movement.order(mover, there, here, 5));
+        states.movement.set_join(mover, target);
+
+        let rows = ship_rows(states.sources(&world), mover, 0).unwrap();
+
+        let name = fleet_label(&world, target).unwrap();
+        assert_ne!(name, fleet_label(&world, mover).unwrap());
+        assert_eq!(
+            super::tests::rows(&rows[1..3]),
+            [("Fleet:", name.as_str()), ("Status:", "Enroute")]
+        );
     }
 
     #[test]

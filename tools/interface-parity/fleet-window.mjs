@@ -27,6 +27,7 @@ const FLEET_LOAD = 48;
 const FLEET_LOAD_FULL = 49;
 const REGIMENT_UNLOAD_REFUSED = 51;
 const FLEET_JOIN = 52;
+const FLEET_JOIN_ENROUTE = 112;
 const PRODUCTION_DESTINATION = 54;
 const SQUADRON_LOAD = 65;
 const SQUADRON_BATTLE = 66;
@@ -2082,6 +2083,25 @@ const cases = [
       assert.equal(joined.in_transit, false);
       await shot(page, directory, "joined");
       return { selected, joined };
+    },
+  },
+  {
+    name: "join-en-route",
+    code: FLEET_JOIN_ENROUTE,
+    // A ship moved onto a fleet from another sector "will immediately be
+    // considered a member of the fleet but will still be in hyperspace"
+    // (manual p. 122; FUN_004ffc90 routes each ship to the fleet,
+    // FUN_004feca0 reparents it at once): the window lists one fleet, and
+    // its Capital Ships tab the two ships in orbit and the one on its way.
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup, 1);
+      assert.deepEqual(ships(opened), [2], JSON.stringify(opened));
+      await click(page, point(opened.fleets[0].entry));
+      const selected = await until(page, "a click selects the fleet",
+        (o) => o.selected === "fleet" && o.tab === "CapitalShips" && o.first_item);
+      assert.equal(selected.items.length, 3, JSON.stringify(selected));
+      await shot(page, directory, "join-en-route");
+      return { opened, selected };
     },
   },
   {

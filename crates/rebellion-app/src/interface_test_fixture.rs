@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 111;
+const SCENARIO_COUNT: u8 = 112;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -392,6 +392,12 @@ pub enum Scenario {
     /// another sector. `FUN_00556390` puts each in the fleet at once, in
     /// hyperspace, so its Fleet window lists them (`regiment-unload.md`).
     FleetArrivals = 110,
+    /// As `FleetJoin`, but the second fleet's one ship was sent by Move
+    /// onto the first fleet from a system in another sector and is on its
+    /// way: the ship is the first fleet's member at once, in hyperspace
+    /// (manual p. 122; `FUN_004ffc90`, `FUN_004feca0`), so the Fleet window
+    /// lists one fleet of three ships.
+    FleetJoinEnroute = 111,
 }
 
 impl Scenario {
@@ -508,6 +514,7 @@ impl Scenario {
             108 => Self::CoruscantSquadrons,
             109 => Self::SquadronEnroute,
             110 => Self::FleetArrivals,
+            111 => Self::FleetJoinEnroute,
             _ => return None,
         })
     }
@@ -536,6 +543,7 @@ impl Scenario {
                 | Self::FleetJoin
                 | Self::ProductionDestination
                 | Self::FleetArrivals
+                | Self::FleetJoinEnroute
         )
     }
 
@@ -3529,7 +3537,7 @@ fn joining_fleet(
     world: &mut GameWorld,
     first: FleetKey,
 ) -> Option<FleetKey> {
-    if request.scenario != Scenario::FleetJoin {
+    if !matches!(request.scenario, Scenario::FleetJoin | Scenario::FleetJoinEnroute) {
         return None;
     }
     if let Some(second) = world.fleets.keys().nth(1) {
@@ -3759,6 +3767,13 @@ fn place_loading_fleet(
         other.characters.clear();
         other.fighters.clear();
         other.capital_ships = vec![ShipInstance::new(carrier, 100, player_is_alliance)];
+        // The en route variant: the second fleet's ship left `elsewhere`
+        // to join the first (`fleet_join::join_fleet` across systems).
+        if request.scenario == Scenario::FleetJoinEnroute {
+            other.location = elsewhere;
+            movement.order(second, elsewhere, primary, 30);
+            movement.set_join(second, fleet);
+        }
     }
     reconcile_fleet_orbits(movement, world);
 
@@ -10136,6 +10151,35 @@ mod tests {
     }
 
     #[test]
+    fn the_en_route_joining_scenario_sends_the_one_ship_fleet_onto_the_other() {
+        // port: the fixture's own layout for the en route join case.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied = apply_to_loading_world(request(Scenario::FleetJoinEnroute, faction));
+            let world = &applied.world;
+            let here = world.systems.keys().next().unwrap();
+            let first = world.fleets.keys().next().unwrap();
+            assert_eq!(world.systems[here].fleets, [first], "{faction:?}");
+            let order = applied
+                .movement
+                .orders()
+                .values()
+                .find(|order| order.join == Some(first))
+                .expect("a fleet on its way to join the first");
+            assert_eq!(order.destination, here);
+            assert_ne!(world.fleets[order.fleet].location, here);
+            assert_eq!(world.fleets[order.fleet].capital_ships.len(), 1);
+            assert_eq!(world.fleets[first].capital_ships.len(), 2);
+            assert!(rebellion_core::fleet_join::joins_on_arrival(
+                world,
+                &applied.movement,
+                first,
+                here,
+                faction == CockpitFaction::Alliance
+            ));
+        }
+    }
+
+    #[test]
     fn the_fleet_load_observation_lists_each_fleet_with_its_ships_and_entry() {
         // port: the fixture's own report.
         let request = request(Scenario::FleetJoin, CockpitFaction::Alliance);
@@ -11780,6 +11824,7 @@ mod tests {
                 Scenario::RegimentEnroute,
                 Scenario::SquadronEnroute,
                 Scenario::FleetArrivals,
+                Scenario::FleetJoinEnroute,
             ]
         );
     }
