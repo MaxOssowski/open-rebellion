@@ -165,3 +165,128 @@ change (`wasm_sha256` in each `result.json`).
 ## Save format
 
 Unchanged.
+
+## Round 7: the two open tab findings
+
+Both open tab findings above are now traced and fixed. Both come from the
+same CoolStrobeButton paint, `FUN_00602d30`. Each paint first copies the
+button's backdrop from its surface `+0xa4` at (`+0x10c`, `+0x110`) into
+the composite `+0xa8` (31 by 28 for a Fleet tab). Then it blits the art
+over it, keyed on its first DIB pixel (`FUN_005fd0f0` -> `FUN_005fc710`).
+`FUN_005fc710` copies only the art's own width. So a 30-wide art leaves
+column 30 of a 31-wide control showing the backdrop.
+
+### Missions window: the tabs' key pixels
+
+- **Trace.** `FUN_0049f540` creates the strip (`FUN_0060d590`, 122 by 16
+  at (105, 127)). It then creates the two tabs with `FUN_00602150` at
+  (0, 0) and (61, 0) in the strip. It passes each tab the window's own
+  surface `+0xa4` (`FUN_006073d0`), which holds 11165, not the strip's.
+  `FUN_00602150` stores the tab's x and y in the strip as `+0x10c` and
+  `+0x110`. So `FUN_00602d30` reads the backdrop from 11165 at the tab's
+  strip position, not at its window position.
+  - The key pixel, the art's bottom-left corner, sits at window (105, 142)
+    and (166, 142).
+  - It shows 11165 at (0, 15), which is (166, 202, 240), palette index 9.
+  - It shows 11165 at (61, 15), which is (90, 88, 94).
+  - That is exactly what A0 shows. 11165 is black at (105, 142) and
+    (166, 142), which is what the port showed.
+- **Fix.** `missions_window.rs` repaints each tab's key pixel from 11165 at
+  (tab x, 15) (`tab_key_pixel`). The fix uses a new `KeyPixel::BackgroundAt`
+  in `fleet_window.rs`.
+- **Test.**
+  `missions_window::tests::the_tabs_key_pixels_show_the_background_at_their_strip_position`.
+  It fails without the fix (checked by making `tab_key_pixel` return the
+  plain background).
+- **Gate.** `sector-quadrants.mjs` case `empire/missions-en-route` no longer
+  allows any pixel. It now asserts `differing === 0`.
+- **After.** Run `sector-quadrants-2026-11-12T06-55-34-591Z-210823`: 32 of
+  32 cases pass. The whole Missions window has 0 of 49018 compared pixels
+  differing from A0.
+
+### Fleet window: column 30 of the 30-wide tabs
+
+- **Trace.** `FUN_004a4b10` creates the two strips (`FUN_0060d590`, 131 by
+  28 at (99, 96)) and their tabs. It passes each tab the strip's surface
+  `+0x98`. Whenever a strip is shown, `FUN_004a6980` calls
+  `FUN_0060da10(strip, pane, x - 0x61, y - 0x1d)`, that is
+  `(strip, pane, 2, 67)`, with the side's pane art (`+0x180` 10407 or
+  `+0x184` 10457). That call:
+  - replaces the strip's surface with a copy of the pane read from
+    (2, 67), so the strip shows the pane where it stands;
+  - and for every tab sets `+0xa4` to that surface and **both
+    `+0x10c` and `+0x110` to 0**.
+- So every tab, whatever its x, reads its backdrop from the strip's
+  (0, 0). Its column c shows the pane at window (99 + c, 96 + r).
+  - The 30-wide art of the Capital Ships and Personnel tabs (10409, 10412,
+    10415, 10416, 10419, and Empire 10459...) leaves column 30 showing the
+    pane at window x 129. At x 129 the pane is black for rows 96..122 and
+    red at row 123.
+  - A0 `fleet2/vjun-fleet5-admiral-*` shows exactly that: black at
+    (130, 96) and (226, 122), where the pane itself is (59, 59, 59) and
+    (30, 29, 24). It shows red at (130, 123) and (226, 123).
+  - The port showed the pane at the column's own position.
+- **Fix.** `fleet_window.rs` paints each tab's backdrop under its art: the
+  pane, clipped to the tab, placed at (97 + tab x, 29)
+  (`tab_backdrop_origin`).
+- **Test.**
+  `fleet_window::tests::each_tab_shows_the_pane_from_the_strips_left_edge_under_its_art`.
+  It fails without the fix (checked by keeping the pane at its own origin).
+- **Gate.** `fleet-window.mjs`:
+  - `composeExpected` now composes the same backdrop. Without that, case
+    `chrome` failed by these 2 pixels per faction (run
+    `fleet-window-2026-11-12T06-58-40-614Z-217942`).
+  - The `a0-vjun` ceilings are now the measured counts: ships 1578,
+    fighters 1125, troops 1125, personnel 1486. Before, they were 1700,
+    1250, 1250 and 1600. Every run since 2026-11-11 measured 1580, 1127,
+    1127 and 1488, so each tab is 2 pixels closer to A0.
+- **Other A0 cases.** In the same run every other A0 comparison in
+  `fleet-window.mjs` dropped by 2 pixels, or by 1 where only one 30-wide tab
+  shows: a0-destination, a0-kimanan, a0-selonia, a0-umgul and a0-yavin. No
+  count rose.
+
+### Round 7 gate runs
+
+All runs used Linux Arch Chromium, headless, with the interface-test WASM
+of this change (`wasm_sha256`
+`cd9541ea5c7bad530f8ad38091e87a4eb14dbf8384467dafa17393f56fe8f7c7`). The
+run folders are in the agent worktree's `.artifacts/interface-parity/`.
+
+- `sector-quadrants.mjs --a0=<abs>/.artifacts/a0-vm/system-windows`:
+  32 of 32 cases pass. Run `sector-quadrants-2026-11-12T06-55-34-591Z-210823`.
+- `fleet-window.mjs`: 88 of 88 cases pass. Run
+  `fleet-window-2026-11-12T07-07-52-309Z-239957`. The `a0-vjun` counts are
+  1578, 1125, 1125 and 1486, each at its new ceiling.
+- Not run here: `briefing.mjs` and the input and modality gates (other
+  agents).
+
+### Round 7 unit tests and mutants
+
+- `cargo test -p rebellion-render`: 1490 passed, 6 ignored.
+- `provenance-scan check`: ok.
+- `cargo mutants --in-place -p rebellion-render --in-diff` on the render
+  diff: 27 mutants, 26 caught, 1 unviable.
+  - A first pass missed 4 mutants in `paint_key_pixel`'s
+    `BackgroundAt` offset (`-` to `+` or `/`).
+  - The Missions test now also asserts that both repaints place 11165 at
+    the strip's corner (105, 127). With that, all 4 are caught.
+
+### Round 7 proposed status
+
+| Cell | Proposal | Why |
+| --- | --- | --- |
+| OBJ-12-C001 (hyperspace) | pass, the note removed | The whole Missions window now matches A0 `missions-window-enroute-day276` in every pixel outside text and state, the two tab key pixels included. |
+| OBJ-12-C015 (hyperspace indicator) | pass (unchanged) | The en route mini and the whole window still match A0 exactly. |
+| OBJ-05-C002 (populated) | pass (strengthened) | The `a0-vjun` tabs no longer differ from A0 outside text and A0's cursor. The ceilings are now the measured counts. |
+| OBJ-05-C001 (empty fleet) | pass (unchanged) | No tabs are shown there. `a0-empty` still has 0 differing pixels outside the title. |
+
+### Still open
+
+- The strip's own column 130, at window x 229, is the zero-filled black
+  past the pane copy (130 columns). The port shows 10770 there, which is
+  black in every row 96..123, so the two agree. This is noted only
+  because it is the one strip pixel the port does not draw from the pane.
+- The other A0 Fleet cases (a0-destination, a0-kimanan, a0-selonia,
+  a0-umgul, a0-yavin) keep their wider ceilings. Each has 1 or 2 pixels
+  fewer to spend now. Their remaining differences are text and state,
+  and they were not re-audited here.
