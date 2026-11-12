@@ -2835,7 +2835,7 @@ pub fn emit_personnel_finder(
 }
 
 /// The open Status window's title, name and rows: a Character Status in the
-/// ForceStatus scenario, a facility's (the headquarters') in Quadrants, the
+/// ForceStatus and FleetArrivals scenarios, a facility's (the headquarters') in Quadrants, the
 /// travelling special force's in SpecialForceEnroute and regiment's in
 /// RegimentEnroute (with the picture's marks), and an unfinished unit's or a producer's in any.
 pub fn emit_status_rows(
@@ -2846,10 +2846,14 @@ pub fn emit_status_rows(
     use rebellion_render::status_rows::StatusObject;
     let mut marks = Vec::new();
     let (title, name, rows) = match (request.scenario, status.object()) {
-        (Scenario::ForceStatus, Some(StatusObject::Character(key))) => {
+        (
+            Scenario::ForceStatus | Scenario::FleetArrivals,
+            Some(StatusObject::Character(key)),
+        ) => {
             let Some(rows) = rebellion_render::status_window::character_rows(
                 sources.world,
                 sources.missions.en_route(),
+                &rebellion_render::quadrant_icons::fleet_arrivals(sources.missions),
                 key,
             ) else {
                 return;

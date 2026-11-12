@@ -1009,7 +1009,7 @@ pub fn special_force_rows(
         .iter()
         .find(|transit| transit.member == MissionMember::SpecialForce(key));
     // Attached names the unit's container: a fleet it is aboard, else its
-    // system.
+    // system; in hyperspace the Move's target container (FUN_00556390).
     let attached = transit.map_or_else(
         || {
             world
@@ -1026,7 +1026,14 @@ pub fn special_force_rows(
                 })
                 .unwrap_or_default()
         },
-        |transit| system_name(world, transit.to),
+        |transit| {
+            crate::status_window::transit_container(
+                world,
+                &crate::quadrant_icons::fleet_arrivals(sources.missions),
+                transit,
+            )
+            .unwrap_or_default()
+        },
     );
     let status = if transit.is_some() {
         "Enroute"
@@ -1387,7 +1394,12 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                 side,
                 character_picture(character).map(|mini| (DllSource::Gokres, mini - 0x4000)),
                 character.name.clone(),
-                character_rows(world, sources.missions.en_route(), key)?,
+                character_rows(
+                    world,
+                    sources.missions.en_route(),
+                    &crate::quadrant_icons::fleet_arrivals(sources.missions),
+                    key,
+                )?,
             )
         }
         StatusObject::SpecialForce(key) => {
@@ -3167,6 +3179,71 @@ mod tests {
         // FUN_0042c3b0: its picture carries STRATEGY 11520 en route.
         let view = status_view(states.sources(&world), StatusObject::SpecialForce(unit)).unwrap();
         assert_eq!(view.marks, [(DllSource::Strategy, 11_520)]);
+    }
+
+    #[test]
+    fn a_member_on_its_way_aboard_a_fleet_is_attached_to_the_fleet() {
+        // FUN_00556390 reparents a member into its Move's target container
+        // (+0x74) at once; for a Move onto a fleet that is the fleet, so
+        // FUN_004486f0 and FUN_00445780 name it under Attached while the
+        // member travels, then "Enroute" and the ETA (FUN_004fd2b0).
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Hoth", ControlKind::Controlled(Faction::Alliance));
+        let there = system(&mut world, "Bespin", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, there);
+        let name = fleet_label(&world, fleet).unwrap();
+        let character = world
+            .characters
+            .insert(rebellion_core::world::Character::default());
+        let unit = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: true,
+        });
+        world.systems[here].special_forces.push(unit);
+        let mut states = States::new();
+        // Each member's own Move, whose target container is the fleet.
+        for (member, arrival) in [
+            (MissionMember::Character(character), 15),
+            (MissionMember::SpecialForce(unit), 16),
+        ] {
+            let id = states.missions.dispatch(MissionRequest::single(
+                MissionKind::Diplomacy,
+                MissionFaction::Alliance,
+                character,
+                there,
+                None,
+                0,
+            ));
+            states.missions.set_target_fleet(id, fleet);
+            states.missions.push_transit(rebellion_core::missions::MemberTransit {
+                member,
+                mission_id: id,
+                to: there,
+                arrival,
+                abode: None,
+            });
+        }
+
+        let view = status_view(states.sources(&world), StatusObject::Character(character)).unwrap();
+        assert_eq!(
+            super::tests::rows(&view.rows[1..4]),
+            vec![
+                ("Attached: ", name.as_str()),
+                ("Status:", "Enroute"),
+                ("ETA Destination:", "Day 15"),
+            ]
+        );
+        let rows = special_force_rows(states.sources(&world), unit).unwrap();
+        assert_eq!(
+            super::tests::rows(&rows[..3]),
+            vec![
+                ("Attached: ", name.as_str()),
+                ("Status:", "Enroute"),
+                ("ETA Destination:", "Day 16"),
+            ]
+        );
     }
 
     #[test]

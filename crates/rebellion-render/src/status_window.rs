@@ -11,7 +11,7 @@
 
 use egui_macroquad::egui;
 use rebellion_core::character_command::CommandKind;
-use rebellion_core::ids::CharacterKey;
+use rebellion_core::ids::{CharacterKey, FleetKey};
 use rebellion_core::missions::{MemberTransit, MissionMember};
 use rebellion_core::world::{GameWorld, Skill};
 
@@ -124,7 +124,8 @@ pub const fn force_ranking(value: u32) -> &'static str {
 }
 
 /// The Character Status rows (`FUN_004486f0`). `en_route` is the mission
-/// transits (`MissionState::en_route`).
+/// transits (`MissionState::en_route`), and `bound` the members among them
+/// whose Move lands them aboard a fleet (`quadrant_icons::fleet_arrivals`).
 ///
 /// Commanding (`+0xa8`) names the object the character commands: the
 /// Command order (`FUN_00561bb0`, `FUN_004ee740`) keys it to the fleet of the
@@ -137,6 +138,7 @@ pub const fn force_ranking(value: u32) -> &'static str {
 pub fn character_rows(
     world: &GameWorld,
     en_route: &[MemberTransit],
+    bound: &[(MissionMember, FleetKey)],
     key: CharacterKey,
 ) -> Option<Vec<StatusRow>> {
     let character = world.characters.get(key)?;
@@ -144,8 +146,7 @@ pub fn character_rows(
         .iter()
         .find(|transit| transit.member == MissionMember::Character(key));
     let attached = transit
-        .and_then(|transit| world.systems.get(transit.to))
-        .map(|system| system.name.clone())
+        .and_then(|transit| transit_container(world, bound, transit))
         .or_else(|| {
             character
                 .current_fleet
@@ -243,6 +244,21 @@ pub fn character_rows(
         row("Commander:", yes_no(character.can_be_commander)),
     ]);
     Some(rows)
+}
+
+/// The name of the container a member in hyperspace is in: `FUN_00556390`
+/// reparents it into its Move's target container (`+0x74`) at once, a fleet
+/// when the Move targets one (`bound`, `quadrant_icons::fleet_arrivals`),
+/// else the transit's system.
+pub(crate) fn transit_container(
+    world: &GameWorld,
+    bound: &[(MissionMember, FleetKey)],
+    transit: &MemberTransit,
+) -> Option<String> {
+    match bound.iter().find(|(member, _)| *member == transit.member) {
+        Some(&(_, fleet)) => fleet_label(world, fleet),
+        None => world.systems.get(transit.to).map(|system| system.name.clone()),
+    }
 }
 
 /// The background for an object of side index `side`, seen by `viewer`
@@ -858,7 +874,7 @@ mod tests {
         let (mut world, key, yavin, _) = world_with_luke();
         world.characters[key].command = CommandKind::General;
         let commanding = |world: &GameWorld| {
-            pairs(&character_rows(world, &[], key).expect("rows"))[0].1.to_owned()
+            pairs(&character_rows(world, &[], &[], key).expect("rows"))[0].1.to_owned()
         };
         assert_eq!(commanding(&world), "Yavin");
 
@@ -893,7 +909,7 @@ mod tests {
         let luke = &mut world.characters[key];
         luke.current_system = None;
         luke.current_abode = Some(dagobah);
-        let rows = character_rows(&world, &[], key).expect("rows");
+        let rows = character_rows(&world, &[], &[], key).expect("rows");
         assert!(pairs(&rows).contains(&("Attached: ", "Dagobah")));
     }
 
@@ -902,7 +918,7 @@ mod tests {
         // FUN_004486f0, in order; manual p. 101, Fig. 3.46 (Luke at Yavin,
         // Awaiting Orders, Trainee, 75/75/135/70, no R&D, Admiral Yes).
         let (world, key, ..) = world_with_luke();
-        let rows = character_rows(&world, &[], key).expect("rows");
+        let rows = character_rows(&world, &[], &[], key).expect("rows");
         assert_eq!(
             pairs(&rows),
             [
@@ -952,7 +968,7 @@ mod tests {
             ..luke()
         });
         let leadership = |world: &GameWorld| {
-            let rows = character_rows(world, &[], vader).expect("rows");
+            let rows = character_rows(world, &[], &[], vader).expect("rows");
             pairs(&rows)
                 .into_iter()
                 .find(|(label, _)| *label == "Leadership Rating:")
@@ -968,7 +984,7 @@ mod tests {
         // FUN_004486f0: +0x80, +0x82 and +0x84 show Yes when non-zero.
         let (mut world, key, ..) = world_with_luke();
         world.characters[key].troop_training = skill(1);
-        let rows = character_rows(&world, &[], key).expect("rows");
+        let rows = character_rows(&world, &[], &[], key).expect("rows");
         let value = |label: &str| {
             rows.iter()
                 .find(|row| row.label == label)
@@ -993,7 +1009,7 @@ mod tests {
             arrival: 42,
             abode: None,
         };
-        let rows = character_rows(&world, &[transit], key).expect("rows");
+        let rows = character_rows(&world, &[transit], &[], key).expect("rows");
         assert_eq!(
             pairs(&rows[..4]),
             [
@@ -1012,7 +1028,7 @@ mod tests {
         // (FUN_00520b70) reads as Awaiting Orders.
         let (mut world, key, ..) = world_with_luke();
         let status = |world: &GameWorld| {
-            character_rows(world, &[], key).expect("rows")[2]
+            character_rows(world, &[], &[], key).expect("rows")[2]
                 .value
                 .clone()
         };

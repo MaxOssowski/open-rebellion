@@ -560,6 +560,28 @@ const cases = [
       return point(fighters.first_item);
     },
   },
+  // A character on its way into the fleet (the fixture's Move onto it,
+  // FUN_00556390 into the target container +0x74): the Personnel tab lists
+  // it, and its Status (FUN_004486f0) names the fleet under Attached, then
+  // Enroute and the ETA (FUN_004fd2b0). No A0 capture.
+  {
+    name: "fleet-character-en-route",
+    code: FLEET_ARRIVALS,
+    family: "Character",
+    rows: [["Commanding:"], ["Attached: ", "Fleet 1"], ["Status:", "Enroute"], ["ETA Destination:", "Day 99"],
+      ["Force Ranking:"], ["Diplomacy Rating:"], ["Espionage Rating:"], ["Combat Rating:"], ["Leadership Rating:"],
+      ["R&D Capabilities"], [" Ship Design"], [" Troop Training"], [" Facility Design"], ["Possible Command Ranks"],
+      ["Admiral:"], ["General:"], ["Commander:"]],
+    target: async (page) => {
+      const opened = await openFleetWindow(page);
+      await click(page, point(opened.fleet_entry));
+      const fleet = await fleetLoad(page, (o) => o.selected === "fleet" && o.troops_tab);
+      await click(page, { x: Math.round(fleet.troops_tab[0] + 32), y: Math.round(fleet.troops_tab[1]) });
+      const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0 && o.first_item);
+      assert.equal(personnel.items.length, 1, JSON.stringify(personnel));
+      return point(personnel.first_item);
+    },
+  },
   // The regiment in training, the page's second cell: A0 02 reads
   // "Training" with no ETA row, the picture over 11514 and the unfinished
   // mark 11571 (11573 for side 2). A0 01's menu offers Move and Confirmed
