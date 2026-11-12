@@ -204,3 +204,32 @@ or browser gate was run.
 ## Batch b198
 
 The full gate batch b198 (2026-11-12 10:16-11:30) passed 29 of 30 gates, the workspace (3620 tests) and fixture tests (158), and 172 tactical battle checks, 0 failed. The one failure was fleet-window.mjs fleet-encyclopedia, which still expected the old fleet object 0x0800_0000; the expectation now names the class 0x0800_0004 (FUN_004f7d50) and both sides pass (run fleet-window-2026-11-12T10-36-04-649Z-764990).
+
+## A0 capture 2026-11-12 (afternoon)
+
+Windows 10 VM, the Alliance game at day 219, the Message Index on All
+Messages with a single message ("Training Facility Idle on Averam"),
+opened with Display Message. Captures stay in `.artifacts` (ignored):
+
+| Capture | SHA-256 | Shows |
+| --- | --- | --- |
+| `a0-vm/2026-11-12-afternoon/09-all.png` | `ab26a341c7bc8145b3cfd240895c92ef4c96dbdf074bbfa7db75432a34e22d0d` | The index with one message |
+| `a0-vm/2026-11-12-afternoon/10-msg.png` | `bdb731d77c49af298b21f75decf6e5b583b74f126b8a7af14152d0aa5d515fb6` | That message open |
+
+With one message both ends are reached at once. Matching the four arrow
+bitmaps from STRATEGY.DLL against `10-msg.png` (non-key pixels, tolerance
+8 per channel):
+
+| Art | Best place | Differing pixels |
+| --- | --- | --- |
+| 10950 (0x9a disabled) | (429, 64) | 0 of 125 |
+| 10948 (0x9a enabled) | (429, 64) | 48 of 125 |
+| 10921 (0x96 disabled) | (452, 64) | 0 of 125 |
+| 10919 (0x96 enabled) | (452, 64) | 48 of 125 |
+
+So the original shows the disabled art at the ends, as `FUN_0046a200`
+reads. No pixel in the arrows' box is the key blue (0, 0, 255): the
+disabled art is blitted keyed like the enabled art. The port drew 10921
+and 10950 opaque; `bmp_cache.rs` now keys 10919..10921 and 10948..10950
+(test `the_message_windows_disabled_scroll_arrows_key_out_their_blue`,
+which fails without the change).

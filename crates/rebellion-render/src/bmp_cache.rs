@@ -2028,9 +2028,12 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // it does the frame it lays over the selected one.
                 | 9001..=9033
                 // The Message window's mode-2 scroll buttons (`0x96`,
-                // `0x9a`), button art blitted keyed like the others.
-                | 10919..=10920
-                | 10948..=10949
+                // `0x9a`), button art blitted keyed like the others,
+                // their disabled art (10921, 10950; `FUN_0046a200`) too:
+                // A0 2026-11-12-afternoon/10-msg shows both disabled
+                // arrows over the window's black, no blue.
+                | 10919..=10921
+                | 10948..=10950
                 | 10298
                 // Story portraits, the foregrounds the Message window
                 // blits keyed over a message's background (`FUN_0046a320`
@@ -3426,9 +3429,29 @@ pub(crate) mod tests {
         // 10380 keys too: A0 encyclopedia/index-empire-day143 shows the
         // Empire's 0x67 rail button's blue corners keyed at (426, 89).
         for opaque in [
-            10869, 10876, 10877, 10879, 10950, 10954, 10958, 10963, 11553,
+            10869, 10876, 10877, 10879, 10954, 10958, 10963, 11553,
         ] {
             assert_eq!(alpha(opaque), 255, "{opaque}");
+        }
+    }
+
+    #[test]
+    fn the_message_windows_disabled_scroll_arrows_key_out_their_blue() {
+        // FUN_0046a200 shows 10921 (0x96) and 10950 (0x9a) at the list's
+        // ends; A0 2026-11-12-afternoon/10-msg (one message open) shows
+        // both over the window's black with no blue pixel left.
+        let mut image = image::RgbaImage::new(1, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        for keyed in [10919, 10920, 10921, 10948, 10949, 10950] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, keyed).unwrap();
+            assert_eq!(decoded.pixels[0].a(), 0, "{keyed}");
         }
     }
 
