@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 107;
+const SCENARIO_COUNT: u8 = 108;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -365,6 +365,12 @@ pub enum Scenario {
     /// the Alliance's, the system in sight, and its sector window open.
     /// The quadrant gate's second system is Coruscant (`quadrant_systems`).
     CoruscantSeized = 106,
+    /// The primary system's yards replaced by a built Advanced Shipyard,
+    /// Advanced Training Facility and Advanced Construction Yard of the
+    /// player's (MANFACSD 4, 5, 6), its System window open where the Build
+    /// Selection scenario's stands, so each facility page shows the base's
+    /// built picture first (`FUN_00458fe0`: 9010, 9018, 9026).
+    AdvancedBases = 107,
 }
 
 impl Scenario {
@@ -477,6 +483,7 @@ impl Scenario {
             104 => Self::RegimentEnroute,
             105 => Self::EnemyAssaultTaken,
             106 => Self::CoruscantSeized,
+            107 => Self::AdvancedBases,
             _ => return None,
         })
     }
@@ -874,6 +881,9 @@ pub fn apply(
     if request.scenario == Scenario::BuildSelectionDestination {
         sectors.open_for_system(world, secondary, request.faction);
     }
+    if request.scenario == Scenario::AdvancedBases {
+        place_advanced_bases(world, primary, player_is_alliance);
+    }
     if request.scenario == Scenario::BuildSelectionFleetDestination {
         let own = world
             .fleets
@@ -1002,6 +1012,7 @@ pub fn apply(
             | Scenario::BuildSelectionDefensesDestination
             | Scenario::BuildSelectionFleetDestination
             | Scenario::ProductionDelivery
+            | Scenario::AdvancedBases
     ) {
         systems.open(
             world,
@@ -1795,6 +1806,28 @@ fn place_coruscant(
     fleets.select(coruscant, FleetWindowEntry::Fleet(first));
     // A0 opened it with a double click on the entry, which expands it.
     fleets.expand(coruscant, first);
+}
+
+/// The MANFACSD classes of the advanced bases: the Advanced Shipyard,
+/// Advanced Training Facility and Advanced Construction Yard (records 4, 5
+/// and 6, families 0x28, 0x29 and 0x2a).
+const ADVANCED_BASES: [u32; 3] = [0x2800_0004, 0x2900_0005, 0x2a00_0006];
+
+/// The `AdvancedBases` scenario: the primary's yards replaced by one built
+/// advanced base of each kind, the player's, so each is its page's first
+/// cell.
+fn place_advanced_bases(world: &mut GameWorld, primary: SystemKey, player_is_alliance: bool) {
+    world.systems[primary].manufacturing_facilities.clear();
+    for class in ADVANCED_BASES {
+        let base = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(class),
+                side: rebellion_core::dat::Faction::of_alliance(player_is_alliance),
+                is_shipyard: class >> 24 == 0x28,
+            },
+        );
+        world.systems[primary].manufacturing_facilities.push(base);
+    }
 }
 
 /// The world's Coruscant.
@@ -4385,7 +4418,13 @@ pub fn emit_production(
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
 ) {
     // ProductionDelivery's shipyard band shows its product one point short.
-    if !request.scenario.opens_build_selection() && request.scenario != Scenario::ProductionDelivery {
+    // AdvancedBases reports the Training Facilities tab and first cell.
+    if !request.scenario.opens_build_selection()
+        && !matches!(
+            request.scenario,
+            Scenario::ProductionDelivery | Scenario::AdvancedBases
+        )
+    {
         return;
     }
     let Some(report) = production_report(request, world, manufacturing, systems, build_selection)
@@ -9035,6 +9074,51 @@ mod tests {
             &texts,
         );
         assert!(none.messages().is_empty());
+    }
+
+    // FUN_00458fe0: a built facility (`+0x50` bit 2 set, bit 4 clear) takes
+    // its type's base whatever its side; FUN_00539f50's records 4, 5 and 6
+    // have 0x2332, 0x233a and 0x2342 (9010, 9018, 9026).
+    #[test]
+    fn the_advanced_bases_scenario_shows_each_built_advanced_base_first_on_its_page() {
+        use rebellion_render::manufacturing_window::{page_cells, FacilityPage};
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied =
+                apply_to_loading_world_with(request(Scenario::AdvancedBases, faction), |_| {});
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let pictures = |page| -> Vec<u32> {
+                page_cells(
+                    world,
+                    &ManufacturingState::default(),
+                    &rebellion_core::delivery::DeliveryState::default(),
+                    true,
+                    primary,
+                    page,
+                )
+                .iter()
+                .map(|cell| cell.picture)
+                .collect()
+            };
+            assert_eq!(pictures(FacilityPage::Shipyards), [9_010], "{faction:?}");
+            assert_eq!(
+                pictures(FacilityPage::TrainingFacilities),
+                [9_018],
+                "{faction:?}"
+            );
+            assert_eq!(
+                pictures(FacilityPage::ConstructionYards),
+                [9_026],
+                "{faction:?}"
+            );
+            // Only the Advanced Shipyard builds ships.
+            let shipyards: Vec<bool> = world.systems[primary]
+                .manufacturing_facilities
+                .iter()
+                .map(|&key| world.manufacturing_facilities[key].is_shipyard)
+                .collect();
+            assert_eq!(shipyards, [true, false, false], "{faction:?}");
+        }
     }
 
     // FUN_00458fe0: an object en route takes its base + 3; the Build
