@@ -3054,4 +3054,35 @@ mod tests {
             );
         }
     }
+
+    // FUN_00606c90 hands each title button FUN_006073d0's window surface
+    // +0xa4, which FUN_006075b0 set to 10577 (FUN_004a8790); FUN_00602d30
+    // copies the backdrop from it at the button's +0x10c/+0x110 and keys the
+    // art over it (FUN_005fd0f0). The title strip is blitted to the window's
+    // DC only (FUN_004a9800 by side and focus), never into +0xa4, so the key
+    // pixel ignores both. A0 coruscant-676/14-after-movie: the Empire's
+    // view of the Alliance-held Coruscant shows black at (3, 16), (204, 16)
+    // and (218, 16) under the red strip.
+    #[test]
+    fn the_title_buttons_key_pixels_show_the_background_whatever_the_strips_side_and_focus() {
+        let (world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let missions = MissionState::new();
+        let mut state = opened(&world, system);
+        state.set_holds_focus(false);
+        crate::fleet_window::tests::KEY_PIXELS.with(|pixels| pixels.borrow_mut().clear());
+        let run = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        let pixels = crate::fleet_window::tests::KEY_PIXELS.with(|pixels| pixels.take());
+        // The other side's strip, unfocused: side 2's 10302.
+        assert!(
+            run.painted.contains(&(10302, at(2.0, 2.0))),
+            "{:?}",
+            run.painted
+        );
+        for x in [3.0, 204.0, 218.0] {
+            assert!(
+                pixels.contains(&(KeyPixel::Background(BACKGROUND), at(x, 16.0))),
+                "{x} in {pixels:?}"
+            );
+        }
+    }
 }

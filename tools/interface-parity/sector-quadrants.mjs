@@ -1557,10 +1557,13 @@ const cases = [
       // strip, its sector, minimize and close buttons match the port's
       // pixel for pixel outside the name's label (x 19..198, the window's
       // own); the name's ink, black, starts within a pixel of A0's. The
-      // three buttons' bottom-left pixels, their green key, are skipped:
-      // A0 shows black there, but green in fleet-aboard/00..02 and red in
-      // menus2/11, so what shows under a button's key is not settled.
-      const buttonKeys = new Set(["3,16", "204,16", "218,16"]);
+      // three buttons' bottom-left key pixels are compared too: each shows
+      // the window surface +0xa4, 10577's black at (3, 16), (204, 16) and
+      // (218, 16), whatever the strip's side or focus (FUN_00606c90 passes
+      // FUN_006073d0's +0xa4; FUN_00602d30 -> FUN_005fd0f0; the strip goes
+      // to the DC only, FUN_004a9800). The green in A0 fleet-aboard/00..02
+      // and status/22 is the Fleet window's plain blit (FUN_004a4b10), and
+      // the red in menus2/11 is the Create Mission dialog's, not this window.
       let a0 = null;
       const a0File = path.join(root, ".artifacts/a0-vm/coruscant-676/14-after-movie.png");
       if (faction.side === 2 && fs.existsSync(a0File)) {
@@ -1579,7 +1582,6 @@ const cases = [
             if (p.every((value) => value < 64)) label.port = grow(label.port, x, y);
             continue;
           }
-          if (buttonKeys.has(`${x},${y}`)) continue;
           checked += 1;
           if (a.some((value, k) => value !== p[k])) differing += 1;
         }
