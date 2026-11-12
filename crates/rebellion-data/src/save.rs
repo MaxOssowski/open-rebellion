@@ -532,8 +532,9 @@ mod native {
         Ok((meta, state))
     }
 
-    /// Detect occupancy independently of save decoding, so corrupt saves still
-    /// require overwrite confirmation. An inaccessible path fails closed.
+    /// Detect occupancy independently of save decoding. An inaccessible path
+    /// fails closed. Game Options does not use it: an unreadable save's row
+    /// is empty there (`game_options_saves`).
     #[must_use]
     pub fn slot_occupied(saves_dir: &Path, slot: usize) -> bool {
         slot_path(saves_dir, slot).try_exists().unwrap_or(true)
@@ -892,6 +893,28 @@ pub use wasm_impl::{
     slot_occupied,
 };
 
+/// The saves the Game Options window lists in its first `rows` rows, in
+/// slot order. A slot whose save cannot be read is left out, so its row is
+/// empty: no name, no crest, Load disabled, and a Save over it asks no
+/// overwrite question.
+///
+/// The original reads each row's header (`FUN_00407180` ->
+/// `FUN_00401860` / `FUN_00401910` -> `FUN_00415cd0`). It reads the header
+/// (`FUN_00411900`) only when the open (`FUN_005f4a60`) succeeded; else the
+/// defaults stay: an empty name and six zero DWORDs (`FUN_00411730`). Load
+/// is enabled only when the DWORD at +0x18 is 1, and the Save question
+/// (`FUN_00406b80` commands 0x6f..0x74) needs `FUN_00401910` non-zero, the
+/// same field. A port save that reads is a single-player save (+0x18 = 1).
+#[must_use]
+pub fn game_options_saves(saves_dir: &std::path::Path, rows: usize) -> Vec<SaveMeta> {
+    // `list_saves` walks the slots in order.
+    list_saves(saves_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|meta| meta.slot < rows)
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -1242,6 +1265,47 @@ mod tests {
         assert_eq!(metas.len(), 2);
         assert!(metas.iter().any(|m| m.slot == 2 && m.name == "Slot 2"));
         assert!(metas.iter().any(|m| m.slot == 5 && m.name == "Slot 5"));
+    }
+
+    #[test]
+    fn an_unreadable_or_empty_save_gives_an_empty_game_options_row() {
+        // FUN_00415cd0 reads the header (FUN_00411900) only when the open
+        // succeeded; a short read keeps FUN_00411730's defaults (+0x18 = 0),
+        // so FUN_00407180 shows no name and disables Load, and FUN_00406b80
+        // 0x6f..0x74 asks no overwrite question (FUN_00401910 gives 0).
+        let saves_dir = tmp_dir("game_options_unreadable");
+        let state = minimal_save_state();
+        save_slot(&saves_dir, 3, "Readable", &state, &[]).unwrap();
+        std::fs::write(slot_path(&saves_dir, 0), b"").unwrap();
+        std::fs::write(slot_path(&saves_dir, 1), b"corrupt save fixture").unwrap();
+
+        let rows = game_options_saves(&saves_dir, 6);
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!((rows[0].slot, rows[0].name.as_str()), (3, "Readable"));
+        // The unreadable files stay as they were.
+        assert!(std::fs::read(slot_path(&saves_dir, 0)).unwrap().is_empty());
+        assert_eq!(
+            std::fs::read(slot_path(&saves_dir, 1)).unwrap(),
+            b"corrupt save fixture"
+        );
+    }
+
+    #[test]
+    fn game_options_lists_only_its_rows_in_slot_order() {
+        // FUN_00407180 builds six rows; a save in slot 6 is not listed.
+        let saves_dir = tmp_dir("game_options_rows");
+        let state = minimal_save_state();
+        for slot in [6, 5, 0] {
+            save_slot(&saves_dir, slot, &format!("Slot {slot}"), &state, &[]).unwrap();
+        }
+
+        let slots: Vec<usize> = game_options_saves(&saves_dir, 6)
+            .iter()
+            .map(|meta| meta.slot)
+            .collect();
+
+        assert_eq!(slots, [0, 5]);
     }
 
     #[test]

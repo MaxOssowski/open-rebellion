@@ -523,13 +523,12 @@ fn configured_asset_render_profile() -> AssetRenderProfile {
 
 /// The Game Options window's six rows (`FUN_00407180`). Saves the data
 /// layer holds in slots 6..9 (the removed legacy panel's) stay on disk
-/// untouched and are not listed.
+/// untouched and are not listed. An unreadable save's row stays empty
+/// (`game_options_saves`: `FUN_00415cd0` keeps `FUN_00411730`'s defaults).
 fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
     use rebellion_render::game_options::SAVE_ROWS;
-    let mut slots: Vec<_> = rebellion_data::save::list_saves(saves_dir)
+    rebellion_data::save::game_options_saves(saves_dir, SAVE_ROWS)
         .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|meta| meta.slot < SAVE_ROWS)
         .map(|meta| rebellion_render::SaveSlotInfo {
             slot: meta.slot,
             name: meta.name,
@@ -543,22 +542,7 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
             game_tick: meta.game_tick,
             player_is_alliance: meta.player_is_alliance,
         })
-        .collect();
-    for slot in 0..SAVE_ROWS {
-        if !slots.iter().any(|save| save.slot == slot)
-            && rebellion_data::save::slot_occupied(saves_dir, slot)
-        {
-            slots.push(rebellion_render::SaveSlotInfo {
-                slot,
-                name: "Unreadable save".into(),
-                timestamp: "Load to inspect error".into(),
-                game_tick: 0,
-                player_is_alliance: None,
-            });
-        }
-    }
-    slots.sort_by_key(|save| save.slot);
-    slots
+        .collect()
 }
 
 struct LiveCampaign<'a> {
@@ -14437,17 +14421,22 @@ mod tactical_ground_tests {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod options_save_tests {
     #[test]
-    fn unreadable_native_saves_remain_occupied_and_unchanged() {
+    fn unreadable_native_saves_show_an_empty_row_and_stay_unchanged() {
+        // FUN_00415cd0 keeps FUN_00411730's empty header when the read
+        // fails, so FUN_00407180 lists no name and disables Load
+        // (+0x18 = 0), and FUN_00406b80 0x6f..0x74 asks no overwrite
+        // question. The row's absence from the list is that empty row.
         let root =
             std::env::temp_dir().join(format!("options-corrupt-save-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let path = rebellion_data::save::slot_path(&root, 5);
         std::fs::write(&path, b"corrupt save fixture").unwrap();
+        let empty = rebellion_data::save::slot_path(&root, 4);
+        std::fs::write(&empty, b"").unwrap();
         let slots = super::read_save_slots(&root);
-        assert_eq!(slots.len(), 1);
-        assert_eq!(slots[0].slot, 5);
-        assert_eq!(slots[0].name, "Unreadable save");
+        assert!(slots.is_empty());
         assert_eq!(std::fs::read(&path).unwrap(), b"corrupt save fixture");
+        assert!(std::fs::read(&empty).unwrap().is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 

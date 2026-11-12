@@ -4,6 +4,7 @@ import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { PNG } from 'pngjs';
 
 const url = process.env.OPTIONS_TEST_URL ?? 'http://127.0.0.1:8769';
 const output = process.env.OPTIONS_TEST_OUTPUT ?? '/tmp/open-rebellion-options-smoke';
@@ -127,21 +128,55 @@ try {
       await key('F1');
       assert.equal(consoleLog.filter(line => line.includes('destination=game_options status=opened_original')).length, priorEntries + 1);
       await screenshot('reentered-options');
-      await page.evaluate(([save1, meta1]) => {
-        localStorage.setItem(save1, 'corrupt fixture');
-        localStorage.setItem(meta1, '{');
-      }, [k('save', 1), k('meta', 1)]);
+      // Slot 2 holds a zero-length save; slot 3 a readable header over a
+      // corrupt body.
+      await page.evaluate(([save1, meta1, save2, meta2, meta0]) => {
+        localStorage.setItem(save1, '');
+        localStorage.setItem(meta1, '');
+        localStorage.setItem(save2, 'corrupt fixture');
+        localStorage.setItem(meta2, meta0);
+      }, [k('save', 1), k('meta', 1), k('save', 2), k('meta', 2), saved[k('meta', 0)]]);
       await key('Escape');
       await key('F1');
       const corrupt = await storage();
-      await click(610, 265);
+      // The original reads no header from an empty or unreadable file
+      // (FUN_00415cd0 keeps FUN_00411730's zeros), so FUN_00407180 draws
+      // the row empty: no name, no crest, Load disabled (+0x18 != 1), like
+      // the never-used row 5. A crest and a lit Load have saturated
+      // pixels; a name has white ones.
+      await screenshot('empty-row');
+      const shot = PNG.sync.read(await page.screenshot());
+      const rowMarks = y => [[164, 224, 'sat'], [232, 562, 'white'], [568, 658, 'sat']].map(([x0, x1, kind]) => {
+        let count = 0;
+        for (let py = y - 20; py < y + 20; py++) for (let px = x0; px < x1; px++) {
+          const i = (py * shot.width + px) * 4, rgb = [shot.data[i], shot.data[i + 1], shot.data[i + 2]];
+          if (kind === 'sat' ? Math.max(...rgb) - Math.min(...rgb) > 60 : Math.min(...rgb) > 200) count++;
+        }
+        return count;
+      });
+      assert.deepEqual(rowMarks(265), [0, 0, 0], 'the zero-length save row has no crest, no name and a grey Load');
+      assert.deepEqual(rowMarks(265), rowMarks(517), 'the zero-length save row is drawn as the empty row 5');
+      const readable = rowMarks(181);
+      assert.ok(readable[1] > 0 && readable[2] > 0, 'a readable save row has its name and lit Load');
+      await click(610, 265); // its Load is disabled: no question opens
+      assert.deepEqual(await storage(), corrupt, 'a disabled Load leaves storage alone');
+      assert.ok(!consoleLog.some(line => line.includes('load_state_fingerprint slot=1')), 'the empty row is never loaded');
+      // A Save over it asks no question (FUN_00406b80 0x6f..0x74:
+      // FUN_00401910 gives 0), so the one press writes the slot.
+      await click(110, 265);
+      const overwritten = await storage();
+      assert.match(overwritten[k('meta', 1)], /"schema_version"/, 'a Save over the empty row writes at once');
+      assert.notEqual(overwritten[k('save', 1)], '', 'the zero-length save is replaced');
+      await screenshot('empty-row-saved');
+      await click(637, 600); // the saved notice's OK
+      // A readable header over a corrupt body lists its name and Load; the
+      // load fails and keeps the bytes.
+      const beforeLoad = await storage();
+      await click(610, 349);
       await click(560, 602);
       await screenshot('corrupt-load-error');
-      assert.deepEqual(await storage(), corrupt, 'failed load preserves corrupt bytes');
-      await click(110, 265);
-      await screenshot('corrupt-overwrite-confirmation');
-      await click(742, 602);
-      assert.deepEqual(await storage(), corrupt, 'corrupt-slot overwrite cancellation preserves bytes');
+      assert.deepEqual(await storage(), beforeLoad, 'failed load preserves corrupt bytes');
+      assert.equal(beforeLoad[k('save', 2)], 'corrupt fixture');
       assert.ok(consoleLog.some(line => line.includes('destination=game_options status=opened_original')));
       // An older format's keys no longer count: 66227a8f made one save
       // format the only one (save.rs slot_occupied reads the current keys).
@@ -156,7 +191,7 @@ try {
       assert.equal(await page.getByRole('heading', { name: 'Game closed' }).count(), 0);
       await screenshot('browser-restarted');
       assert.equal(errors.length, 0, errors.join('\n'));
-      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'saved notice', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 kept and unlisted', 'return/re-entry', 'corrupt load/overwrite cancel', 'browser exit/restart', 'no page errors'] });
+      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'saved notice', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 kept and unlisted', 'return/re-entry', 'empty row for a zero-length save: Load disabled, Save without question', 'corrupt-body load error keeps bytes', 'browser exit/restart', 'no page errors'] });
     } catch (error) {
       await screenshot('failure').catch(() => {});
       results.push({ faction, status: 'fail', error: String(error) });
