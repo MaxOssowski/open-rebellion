@@ -447,23 +447,34 @@ try {
     await page.mouse.move(318, 296, { steps: 4 });
     await page.waitForTimeout(1200);
     const tipped = await shot("overwrite-notice-tip");
-    const TIP = [318, 317, 24, 19];
-    let border = 0;
-    let borderChecked = 0;
-    for (let y = TIP[1]; y < TIP[1] + TIP[3]; y += 1) {
-      for (let x = TIP[0]; x < TIP[0] + TIP[2]; x += 1) {
-        if (y !== TIP[1] && y !== TIP[1] + TIP[3] - 1 && x !== TIP[0] && x !== TIP[0] + TIP[2] - 1) continue;
-        borderChecked += 1;
-        if (!same(tipped, x, y, a0SavedTip, x, y)) border += 1;
-      }
-    }
+    // A0's tip box: left 318, top 317, 24 x 19, border (128, 128, 128).
+    // The port draws tips in its Arial-metric font, within five pixels of
+    // A0's widths (win_tooltip.rs tips_are_within_five_pixels_of_their_a0_widths),
+    // so the left edge, top, bottom and height are exact and the width is
+    // within five pixels.
+    const GREY = (png, x, y) => same(png, x, y, a0SavedTip, 318, 317);
+    const tipBox = (png) => {
+      const ys = [];
+      for (let y = 305; y < 345; y += 1) if (GREY(png, 318, y)) ys.push(y);
+      if (!ys.length) return null;
+      // The width along the bottom edge: A0's pointer crosses the top one.
+      const bottom = ys[ys.length - 1];
+      let right = 318;
+      while (right < 360 && GREY(png, right + 1, bottom)) right += 1;
+      return [318, ys[0], right - 318 + 1, bottom - ys[0] + 1];
+    };
+    const [a0Box, portBox] = [tipBox(a0SavedTip), tipBox(tipped)];
     const black = ([r, g, b]) => r + g + b < 60;
-    const tipInk = (png) => inkBox(png, [TIP[0] + 1, TIP[1] + 1, TIP[2] - 2, TIP[3] - 2], black);
-    result.saved_notice_tip = { border_checked: borderChecked, border_differing: border,
-      ink: { a0: tipInk(a0SavedTip), port: tipInk(tipped) } };
-    assert.equal(border, 0, `${border} of ${borderChecked} tip border pixels differ from A0`);
-    const [a, p] = [tipInk(a0SavedTip), tipInk(tipped)];
-    assert.ok(a && p && a.every((v, i) => Math.abs(v - p[i]) <= 1), `tip "Yes" ink ${p} vs A0 ${a}`);
+    const tipInk = (png, box) => inkBox(png, [box[0] + 1, box[1] + 1, box[2] - 2, box[3] - 2], black);
+    const [a, p] = [tipInk(a0SavedTip, a0Box), portBox && tipInk(tipped, portBox)];
+    result.saved_notice_tip = { box: { a0: a0Box, port: portBox }, ink: { a0: a, port: p } };
+    assert.deepEqual(a0Box, [318, 317, 24, 19], "A0's tip box");
+    assert.ok(portBox, "the Yes tip shows");
+    assert.deepEqual([portBox[0], portBox[1], portBox[3]], [318, 317, 19], `tip box ${portBox} vs A0 ${a0Box}`);
+    assert.ok(Math.abs(portBox[2] - a0Box[2]) <= 5, `tip width ${portBox[2]} vs A0 ${a0Box[2]}`);
+    assert.ok(a && p, `tip "Yes" ink ${p} vs A0 ${a}`);
+    // The text's baseline: the ink's bottom row.
+    assert.ok(Math.abs(a[3] - p[3]) <= 1, `tip "Yes" baseline ${p} vs A0 ${a}`);
     await page.mouse.move(2, 470, { steps: 4 });
     await page.waitForTimeout(300);
   }
