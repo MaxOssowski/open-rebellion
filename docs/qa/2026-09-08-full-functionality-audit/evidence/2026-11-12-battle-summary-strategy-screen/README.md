@@ -349,9 +349,15 @@ Alt+keypad +/-) still answer.
   163, 0 failures. `provenance-scan check`: 0 uncited.
 - `cargo mutants --in-place` on the two functions: 5 of 5 caught.
 
-The browser gate (an Alt+G or Alt+H under the open summary, and Alt+1
-switching the display under it) will be run in the lead's batch; no
-browser run was made here.
+The browser gate will be run in the lead's batch; no browser run was
+made here. `production-battle-last-ship-lost` now also, with the summary
+open: presses Alt+G and Alt+H and requires no `[agent] command=...
+source=accelerator` line and an unchanged frame; then presses Alt+2 and
+Alt+1 (the campaign starts on Popular Support, Alt+1, so Alt+2 is needed
+to see a switch) and requires `[interface] command=0x12` and then
+`command=0x11 destination=gid status=selected ... source=accelerator`,
+with the Alt+2 frame changed. Whether Alt+1 restores the summary's frame
+exactly is recorded (`restored_frame`), not asserted.
 
 ## Proposed status
 
