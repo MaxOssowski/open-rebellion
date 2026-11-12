@@ -546,6 +546,18 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Compares the report's words and the withdrawal scene's pixels outside the text boxes with A0 message-rail/retreat-result-commenor (Alliance) and battle-alert-empire/04-result (Empire) at 640 x 480. The fixture's system and destination names differ from A0's."
+    },
+    {
+      "slug": "production-battle-withdrawal-report",
+      "description": "Withdraw From Battle played out: the viewer's one hull leaves the enemy's system, the battle ends when its side has no unit left, and the Battle Summary reads its failed attack and its withdrawal over the withdrawal scene. It supports TAC-07-C004, which another scenario maps: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65832, "empire": 66088 },
+      "execution_kind": "journey",
+      "tactical_proof": false,
+      "production_participants": true,
+      "battle_withdrawal_report": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "Compares the report's words with A0 TAC-07-C004 on both sides and the withdrawal scene's pixels outside the text boxes with A0 TAC-07-C004 for the Alliance at 640 x 480. The fixture's system and destination names differ from A0's."
     }
   ]
 }

@@ -65,6 +65,10 @@ const ATTACK_TARGET_LOST_PRESENTATION_SCENARIO: u32 = 38;
 /// Retreat on the Battle Alert at the viewer's own system, which the enemy
 /// reached last, by a fleet weak enough to leave at once (FUN_005d19a0).
 const BATTLE_ALERT_RETREAT_SCENARIO: u32 = 39;
+/// A0 TAC-07-C004: the viewer's one hull withdraws from a played battle at
+/// the enemy's system (Withdraw From Battle, FUN_005f1170) until the
+/// battle ends and the report reads its failed attack and withdrawal.
+const BATTLE_WITHDRAWAL_REPORT_SCENARIO: u32 = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -127,6 +131,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub hull_scale_presentation: bool,
     pub attack_target_lost_presentation: bool,
     pub battle_alert_retreat: bool,
+    pub battle_withdrawal_report: bool,
     pub subsystem_field_command_presentation: bool,
     pub live_subsystem_damage_presentation: bool,
     pub subsystem_repair_mobility_presentation: bool,
@@ -359,7 +364,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | TACTICAL_AUDIO_PRESENTATION_SCENARIO
         | HULL_SCALE_PRESENTATION_SCENARIO
         | ATTACK_TARGET_LOST_PRESENTATION_SCENARIO
-        | BATTLE_ALERT_RETREAT_SCENARIO => (
+        | BATTLE_ALERT_RETREAT_SCENARIO
+        | BATTLE_WITHDRAWAL_REPORT_SCENARIO => (
             false,
             true,
             false,
@@ -404,6 +410,7 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         hull_scale_presentation: scenario == HULL_SCALE_PRESENTATION_SCENARIO,
         attack_target_lost_presentation: scenario == ATTACK_TARGET_LOST_PRESENTATION_SCENARIO,
         battle_alert_retreat: scenario == BATTLE_ALERT_RETREAT_SCENARIO,
+        battle_withdrawal_report: scenario == BATTLE_WITHDRAWAL_REPORT_SCENARIO,
         subsystem_field_command_presentation: scenario
             == SUBSYSTEM_FIELD_COMMAND_PRESENTATION_SCENARIO,
         live_subsystem_damage_presentation: scenario == LIVE_SUBSYSTEM_DAMAGE_PRESENTATION_SCENARIO,
@@ -501,7 +508,9 @@ pub(crate) fn apply(
                 && class.hull > 0
                 && (!request.hull_scale_presentation || class.name.contains("Medium Transport"))
                 && (!request.detail_escort_presentation || class.troop_capacity >= 3)
-                && (!(request.battle_options_presentation || request.battle_alert_retreat)
+                && (!(request.battle_options_presentation
+                    || request.battle_alert_retreat
+                    || request.battle_withdrawal_report)
                     || class.hyperdrive > 0)
                 && (!(request.command_execution_presentation
                     || request.command_progression_presentation
@@ -520,7 +529,9 @@ pub(crate) fn apply(
                 && class.hull > 0
                 && (!request.hull_scale_presentation || class.name.contains("Victory"))
                 && (!request.detail_escort_presentation || class.troop_capacity >= 3)
-                && (!(request.battle_options_presentation || request.battle_alert_retreat)
+                && (!(request.battle_options_presentation
+                    || request.battle_alert_retreat
+                    || request.battle_withdrawal_report)
                     || class.hyperdrive > 0)
                 && (!(request.command_execution_presentation
                     || request.command_progression_presentation
@@ -606,7 +617,10 @@ pub(crate) fn apply(
             2
         } else if request.group_presentation && expanded {
             4
-        } else if request.hull_scale_presentation || request.battle_alert_retreat {
+        } else if request.hull_scale_presentation
+            || request.battle_alert_retreat
+            || request.battle_withdrawal_report
+        {
             0
         } else if request.death_star_presentation && !is_alliance {
             // FUN_005ad930 enables Attack Death Star only while fewer
@@ -773,6 +787,18 @@ pub(crate) fn apply(
         };
         world.systems[system].control = rebellion_core::world::ControlKind::Controlled(viewer);
         world.systems[system].last_arrival = Some(enemy);
+    }
+    if request.battle_withdrawal_report {
+        // The enemy's system, which the viewer reached last: FUN_0049b4d0
+        // then reads 0x7009 "The {viewer} attack on {system} has failed."
+        use rebellion_core::dat::Faction;
+        let (viewer, enemy) = if player_is_alliance {
+            (Faction::Alliance, Faction::Empire)
+        } else {
+            (Faction::Empire, Faction::Alliance)
+        };
+        world.systems[system].control = rebellion_core::world::ControlKind::Controlled(enemy);
+        world.systems[system].last_arrival = Some(viewer);
     }
 
     let player_is_attacker = request.faction == CockpitFaction::Alliance;
@@ -952,6 +978,7 @@ struct FixtureRecord<'a> {
     hull_scale_presentation: bool,
     attack_target_lost_presentation: bool,
     battle_alert_retreat: bool,
+    battle_withdrawal_report: bool,
     battle_alert_open: bool,
     tactical_music_mdata_id: Option<u32>,
     tactical_weapon_audio_wave_first: u32,
@@ -1463,6 +1490,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         hull_scale_presentation: request.hull_scale_presentation,
         attack_target_lost_presentation: request.attack_target_lost_presentation,
         battle_alert_retreat: request.battle_alert_retreat,
+        battle_withdrawal_report: request.battle_withdrawal_report,
         battle_alert_open: tactical.battle_alert_open(),
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1551,6 +1579,7 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         hull_scale_presentation: request.hull_scale_presentation,
         attack_target_lost_presentation: request.attack_target_lost_presentation,
         battle_alert_retreat: request.battle_alert_retreat,
+        battle_withdrawal_report: request.battle_withdrawal_report,
         battle_alert_open: false,
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1669,6 +1698,8 @@ mod tests {
         assert!(decode(0x10127).unwrap().battle_alert_retreat);
         assert!(!decode(0x10127).unwrap().battle_alert_presentation);
         assert!(!decode(0x10123).unwrap().battle_alert_retreat);
+        assert!(decode(0x10128).unwrap().battle_withdrawal_report);
+        assert!(!decode(0x10127).unwrap().battle_withdrawal_report);
         assert_eq!(
             decode(0x10103).unwrap().lod_fixture,
             TacticalLodFixture::Close
@@ -1690,7 +1721,7 @@ mod tests {
             TacticalLodFixture::CameraJourney
         );
         assert!(decode(0x10100).is_none());
-        assert!(decode(0x10128).is_none());
+        assert!(decode(0x10129).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
     }

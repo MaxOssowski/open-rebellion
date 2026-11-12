@@ -777,6 +777,8 @@ pub struct TacticalState {
     /// The strategic world already consumed the auto-resolve result. Closing
     /// the result window must not apply the same losses a second time.
     strategic_results_applied: bool,
+    /// The battle's report was already handed out (`take_summary_log`).
+    summary_logged: bool,
     /// Whether the authentic Battle Options panel owns the right-hand housing.
     battle_options_open: bool,
     /// Captured Battle Options control. Dispatch occurs only on a matching release.
@@ -919,6 +921,7 @@ impl Default for TacticalState {
             battle_alert_scroll_hold: None,
             battle_alert_pressed: None,
             strategic_results_applied: false,
+            summary_logged: false,
             battle_options_open: false,
             battle_options_pressed: None,
             command_control_pressed: None,
@@ -1034,6 +1037,7 @@ impl TacticalState {
         self.battle_alert_scroll = 0;
         self.battle_alert_pressed = None;
         self.strategic_results_applied = false;
+        self.summary_logged = false;
         self.battle_options_open = false;
         self.battle_options_pressed = None;
         self.command_control_pressed = None;
@@ -2481,6 +2485,17 @@ impl TacticalState {
             .as_ref()
             .filter(|session| session.phase == BattlePhase::Results)
             .map(|session| battle_result_summary_lines(session, world))
+    }
+
+    /// The report's lines once per battle, the first time it has its
+    /// result (simulated, or played until a side has no unit left).
+    pub fn take_summary_log(&mut self, world: &GameWorld) -> Option<Vec<String>> {
+        if self.summary_logged {
+            return None;
+        }
+        let lines = self.battle_summary_lines(world)?;
+        self.summary_logged = true;
+        Some(lines)
     }
 
     /// True when auto-resolve has already mutated the strategic world.
@@ -14620,8 +14635,10 @@ mod tests {
             }],
             tick: 0,
         }));
-        // The app logs the same lines the summary page draws.
-        let logged = state.battle_summary_lines(&GameWorld::default()).unwrap();
+        // The app logs the same lines the summary page draws, once.
+        let logged = state.take_summary_log(&GameWorld::default()).unwrap();
+        assert_eq!(state.take_summary_log(&GameWorld::default()), None);
+        assert_eq!(state.battle_summary_lines(&GameWorld::default()).as_ref(), Some(&logged));
         assert!(logged.iter().any(|line| line.contains("withdrawn")), "{logged:?}");
         let session = state.session.as_ref().unwrap();
         assert!(session.ships[0].alive && session.ships[0].retreated);

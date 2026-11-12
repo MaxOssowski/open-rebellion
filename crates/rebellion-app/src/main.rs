@@ -8509,6 +8509,10 @@ async fn main() {
                     &world,
                     &troop_transport_state,
                 );
+                // The Battle Summary's lines, once, as its page draws them.
+                if let Some(lines) = tactical_state.take_summary_log(&world) {
+                    macroquad::logging::info!("[tactical-results] summary lines={:?}", lines);
+                }
                 let requested_result_system = match &tac_action {
                     TacticalAction::OpenBattleSystem(system) => Some(*system),
                     _ => None,
@@ -8634,12 +8638,6 @@ async fn main() {
                             );
                             result_presented =
                                 tactical_state.present_auto_resolve_result(&space_result);
-                            if let Some(lines) = tactical_state.battle_summary_lines(&world) {
-                                macroquad::logging::info!(
-                                    "[tactical-results] summary lines={:?}",
-                                    lines
-                                );
-                            }
                         }
                         if !result_presented {
                             game_mode = GameMode::Galaxy;
