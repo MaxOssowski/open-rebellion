@@ -86,18 +86,48 @@ The probe presses Retreat (`0x67`) and requires:
 The names differ from A0's, as the fixture's systems differ. The text's
 glyphs are the accepted deviation (Liberation Sans for GDI's Arial).
 
+## The tactical withdrawal played out (TAC-07-C004)
+
+A0 TAC-07-C004 is the Alliance's Withdraw From Battle at the Empire's
+Coruscant: Battle Options, Withdraw, confirm, close, unpause, and about
+44 s later the battle ends on its own.
+
+New scenario `production-battle-withdrawal-report` (tactical fixture 40,
+codes 65832 and 66088). One hull with a hyperdrive a side, no fighters, at
+the enemy's system, which the viewer reached last. The probe clicks Battle
+Options (618, 319), Withdraw (521, 64), the confirmation's 1113
+(561.5, 242.5), the panel's close (593.5, 228.5) and the pause control
+(575, 319). The app logs `withdrawal_started`. The hull jumps out, the
+battle ends when the viewer's side has no unit left (`check_battle_end`),
+and the Battle Summary opens. The probe requires:
+
+- the report's words: "The {viewer} fleet is defeated." and "The {viewer}
+  attack on {system} has failed. The {viewer} fleet has withdrawn to
+  {another system}." (`0x7003`, `0x7009`, `0x700d`, A0 TAC-07-C004's
+  sentences);
+- at 640 x 480, the withdrawal scene exact against its BMP;
+- for the Alliance at 640 x 480, the scene against A0 TAC-07-C004 outside
+  the text boxes: 67,113 pixels, 0 differ.
+
+Port text: "The Alliance attack on Akrit'tar has failed. The Alliance fleet
+has withdrawn to Ithor." and "The Imperial attack on F'tral has failed. The
+Imperial fleet has withdrawn to Coruscant." The Alliance's lines wrap after
+"The" as A0's do.
+
+The app now logs the report's lines once per battle, when the summary
+first has its result, simulated or played (`TacticalState::take_summary_log`).
+
 ## What each cell still needs
 
 **EVT-02-C005 (retreat).** The route, the report's words and the scene now
 match A0 on both sides. Proposed: pass.
 
-**TAC-07-C004 (retreat).** The withdrawal report state matches A0
-TAC-07-C004's scene, and `a_failed_alliance_attack_reads_as_a0` has its
-words (`0x7009`, `0x700d`). Still open: no browser case runs the tactical
-Withdraw From Battle (`FUN_005f1170`) until the battle ends. The
-`production-battle-options-withdrawal` fixture keeps a ship with no
-hyperdrive, so its battle cannot end by withdrawal. Proposed: still
-partial, unless the lead accepts the shared report state.
+**TAC-07-C004 (retreat).** The tactical Withdraw From Battle now runs in
+the browser until the battle ends. The report's sentences match A0's, and
+the scene matches A0 TAC-07-C004 with 0 pixels differing. Proposed: pass.
+Not compared: the time the jump takes (A0 about 44 s from unpause), and
+the strategy screen under the window (the fixture opens the battle
+directly, so the shell bitmap shows there).
 
 **TAC-04-C014 (chase camera).** A0 is the Battle at Coruscant (an Escort
 Carrier with X-wing and Y-wing squadrons against the home fleet), paused,
@@ -132,20 +162,20 @@ rotation) at a system the port can rebuild (Mon Calamari, fixture 37).
 
 Run ids are UTC.
 
-- `2026-11-11T23-42-23-298Z-3014002`: `run.mjs --battle --all
-  --scenario=production-battle-alert-retreat`, 4 of 4 pass.
-- `2026-11-11T23-27-41-350Z-2979025`: `run.mjs --battle --all`, 150 of
-  156 pass. The six failures were `production-battle-results-presentation`
-  (4) and `production-battle-alert-entry` at 640 x 480 (2): the score
-  MDATA.307/308/313/314 logged `loaded=false`, because the worktree had
-  no staged music (`data/sounds`). With the music staged, both pass:
-  - `2026-11-11T23-41-36-276Z-3012261`: `production-battle-results-presentation`, 4 of 4;
-  - `2026-11-11T23-41-59-134Z-3013151`: `production-battle-alert-entry`, 4 of 4.
+- `2026-11-11T23-54-57-436Z-3116789`: `run.mjs --battle --all`, all 160
+  executions pass (40 scenarios, both sides, both viewports). It holds
+  both new scenarios.
+- `2026-11-11T23-47-41-118Z-3019205`: `--scenario=production-battle-withdrawal-report`, 4 of 4.
+- `2026-11-11T23-42-23-298Z-3014002`: `--scenario=production-battle-alert-retreat`, 4 of 4.
+- An earlier full run, `2026-11-11T23-27-41-350Z-2979025`, failed 6 of 156
+  on the score (MDATA.307/308/313/314 `loaded=false`): the worktree had no
+  staged music (`data/sounds`) or videos (`web/data/video`). That was the
+  environment; with both staged the runs above pass.
 
-The alert-entry run's Empire letterboxed Retreat now reads "The Imperial
-fleet is victorious." at F'tral: with one hull and five squadrons a side,
-the abstract battle did not reach the leave threshold. Its text is not
-asserted.
+In `2026-11-11T23-41-59-134Z-3013151`, the alert-entry scenario's Empire
+letterboxed Retreat read "The Imperial fleet is victorious." at F'tral:
+with one hull and five squadrons a side, the Alliance's fleet did not fall
+under the leave threshold. Its text is not asserted.
 
 ## Checks
 
@@ -153,8 +183,8 @@ asserted.
 - `cargo run -q -p provenance-scan -- check`: 0 uncited items.
 - `cargo mutants --in-place -p rebellion-render --file
   crates/rebellion-render/src/tactical_view.rs --re
-  'TacticalState::(present_auto_resolve_result|battle_summary_lines)'`:
-  every mutant of the new lines is caught. Three older lines of
+  'TacticalState::(present_auto_resolve_result|battle_summary_lines|take_summary_log)'`
+  (two runs): every mutant of the new lines is caught. Three older lines of
   `present_auto_resolve_result` survive: the fleet and system guard
   (`||` to `&&`, twice; every test session uses the default keys) and the
   fighter filter (`&&` to `||`; the tests give each side one fighter
