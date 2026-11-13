@@ -1154,8 +1154,17 @@ async function shipOrderBandCase(page, faction, directory) {
   await page.mouse.move(at.x, at.y);
   await frames(page, 4);
   await page.waitForTimeout(500);
-  await page.mouse.dblclick(at.x, at.y);
-  await frames(page, 2);
+  // A person's double click spans frames; Playwright's dblclick can land
+  // all four events in one frame, and egui then pairs no clicks.
+  await page.mouse.down();
+  await frames(page);
+  await page.mouse.up();
+  await frames(page);
+  await page.waitForTimeout(80);
+  await page.mouse.down();
+  await frames(page);
+  await page.mouse.up();
+  await frames(page);
   await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
     null, { timeout: 10_000 });
   const reopened = await read();
