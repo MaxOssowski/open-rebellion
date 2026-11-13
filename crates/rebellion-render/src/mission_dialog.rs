@@ -195,15 +195,44 @@ impl MissionDialog {
     }
 }
 
+/// The box's key for a kind (`FUN_0046cab0`, switching on the MISSNSD
+/// record's family at `+0x2c` and, for research `0x53`, its index at
+/// `+0x18`). Other families take a rising global counter
+/// (`DAT_006a8794`, `.data` initial value 100), so they sort after these
+/// in the order they are added.
+fn box_key(kind: MissionKind) -> u32 {
+    match kind {
+        MissionKind::Recruitment => 1,            // 0x55
+        MissionKind::JediTraining => 2,           // 0x58
+        MissionKind::SubdueUprising => 3,         // 0x57
+        MissionKind::ShipDesignResearch => 4,     // 0x53, 0x20
+        MissionKind::FacilityDesignResearch => 5, // 0x53, 0x21
+        MissionKind::TroopTrainingResearch => 6,  // 0x53, 0x22
+        MissionKind::Diplomacy => 7,              // 0x51
+        MissionKind::InciteUprising => 8,         // 0x56
+        MissionKind::Espionage => 9,              // 0x52
+        MissionKind::Reconnaissance => 10,        // 0x54
+        MissionKind::Assassination => 11,         // 0x63
+        MissionKind::Abduction => 12,             // 0x62
+        MissionKind::Rescue => 13,                // 0x61
+        MissionKind::DeathStarSabotage => 14,     // 0x6a
+        MissionKind::Sabotage => 15,              // 0x69
+        _ => u32::MAX,
+    }
+}
+
 /// The box's order for the kinds `available_kinds` gives in MISSNSD order:
-/// last record first, and the box shows the first of them. A0: Incite
-/// Uprising before Espionage (kinds/20, 23), Recruitment before Espionage
-/// (kinds/01, 03), Assassination before Abduction (kinds2/50..55). hyp: the
-/// box's fill from `FUN_005422f0`'s list (keys rising, `FUN_005f5440`)
-/// inserts each item at its head; that fill is not traced.
+/// `FUN_0046a9c0` builds each item with `FUN_0060ba00(FUN_0046cab0(record))`
+/// (the key at item `+0xc`) and `FUN_005f59f0` inserts it into a list made
+/// by `FUN_0060a790(1)` (vtable `0x0066e148`), whose compare
+/// (`Class_0066e148_vt4`, mode 1) orders ascending by `+0xc`; an item goes
+/// after its equals. The box shows the first item. A0
+/// 2026-11-13-mission-dialogs/30..32 (Dodonna on Drall: Diplomacy,
+/// Espionage) and 40..43 (Wedge on Drall: Ship Design Research, Diplomacy,
+/// Espionage).
 #[must_use]
 pub fn box_order(mut kinds: Vec<MissionKind>) -> Vec<MissionKind> {
-    kinds.reverse();
+    kinds.sort_by_key(|kind| box_key(*kind));
     kinds
 }
 
@@ -1133,9 +1162,9 @@ mod tests {
     }
 
     #[test]
-    fn the_box_lists_the_kinds_last_record_first_and_shows_the_last() {
-        // A0 kinds2/50..55: Veers on Leia lists Assassination (MISSNSD 0x81)
-        // above Abduction (0x17) and shows Assassination.
+    fn the_box_lists_the_kinds_by_their_key_and_shows_the_first() {
+        // A0 kinds2/50..55: Veers on Leia lists Assassination (key 11)
+        // above Abduction (12) and shows Assassination.
         let mut state = MissionDialogState::default();
         assert!(state.open(
             MissionFaction::Empire,
@@ -1149,6 +1178,60 @@ mod tests {
             [MissionKind::Assassination, MissionKind::Abduction]
         );
         assert_eq!(dialog.kind(), MissionKind::Assassination);
+    }
+
+    #[test]
+    fn the_box_lists_diplomacy_above_espionage_and_research_above_both() {
+        // A0 2026-11-13-mission-dialogs/30..32: Dodonna on Drall lists
+        // Diplomacy (FUN_0046cab0 key 7) above Espionage (9) and opens on
+        // Diplomacy; 40..43: Wedge there lists Ship Design Research (4),
+        // Diplomacy, Espionage. MISSNSD order is Diplomacy 0x10, Espionage
+        // 0x13, research 0x20.
+        assert_eq!(
+            box_order(vec![MissionKind::Diplomacy, MissionKind::Espionage]),
+            [MissionKind::Diplomacy, MissionKind::Espionage]
+        );
+        let mut state = MissionDialogState::default();
+        assert!(state.open(
+            MissionFaction::Alliance,
+            SystemKey::default(),
+            members(1),
+            box_order(vec![
+                MissionKind::Diplomacy,
+                MissionKind::Espionage,
+                MissionKind::ShipDesignResearch,
+            ]),
+        ));
+        let dialog = state.dialog().unwrap();
+        assert_eq!(
+            dialog.kinds(),
+            [
+                MissionKind::ShipDesignResearch,
+                MissionKind::Diplomacy,
+                MissionKind::Espionage
+            ]
+        );
+        assert_eq!(dialog.kind(), MissionKind::ShipDesignResearch);
+    }
+
+    #[test]
+    fn the_box_puts_unkeyed_families_last_in_their_given_order() {
+        // FUN_0046cab0: families outside its switch take DAT_006a8794 + 1,
+        // which starts at 100, so they follow the keyed kinds.
+        assert_eq!(
+            box_order(vec![
+                MissionKind::Palace,
+                MissionKind::Sabotage,
+                MissionKind::Bounty,
+                MissionKind::Recruitment,
+            ]),
+            [
+                MissionKind::Recruitment,
+                MissionKind::Sabotage,
+                MissionKind::Palace,
+                MissionKind::Bounty
+            ]
+        );
     }
 
     #[test]
