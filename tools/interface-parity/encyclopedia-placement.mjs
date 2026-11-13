@@ -6,7 +6,9 @@
 // opens the original index. The screenshot is kept for comparison with the
 // A0 capture (.artifacts/a0-vm/encyclopedia/), whose window sits at
 // (125, 52) for the Empire; captures 281117 and 281123 put the Alliance's
-// at (62, 50).
+// at (62, 50). The Alliance's run then reopens the index and types "Fle"
+// into the Topic box against A0 2026-11-13-all-databases-fleet
+// (allDatabasesFleet, OBJ-01-C013).
 //
 // Build first: scripts/build-wasm.sh
 // Run:         node encyclopedia-placement.mjs [--out=DIR] [--faction=alliance|empire]
@@ -116,6 +118,176 @@ async function textAgainstA0(portFile, a0File, regions) {
     assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1), `${a0File} ${name}: ${JSON.stringify(checks[name])}`);
   }
   return checks;
+}
+
+// OBJ-01-C013: F7's All Databases, typing "Fle" into the Topic box, two
+// clicks on the list's down arrow and a double click on Fleet, against A0
+// 2026-11-13-all-databases-fleet (an Alliance game on day 264, the window
+// at (62, 50) as here). Each typed letter runs FUN_00609650 on the box's
+// text (FUN_0045d8f0 on 0x408): the best prefix row is chosen, white, and
+// scrolled to the list's bottom row; the arrow steps 10 pixels
+// (FUN_00607ea0's argument 10); a second click on the row within the
+// double-click time presses Topic 0x67 (FUN_0045da70 case 0x65).
+// The list (FUN_0045ddc0: window (36, 137), 350 by 160, rows of 20) holds
+// the systems of the viewer's galaxy (FUN_00422620); the port's new game
+// and A0's game list the same ones in this stretch, so every row is
+// compared. Each row's text ink box (grey 0x787878, the chosen one white)
+// is within a pixel of A0's (GDI hinting, the accepted text deviation);
+// the Fleet entry's artwork (EDATA, window (12, 31), 400 by 200) is
+// compared pixel by pixel.
+const A0_FLEET = ".artifacts/a0-vm/2026-11-13-all-databases-fleet";
+const FLEET_STATES = [
+  { label: "typed-F", key: "F", a0: "02-typed-F-chooses-Ftral.png",
+    sha256: "05b94e16166a9f78e7ac05a3cc06890c891a69fc06dc238d91acf111031d5c5c", scroll: 0, chosen: 7,
+    rows: ["Dorja", "Drall", "Drayson", "Duros", "Emperor Palpatine", "Endor", "Espionage", "F'tral"] },
+  { label: "typed-Fl", key: "l", a0: "03-typed-Fl-chooses-Flax.png",
+    sha256: "4abeb44bffbd616b46e91c92c607cb418a37afb6f623ec125e0fd2998917fe03", scroll: 0, chosen: 7,
+    rows: ["Duros", "Emperor Palpatine", "Endor", "Espionage", "F'tral", "Facility Design Research", "Filve", "Flax"] },
+  { label: "typed-Fle", key: "e", a0: "04-typed-Fle-chooses-Fleet.png",
+    sha256: "fa79c1ac864a2c9974862ca1cd0c577df0443c7ffa3b18253464a0ae0d1fcbfc", scroll: 0, chosen: 7,
+    rows: ["Emperor Palpatine", "Endor", "Espionage", "F'tral", "Facility Design Research", "Filve", "Flax", "Fleet"] },
+  { label: "down-once", arrow: true, a0: "05-down-arrow-once-scrolls-half-row.png",
+    sha256: "af45e58601210d758c8223075d0e3c95d93333d51a555a03a5e05af1e52b8126", scroll: 10, chosen: 7,
+    rows: ["Emperor Palpatine", "Endor", "Espionage", "F'tral", "Facility Design Research", "Filve", "Flax", "Fleet",
+      "Fwillsving"] },
+  { label: "down-twice", arrow: true, a0: "06-down-arrow-twice-list-endor-to-fwillsving-fleet-white.png",
+    sha256: "b0a180607172ba112f3a70b8548e5e15b98122171dea110ab2ca2167e229c4c0", scroll: 0, chosen: 6,
+    rows: ["Endor", "Espionage", "F'tral", "Facility Design Research", "Filve", "Flax", "Fleet", "Fwillsving"] },
+];
+const FLEET_ENTRY = { a0: "07-fleet-entry-double-clicked.png",
+  sha256: "b58df141f30f3e1847f13a359890f993ad17fecde98b9d2401e1264cc0f28d21" };
+// FLEETSD's class (FUN_004f7d50), the Fleet topic's object.
+const FLEET_OBJECT = 0x0800_0004;
+
+function inkBox(png, [x0, y0, x1, y1], pred) {
+  let box = null;
+  for (let y = Math.max(0, y0); y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (!pred([png.data[i], png.data[i + 1], png.data[i + 2]])) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return box;
+}
+
+const near = (a, p) => Boolean(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1));
+
+async function readA0(file, sha256) {
+  const bytes = await fs.readFile(path.join(ROOT, A0_FLEET, file));
+  assert.equal(createHash("sha256").update(bytes).digest("hex"), sha256, `${file} is not the recorded A0 capture`);
+  return PNG.sync.read(bytes);
+}
+
+async function allDatabasesFleet(page, log, shot, directory) {
+  const [ox, oy] = ORIGINS.alliance;
+  const listX = ox + 36;
+  const listY = oy + 137;
+  // A row's text: the list's width left of the bar (window x 36..372).
+  const rowBox = (top) => [listX + 2, top, listX + 336, top + 20];
+  const opened = () => log.filter((line) => line.includes("destination=encyclopedia status=opened_original")).length;
+  // The rail's close (0xfb, window (423, 25)), then F7 again: each opening
+  // builds a new window at All Databases with nothing chosen (FUN_0045d400).
+  const before = opened();
+  await click(page, [ox + 423 + 16, oy + 25 + 15]);
+  await page.waitForTimeout(300);
+  await page.keyboard.down("F7");
+  await frames(page);
+  await page.keyboard.up("F7");
+  await waitFor(page, log, "F7 opens the Encyclopedia again", () => opened() > before, 5_000);
+  await page.waitForTimeout(500);
+  // The Topic box (A0's press at (325, 104)).
+  await click(page, [325, 104]);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(300);
+  await shot("all-databases-top");
+  const states = [];
+  for (const state of FLEET_STATES) {
+    if (state.key) {
+      await page.keyboard.type(state.key, { delay: 80 });
+    } else {
+      // The list's down arrow (A0's press at (441, 342)).
+      await click(page, [ox + 379, oy + 292]);
+    }
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(400);
+    await shot(`all-databases-${state.label}`);
+    const port = PNG.sync.read(await fs.readFile(path.join(directory, `all-databases-${state.label}.png`)));
+    const a0 = await readA0(state.a0, state.sha256);
+    const rows = state.rows.map((name, index) => {
+      const top = listY - state.scroll + 20 * index;
+      const pred = index === state.chosen ? white : grey;
+      // A row cut by the list's top edge: only its visible part.
+      const region = rowBox(Math.max(top, listY));
+      region[3] = Math.min(top + 20, listY + 160);
+      const a = inkBox(a0, region, pred);
+      const p = inkBox(port, region, pred);
+      return { name, chosen: index === state.chosen, a0: a, port: p, near: near(a, p) };
+    });
+    // No other row is white.
+    const whiteRows = state.rows.map((_, index) => {
+      const top = listY - state.scroll + 20 * index;
+      const region = rowBox(Math.max(top, listY));
+      region[3] = Math.min(top + 20, listY + 160);
+      return Boolean(inkBox(port, region, white));
+    });
+    // The Topic box's text, white over its black shadow (FUN_00605160):
+    // window (142..250, 46..61), inside the box's dotted focus frame.
+    const boxRegion = [ox + 142, oy + 46, ox + 250, oy + 61];
+    const black = ([r, g, b]) => Math.max(r, g, b) < 32;
+    const box = { a0: inkBox(a0, boxRegion, white), port: inkBox(port, boxRegion, white),
+      shadowA0: inkBox(a0, boxRegion, black), shadowPort: inkBox(port, boxRegion, black) };
+    box.near = near(box.a0, box.port) && near(box.shadowA0, box.shadowPort);
+    states.push({ label: state.label, a0: state.a0, rows, whiteRows, box });
+  }
+  const failures = states.flatMap(({ label, rows, whiteRows, box }) => [
+    ...rows.filter((row) => !row.near).map((row) => `${label} ${row.name}: ${JSON.stringify(row)}`),
+    ...whiteRows.flatMap((isWhite, index) => (isWhite !== rows[index].chosen
+      ? [`${label} row ${index} white=${isWhite}`] : [])),
+    ...(box.near ? [] : [`${label} Topic box: ${JSON.stringify(box)}`]),
+  ]);
+  // The double click on Fleet (A0's at (120, 317), the seventh row).
+  const fleetRow = [listX + 22, listY + 20 * 6 + 10];
+  // Each press and release in its own frame (egui counts a click per
+  // release), both clicks inside egui's 0.3 s.
+  await page.mouse.move(...fleetRow);
+  await frames(page);
+  for (let index = 0; index < 2; index += 1) {
+    await page.mouse.down();
+    await frames(page, 1);
+    await page.mouse.up();
+    await frames(page, 1);
+  }
+  await waitFor(page, log, "the double click opens the Fleet topic",
+    () => log.some((line) => line.includes(`[encyclopedia] command=0x67 topic_mode=true object=Some(${FLEET_OBJECT})`)), 5_000);
+  await page.mouse.move(2, 470);
+  await page.waitForTimeout(800);
+  await shot("all-databases-fleet-entry");
+  const port = PNG.sync.read(await fs.readFile(path.join(directory, "all-databases-fleet-entry.png")));
+  const a0 = await readA0(FLEET_ENTRY.a0, FLEET_ENTRY.sha256);
+  // The title (font 5, centred in 350) and the body's one line, the
+  // Empire's TOPIC_TEXT regions moved to the Alliance's origin.
+  const text = Object.fromEntries([["title", [98, 64, 448, 81]], ["body-1", [79, 281, 474, 297]],
+    ["body-2", [79, 297, 474, 313]]].map(([name, region]) => {
+    const entry = { a0: inkBox(a0, region, white), port: inkBox(port, region, white) };
+    entry.near = (entry.a0 === null && entry.port === null) || near(entry.a0, entry.port);
+    return [name, entry];
+  }));
+  let artDiffering = 0;
+  for (let y = oy + 31; y < oy + 231; y += 1) {
+    for (let x = ox + 12; x < ox + 412; x += 1) {
+      const i = (y * port.width + x) * 4;
+      if (port.data[i] !== a0.data[i] || port.data[i + 1] !== a0.data[i + 1] || port.data[i + 2] !== a0.data[i + 2]) artDiffering += 1;
+    }
+  }
+  const entry = { text, art: { region: [ox + 12, oy + 31, 400, 200], checked: 400 * 200, differing: artDiffering } };
+  failures.push(...Object.entries(text).filter(([, value]) => !value.near)
+    .map(([name, value]) => `Fleet entry ${name}: ${JSON.stringify(value)}`));
+  if (artDiffering > 0) failures.push(`Fleet entry art differs from A0 in ${artDiffering} pixels`);
+  const result = { states, entry, failures };
+  await fs.writeFile(path.join(directory, "all-databases-fleet.json"), `${JSON.stringify(result, null, 2)}\n`);
+  assert.deepEqual(failures, [], failures.join("; "));
+  return result;
 }
 
 function serve(root) {
@@ -428,10 +600,11 @@ async function run(browser, base, faction) {
     await shot("encyclopedia-topic");
     const topicText = args.a0 && faction.name === "empire"
       ? await textAgainstA0(path.join(directory, "encyclopedia-topic.png"), "topic-abduction-empire-day166.png", TOPIC_TEXT) : null;
+    const allDatabases = faction.name === "alliance" ? await allDatabasesFleet(page, log, shot, directory) : null;
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", shots, indexText, topicText };
+    return { faction: faction.name, status: "pass", shots, indexText, topicText, allDatabases };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
