@@ -1937,6 +1937,7 @@ impl TacticalState {
                     .find(|effect| effect.target == target)
                 {
                     effect.frame = frame.min(effect.sequence.frame_count().saturating_sub(1));
+                    effect.shown_frame = effect.frame;
                 }
             }
             session.paused = true;
@@ -2013,7 +2014,12 @@ impl TacticalState {
             .iter_mut()
             .find(|effect| effect.target == destroyed)
         {
-            effect.frame = 8;
+            // A0 TAC-03-C004 shows frame 9 (3369; evidence
+            // 2026-11-13-fireball). A machine that swaps every third render
+            // call (FUN_005d41a0) shows it on the calls at 9, 10 and 11; the
+            // call at 11 has taken the hull away.
+            effect.frame = 12;
+            effect.shown_frame = 9;
         }
         session.paused = true;
         self.command_panel = TacticalCommandPanel::Display;
@@ -8480,6 +8486,17 @@ fn battle_result_list_length(
 
 /// The rows the forces page's list shows: 166 high, of 70-high rows, or
 /// 50-high for Personnel.
+/// A live hull, or a destroyed one whose fireball has not yet reached
+/// `FUN_005d41a0`'s call at 11, which deletes the hull's mesh.
+fn hull_in_scene(session: &BattleSession, index: usize) -> bool {
+    session.ships.get(index).is_some_and(|ship| ship.alive)
+        || session.impact_effects.iter().any(|effect| {
+            effect.target == index
+                && effect.sequence == OriginalTacticalEffectSequence::Destroyed
+                && effect.hull_shown()
+        })
+}
+
 fn result_list_rows(category: BattleResultCategory) -> usize {
     let height = if category == BattleResultCategory::Personnel {
         50.0
@@ -10337,7 +10354,7 @@ fn draw_tactical_frame(
                     .ships
                     .iter()
                     .enumerate()
-                    .filter(|(_, ship)| ship.alive)
+                    .filter(|(index, _)| hull_in_scene(session, *index))
                     .filter_map(|(index, ship)| {
                         let (position, forward) = ship_pose(index);
                         ship.tactical_resource.map(|resource| TacticalRenderObject {
@@ -10388,8 +10405,7 @@ fn draw_tactical_frame(
                                 object_id: u32::try_from(effect.target)
                                     .unwrap_or(u32::MAX)
                                     .saturating_add(1),
-                                resource_id: effect.sequence.resource_base()
-                                    + u32::from(effect.frame),
+                                resource_id: effect.resource_id(),
                                 source_width,
                                 source_height,
                                 position: ship_pose(effect.target).0.rendered(),
@@ -15201,9 +15217,119 @@ mod tests {
         );
     }
 
-    // Source: _DAT_0066d154 / FUN_005d3cc0 effect frame timing 0.1s.
+    /// Step one original render call at a time and record what each call
+    /// leaves on screen: the type-303 resource, or `None` once removed.
+    fn impact_frames_per_render_call(
+        weapon: WeaponKind,
+        stage: OriginalTacticalImpactStage,
+        calls: usize,
+    ) -> Vec<Option<(u32, bool)>> {
+        let mut session = test_session(Vec::new(), Vec::new(), true);
+        queue_original_tactical_impact(&mut session.impact_effects, 0, weapon, stage);
+        (0..calls)
+            .map(|_| {
+                session.advance_presentational_effects(ORIGINAL_TACTICAL_RENDER_SECONDS);
+                session
+                    .impact_effects
+                    .first()
+                    .map(|effect| (effect.resource_id(), effect.hull_shown()))
+            })
+            .collect()
+    }
+
+    // Source: FUN_005d41a0 adds one to the +0x140 counter on every call
+    // (0x5d437c) but swaps the image to base + counter only once the +0xf0
+    // timer passes _DAT_0066d154 (0.1 s, 0x5d422d); FUN_005c25b0 calls it
+    // through FUN_005c2c80 once per scene render, and FUN_005c1cf0 holds
+    // each render until _DAT_0066c954 (0.02 s) has passed.
     #[test]
-    fn original_effect_frames_advance_at_ten_hertz_and_expire_exactly() {
+    fn a_destroyed_hull_shows_every_fifth_fireball_frame_at_the_render_cap() {
+        let frames = impact_frames_per_render_call(
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Destroyed,
+            18,
+        );
+        let resources = frames
+            .iter()
+            .map(|frame| frame.map(|(resource, _)| resource))
+            .collect::<Vec<_>>();
+        let mut expected = vec![Some(3360); 5];
+        expected.extend([Some(3365); 5]);
+        expected.extend([Some(3370); 5]);
+        expected.push(Some(3375));
+        expected.extend([None, None]);
+        assert_eq!(resources, expected);
+    }
+
+    // Source: FUN_005d41a0 0x5d434f..0x5d4379: with the destroyed bit (0x80)
+    // set and the counter at 11 it calls vtable 0x24 (1, 0) and (2, 0) and
+    // vtable 4, FUN_005d3180, whose vtable 0x30 (FUN_005d3420) deletes the
+    // hull's mesh visual. The fireball runs on to the count of 16.
+    #[test]
+    fn a_destroyed_hull_stays_under_its_fireball_until_the_eleventh_render_call() {
+        let frames = impact_frames_per_render_call(
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Destroyed,
+            16,
+        );
+        let hulls = frames
+            .iter()
+            .map(|frame| frame.map(|(_, hull)| hull))
+            .collect::<Vec<_>>();
+        let mut expected = vec![Some(true); 11];
+        expected.extend([Some(false); 5]);
+        assert_eq!(hulls, expected);
+    }
+
+    // Source: FUN_005d3e90 sets the hit count to 6; FUN_005d41a0 timing as above.
+    #[test]
+    fn a_laser_hit_holds_its_first_frame_then_shows_its_last_for_one_render() {
+        let frames = impact_frames_per_render_call(
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Hit,
+            7,
+        );
+        let mut expected = vec![Some((3060, true)); 5];
+        expected.push(Some((3065, true)));
+        expected.push(None);
+        assert_eq!(frames, expected);
+    }
+
+    // Source: FUN_005d41a0's call at 11 deletes a destroyed hull's mesh.
+    #[test]
+    fn the_scene_keeps_a_dead_hull_only_while_its_fireball_has_it() {
+        let ships = vec![
+            test_ship(1, 0, true, true),
+            test_ship(2, 1, false, false),
+            test_ship(3, 2, false, false),
+        ];
+        let mut session = test_session(ships, Vec::new(), true);
+        queue_original_tactical_impact(
+            &mut session.impact_effects,
+            1,
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Destroyed,
+        );
+        queue_original_tactical_impact(
+            &mut session.impact_effects,
+            2,
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Damage,
+        );
+        assert_eq!(
+            (0..4).map(|index| hull_in_scene(&session, index)).collect::<Vec<_>>(),
+            [true, true, false, false]
+        );
+        for _ in 0..12 {
+            session.advance_presentational_effects(ORIGINAL_TACTICAL_RENDER_SECONDS);
+        }
+        assert!(hull_in_scene(&session, 0));
+        assert!(!hull_in_scene(&session, 1));
+    }
+
+    // Source: FUN_005c1cf0 renders only after _DAT_0066c954 (0.02 s).
+    #[test]
+    fn impact_frames_wait_for_a_whole_render_period() {
         let mut session = test_session(Vec::new(), Vec::new(), true);
         queue_original_tactical_impact(
             &mut session.impact_effects,
@@ -15211,9 +15337,9 @@ mod tests {
             WeaponKind::LaserCannon,
             OriginalTacticalImpactStage::Hit,
         );
-        session.advance_presentational_effects(0.099);
+        session.advance_presentational_effects(0.019);
         assert_eq!(session.impact_effects[0].frame, 0);
-        session.advance_presentational_effects(0.001_1);
+        session.advance_presentational_effects(0.001_5);
         assert_eq!(session.impact_effects[0].frame, 1);
         session.advance_presentational_effects(0.5);
         assert!(session.impact_effects.is_empty());

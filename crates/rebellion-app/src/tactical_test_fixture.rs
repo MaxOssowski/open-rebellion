@@ -1601,8 +1601,8 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
             FixtureEffect {
                 target: effect.target,
                 resource_base: effect.sequence.resource_base(),
-                resource_id: effect.sequence.resource_base() + u32::from(effect.frame),
-                frame: effect.frame,
+                resource_id: effect.resource_id(),
+                frame: effect.shown_frame,
                 frame_count: effect.sequence.frame_count(),
                 source_size: [width, height],
             }

@@ -31,6 +31,16 @@ pub const DEPLOY_ZONE_FRACTION: f32 = 0.3;
 pub const TACTICAL_SUBSYSTEM_RESOURCE_BASES: [u32; 5] = [1201, 1206, 1211, 1216, 1221];
 /// `_DAT_0066d154`, used by both `FUN_005d3cc0` and `FUN_005d41a0`.
 pub const ORIGINAL_TACTICAL_EFFECT_FRAME_SECONDS: f32 = 0.1;
+/// `_DAT_0066c954`: `FUN_005c1cf0` holds each tactical scene render
+/// (`FUN_005c25b0`) until its timer passes 0.02 s.
+pub const ORIGINAL_TACTICAL_RENDER_SECONDS: f32 = 0.02;
+/// port: the original renders as often as `FUN_005c1cf0` lets it, so each
+/// call comes just over 0.02 s after the last; the fifth call after a swap
+/// is the first past `FUN_005d41a0`'s 0.1 s timer. A slower machine swaps
+/// after fewer calls and so shows more of a sequence's frames.
+pub const ORIGINAL_TACTICAL_EFFECT_SWAP_CALLS: u8 = 5;
+/// `FUN_005d41a0` 0x5d4358: the destroyed hull goes on the call at count 11.
+pub const ORIGINAL_TACTICAL_DESTROYED_HULL_CALLS: u8 = 11;
 /// `FUN_005b1ea0` laser threshold (`ghidra/notes/tactical-projectile-field-path.md`).
 pub const ORIGINAL_LASER_PROJECTILE_THRESHOLD: f32 = 28.8;
 /// `FUN_005b1f60` turbolaser threshold.
@@ -1838,8 +1848,59 @@ impl TacticalFieldEffect {
 pub struct TacticalImpactEffect {
     pub target: usize,
     pub sequence: OriginalTacticalEffectSequence,
+    /// `+0x140`: the render calls made since the sequence began.
+    /// `FUN_005d41a0` adds one on every call (0x5d437c).
     pub frame: u8,
+    /// The counter at the last image swap: the frame on screen.
+    pub shown_frame: u8,
+    /// Render calls since that swap, the `+0xf0` timer counted in calls.
+    pub calls_since_swap: u8,
+    /// Seconds toward the next render call.
     pub frame_elapsed: f32,
+}
+
+impl TacticalImpactEffect {
+    #[must_use]
+    pub fn new(target: usize, sequence: OriginalTacticalEffectSequence) -> Self {
+        Self {
+            target,
+            sequence,
+            frame: 0,
+            shown_frame: 0,
+            calls_since_swap: 0,
+            frame_elapsed: 0.0,
+        }
+    }
+
+    /// The type-303 resource on screen: `base + counter` as of the last swap.
+    #[must_use]
+    pub fn resource_id(&self) -> u32 {
+        self.sequence.resource_base() + u32::from(self.shown_frame)
+    }
+
+    /// `FUN_005d41a0` deletes a destroyed hull's mesh (vtable 4,
+    /// `FUN_005d3180`) on the call that finds the counter at 11.
+    #[must_use]
+    pub fn hull_shown(&self) -> bool {
+        self.sequence != OriginalTacticalEffectSequence::Destroyed
+            || self.frame <= ORIGINAL_TACTICAL_DESTROYED_HULL_CALLS
+    }
+
+    /// One `FUN_005d41a0` call. Returns false once the count is reached
+    /// and the sequence is removed (0x5d4301).
+    pub fn original_render_call(&mut self) -> bool {
+        if self.frame >= self.sequence.frame_count() {
+            return false;
+        }
+        self.calls_since_swap = self.calls_since_swap.saturating_add(1);
+        // 0x5d421e..0x5d4238: the first call, or one past the 0.1 s timer.
+        if self.frame == 0 || self.calls_since_swap >= ORIGINAL_TACTICAL_EFFECT_SWAP_CALLS {
+            self.shown_frame = self.frame;
+            self.calls_since_swap = 0;
+        }
+        self.frame += 1;
+        true
+    }
 }
 
 /// Original target sprite states. The discriminants preserve the priority and
@@ -2805,19 +2866,9 @@ pub fn queue_original_tactical_impact(
         {
             return false;
         }
-        *current = TacticalImpactEffect {
-            target,
-            sequence,
-            frame: 0,
-            frame_elapsed: 0.0,
-        };
+        *current = TacticalImpactEffect::new(target, sequence);
     } else {
-        effects.push(TacticalImpactEffect {
-            target,
-            sequence,
-            frame: 0,
-            frame_elapsed: 0.0,
-        });
+        effects.push(TacticalImpactEffect::new(target, sequence));
     }
     true
 }
@@ -6272,13 +6323,16 @@ impl BattleSession {
             effect.elapsed += elapsed;
             effect.elapsed < effect.duration
         });
+        // FUN_005c25b0 -> FUN_005c2c80 -> FUN_005d41a0, once per scene render.
         self.impact_effects.retain_mut(|effect| {
             effect.frame_elapsed += elapsed;
-            while effect.frame_elapsed >= ORIGINAL_TACTICAL_EFFECT_FRAME_SECONDS {
-                effect.frame_elapsed -= ORIGINAL_TACTICAL_EFFECT_FRAME_SECONDS;
-                effect.frame = effect.frame.saturating_add(1);
+            while effect.frame_elapsed >= ORIGINAL_TACTICAL_RENDER_SECONDS {
+                effect.frame_elapsed -= ORIGINAL_TACTICAL_RENDER_SECONDS;
+                if !effect.original_render_call() {
+                    return false;
+                }
             }
-            effect.frame < effect.sequence.frame_count()
+            true
         });
         for effect in &mut self.field_effects {
             effect.frame_elapsed += elapsed;

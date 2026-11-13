@@ -2636,8 +2636,8 @@ async function probeTacticalDetailEscortPresentation(
   assert.deepEqual(destroyed, {
     target: destroyed.target,
     resource_base: 3360,
-    resource_id: 3368,
-    frame: 8,
+    resource_id: 3369,
+    frame: 9,
     frame_count: 16,
     source_size: [64, 64],
   });
@@ -2645,15 +2645,16 @@ async function probeTacticalDetailEscortPresentation(
     "destroyed sequence remained attached to an active hull");
   const effectLine = consoleLines.find(({ text }) => text.includes("[tactical_3d] effect_scene"));
   assert.match(effectLine?.text || "",
-    new RegExp(`requested=1 rendered=1 .*${destroyed.target + 1}:3368:`),
+    new RegExp(`requested=1 rendered=1 .*${destroyed.target + 1}:3369:`),
     "destroyed source frame was not submitted at its retired hull position");
   // A0 TAC-03-C004 (the VM's Battle at Mon Calamari, frame 17, the
   // Alliance's Medium Transport 2 destroyed): a fireball of the 3360..3375
   // family, 36 x 23 pixels at x 165..200, y 292..314, in five colours of
-  // the battle palette. The fixture holds frame 8 (3368), A0 a frame not
-  // known, so the shapes differ; every colour of A0's fireball must show
-  // in the port's, as both index the same palette (5530 + the selector,
-  // FUN_005d38d0).
+  // the battle palette. A0 shows frame 9 (3369, evidence
+  // 2026-11-13-fireball) and the fixture holds it; the decal's size
+  // follows the camera, so only the colours are compared here: every
+  // colour of A0's fireball must show in the port's, as both index the
+  // same palette (5530 + the selector, FUN_005d38d0).
   const explosionA0 = path.join(root, ".artifacts/interface-parity/a0/TAC-03-C004/original.png");
   let explosionProof = null;
   if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1
@@ -2673,7 +2674,7 @@ async function probeTacticalDetailEscortPresentation(
       }
       return { colours: Object.fromEntries([...found].sort()), box };
     };
-    const at = (effectLine.text.match(/:3368:\d+:([\d.]+),([\d.]+)/) || []).slice(1).map(Number);
+    const at = (effectLine.text.match(/:3369:\d+:([\d.]+),([\d.]+)/) || []).slice(1).map(Number);
     assert.equal(at.length, 2, `the destroyed effect's position: ${effectLine.text}`);
     const port = colours(PNG.sync.read(stable.bytes),
       [Math.round(at[0]) - 32, Math.round(at[1]) - 32, Math.round(at[0]) + 32, Math.round(at[1]) + 32]);
