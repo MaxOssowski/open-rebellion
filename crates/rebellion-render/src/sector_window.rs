@@ -120,8 +120,8 @@ impl SectorWindowState {
     }
 
     /// The image a held icon drag painted in the last pass: the dragged
-    /// icon's bitmap and the screen rect it covered (`FUN_004593e0` case
-    /// `0x200`).
+    /// icon's bitmap and its screen rect moved with the pointer
+    /// (`FUN_004593e0` case `0x200`).
     #[must_use]
     pub fn drag_image(&self) -> Option<(u32, egui::Rect)> {
         self.drag_image
@@ -508,7 +508,7 @@ struct WindowDrawResult {
     /// A left release ended the window's drag: where, and whether Ctrl was
     /// held, when it went far enough to drop.
     drag_end: Option<Option<(egui::Pos2, bool)>>,
-    /// The held drag's image: the bitmap and the screen rect it covers.
+    /// The held drag's image: the bitmap and the icon's rect moved with it.
     drag_image: Option<(u32, egui::Rect)>,
 }
 
@@ -1189,13 +1189,7 @@ fn draw_sector_window(
                         0.0,
                         0.0,
                     );
-                    let size = cache
-                        .original_resource_size(DllSource::Strategy, art)
-                        .map_or(rect.size(), |[width, height]| {
-                            egui::vec2(width as f32, height as f32) * layout.scale
-                        });
-                    result.drag_image =
-                        Some((art, egui::Rect::from_min_size(rect.min + offset, size)));
+                    result.drag_image = Some((art, rect.translate(offset)));
                 }
             }
             // FUN_004593e0 case 0x202: the window holds the capture, so the
@@ -2967,8 +2961,9 @@ mod tests {
         system: SystemKey,
         from: (f32, f32),
         to: (f32, f32),
+        scale: f32,
     ) -> (Option<(u32, egui::Rect)>, Vec<(u32, egui::Pos2)>) {
-        let layout = layout(1.0);
+        let layout = layout(scale);
         let mut state = SectorWindowState::default();
         state.open_for_system(world, system, CockpitFaction::Alliance);
         let mut fog = FogState::new(Faction::Alliance);
@@ -2977,8 +2972,12 @@ mod tests {
         let ctx = egui::Context::default();
         let mut cache = click_cache();
         let uprisings = rebellion_core::uprising::UprisingState::default();
-        let at =
-            |point: (f32, f32)| egui::pos2(layout.canvas.x + point.0, layout.canvas.y + point.1);
+        let at = |point: (f32, f32)| {
+            egui::pos2(
+                layout.canvas.x + point.0 * scale,
+                layout.canvas.y + point.1 * scale,
+            )
+        };
         let press = egui::Event::PointerButton {
             pos: at(from),
             button: egui::PointerButton::Primary,
@@ -2997,7 +2996,7 @@ mod tests {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(700.0, 520.0),
+                    egui::vec2(1400.0, 1040.0),
                 )),
                 time: Some(index as f64 * 0.05),
                 events,
@@ -3033,20 +3032,59 @@ mod tests {
         // 2026-11-13-icon-drag-move/21: the fleet icon pressed at (266, 214)
         // and moved by about (-49, -55) shows 10775 there, no white
         // outline, while the origin keeps the pressed 10776. Chandrila's
-        // fleet icon is drawn from (93, 76) on the canvas at (10, 20).
+        // fleet icon is drawn from (93, 76) on the canvas at (10, 20); its
+        // mine lights the system icon beside it, which is not dragged.
         let (mut world, system, _) = fixture_world();
         add_fleet(&mut world, system);
-        let (image, painted) = held_drag(&world, system, (115.0, 90.0), (66.0, 35.0));
+        add_mine(&mut world, system);
+        let (image, painted) = held_drag(&world, system, (115.0, 90.0), (66.0, 35.0), 1.0);
         let (art, rect) = image.expect("the held drag paints an image");
         assert_eq!(art, 10_775);
-        assert_eq!(rect.min, egui::pos2(103.0 - 49.0, 96.0 - 55.0));
+        assert_eq!(
+            rect,
+            egui::Rect::from_min_size(
+                egui::pos2(103.0 - 49.0, 96.0 - 55.0),
+                egui::vec2(28.0, 19.0)
+            )
+        );
         let origin = egui::pos2(103.0, 96.0);
         assert!(painted.contains(&(10_775, rect.min)), "{painted:?}");
         assert!(painted.contains(&(10_776, origin)), "{painted:?}");
         assert!(!painted.contains(&(10_775, origin)), "{painted:?}");
+        // At twice the scale the offset is the pointer's, in screen pixels.
+        let (image, _) = held_drag(&world, system, (115.0, 90.0), (66.0, 35.0), 2.0);
+        let (_, rect) = image.expect("the held drag paints an image");
+        assert_eq!(
+            rect.min,
+            egui::pos2(10.0 + 93.0 * 2.0 - 98.0, 20.0 + 76.0 * 2.0 - 110.0)
+        );
         // A press that has not moved draws no image yet.
-        let (still, _) = held_drag(&world, system, (115.0, 90.0), (115.0, 90.0));
+        let (still, _) = held_drag(&world, system, (115.0, 90.0), (115.0, 90.0), 1.0);
         assert_eq!(still, None);
+    }
+
+    #[test]
+    fn a_held_headquarters_drag_paints_the_mark_at_the_pointers_offset() {
+        // FUN_004593e0 case 0x200 drags the headquarters overlay (id
+        // 0x10000, FUN_0045bbb0) as it does a quadrant icon: its bitmap
+        // 0x388 on the planet's rect, moved with the pointer.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let (_, base) = with_headquarters(&mut world, system);
+        let (image, painted) = held_drag(&world, system, (100.0, 85.0), (150.0, 120.0), 1.0);
+        without_headquarters_art(base);
+        let (art, rect) = image.expect("the held drag paints the mark");
+        assert_eq!(art, HEADQUARTERS_MARK);
+        let origin = painted
+            .iter()
+            .find(|(id, at)| *id == HEADQUARTERS_MARK && *at != rect.min)
+            .map(|&(_, at)| at)
+            .expect("the mark stays on its planet");
+        assert_eq!(rect.min, origin + egui::vec2(50.0, 35.0));
+        assert!(
+            painted.contains(&(HEADQUARTERS_MARK, rect.min)),
+            "{painted:?}"
+        );
     }
 
     #[test]
