@@ -256,9 +256,36 @@ async function chooseStatus(page, at) {
 
 const point = ([x, y]) => ({ x: Math.round(x), y: Math.round(y) });
 
-// What fleet-ship-en-route's target read from the Fleet window: the
-// Fighters and Troops counters and the Personnel list's length.
+// What fleet-ship-en-route's and fleet-status-en-route's targets read
+// from the Fleet window: the Fighters and Troops counters and the
+// Personnel list's characters, or all its members for the fleet.
 let fleetShipEmbarked = null;
+
+// The fixture's special force on its way in (SPECFCSD class 2 or 7).
+const isSpecialForce = (item) => /Infiltrators|Commandos/.test(item);
+
+// The Fleet window's Fighters and Troops counters and Personnel list,
+// with the fleet selected, back on its Capital Ships tab.
+async function fleetEmbarked(page) {
+  const opened = await openFleetWindow(page);
+  await click(page, point(opened.fleet_entry));
+  const ships = await fleetLoad(page, (o) => o.selected === "fleet" && o.tab === "CapitalShips"
+    && o.first_item && o.troops_tab && o.fighters_tab);
+  assert.equal(ships.items.length, 1, JSON.stringify(ships));
+  await click(page, point(ships.fighters_tab));
+  const fighters = await fleetLoad(page, (o) => o.tab === "Fighters" && o.counts);
+  await click(page, point(ships.troops_tab));
+  const troops = await fleetLoad(page, (o) => o.tab === "Troops" && o.counts);
+  await click(page, { x: Math.round(ships.troops_tab[0] + 32), y: Math.round(ships.troops_tab[1]) });
+  const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0);
+  // Each traveller is one of these (fleet-squadron-en-route).
+  assert.ok(fighters.counts[0] > 0 && troops.counts[0] > 0, JSON.stringify([fighters, troops]));
+  assert.equal(personnel.items.filter(isSpecialForce).length, 1, JSON.stringify(personnel));
+  const step = ships.troops_tab[0] - ships.fighters_tab[0];
+  await click(page, { x: Math.round(ships.fighters_tab[0] - step), y: Math.round(ships.fighters_tab[1]) });
+  const back = await fleetLoad(page, (o) => o.tab === "CapitalShips" && o.first_item && o.fleet_entry);
+  return { counts: [String(fighters.counts[0]), String(troops.counts[0])], personnel: personnel.items, back };
+}
 
 async function doubleClick(page, at) {
   await page.mouse.move(at.x, at.y);
@@ -557,7 +584,8 @@ const cases = [
       assert.equal(troops.items.length, 1, JSON.stringify(troops));
       await click(page, { x: Math.round(fleet.troops_tab[0] + 32), y: Math.round(fleet.troops_tab[1]) });
       const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0);
-      assert.equal(personnel.items.length, 1, JSON.stringify(personnel));
+      // The character and the special force on their way in.
+      assert.equal(personnel.items.length, 2, JSON.stringify(personnel));
       await click(page, point(fleet.fighters_tab));
       const fighters = await fleetLoad(page, (o) => o.tab === "Fighters" && o.items.length > 0 && o.first_item);
       assert.equal(fighters.items.length, 1, JSON.stringify(fighters));
@@ -576,8 +604,10 @@ const cases = [
   // all walk mode 3 (FUN_00513180), so the squadron, regiment and
   // character on their way in count where they are seated (FUN_00552300).
   // The fixture's fleet is one ship, so its Embarked equals the Fleet
-  // window's Fighters and Troops counters and Personnel list. No A0
-  // capture.
+  // window's Fighters and Troops counters and Personnel list's
+  // characters: FUN_004f25c0 walks families 0x30..0x3c (FUN_005131d0
+  // keeps lo <= family < hi), so the special force on its way in, which
+  // the list shows, is not counted. No A0 capture.
   {
     name: "fleet-ship-en-route",
     code: FLEET_ARRIVALS,
@@ -585,23 +615,26 @@ const cases = [
     embarked: () => fleetShipEmbarked,
     target: async (page) => {
       fleetShipEmbarked = null;
-      const opened = await openFleetWindow(page);
-      await click(page, point(opened.fleet_entry));
-      const ships = await fleetLoad(page, (o) => o.selected === "fleet" && o.tab === "CapitalShips"
-        && o.first_item && o.troops_tab && o.fighters_tab);
-      assert.equal(ships.items.length, 1, JSON.stringify(ships));
-      await click(page, point(ships.fighters_tab));
-      const fighters = await fleetLoad(page, (o) => o.tab === "Fighters" && o.counts);
-      await click(page, point(ships.troops_tab));
-      const troops = await fleetLoad(page, (o) => o.tab === "Troops" && o.counts);
-      await click(page, { x: Math.round(ships.troops_tab[0] + 32), y: Math.round(ships.troops_tab[1]) });
-      const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0);
-      // Each traveller is one of these (fleet-squadron-en-route).
-      assert.ok(fighters.counts[0] > 0 && troops.counts[0] > 0, JSON.stringify([fighters, troops]));
-      fleetShipEmbarked = [String(fighters.counts[0]), String(troops.counts[0]), String(personnel.items.length)];
-      const step = ships.troops_tab[0] - ships.fighters_tab[0];
-      await click(page, { x: Math.round(ships.fighters_tab[0] - step), y: Math.round(ships.fighters_tab[1]) });
-      return point((await fleetLoad(page, (o) => o.tab === "CapitalShips" && o.first_item)).first_item);
+      const { counts, personnel, back } = await fleetEmbarked(page);
+      fleetShipEmbarked = [...counts, String(personnel.filter((item) => !isSpecialForce(item)).length)];
+      return point(back.first_item);
+    },
+  },
+  // The receiving fleet's Fleet Status (FUN_00449200): Embarked sums its
+  // ships' slots, and Personnel each ship's FUN_00536da0(ship, 3) count,
+  // families 0x30..0x40, so the special force on its way in counts with
+  // the character. It equals the Fleet window's counters and its whole
+  // Personnel list. No A0 capture.
+  {
+    name: "fleet-status-en-route",
+    code: FLEET_ARRIVALS,
+    family: "Fleet",
+    embarked: () => fleetShipEmbarked,
+    target: async (page) => {
+      fleetShipEmbarked = null;
+      const { counts, personnel, back } = await fleetEmbarked(page);
+      fleetShipEmbarked = [...counts, String(personnel.length)];
+      return point(back.fleet_entry);
     },
   },
   // A character on its way into the fleet (the fixture's Move onto it,
@@ -622,7 +655,9 @@ const cases = [
       const fleet = await fleetLoad(page, (o) => o.selected === "fleet" && o.troops_tab);
       await click(page, { x: Math.round(fleet.troops_tab[0] + 32), y: Math.round(fleet.troops_tab[1]) });
       const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0 && o.first_item);
-      assert.equal(personnel.items.length, 1, JSON.stringify(personnel));
+      // The character, then the special force on the same Move.
+      assert.equal(personnel.items.length, 2, JSON.stringify(personnel));
+      assert.ok(!isSpecialForce(personnel.items[0]) && isSpecialForce(personnel.items[1]), JSON.stringify(personnel));
       return point(personnel.first_item);
     },
   },

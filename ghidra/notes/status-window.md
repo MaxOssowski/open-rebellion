@@ -510,10 +510,14 @@ no "Attached" row and no maintenance row. The rows, in order:
 - Embarked fighters: the sum of `FighterEntry::count`. The port keeps
   fighters on the fleet, not on a ship. Embarked regiments come from
   `TroopTransportState` (`troop_transport.rs`, the fleet's regiments aboard).
-- Personnel: `Fleet::characters` plus the special forces aboard. port:
-  carriage is kept per fleet, not per ship.
-- The three Embarked rows add the squadrons, regiments and characters on
-  their way into the fleet (mode 3, `status_rows::travellers`).
+- Personnel: `Fleet::characters` plus `Fleet::special_forces`. port:
+  carriage is kept per fleet, not per ship. `FUN_005131d0` keeps
+  `lo <= family < hi`, so `FUN_00536da0`'s `0x30..0x40` takes both
+  families and `FUN_004f25c0`'s `0x30..0x3c` (the Capital Ship Status)
+  the characters only.
+- The three Embarked rows add the squadrons, regiments, characters and
+  special forces on their way into the fleet (mode 3,
+  `status_rows::travellers`, `fleet_window::bound_members`).
 - Damaged Ships: port: no flag (`+0x50` bit `0x200`). `hull_current < class
   hull` is the nearest field. That reading is unverified.
 - Hyperdrive Rating: port: `FUN_004fd900` is not traced past its walk. The
@@ -583,7 +587,8 @@ no ":" maximum.
   moving onto a fleet its ship's child at once, so each is counted on the
   ship `fleet_window::ship_load` seats it on (`FUN_00552300`), as the
   Fleet window counts it (`status_rows::travellers`). Characters on their
-  way in join the fleet's own on its first alive ship.
+  way in join the fleet's own on its first alive ship. Personnel counts no
+  special force, aboard or on its way (`FUN_004f25c0`, `0x30..0x3c`).
 - Ship Damaged: the hull below the class's, or a hit counter set
   (`FUN_00501c00`).
 - Hull: `ShipInstance::hull_current` stands for the value after damage

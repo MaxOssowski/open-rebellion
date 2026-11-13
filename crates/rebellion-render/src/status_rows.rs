@@ -631,22 +631,29 @@ fn travellers(sources: StatusSources<'_>, fleet: FleetKey) -> Vec<[usize; 2]> {
         .collect()
 }
 
-/// The characters on their way into `fleet` that its Personnel walk finds
-/// (`FUN_004f25c0` / `FUN_00536da0` in mode 3; the Fleet window's
+/// The characters and the special forces on their way into `fleet` that
+/// its Personnel walks find (mode 3; the Fleet window's
 /// [`crate::fleet_window::bound_members`]).
-fn incoming_characters(sources: StatusSources<'_>, fleet: FleetKey) -> usize {
+fn incoming_personnel(sources: StatusSources<'_>, fleet: FleetKey) -> [usize; 2] {
     let arrivals = crate::quadrant_icons::fleet_arrivals(sources.missions);
-    crate::fleet_window::bound_members(sources.world, &arrivals, fleet)
-        .filter(|member| matches!(member, MissionMember::Character(_)))
-        .count()
+    crate::fleet_window::bound_members(sources.world, &arrivals, fleet).fold(
+        [0, 0],
+        |[characters, forces], member| match member {
+            MissionMember::Character(_) => [characters + 1, forces],
+            MissionMember::SpecialForce(_) => [characters, forces + 1],
+        },
+    )
 }
 
 /// The Fleet Status rows (`FUN_00449200`).
 ///
 /// port: the fleet's squadrons, regiments and characters are kept on the
 /// fleet, so Embarked and Personnel sum them there, with the units on
-/// their way in ([`travellers`]). Personnel counts the
-/// fleet's characters; the port carries no special force aboard a fleet.
+/// their way in ([`travellers`]). Personnel sums each ship's
+/// `FUN_00536da0(ship, 3)` walk (`FUN_00513180`), families `0x30..0x40`
+/// (`FUN_005131d0` keeps `lo <= family < hi`): the characters and the
+/// special forces aboard and on their way in. The Capital Ship Status
+/// counts the characters only ([`ship_rows`]).
 /// hyp: Hyperdrive Rating reads Yes when an alive ship's class has a
 /// hyperdrive (`FUN_004fd900` is traced only to its walk).
 #[must_use]
@@ -663,7 +670,8 @@ pub fn fleet_rows(sources: StatusSources<'_>, key: FleetKey) -> Option<Vec<Statu
     let [squadrons_in, regiments_in] = travellers(sources, key)
         .into_iter()
         .fold([0_usize; 2], |sum, each| [sum[0] + each[0], sum[1] + each[1]]);
-    let incoming = [squadrons_in, regiments_in, incoming_characters(sources, key)];
+    let [characters_in, forces_in] = incoming_personnel(sources, key);
+    let incoming = [squadrons_in, regiments_in, characters_in + forces_in];
     let count = |own: usize, kind: usize| own.saturating_add(incoming[kind]).to_string();
     let squadrons = fleet
         .fighters
@@ -693,7 +701,10 @@ pub fn fleet_rows(sources: StatusSources<'_>, key: FleetKey) -> Option<Vec<Statu
             "Trooper Regiments:",
             count(sources.transport.carried_count(key), 1),
         ),
-        row("Personnel:", count(fleet.characters.len(), 2)),
+        row(
+            "Personnel:",
+            count(fleet.characters.len() + fleet.special_forces.len(), 2),
+        ),
         row(
             "Damaged Ships:",
             ships
@@ -726,7 +737,9 @@ fn aboard(capacities: &[u32], index: usize, total: u32) -> u32 {
 /// The rows after damage read `rebellion_core::ship_condition`: the ship's
 /// hit counters (`+0x64`) and hull. Ship Damaged reads Yes while the hull is
 /// below its class's or a counter is set (`+0x50` bit `0x200`,
-/// `FUN_00501c00`). The hull is `ShipInstance::hull_current`. port:
+/// `FUN_00501c00`). The hull is `ShipInstance::hull_current`. Personnel
+/// is `FUN_004f25c0(ship, 3)`'s count, families `0x30..0x3c`: the
+/// characters only, not the special forces (`0x3c..0x3f`). port:
 /// Personnel puts the fleet's characters, and those on their way in,
 /// aboard its first alive ship. Embarked counts the squadrons and
 /// regiments on their way in seated on the ship too ([`travellers`]).
@@ -765,7 +778,7 @@ pub fn ship_rows(
     // (FUN_00552300: unlimited room); port: with the fleet's own, the first
     // alive one.
     let personnel = if position == 0 {
-        fleet.characters.len() + incoming_characters(sources, fleet_key)
+        fleet.characters.len() + incoming_personnel(sources, fleet_key)[0]
     } else {
         0
     };
@@ -2270,6 +2283,60 @@ mod tests {
         }
         let sources = states.sources(&world);
         assert_eq!(embarked(ship_rows(sources, fleet, 0).unwrap()), ["2", "1", "2"]);
+    }
+
+    #[test]
+    fn fleet_status_personnel_counts_special_forces_and_capital_ship_status_does_not() {
+        // FUN_00449200 sums each ship's FUN_00536da0(ship, 3) walk, families
+        // 0x30..0x40; FUN_00446fd0 prints FUN_004f25c0(ship, 3)'s,
+        // 0x30..0x3c. FUN_005131d0 keeps lo <= family < hi, so the special
+        // forces (0x3c..0x3f) count in the Fleet Status only, aboard and,
+        // by mode 3, on their way in (FUN_00556390).
+        let mut world = GameWorld::default();
+        let there = system(&mut world, "Bespin", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, there);
+        for (index, ship) in world.fleets[fleet].capital_ships.iter_mut().enumerate() {
+            ship.id = 1 + index as u64;
+        }
+        let force = |world: &mut GameWorld| {
+            world.special_forces.insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: DatId::new(0x3c00_0002),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: false,
+            })
+        };
+        let aboard = force(&mut world);
+        world.fleets[fleet].special_forces.push(aboard);
+        let travelling = force(&mut world);
+        let mut states = States::new();
+        let id = states.missions.dispatch(MissionRequest::single(
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            world.fleets[fleet].characters[0],
+            there,
+            None,
+            0,
+        ));
+        states.missions.set_target_fleet(id, fleet);
+        states.missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::SpecialForce(travelling),
+            mission_id: id,
+            to: there,
+            arrival: 15,
+            abode: None,
+        });
+        let sources = states.sources(&world);
+        let personnel = |rows: Vec<StatusRow>| -> String {
+            let start = rows.iter().position(|row| row.label == "Embarked:").unwrap();
+            rows[start + 3].value.clone()
+        };
+
+        // The fleet's one character and its two special forces.
+        assert_eq!(personnel(fleet_rows(sources, fleet).unwrap()), "3");
+        // The ship that seats them all counts the character alone.
+        assert_eq!(personnel(ship_rows(sources, fleet, 0).unwrap()), "1");
+        assert_eq!(personnel(ship_rows(sources, fleet, 1).unwrap()), "0");
     }
 
     #[test]

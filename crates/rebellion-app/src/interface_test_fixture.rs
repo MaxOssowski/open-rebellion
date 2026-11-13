@@ -2845,8 +2845,8 @@ pub fn emit_personnel_finder(
 /// The open Status window's title, name and rows: a Character Status in the
 /// ForceStatus and FleetArrivals scenarios, a facility's (the headquarters') in Quadrants, the
 /// travelling special force's in SpecialForceEnroute, regiment's in
-/// RegimentEnroute and the receiving ship's in FleetArrivals (with the
-/// picture's marks), and an unfinished unit's or a producer's in any.
+/// RegimentEnroute and the receiving fleet's or ship's in FleetArrivals
+/// (with the picture's marks), and an unfinished unit's or a producer's in any.
 pub fn emit_status_rows(
     request: FixtureRequest,
     sources: rebellion_render::status_rows::StatusSources<'_>,
@@ -2871,7 +2871,10 @@ pub fn emit_status_rows(
         }
         (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_)))
         | (Scenario::RegimentEnroute, Some(object @ StatusObject::Troop(_)))
-        | (Scenario::FleetArrivals, Some(object @ StatusObject::Ship { .. })) => {
+        | (
+            Scenario::FleetArrivals,
+            Some(object @ (StatusObject::Ship { .. } | StatusObject::Fleet(_))),
+        ) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };
@@ -3606,7 +3609,11 @@ fn place_fleet_arrivals(
 
 /// The `FleetArrivals` variant's character: the player's first recruited
 /// one off the map, on a Move whose target container is `fleet`
-/// (`MissionState::set_target_fleet`), arriving at its system on day 99.
+/// (`MissionState::set_target_fleet`), arriving at its system on day 99;
+/// after it on the same Move, a new special force of the player's side
+/// (SPECFCSD class 2, Infiltrators, for the Alliance; class 7, Imperial
+/// Commandos, for the Empire), which the Fleet Status's Personnel counts
+/// and the Capital Ship Status's does not (`FUN_00536da0`, `FUN_004f25c0`).
 fn send_member_aboard(
     request: FixtureRequest,
     world: &mut GameWorld,
@@ -3647,6 +3654,25 @@ fn send_member_aboard(
     missions.set_target_fleet(id, fleet);
     missions.push_transit(rebellion_core::missions::MemberTransit {
         member: MissionMember::Character(rider),
+        mission_id: id,
+        to,
+        arrival: 99,
+        abode: None,
+    });
+    let force = world
+        .special_forces
+        .insert(rebellion_core::world::SpecialForceUnit {
+            class_dat_id: rebellion_core::ids::DatId::new(if alliance {
+                0x3c00_0002
+            } else {
+                0x3c00_0007
+            }),
+            is_alliance: alliance,
+            skills: [0; 8],
+            on_mission: false,
+        });
+    missions.push_transit(rebellion_core::missions::MemberTransit {
+        member: MissionMember::SpecialForce(force),
         mission_id: id,
         to,
         arrival: 99,
@@ -11669,7 +11695,7 @@ mod tests {
     // FUN_00556390 puts each object sent by Move into its target container,
     // here the fleet, at once (regiment-unload.md).
     #[test]
-    fn the_fleet_arrivals_scenario_sends_a_regiment_squadron_and_character_aboard() {
+    fn the_fleet_arrivals_scenario_sends_a_regiment_squadron_character_and_special_force_aboard() {
         for (faction, index) in [(CockpitFaction::Alliance, 1), (CockpitFaction::Empire, 5)] {
             let alliance = faction == CockpitFaction::Alliance;
             let applied =
@@ -11715,8 +11741,13 @@ mod tests {
                 index
             );
             let arrivals = rebellion_render::quadrant_icons::fleet_arrivals(&applied.missions);
-            assert_eq!(arrivals.len(), 1, "{faction:?}");
-            assert_eq!(arrivals[0].1, fleet);
+            assert_eq!(arrivals.len(), 2, "{faction:?}");
+            assert!(arrivals.iter().all(|&(_, to)| to == fleet));
+            assert!(matches!(arrivals[0].0, MissionMember::Character(_)));
+            let MissionMember::SpecialForce(force) = arrivals[1].0 else {
+                panic!("{faction:?} {arrivals:?}");
+            };
+            assert_eq!(applied.world.special_forces[force].is_alliance, alliance);
             assert!(applied.transport.cargo(fleet).is_empty());
             assert!(applied.world.fleets[fleet].fighters.is_empty());
         }

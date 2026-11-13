@@ -146,3 +146,36 @@ moved one by one onto a fleet in another system.
 - port: the Fleet Status Personnel counts characters only, as before;
   the original also counts special forces (`0x30..0x3f`), aboard or on
   their way.
+
+## Follow-up: special forces in the Fleet Status Personnel
+
+- **Trace.** The Fleet Status (`FUN_00449200`) counts Personnel per ship
+  with `FUN_00536da0(ship, 3)`, whose range is `0x30..0x40`; the Capital
+  Ship Status (`FUN_00446fd0`) with `FUN_004f25c0(ship, 3)`, range
+  `0x30..0x3c`. Both are counted by `FUN_00513180`, whose filter
+  `FUN_005131d0` rejects `family < lo || hi <= family`, so the ranges are
+  half-open: the Fleet Status counts characters (`0x30..0x3b`) and special
+  forces (`0x3c..0x3f`), the Capital Ship Status characters only. Mode 3
+  takes the members on their way in, as above.
+- **Change.** `status_rows::incoming_personnel` counts the characters and
+  special forces bound for the fleet (`fleet_window::bound_members`).
+  `fleet_rows` Personnel adds `Fleet::special_forces` and the special
+  forces on their way in; `ship_rows` keeps the characters only. The
+  `FleetArrivals` fixture sends a special force of the player's side
+  (SPECFCSD 2 or 7) on the character's Move after it, and the fixture
+  bridge reports the Fleet Status rows there too.
+- **Unit test.**
+  `fleet_status_personnel_counts_special_forces_and_capital_ship_status_does_not`
+  failed without the change (`"1"` against `"3"`); fixture test
+  `the_fleet_arrivals_scenario_sends_a_regiment_squadron_character_and_special_force_aboard`.
+- **Browser.** Linux Chromium, test WASM
+  `57853a077bfdcb003e1c69668e8e5ccec1ac4e2d4d4b31bbdc8b599c8b09ef03`, run
+  `status-window-2026-11-13T00-52-31-929Z-1577288`: 36 of 36 pass. New
+  case `fleet-status-en-route` (both sides): Embarked 1, 1, 2, the Fleet
+  window's counters and whole Personnel list (the character and the
+  special force). `fleet-ship-en-route` now reads Personnel 1, the list's
+  characters only; `fleet-squadron-en-route` and
+  `fleet-character-en-route` list two members, the character first.
+- `cargo mutants` on `incoming_personnel`, `fleet_rows`, `ship_rows`: 45
+  mutants, 42 caught, 3 unviable, 0 missed.
+- ~~port: the Fleet Status Personnel counts characters only~~: closed.
