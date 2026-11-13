@@ -59,8 +59,11 @@ fleets and planet squadrons autorouting (`FUN_004f78e0`,
 `FUN_00556710` (a route step; not read further). `FUN_00517270` then gives
 the system's battle-won side from the same counts (`FUN_0050a040`).
 
-untraced: how the battle itself takes the planet's squadrons; the battle
-object behind system `+0x54`. The "space combat" pipeline in
+The battle build `FUN_0040b0e0` takes the planet's squadrons of both sides
+after every fleet's units (`0x40b7d5`), deployed, and `FUN_0040c780`
+returns their losses to the planet (`planet-squadrons-in-battle.md`, 2026-11-13).
+
+untraced: the battle object behind system `+0x54`. The "space combat" pipeline in
 `space-combat.md` (`FUN_005457f0` → `FUN_00549910`) is reached through
 `FUN_005438a0`, which tests story event ids (`0x32000242` and others): it is
 the mission manager's, not the battle's.
@@ -79,8 +82,8 @@ hyperdrive), so it can also travel between systems on its own.
 
 untraced: which leg builder (`FUN_00552000` and its siblings) fills which
 ship; whether a squadron may land on another side's planet; what happens to
-squadrons on a planet whose control changes; how the original's battle
-setup (`FUN_005442f0` → `FUN_005435f0`) takes the planet's squadrons.
+squadrons on a planet whose control changes. (The battle setup is
+`FUN_0040b0e0`, not `FUN_005442f0`: `planet-squadrons-in-battle.md`.)
 
 ## Port
 

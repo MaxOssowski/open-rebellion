@@ -911,6 +911,15 @@ fn apply_army_seed(
 
 /// Apply a single-system garrison seed (CMUNCRTB / CMUNHQTB / CMUNYVTB).
 /// The first item in each group is always `0x00000000` (skip it).
+///
+/// `FUN_0051ae20` (Coruscant, `0x90000109`), `FUN_0051acb0` (Yavin,
+/// `0x92000121`) and `FUN_0051ad90` (the Alliance HQ) pass the system itself
+/// to `FUN_0051be90` -> `FUN_0051bf30`. That creates a group's first item in
+/// the container (`FUN_004f7d50`) and each later item in that first object
+/// (`FUN_004f7cf0`). The garrison groups' first item is null
+/// (`FUN_004f26e0` gives 0), so every later item is created in the system:
+/// regiments on the planet, and fighter squadrons (family `0x1c`) as the
+/// planet's squadrons (ghidra/notes/planet-squadrons-in-battle.md).
 fn apply_garrison_seed(
     seed: Option<&SeedTableFile>,
     system_key_map: &HashMap<u32, SystemKey>,
@@ -926,6 +935,22 @@ fn apply_garrison_seed(
     for group in &seed.groups {
         for item in &group.items {
             if item.item_id == 0 {
+                continue;
+            }
+            if (item.item_id >> 24) as u8 == FAM_FIGHTER {
+                let seq_id = item.item_id & 0x00FF_FFFF;
+                if let Some(class) = world
+                    .fighter_classes
+                    .iter()
+                    .find(|(_, class)| class.dat_id.raw() & 0x00FF_FFFF == seq_id)
+                    .map(|(key, _)| key)
+                {
+                    rebellion_core::squadrons::add(
+                        &mut world.systems[system_key].fighters,
+                        class,
+                        1,
+                    );
+                }
                 continue;
             }
             dispatch_ground_item(item.item_id, system_key, is_alliance, world);
@@ -2425,6 +2450,55 @@ mod tests {
     }
 
     // ── M3: Special system tests ────────────────────────────────────────────
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_new_game_lands_the_garrison_tables_fighter_squadrons_on_their_planets() {
+        // FUN_0051ae20 / FUN_0051acb0 / FUN_0051ad90 -> FUN_0051be90 ->
+        // FUN_0051bf30: a garrison group's items after its null first item
+        // are created in the system, so its squadrons stand on the planet.
+        // CMUNCRTB holds 10 TIE Fighter squadrons (0x1c000005), CMUNYVTB 2
+        // and CMUNHQTB 6 Alliance squadrons (0x1c000003, 0x1c000004).
+        // A0 TAC-05-C009 (manifest): the Empire's day-2 save has 11 TIE
+        // squadrons on Coruscant's planet.
+        let path = gdata_path();
+        let seed_options = SeedOptions {
+            rng_seed: Some(42),
+            ..SeedOptions::default()
+        };
+        let world = crate::load_game_data_with_options(&path, &seed_options)
+            .expect("load_game_data_with_options failed");
+        let planet = |seq: u32| {
+            let system = world
+                .systems
+                .values()
+                .find(|system| system.dat_id.raw() == seq)
+                .expect("special system");
+            let mut names: Vec<(&str, u32)> = system
+                .fighters
+                .iter()
+                .map(|entry| {
+                    assert_eq!(entry.carrier, None);
+                    (
+                        world.fighter_classes[entry.class].name.as_str(),
+                        entry.count,
+                    )
+                })
+                .collect();
+            names.sort_unstable();
+            names
+        };
+        assert_eq!(planet(CORUSCANT_SEQ_ID), [("TIE Fighter", 10)]);
+        assert_eq!(planet(YAVIN_SEQ_ID), [("X-wing", 1), ("Y-wing", 1)]);
+        let hq = world
+            .systems
+            .values()
+            .find(|system| system.is_headquarters && system.dat_id.raw() != CORUSCANT_SEQ_ID)
+            .expect("Alliance HQ")
+            .dat_id
+            .raw();
+        assert_eq!(planet(hq), [("X-wing", 4), ("Y-wing", 2)]);
+    }
 
     #[test]
     #[ignore = "requires original data/base DAT files"]
