@@ -10442,22 +10442,25 @@ fn issue_team_move(
     } else {
         None
     };
-    let troop_days: Option<Vec<u32>> = team
+    let troop_days: Result<Vec<u32>, _> = team
         .troops
         .iter()
         .map(|&troop| {
-            context
-                .transport
-                .move_days(
-                    world,
-                    context.movement,
-                    context.blockaded,
-                    troop,
-                    regiment_target,
-                )
-                .ok()
+            context.transport.move_days(
+                world,
+                context.movement,
+                context.blockaded,
+                troop,
+                regiment_target,
+            )
         })
         .collect();
+    // A regiment's refusal names its reason, as its own move's does.
+    let refusal = troop_days.as_ref().err().map_or_else(
+        || "Move refused".to_string(),
+        |error| format!("Regiment move rejected: {error}"),
+    );
+    let troop_days = troop_days.ok();
     // Each class's squadrons together, so the room is checked for them all.
     let mut classes: Vec<(rebellion_core::ids::FighterKey, u32)> = Vec::new();
     for &class in &team.squadrons {
@@ -10498,7 +10501,7 @@ fn issue_team_move(
         // stands in.
         msg_log.push(GameMessage::new(
             context.tick,
-            "Move refused".to_string(),
+            refusal,
             MessageCategory::Event,
         ));
         return;
@@ -16532,6 +16535,12 @@ mod fleet_move_tests {
         assert!(refused.actions.is_empty(), "{:?}", refused.actions);
         assert!(!refused.confirmation.is_open());
         assert_eq!(refused.log.messages().len(), 1);
+        // The refusal names the regiment's reason, as its own move's does.
+        assert!(
+            refused.log.messages()[0].text.starts_with("Regiment move rejected: "),
+            "{:?}",
+            refused.log.messages()[0].text
+        );
         // With Ctrl it is 0x202: one confirmation lists both.
         let confirmed = issue_fleet_drop(&w.world, &transport, drop(troops.to_vec(), true), w.destination);
         assert!(confirmed.actions.is_empty());

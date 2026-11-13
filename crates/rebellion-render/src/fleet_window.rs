@@ -3553,9 +3553,11 @@ fn draw_fleet_window(
                         .collect(),
                 };
                 if exact_clicked(&response, entry_area) {
-                    if let Some(point) = response.interact_pointer_pos() {
-                        result.left_press = Some(left_press(point, true));
-                    }
+                    let point = response
+                        .interact_pointer_pos()
+                        .or_else(|| click.map(|(point, _)| point))
+                        .unwrap_or_else(|| entry_area.center());
+                    result.left_press = Some(left_press(point, true));
                     result.focus = true;
                 }
                 if response.clicked() && double {
