@@ -6953,9 +6953,42 @@ mod tests {
         assert_eq!(whole, [OriginalFighterTarget::Fighter(0)]);
         let (damaged, damaged_strength) = group(48.0);
         assert_eq!(damaged, [OriginalFighterTarget::Fighter(2)]);
-        // The group's own guns scale with its hull (FUN_005b9c00), and the
-        // search scales them once more (FUN_005b1770).
-        assert!((damaged_strength.unwrap() * 4.0 - whole_strength.unwrap()).abs() < 0.000_1);
+        // The search scales the group's guns by its hull once (FUN_005b3a40
+        // at 0x5b3ba0 -> FUN_005b1770). FUN_005b9c00 (vtable +0x60, the
+        // slot of a capital ship's FUN_005b0400) is the weapon recharge,
+        // not a strength factor.
+        assert!((damaged_strength.unwrap() * 2.0 - whole_strength.unwrap()).abs() < 0.000_1);
+        // A whole group's four lasers at a group: count * coefficient * 1.0.
+        assert!((whole_strength.unwrap() - 4.0 * ORIGINAL_CAPITAL_WEAPON_STRENGTH).abs() < 0.000_1);
+    }
+
+    // FUN_005b3a40 (0x5b3ba0) and FUN_005b6530: a fighter group's family
+    // strength is its count times the coefficient (0x3e888889) and the
+    // target class's modifier (FUN_005d2490, FUN_005d24e0); no hull term.
+    #[test]
+    fn a_fighter_group_s_strength_is_count_times_coefficient_and_modifier() {
+        use crate::tactical::{original_fighter_weapon_strength, WeaponKind};
+        let coefficient = f32::from_bits(0x3e88_8889);
+        let cases = [
+            (5, WeaponKind::LaserCannon, true, 5.0 * coefficient),
+            (
+                5,
+                WeaponKind::LaserCannon,
+                false,
+                5.0 * coefficient * f32::from_bits(0x3e2b_020c),
+            ),
+            (4, WeaponKind::Turbolaser, true, 4.0 * coefficient * 0.5),
+            (4, WeaponKind::Turbolaser, false, 4.0 * coefficient),
+            (3, WeaponKind::IonCannon, true, 0.0),
+            (3, WeaponKind::IonCannon, false, 3.0 * coefficient),
+        ];
+        for (count, kind, at_fighter, expected) in cases {
+            let strength = original_fighter_weapon_strength(count, kind, at_fighter);
+            assert!(
+                (strength - expected).abs() < 1e-6,
+                "{kind:?} {at_fighter}: {strength}"
+            );
+        }
     }
 
     // FUN_005b3f10 (FUN_005b23a0): a group's torpedoes follow its guns only

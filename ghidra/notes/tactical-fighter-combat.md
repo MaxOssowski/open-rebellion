@@ -14,9 +14,9 @@ transport.
 | `FUN_0040be90` | Transports FIGHTSD values into the tactical creation call |
 | `FUN_005964c0` | Allocates and registers one tactical fighter object |
 | `FUN_005b9c60` | Fighter constructor and exact field initialization |
-| `FUN_005b9c00` | Derives live weapon output from current hull |
+| `FUN_005b9c00` | Live weapon recharge from current hull (vtable `+0x60`) |
 | `FUN_005b9c30` | Derives live shield recharge from current hull |
-| `FUN_005b49e0` | Emits laser, ion, and turbolaser events with float strength |
+| `FUN_005b49e0` | The AI's strength estimate per family (called from `FUN_005edf80`); not a fire path |
 | `FUN_005b3f10` | Emits weapon and shield-gated torpedo events in source order |
 | `FUN_005b7780` | Scores one concrete target, including maneuver ratios |
 | `FUN_005b7a80` | Scores a target class without a concrete object |
@@ -45,7 +45,7 @@ The constructor applies these exact scalar values:
 | Sublight power | `FIGHTSD.sub_light_engine * 0.4` |
 | Initial weapon energy | sum of fore laser, ion, and turbolaser counts |
 | Initial weapon readiness | true when the sum is positive |
-| Weapon output factor | `current_hull * 3.751 / 8.0` |
+| Weapon recharge per second | `current_hull * 3.751 / 8.0` |
 | Shield recharge per second | `current_hull * 0.025 / 8.0` |
 | Effective maneuverability | `raw + 1`, clamped at 9 |
 
@@ -54,18 +54,32 @@ The owned data confirms squadron size 12 for every original class.
 
 ## Weapon events and target modifiers
 
-`FUN_005b49e0` emits each populated family as a separate float-strength event.
-Its strength is:
+A fighter group fires through the same paths as a capital ship. The
+autonomous search (`FUN_005b3a40`, vtable `+0x88`, the fighter tail at
+`0x5b3ba0`) keeps a laser or turbolaser candidate of
 
 ```text
-weapon_count * live_weapon_output * family_coefficient * target_modifier
+FUN_005b1770(weapon_count * family_coefficient * target_modifier)
 ```
 
+that is, scaled once by current hull over maximum hull (`+0x3cc / +0x3c8`).
+A direct target (`FUN_005b6530`, vtable `+0xa8`) offers
+`weapon_count * target_modifier * family_coefficient` without the hull
+scale. `FUN_005b3f10` fires the kept strength.
+
+`FUN_005b9c00` (`current_hull * 3.751 / 8`) sits in vtable slot `+0x60`,
+the slot of a capital ship's weapon recharge `FUN_005b0400`; it is the
+group's weapon recharge per second, never a strength factor. `FUN_005b49e0`
+multiplies by slot `+0x60`, but it is only the AI's strength estimate
+(`FUN_005edf80`). Until 2026-11-13 the port took it for the fire path and
+fired each fighter shot about 45 times too strong at full strength.
+
 The shared family coefficient is the exact float `0x3e888889`. Ion cannons do
-not damage fighters. Lasers retain a 1.0 fighter modifier and use the exact
-`0x3e2b020c` modifier against capital ships. Turbolasers use 0.5 against
-fighters and 1.0 against capital ships. The source order is ion, laser,
-turbolaser, then the conditional torpedo event.
+not fire at fighters (the search offers only lasers and turbolasers). Lasers
+retain a 1.0 fighter modifier and use the exact `0x3e2b020c` modifier against
+capital ships. Turbolasers use 0.5 against fighters and 1.0 against capital
+ships. The source order is ion, laser, turbolaser, then the conditional
+torpedo event.
 
 Torpedo strength is `FIGHTSD.torpedoes * 0x3f088889`. The value is a combat
 rating rather than a decremented ammunition counter. A fighter can emit the

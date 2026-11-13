@@ -4083,8 +4083,13 @@ pub enum OriginalFighterTarget {
     DeathStar,
 }
 
+/// A fighter group's family strength before any hull scale: the count times
+/// the coefficient and the target class's modifier, as a capital ship's
+/// (`FUN_005b3a40` at `0x5b3ba0`, `FUN_005b6530`). The group's hull * 3.751
+/// / 8 (`FUN_005b9c00`, vtable `+0x60`) is its weapon recharge, not a
+/// strength factor; `FUN_005b49e0`, which multiplies by it, is the AI's
+/// strength estimate (`FUN_005edf80`), not the fire path.
 pub fn original_fighter_weapon_strength(
-    fighter: &TacticalFighter,
     count: u32,
     kind: WeaponKind,
     target_is_fighter: bool,
@@ -4103,7 +4108,7 @@ pub fn original_fighter_weapon_strength(
             WeaponKind::FighterAttack => 0.0,
         }
     };
-    count as f32 * fighter.weapon_hull_factor() * ORIGINAL_CAPITAL_WEAPON_STRENGTH * target_modifier
+    count as f32 * ORIGINAL_CAPITAL_WEAPON_STRENGTH * target_modifier
 }
 
 pub fn original_fighter_weapon_range(fighter: &TacticalFighter, kind: WeaponKind) -> f32 {
@@ -7370,9 +7375,7 @@ impl BattleSession {
                     }
                 }
             }
-            TacticalUnitRef::Fighter(index) => {
-                original_fighter_weapon_strength(&self.fighters[index], count, kind, fighter)
-            }
+            TacticalUnitRef::Fighter(_) => original_fighter_weapon_strength(count, kind, fighter),
         }
     }
 

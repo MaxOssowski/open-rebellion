@@ -17997,6 +17997,55 @@ mod tests {
         assert!(!fighter.alive);
     }
 
+    // Source: FUN_005b6530 (vtable +0xa8) offers a laser candidate of count
+    // * fighter modifier (+0x6c) * coefficient (+0x6b); FUN_005b3f10 fires
+    // that strength. FUN_005b9c00's hull * 3.751 / 8 is the weapon recharge
+    // (vtable +0x60), not a strength factor.
+    #[test]
+    fn a_fighter_group_fires_its_laser_count_times_the_coefficient_at_fighters() {
+        let mut source = test_fighter(1, true);
+        source.source_position.z = 0.0;
+        let mut target = test_fighter(5, false);
+        target.source_position.z = 6.0;
+        let mut session = test_session(Vec::new(), vec![source, target], true);
+
+        let mut shots = Vec::new();
+        session.fire_unit_weapons(
+            rebellion_core::tactical::TacticalUnitRef::Fighter(0),
+            &mut shots,
+        );
+        let laser = shots
+            .iter()
+            .find(|shot| shot.kind == WeaponKind::LaserCannon)
+            .expect("the group fires its lasers at the enemy group");
+        let expected = 5.0 * f32::from_bits(0x3e88_8889);
+        assert!(
+            (laser.strength - expected).abs() < 1e-4,
+            "{}",
+            laser.strength
+        );
+
+        // The nearest enemy is a direct target (FUN_005b6530), whose
+        // strength takes no hull scale: at half hull the shot is the same.
+        session.fighters[0].hull_current = 48.0;
+        session.fighters[0].weapon_arc.ready = true;
+        session.fighters[0].weapon_arc.energy = session.fighters[0].weapon_arc.energy_capacity;
+        let mut shots = Vec::new();
+        session.fire_unit_weapons(
+            rebellion_core::tactical::TacticalUnitRef::Fighter(0),
+            &mut shots,
+        );
+        let laser = shots
+            .iter()
+            .find(|shot| shot.kind == WeaponKind::LaserCannon)
+            .expect("the damaged group still fires");
+        assert!(
+            (laser.strength - expected).abs() < 1e-4,
+            "{}",
+            laser.strength
+        );
+    }
+
     // Source: FUN_005d2490 / FUN_005d24e0 fighter damage modifiers.
     #[test]
     fn fighter_damage_uses_float_shields_hull_and_maneuver_ratio() {
