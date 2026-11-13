@@ -358,6 +358,24 @@ fn window_control_hovered(ui: &egui::Ui, rect: egui::Rect, enabled: bool) -> boo
         && ctx.layer_id_at(pointer) == Some(ui.layer_id())
 }
 
+/// The text a tip shows for its string. The original's control has no
+/// `TTS_NOPREFIX` (`FUN_006008e0`: style 1), so the system drops each `&`
+/// and shows `&&` as one `&`.
+#[must_use]
+pub fn shown_text(text: &str) -> String {
+    let mut shown = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '&' {
+            shown.push(c);
+        } else if chars.peek() == Some(&'&') {
+            chars.next();
+            shown.push('&');
+        }
+    }
+    shown
+}
+
 /// Run the timers on the control the last frame registered and draw the tip
 /// over the 640 by 480 client whose top left is `origin`, at `scale` screen
 /// points per client pixel. Call once a frame, before the controls paint.
@@ -397,7 +415,11 @@ pub fn paint(ctx: &egui::Context, origin: egui::Pos2, scale: f32) {
         egui::Order::Debug,
         egui::Id::new("original-tooltip"),
     ));
-    let galley = painter.layout_no_wrap(text, egui::FontId::proportional(FONT_SIZE * scale), TEXT);
+    let galley = painter.layout_no_wrap(
+        shown_text(&text),
+        egui::FontId::proportional(FONT_SIZE * scale),
+        TEXT,
+    );
     let rect = tip_rect(at, galley.size().x / scale);
     let screen =
         egui::Rect::from_min_size(origin + rect.min.to_vec2() * scale, rect.size() * scale);
@@ -442,6 +464,18 @@ pub(crate) mod tests {
 
     fn id(n: u32) -> egui::Id {
         egui::Id::new(n)
+    }
+
+    #[test]
+    fn a_tip_drops_its_ampersands_as_a_prefix_style_tooltip_control_does() {
+        // FUN_006008e0 creates the tooltips_class32 with style 1
+        // (TTS_ALWAYSTIP) and no TTS_NOPREFIX (2), so the system strips
+        // each '&' and shows "&&" as one: TEXTTACT 0xddcd "Maneuvers &
+        // Tactics" shows "Maneuvers  Tactics" (A0
+        // 2026-11-13-tactical-panel-tips/15).
+        assert_eq!(shown_text("Maneuvers & Tactics"), "Maneuvers  Tactics");
+        assert_eq!(shown_text("R&D && more&"), "RD & more");
+        assert_eq!(shown_text("Raw Materials Monitor"), "Raw Materials Monitor");
     }
 
     #[test]

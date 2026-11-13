@@ -287,7 +287,7 @@ covers the mission icon's menu only.
   2026-11-13-defenses-missions-drop/24..30 (Kubindi's missions icon
   dropped on Jerijador, the Alliance) shows no window, no change and no
   Message Index entry, as `FUN_00487c90` files no message. Since
-  2026-11-14 every refused order of the interface reaches the side's
+  2026-11-13 every refused order of the interface reaches the side's
   advisor (`MessageLog::refuse` -> `AdvisorSchedule::refused`, slot
   `+0xc`); the port's line stays off every rail, so no index lists it.
   hyp: most refusals' two status words are not read and take the
