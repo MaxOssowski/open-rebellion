@@ -35,6 +35,14 @@ pub enum ScrapTarget {
         system: SystemKey,
         class: crate::ids::FighterKey,
     },
+    /// One squadron of `class` aboard `fleet`: the same squadron slot
+    /// `+0x5c` (`FUN_005575f0`) as on a planet. A0
+    /// `2026-11-13-drag/16` shows Scrap white on three squadrons of a
+    /// fleet. port: squadrons are counts per class in their fleet.
+    FleetFighter {
+        fleet: crate::ids::FleetKey,
+        class: crate::ids::FighterKey,
+    },
     /// The capital ship at `index` in `fleet` (vtables `0x65d650`,
     /// `0x65d930`, `0x65dc10`, slot `+0x5c` `FUN_005575f0`). port: a ship
     /// is named by its place in its fleet.
@@ -141,6 +149,14 @@ fn resolve(world: &GameWorld, target: ScrapTarget) -> Option<(SystemKey, Faction
             let c = world.fighter_classes.get(class)?;
             (system, Faction::of_alliance(c.is_alliance), c.dat_id)
         }
+        ScrapTarget::FleetFighter { fleet, class } => {
+            let f = world.fleets.get(fleet)?;
+            if !f.fighters.iter().any(|e| e.class == class && e.count > 0) {
+                return None;
+            }
+            let c = world.fighter_classes.get(class)?;
+            (f.location, Faction::of_alliance(c.is_alliance), c.dat_id)
+        }
         ScrapTarget::Ship { fleet, index } => {
             let f = world.fleets.get(fleet)?;
             let ship = f.capital_ships.get(index).filter(|s| s.alive)?;
@@ -171,7 +187,7 @@ pub fn target_name(world: &GameWorld, target: ScrapTarget) -> Option<String> {
             let class = world.capital_ship_classes.get(ship.class)?;
             Some(ship.name.clone().unwrap_or_else(|| class.name.clone()))
         }
-        ScrapTarget::PlanetFighter { class, .. } => {
+        ScrapTarget::PlanetFighter { class, .. } | ScrapTarget::FleetFighter { class, .. } => {
             Some(world.fighter_classes.get(class)?.name.clone())
         }
         // A0 menus/25-fleet1-scrap-confirm.png lists "Fleet 1".
@@ -229,7 +245,11 @@ pub fn check_with_movement(
 ) -> Result<(), ScrapRefusal> {
     check(world, side, target)?;
     match target {
-        ScrapTarget::Fleet(fleet) | ScrapTarget::Ship { fleet, .. }
+        // A squadron aboard a fleet in hyperspace is en route with it
+        // (FUN_004f8240).
+        ScrapTarget::Fleet(fleet)
+        | ScrapTarget::Ship { fleet, .. }
+        | ScrapTarget::FleetFighter { fleet, .. }
             if movement.is_in_transit(fleet) =>
         {
             Err(ScrapRefusal::EnRoute)
@@ -259,7 +279,7 @@ pub fn scrap(
     check(world, side, target)?;
     let (system, owner, class) = resolve(world, target).ok_or(ScrapRefusal::Unresolved)?;
     let refund = match target {
-        ScrapTarget::PlanetFighter { class, .. } => {
+        ScrapTarget::PlanetFighter { class, .. } | ScrapTarget::FleetFighter { class, .. } => {
             world.fighter_classes.get(class).map_or(0, |c| {
                 i32::try_from(c.refined_material_cost).unwrap_or(i32::MAX)
             }) / 2
@@ -285,6 +305,12 @@ pub fn scrap(
             if let Some(sys) = world.systems.get_mut(system) {
                 crate::squadrons::take(&mut sys.fighters, class, 1);
             }
+        }
+        ScrapTarget::FleetFighter { fleet, class } => {
+            if let Some(value) = world.fleets.get_mut(fleet) {
+                crate::squadrons::take(&mut value.fighters, class, 1);
+            }
+            disband_if_empty(world, fleet);
         }
         ScrapTarget::Ship { fleet, index } => remove_ship(world, fleet, index),
         ScrapTarget::Fleet(fleet) => scrap_fleet(world, transport, fleet),
@@ -1084,7 +1110,17 @@ mod tests {
         let mut movement = crate::movement::MovementState::new();
         let target = ScrapTarget::Fleet(fleet);
         let ship = ScrapTarget::Ship { fleet, index: 0 };
-        for target in [target, ship] {
+        // A squadron aboard is en route with its fleet (FUN_004f8240).
+        let x_wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            ..Default::default()
+        });
+        crate::squadrons::add(&mut f.world.fleets[fleet].fighters, x_wing, 1);
+        let squadron = ScrapTarget::FleetFighter {
+            fleet,
+            class: x_wing,
+        };
+        for target in [target, ship, squadron] {
             assert_eq!(
                 check_with_movement(&f.world, &movement, Faction::Alliance, target),
                 Ok(())
@@ -1099,7 +1135,7 @@ mod tests {
         )
         .unwrap();
         assert!(movement.is_in_transit(fleet));
-        for target in [target, ship] {
+        for target in [target, ship, squadron] {
             assert_eq!(
                 check_with_movement(&f.world, &movement, Faction::Alliance, target),
                 Err(ScrapRefusal::EnRoute)
@@ -1109,6 +1145,96 @@ mod tests {
         assert_eq!(
             check_with_movement(&f.world, &movement, Faction::Empire, target),
             Err(ScrapRefusal::NotOwnSide)
+        );
+    }
+
+    #[test]
+    fn a_squadron_aboard_a_fleet_is_scrapped_one_at_a_time_and_an_emptied_fleet_disbands() {
+        // The squadron's slot +0x5c (FUN_005575f0) as on a planet; A0
+        // 2026-11-13-drag/16 shows Scrap white on a fleet's squadrons.
+        // FUN_00530270 refunds +0x48 / 2 = 9 / 2 = 4 each.
+        let mut f = fixture();
+        let x_wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            refined_material_cost: 9,
+            name: "X-wing".into(),
+            ..Default::default()
+        });
+        let fleet = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: Vec::new(),
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        f.world.systems[f.system].fleets.push(fleet);
+        crate::squadrons::add(&mut f.world.fleets[fleet].fighters, x_wing, 2);
+        let target = ScrapTarget::FleetFighter {
+            fleet,
+            class: x_wing,
+        };
+        assert_eq!(target_name(&f.world, target).as_deref(), Some("X-wing"));
+        assert_eq!(
+            check(&f.world, Faction::Empire, target),
+            Err(ScrapRefusal::NotOwnSide)
+        );
+        let mut production = ProductionState::new();
+        let mut scrap_one = |world: &mut GameWorld| {
+            scrap(
+                world,
+                &mut production,
+                &mut TroopTransportState::new(),
+                Faction::Alliance,
+                target,
+            )
+        };
+        let done = scrap_one(&mut f.world).unwrap();
+        assert_eq!(done.refund, 4);
+        assert_eq!(done.system, f.system);
+        assert_eq!(crate::squadrons::total(&f.world.fleets[fleet].fighters), 1);
+        scrap_one(&mut f.world).unwrap();
+        assert!(!f.world.fleets.contains_key(fleet), "the emptied fleet disbands");
+        assert_eq!(
+            check(&f.world, Faction::Alliance, target),
+            Err(ScrapRefusal::Unresolved)
+        );
+        // An emptied entry, or only another class, does not resolve.
+        let a_wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            ..Default::default()
+        });
+        let other = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: Vec::new(),
+            fighters: vec![
+                crate::world::FighterEntry {
+                    class: x_wing,
+                    count: 0,
+                    carrier: None,
+                },
+                crate::world::FighterEntry {
+                    class: a_wing,
+                    count: 1,
+                    carrier: None,
+                },
+            ],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        assert_eq!(
+            check(
+                &f.world,
+                Faction::Alliance,
+                ScrapTarget::FleetFighter {
+                    fleet: other,
+                    class: x_wing
+                }
+            ),
+            Err(ScrapRefusal::Unresolved)
         );
     }
 

@@ -175,9 +175,9 @@ impl MenuObject {
     }
 
     /// What a Scrap order (`0x200`) names for the object
-    /// (`rebellion_core::scrap`). port: a fleet, a squadron aboard a fleet
-    /// and a sector window's icon take Scrap in the original
-    /// (`FUN_004fdbc0`, `FUN_005575f0`, `FUN_00512700`) but are not ported.
+    /// (`rebellion_core::scrap`). A squadron aboard a fleet and a sector
+    /// window's icon name theirs through [`Self::scrap_team`], which reads
+    /// the world.
     #[must_use]
     pub const fn scrap_target(self) -> Option<ScrapTarget> {
         match self {
@@ -226,6 +226,18 @@ impl MenuObject {
                 quadrant.kind(),
                 side,
             ),
+            // A squadron aboard a fleet, by its entry's class
+            // (FUN_005575f0; A0 2026-11-13-drag/16).
+            Self::Fighter { fleet, index } => world
+                .fleets
+                .get(fleet)
+                .and_then(|value| value.fighters.get(index))
+                .map(|entry| ScrapTarget::FleetFighter {
+                    fleet,
+                    class: entry.class,
+                })
+                .into_iter()
+                .collect(),
             other => other.scrap_target().into_iter().collect(),
         }
     }

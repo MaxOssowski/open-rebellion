@@ -16781,6 +16781,50 @@ mod fleet_move_tests {
         assert_eq!(scrap_or(&world, ObjectMenuCommand::Move, &[ship(0)]), None);
     }
 
+    #[test]
+    fn three_selected_fleet_squadrons_take_scrap_as_one_team() {
+        // A0 2026-11-13-drag/16: three squadrons of a fleet selected, Scrap
+        // white; FUN_005201c0 makes one command per member (FUN_005575f0).
+        use rebellion_core::scrap::ScrapTarget;
+        let mut w = defenses_world();
+        let fleet = w.world.fleets.insert(Fleet {
+            location: w.origin,
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        w.world.systems[w.origin].fleets.push(fleet);
+        rebellion_core::squadrons::add(&mut w.world.fleets[fleet].fighters, w.x_wing, 3);
+        let squadron = MenuObject::Fighter { fleet, index: 0 };
+        let gates = order_gates(
+            Some(squadron),
+            &w.world,
+            &MissionState::new(),
+            &MovementState::new(),
+            &TroopTransportState::new(),
+            &DeliveryState::new(),
+            &ManufacturingState::new(),
+            &rebellion_core::research::ResearchState::new(),
+            MissionFaction::Alliance,
+            0,
+        );
+        assert!(gates.scrap);
+        let window = scrap_or(&w.world, ObjectMenuCommand::Scrap, &[squadron; 3])
+            .unwrap()
+            .expect("the scrap asks");
+        assert_eq!(
+            window.scrap,
+            [ScrapTarget::FleetFighter {
+                fleet,
+                class: w.x_wing
+            }; 3]
+        );
+        assert_eq!(window.lines.len(), 3);
+    }
+
     fn scrap_or(
         world: &GameWorld,
         command: ObjectMenuCommand,

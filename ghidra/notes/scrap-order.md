@@ -105,8 +105,10 @@ port:
 
 ## Open
 
-- Scrap for fighter squadrons and regiments aboard a fleet on their own
-  (`FUN_005575f0`).
+- Scrap for regiments aboard a fleet on their own. A squadron aboard a
+  fleet is ported (2026-11-13, `ScrapTarget::FleetFighter`, the same
+  `FUN_005575f0` as on a planet; A0 `2026-11-13-drag/16`: Scrap white on
+  three of a fleet's squadrons).
 - Reason `0x16` (queue scrap) does not refund yet. Reason `0x15` does,
   in `autoscrap.rs` (2026-10-17).
 - The autorouting of characters in a scrapped fleet (`FUN_004ef2e0`):
