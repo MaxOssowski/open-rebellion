@@ -1426,6 +1426,9 @@ pub fn apply(
                 side: Some(side),
             },
         );
+        // A0 kinds2/61..63 offer no Recruitment (the pool was empty), so
+        // Subdue Uprising heads FUN_0046cab0's order (key 3, Recruitment 1).
+        world.set_recruit_pool_empty(player_control);
     }
     if matches!(
         request.scenario,
