@@ -8392,7 +8392,17 @@ async fn main() {
                                             (system, Some(fleet))
                                         }
                                     };
-                                    if confirmed {
+                                    let asks = confirmed
+                                        || world.characters.get(character).is_some_and(|c| {
+                                            c.current_fleet.is_none()
+                                                && move_out_of_blockade_asks(
+                                                    &world,
+                                                    blockade_state.blockaded_systems(),
+                                                    c.current_system,
+                                                    player_faction,
+                                                )
+                                        });
+                                    if asks {
                                         confirm_character_move(
                                             &world,
                                             player_faction,
@@ -8423,7 +8433,18 @@ async fn main() {
                                             (system, Some(fleet))
                                         }
                                     };
-                                    if confirmed {
+                                    let asks = confirmed
+                                        || move_out_of_blockade_asks(
+                                            &world,
+                                            blockade_state.blockaded_systems(),
+                                            world
+                                                .systems
+                                                .iter()
+                                                .find(|(_, sys)| sys.special_forces.contains(&unit))
+                                                .map(|(key, _)| key),
+                                            player_faction,
+                                        );
+                                    if asks {
                                         confirm_special_force_move(
                                             &world,
                                             player_faction,
@@ -8538,7 +8559,18 @@ async fn main() {
                                             (system, RegimentTarget::System(system))
                                         }
                                     };
-                                    if confirmed {
+                                    let asks = confirmed
+                                        || move_out_of_blockade_asks(
+                                            &world,
+                                            blockade_state.blockaded_systems(),
+                                            world
+                                                .systems
+                                                .iter()
+                                                .find(|(_, sys)| sys.ground_units.contains(&troop))
+                                                .map(|(key, _)| key),
+                                            player_faction,
+                                        );
+                                    if asks {
                                         confirm_troop_move(
                                             &world,
                                             &movement_state,
@@ -8569,7 +8601,18 @@ async fn main() {
                                         },
                                     target,
                                 }) => {
-                                    if confirmed {
+                                    let on_planet = match from {
+                                        SquadronPlace::Planet(system) => Some(system),
+                                        SquadronPlace::Fleet(_) => None,
+                                    };
+                                    let asks = confirmed
+                                        || move_out_of_blockade_asks(
+                                            &world,
+                                            blockade_state.blockaded_systems(),
+                                            on_planet,
+                                            player_faction,
+                                        );
+                                    if asks {
                                         confirm_squadron_move(
                                             &world,
                                             &troop_transport_state.squadrons,
@@ -10878,6 +10921,30 @@ fn confirm_ship_move(
         join,
         lines,
     });
+}
+
+/// Whether `FUN_00487cc0` asks before a single unit's Move (`0x201`): when
+/// the member's container is a system with the blockade bit (`+0x88` bit
+/// `0x20`) of the member's side (read `0x00487cc0..0x00487e13`), as
+/// `issue_team_move` asks for a window selection. A unit on a planet has
+/// the system as its container; one aboard a fleet (`container` `None`)
+/// never asks. The confirmation then shows the evacuation warning 0x7056
+/// (`FUN_0049a350`). Every order goes through `FUN_00487740` ->
+/// `FUN_00487cc0` (`move-order.md`), the menu's Move of a character,
+/// special force, regiment or squadron too.
+fn move_out_of_blockade_asks(
+    world: &GameWorld,
+    blockaded: &HashSet<SystemKey>,
+    container: Option<SystemKey>,
+    faction: MissionFaction,
+) -> bool {
+    container.is_some_and(|key| {
+        blockaded.contains(&key)
+            && world
+                .systems
+                .get(key)
+                .is_some_and(|value| value.control.is_controlled_by(Faction::from(faction)))
+    })
 }
 
 /// A regiment's name in a move's confirmation: its class's (`FUN_0053c2e0`
@@ -15536,6 +15603,22 @@ mod fleet_move_tests {
         transport.embark(world, fleet, &[troop]).expect("the regiment boards");
         world.systems[origin].ground_units.retain(|&key| key != troop);
         (transport, troop)
+    }
+
+    #[test]
+    fn a_units_move_off_its_sides_blockaded_planet_asks_and_aboard_a_fleet_does_not() {
+        // FUN_00487cc0 (0x00487cc0..0x00487e13): a 0x201 asks when the first
+        // member's container is a system with the blockade bit of the
+        // member's side; aboard a fleet the container is the fleet.
+        let (mut world, _, system) = world_with_two_fleets();
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        let blockaded: HashSet<SystemKey> = [system].into_iter().collect();
+        assert!(move_out_of_blockade_asks(&world, &blockaded, Some(system), MissionFaction::Alliance));
+        // Another side's member there, or a member aboard a fleet, does not.
+        assert!(!move_out_of_blockade_asks(&world, &blockaded, Some(system), MissionFaction::Empire));
+        assert!(!move_out_of_blockade_asks(&world, &blockaded, None, MissionFaction::Alliance));
+        // No blockade there.
+        assert!(!move_out_of_blockade_asks(&world, &HashSet::new(), Some(system), MissionFaction::Alliance));
     }
 
     #[test]
