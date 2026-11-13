@@ -523,9 +523,16 @@ fn tactical_tool(
     let (x, y) = canvas.logical_pointer(x, y);
     if enabled && rect.contains(x, y) {
         if let Some(text) = crate::win_tooltip::module_string(module, string) {
-            tactical_tool_text(id, text);
+            tactical_tool_text(id, tactical_tip_shown(&text));
         }
     }
+}
+
+/// The text a battle tip shows for a TEXTTACT string: the prefix-style
+/// tooltip control drops '&' (`win_tooltip::shown_text`; A0
+/// `a0-vm/2026-11-13-tactical-panel-tips/15`).
+fn tactical_tip_shown(text: &str) -> String {
+    crate::win_tooltip::shown_text(text)
 }
 
 /// Run the tip's timers on this frame's control and draw the tip over
@@ -537,6 +544,10 @@ fn paint_tactical_tip(canvas: TacticalCanvas) {
         is_mouse_button_pressed(MouseButton::Left) || is_mouse_button_pressed(MouseButton::Right);
     let shown = TACTICAL_TIP.with(|tip| {
         let mut tip = tip.borrow_mut();
+        #[cfg(feature = "interface-test-fixtures")]
+        let was_shown = tip.timer.is_shown();
+        #[cfg(not(feature = "interface-test-fixtures"))]
+        let was_shown = true;
         let hovered = tip.hovered.take();
         let moved = tip.pointer.is_some_and(|last| last != pointer);
         tip.pointer = Some(pointer);
@@ -550,9 +561,9 @@ fn paint_tactical_tip(canvas: TacticalCanvas) {
                 moved,
                 pressed,
             )
-            .map(|(text, at)| (text.to_owned(), at))
+            .map(|(text, at)| (text.to_owned(), at, !was_shown))
     });
-    let Some((text, at)) = shown else {
+    let Some((text, at, newly_shown)) = shown else {
         return;
     };
     let font = tactical_arial();
@@ -560,6 +571,9 @@ fn paint_tactical_tip(canvas: TacticalCanvas) {
     let font_scale = crate::win_tooltip::FONT_EM / TACTICAL_FONT_RASTER;
     let width = measure_text(&text, font.as_ref(), font_size, font_scale).width / canvas.scale;
     let rect = crate::win_tooltip::tip_rect(at, width);
+    if newly_shown {
+        crate::win_tooltip::log_shown(&text, at, rect);
+    }
     let color = |c: egui_macroquad::egui::Color32| Color::from_rgba(c.r(), c.g(), c.b(), 255);
     let (left, top) = canvas.point(rect.min.x, rect.min.y);
     let (w, h) = (rect.width() * canvas.scale, rect.height() * canvas.scale);
@@ -12186,6 +12200,20 @@ mod tests {
             camera,
             [0xadb6, 0xadb5, 0xadb4, 0xadb3, 0xadb2, 0xadb1, 0xadb0, 0xadad, 0xadab, 0xadaa]
         );
+    }
+
+    #[test]
+    fn a_battle_tip_drops_the_ampersand_of_maneuvers_and_tactics() {
+        // TEXTTACT 0xddcd "Maneuvers & Tactics" on the capital-ship and
+        // fighter panels' left button shows "Maneuvers  Tactics" in the
+        // original's tip (A0 a0-vm/2026-11-13-tactical-panel-tips/15 and
+        // 48, sha256 in that folder's SHA256SUMS): the prefix-style tooltip
+        // control drops '&' (win_tooltip::shown_text).
+        assert_eq!(
+            tactical_tip_shown("Maneuvers & Tactics"),
+            "Maneuvers  Tactics"
+        );
+        assert_eq!(tactical_tip_shown("Missions"), "Missions");
     }
 
     #[test]

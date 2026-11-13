@@ -144,6 +144,12 @@ pub struct TipTimer {
 }
 
 impl TipTimer {
+    /// Whether the tip shows now.
+    #[must_use]
+    pub fn is_shown(&self) -> bool {
+        self.shown_at.is_some() && !self.done
+    }
+
     /// Advance to `now` with the control under the pointer. Returns the
     /// text and the pointer position the tip shows at, if it shows.
     pub fn step(
@@ -376,6 +382,23 @@ pub fn shown_text(text: &str) -> String {
     shown
 }
 
+/// The interface-test builds log each tip's text and box once, when it
+/// shows, for the browser gates (`tools/interface-parity/run.mjs`).
+#[allow(unused_variables)]
+pub fn log_shown(text: &str, at: (f32, f32), rect: egui::Rect) {
+    #[cfg(feature = "interface-test-fixtures")]
+    macroquad::logging::info!(
+        "[tooltip] shown text={:?} pointer=({},{}) box=({},{},{},{})",
+        text,
+        at.0,
+        at.1,
+        rect.min.x,
+        rect.min.y,
+        rect.width(),
+        rect.height()
+    );
+}
+
 /// Run the timers on the control the last frame registered and draw the tip
 /// over the 640 by 480 client whose top left is `origin`, at `scale` screen
 /// points per client pixel. Call once a frame, before the controls paint.
@@ -396,6 +419,8 @@ pub fn paint(ctx: &egui::Context, origin: egui::Pos2, scale: f32) {
     });
     let timer_id = egui::Id::new("original-tooltip-timer");
     let mut timer = ctx.data_mut(|data| data.get_temp::<TipTimer>(timer_id).unwrap_or_default());
+    #[cfg(feature = "interface-test-fixtures")]
+    let was_shown = timer.shown_at;
     let shown = timer
         .step_in(
             now,
@@ -421,6 +446,10 @@ pub fn paint(ctx: &egui::Context, origin: egui::Pos2, scale: f32) {
         TEXT,
     );
     let rect = tip_rect(at, galley.size().x / scale);
+    #[cfg(feature = "interface-test-fixtures")]
+    if was_shown.is_none() {
+        log_shown(&shown_text(&text), at, rect);
+    }
     let screen =
         egui::Rect::from_min_size(origin + rect.min.to_vec2() * scale, rect.size() * scale);
     painter.rect_filled(screen, 0.0, FILL);
@@ -476,6 +505,30 @@ pub(crate) mod tests {
         assert_eq!(shown_text("Maneuvers & Tactics"), "Maneuvers  Tactics");
         assert_eq!(shown_text("R&D && more&"), "RD & more");
         assert_eq!(shown_text("Raw Materials Monitor"), "Raw Materials Monitor");
+    }
+
+    #[test]
+    fn a_timer_reports_its_tip_shown_only_between_the_delay_and_the_autopop() {
+        let mut timer = TipTimer::default();
+        assert!(!timer.is_shown());
+        timer.step(0.0, Some((id(1), "Raw")), (175.0, 25.0), false, false);
+        assert!(!timer.is_shown());
+        timer.step(
+            INITIAL_DELAY,
+            Some((id(1), "Raw")),
+            (175.0, 25.0),
+            false,
+            false,
+        );
+        assert!(timer.is_shown());
+        timer.step(
+            INITIAL_DELAY + AUTOPOP_DELAY,
+            Some((id(1), "Raw")),
+            (175.0, 25.0),
+            false,
+            false,
+        );
+        assert!(!timer.is_shown());
     }
 
     #[test]
