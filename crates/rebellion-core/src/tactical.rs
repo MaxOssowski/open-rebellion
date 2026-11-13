@@ -250,8 +250,11 @@ pub const ORIGINAL_BATTLE_BASE_EXTENT: f32 = 100.0;
 /// from the extent each time a side's count passes the other's
 /// (`0x005abb11`..`0x005abb4b`): 3.0 a unit of the larger side.
 ///
-/// port: what puts a unit in state 1 at placement is not traced; every
-/// living ship and fighter group with craft counts.
+/// The list walked is every tactical unit (`+0x9a0`), ships and squadrons
+/// alike. State 1 at placement is a squadron in its carrier's hangar
+/// (`0x40bf0b` -> `FUN_005964c0` -> `FUN_005b69d0`, aboard a ship without
+/// a working hyperdrive); a squadron on a planet starts deployed and
+/// counts. So every living ship and every deployed squadron counts.
 pub const ORIGINAL_BATTLE_OBJECT_INCREMENT: f32 = 3.0;
 /// `FUN_005ab650` places each side's capital ships (list `+0x58`) at
 /// `z = extent * 0.5` (`DAT_0066c29c`) for the Empire and `* -0.5`

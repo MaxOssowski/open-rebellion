@@ -4782,10 +4782,10 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
   probe.outside_view.other_than_one_palette_entry = others.slice(0, 20);
   assert.equal(others.length, 0,
     `${faction}: the frame outside the view differs from A0 TAC-04-C014 ${JSON.stringify(probe.outside_view)}`);
-  // The navigation pyramids: 4-connected components (at least 20 px) of
+  // The navigation pyramids: 4-connected components (at least `smallest` px) of
   // pure red and of grey-white inside the view, outside "Battle Paused",
   // with their centroids.
-  const pyramids = (image) => {
+  const pyramids = (image, smallest) => {
     const pixel = (x, y) => {
       const k = (y * 640 + x) * 4;
       return [image.data[k], image.data[k + 1], image.data[k + 2]];
@@ -4820,7 +4820,7 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
               stack.push(nk);
             }
           }
-          if (area >= 20) {
+          if (area >= smallest) {
             found.push({ area, centroid: [Math.round(sumX / area * 10) / 10, Math.round(sumY / area * 10) / 10] });
           }
         }
@@ -4830,12 +4830,12 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
     return Object.fromEntries(Object.entries(tests).map(([name, test]) => [name, components(test)]));
   };
   // Each A0 pyramid of at least `minimumArea` px against the port's nearest pyramid
-  // of its colour. The port draws the pyramids about 1.2 times A0's size
-  // (A0 TAC-04-C001, the free camera, below), so areas are not compared
-  // and a centroid may sit a few pixels off: tolerance 8 px.
+  // of its colour.
   const match = (a0Image, portImage, tolerance, minimumArea) => {
-    const a0Pyramids = pyramids(a0Image);
-    const portPyramids = pyramids(portImage);
+    const a0Pyramids = pyramids(a0Image, 20);
+    // A pyramid half behind a hull can fall a pixel or two under 20 px in
+    // one image and not the other, so the port's side keeps smaller ones.
+    const portPyramids = pyramids(portImage, 10);
     const pairs = [];
     for (const colour of ["red", "white"]) {
       for (const { area, centroid } of a0Pyramids[colour].filter(({ area }) => area >= minimumArea)) {
@@ -4855,15 +4855,26 @@ async function probeTacticalCoruscantChase(page, viewport, folder, consoleLines,
   const c001 = path.join(root, ".artifacts/interface-parity/a0/TAC-04-C001/original.png");
   assert.ok(fs.existsSync(c001), `A0 TAC-04-C001 is missing at ${c001}`);
   probe.free_camera_pyramids = match(PNG.sync.read(fs.readFileSync(c001)), PNG.sync.read(navigationSets), 2, 20);
-  // The chase: coarse, 40 px. The port's camera sits 0.8 times as far
-  // from the hull as A0's (README 2026-11-12-coruscant-battle-fixture), so
-  // this confirms the chase's view, not its exact distance.
-  probe.chase_pyramids = match(a0, port, 40, 100);
+  // The chase (0x005d9b10): its eye is (-e, e, 2e) from the carrier, e from
+  // the hull's box. With A0's battle extent of 136 (12 Imperial objects,
+  // ghidra/notes/tactical-chase-camera-distance.md) every pyramid lands
+  // within 1.5 px of A0's: tolerance 3 px.
+  probe.chase_pyramids = match(a0, port, 3, 100);
   for (const [name, result] of [["free camera (A0 TAC-04-C001)", probe.free_camera_pyramids],
     ["chase (A0 TAC-04-C014)", probe.chase_pyramids]]) {
     assert.ok(result.compared > 0 && result.worst <= result.tolerance,
       `${faction}: the ${name} nav pyramids are off A0's ${JSON.stringify(result)}`);
   }
+  // The red pyramids are flat-lit and of one colour, so the chase also
+  // compares their size: each within 10 % of A0's area. With the old extent
+  // of 109 the port's were about 1.5 times A0's. The grey-white ones are
+  // left out: their lit shades cross the classifier's threshold
+  // differently in the two images.
+  const redSizes = probe.chase_pyramids.pairs.filter(({ colour }) => colour === "red")
+    .map(({ a0_area: a0Area, port_area: portArea }) => portArea / a0Area);
+  probe.chase_red_area_ratios = redSizes.map((ratio) => Math.round(ratio * 100) / 100);
+  assert.ok(redSizes.length > 0 && redSizes.every((ratio) => ratio >= 0.9 && ratio <= 1.1),
+    `${faction}: the chase's red pyramids are not A0's size ${JSON.stringify(probe.chase_red_area_ratios)}`);
   return [probe];
 }
 
@@ -7005,15 +7016,17 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         : { first_active_objects: 2, second_active_objects: 7 };
       const projectileFieldLayout = { first_active_objects: 4, second_active_objects: 4 };
       assert.deepEqual(ready.source_layout, scenario.coruscant_chase ? {
-        // A0 TAC-04-C014: the carrier and two squadrons against one hull,
-        // 100 + 3 x 3 (FUN_005ab650).
+        // A0 TAC-04-C014: the carrier and two squadrons against the Star
+        // Destroyer and Coruscant's 11 TIE squadrons, 100 + 3 x 12
+        // (FUN_005ab650; A0's pyramids fit extent 136,
+        // ghidra/notes/tactical-chase-camera-distance.md).
         first_active_objects: 3,
-        second_active_objects: 1,
-        battle_extent: 109,
-        outer_positive_z: 54.5,
-        outer_negative_z: -54.5,
-        inner_negative_z: -34.5,
-        inner_positive_z: 34.5,
+        second_active_objects: 12,
+        battle_extent: 136,
+        outer_positive_z: 68,
+        outer_negative_z: -68,
+        inner_negative_z: -48,
+        inner_positive_z: 48,
       } : scenario.battle_alert_retreat ? {
         // The viewer's one hull against the enemy's four: 100 + 3 x 4.
         first_active_objects: faction === "alliance" ? 1 : 4,
@@ -7121,7 +7134,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         inner_positive_z: 33,
       });
       assert.equal(ready.participants.length,
-        scenario.coruscant_chase ? 10
+        scenario.coruscant_chase ? 21
         : scenario.group_presentation ? 14
           : scenario.effect_presentation ? 9
           : scenario.projectile_field_presentation
@@ -7358,18 +7371,20 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         // A0 TAC-04-C014: the Alliance Escort Carrier (2050) and its X-wing
         // and Y-wing squadrons against Coruscant's Imperial Star Destroyer
         // (2560), each on its side's lane.
-        // The home fleet's six TIE squadrons are listed but not active:
-        // the layout counts one Imperial object.
+        // The Star Destroyer's six TIE squadrons stay in its hangar, listed
+        // but not active; the 11 planet squadrons are deployed, so the
+        // layout counts 12 Imperial objects.
         const inactive = ready.participants.filter(({ active }) => !active);
         assert.deepEqual(inactive.map(({ kind, faction }) => [kind, faction]),
           Array(6).fill(["fighter-group", "empire"]));
         assert.deepEqual(ready.participants.filter(({ active }) => active)
           .map(({ kind, faction, resource_base, source_position }) =>
             [kind, faction, kind === "capital-ship" ? resource_base : null, source_position[2]]), [
-          ["capital-ship", "alliance", 2050, -54.5],
-          ["capital-ship", "empire", 2560, 54.5],
-          ["fighter-group", "alliance", null, -34.5],
-          ["fighter-group", "alliance", null, -34.5],
+          ["capital-ship", "alliance", 2050, -68],
+          ["capital-ship", "empire", 2560, 68],
+          ["fighter-group", "alliance", null, -48],
+          ["fighter-group", "alliance", null, -48],
+          ...Array(11).fill(["fighter-group", "empire", null, 48]),
         ]);
       } else if (scenario.hull_scale_presentation) {
         // A0 TAC-01-C003: the Medium Transport (2070) and the Victory

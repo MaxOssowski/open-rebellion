@@ -553,3 +553,87 @@ Full gate batch b201 (Linux, Arch Chromium), with the Alt-accelerator fix
 and fixture 163 tests pass, 31 of 31 gates and 176 of 176 battle cases
 pass. The Alt case under the Battle Summary (Alt+G/H refused, Alt+2/Alt+1
 switch the GID display) passes in production-battle-last-ship-lost.
+
+## Fourth stage: A0's battle extent (2026-11-13)
+
+`ghidra/notes/tactical-chase-camera-distance.md` showed that the chase is
+not the cause of the gap. A0's battle has extent 136, the fixture's had
+109. Positions scale with the extent; mesh sizes, and with them the chase
+offset, do not.
+
+### What the extent counts
+
+`FUN_005ab650` walks every tactical unit (`+0x9a0`, ships and squadrons
+alike). It counts a side's unit unless the unit is in state 1
+(`0x5ab94b`, `0x5abafc` -> `FUN_005b69f0`: `+0x170 == 1`). It adds 3.0
+(`DAT_0066c2a0` = -3.0, subtracted) each time a side's count passes the
+other's (`0x5abb11`..`0x5abb4b`).
+
+State 1 at placement is a squadron inside its carrier's hangar
+(`0x40bf0b` -> `FUN_005964c0` -> `FUN_005b69d0`, aboard a ship without a
+working hyperdrive). A squadron on a planet starts deployed and counts.
+The port's count (`assign_original_world_positions`) already follows this
+rule: living ships, plus squadrons that are not in a hangar. Only its doc
+comment changed.
+
+A0's save holds the Judicator with its TIE squadrons aboard, plus 11
+Coruscant planet TIE squadrons (manifest TAC-02-C004, TAC-05-C009).
+- With the hull, that is 12 Imperial units: 100 + 3 x 12 = 136.
+- The fixture's ISD has 6 TIE squadrons aboard, so it counted 1.
+
+### The fixture
+
+`coruscant_chase_fleets` adds 11 TIE Fighter squadrons to the home fleet,
+with no carrier.
+- port: the port's battle takes no planet squadrons. Unboarded fleet
+  squadrons start deployed, as the planet's do.
+- The new test
+  `the_coruscant_chase_battle_counts_twelve_imperial_objects_as_a0_s_extent_shows`
+  (ignored, needs `data/base`) asserts 3 against 12, extent 136, lane 68,
+  and 11 deployed TIE Fighters.
+- Without the change it fails with `(3, 1)` against `(3, 12)` (shown).
+
+### The gate
+
+`production-coruscant-chase` now expects:
+- the layout 3 against 12, extent 136, lanes +/-68 and +/-48;
+- 21 participants: the 6 aboard are inactive, and the 11 deployed sit at
+  z 48.
+
+The chase check is tightened:
+- every A0 pyramid of at least 100 px within 3 px of the port's (was
+  40 px);
+- each red one within 10 % of A0's area.
+
+The pyramid finder keeps port components down to 10 px. A pyramid half
+behind the carrier fell under 20 px in the port.
+
+Results, run `2026-11-13T22-04-37-221Z-447138` (Linux, Arch Chromium 155),
+2 of 2 pass:
+
+- Chase: 10 pyramids, worst 1.5 px. Red areas are 0.95 to 1.0 times A0's
+  (the largest is 1,948 px against 1,969). With extent 109 they were
+  about 1.5 times A0's, and up to 34.5 px off.
+- Free camera (TAC-04-C001): 34 pyramids, worst 0.6 px. Areas are now
+  mostly equal to A0's to the pixel. The "1.2 times" size difference of
+  the second stage was the same extent gap.
+- Outside the view: 1 and 1 pixels, the known palette entry.
+
+An earlier run (`22-03-26-530Z`) passed the Alliance case and failed the
+Empire's on the 60-frame timing sample ("paused tactical render stalled").
+The rerun passed.
+
+Checks:
+- `cargo check --workspace` passes.
+- `cargo test -p rebellion-app`: 190 passed. With `--include-ignored
+  tactical_test_fixture`: 6 of 6 pass.
+- `provenance-scan check`: 0 uncited items.
+- `rustfmt --check` on the fixture: the same 7 baseline diffs as HEAD.
+
+`cargo mutants --in-place` (`coruscant_chase_fleets`, `--include-ignored
+coruscant`): 11 mutants, 9 caught, 2 missed. Both missed ones are
+equivalent on the original data:
+- `&&` to `||` in the defender filter (as before). Coruscant's only fleet
+  is Imperial and has a hull.
+- `&&` to `||` in the TIE class filter. The first Imperial fighter class
+  is the TIE Fighter.

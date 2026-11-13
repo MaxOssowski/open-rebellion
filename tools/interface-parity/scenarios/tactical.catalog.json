@@ -607,7 +607,7 @@
       "coruscant_chase": true,
       "expected_status": "battle-ready",
       "audit_cells": [],
-      "acceptance": "Presses F1 on the paused battle and compares the frame with A0 TAC-04-C014 for the Alliance at 640 x 480: the cockpit and group bar outside the view, the selected group's panel outside its text, and the chase view's navigation pyramids."
+      "acceptance": "Presses F1 on the paused battle and compares the frame with A0 TAC-04-C014 for the Alliance at 640 x 480: the cockpit and group bar outside the view, the selected group's panel outside its text, and the chase view's navigation pyramids: each within 3 px of A0's, and each red one within 10 % of A0's area. Coruscant's 11 TIE squadrons are deployed, so the Empire counts 12 objects and the battle extent is 136, as A0's pyramids show."
     }
   ]
 }

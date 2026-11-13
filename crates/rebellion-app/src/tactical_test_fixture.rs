@@ -1301,6 +1301,10 @@ struct FixtureParticipant<'a> {
 /// Coruscant as the defender. port: the galaxy's seeded home fleet stands in
 /// for the day-2 save's, which the manifest names only in part (Judicator,
 /// TIE squadrons).
+/// The TIE squadrons on Coruscant in A0's save (A0 manifest TAC-05-C009:
+/// "the 11 Coruscant planet TIE squadrons").
+const CORUSCANT_PLANET_TIE_SQUADRONS: u32 = 11;
+
 fn coruscant_chase_fleets(
     world: &mut GameWorld,
     system: SystemKey,
@@ -1313,6 +1317,30 @@ fn coruscant_chase_fleets(
             !world.fleets[fleet].is_alliance && !world.fleets[fleet].capital_ships.is_empty()
         })
         .ok_or("Coruscant has no Imperial fleet")?;
+    // A0's Empire counted 12 objects: A0 TAC-04-C014's pyramids fit a battle
+    // extent of 136 = 100 + 3 x 12 (FUN_005ab650, 0x5abb11..0x5abb4b), and
+    // not 109 (ghidra/notes/tactical-chase-camera-distance.md). The count
+    // leaves out units in state 1 (0x5ab94b -> FUN_005b69f0). A squadron
+    // aboard a ship without a hyperdrive starts in its hangar in state 1
+    // (0x40bf0b -> FUN_005964c0 -> FUN_005b69d0). A squadron on a planet
+    // starts deployed and counts. The same save holds the Judicator with
+    // its TIE squadrons aboard, and 11 TIE squadrons on Coruscant (A0
+    // manifest TAC-02-C004, TAC-05-C009). So the 12 are the hull and the 11
+    // planet squadrons.
+    // port: the port's battle takes no planet squadrons, so the 11 stand in
+    // as the home fleet's unboarded squadrons, which start deployed as the
+    // planet's do.
+    let tie = world
+        .fighter_classes
+        .iter()
+        .find(|(_, class)| !class.is_alliance && class.name == "TIE Fighter")
+        .map(|(key, _)| key)
+        .ok_or("no TIE Fighter class")?;
+    world.fleets[defender].fighters.push(FighterEntry {
+        class: tie,
+        count: CORUSCANT_PLANET_TIE_SQUADRONS,
+        carrier: None,
+    });
     let (carrier, hull) = world
         .capital_ship_classes
         .iter()
@@ -2111,5 +2139,41 @@ mod tests {
             })
             .collect();
         assert_eq!(fighters, [("X-wing", 1), ("Y-wing", 1)]);
+    }
+
+    // A0 TAC-04-C014's chase view fits a battle extent of 136, 100 + 3 x 12
+    // (FUN_005ab650, 0x5abb11..0x5abb4b; ghidra/notes/
+    // tactical-chase-camera-distance.md): the Star Destroyer and Coruscant's
+    // 11 TIE squadrons, whose home-fleet squadrons stay in its hangar
+    // (state 1, 0x40bf0b -> FUN_005b69d0).
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_coruscant_chase_battle_counts_twelve_imperial_objects_as_a0_s_extent_shows() {
+        use rebellion_core::tactical::BattleSession;
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let mut world = rebellion_data::load_game_data(&data).expect("load original game data");
+        let system = world
+            .systems
+            .iter()
+            .find(|(_, system)| system.name == "Coruscant")
+            .map(|(key, _)| key)
+            .unwrap();
+        let (attacker, defender) = coruscant_chase_fleets(&mut world, system).unwrap();
+        world.systems[system].fleets.push(attacker);
+        let session = BattleSession::new(&world, system, attacker, defender, false, 0, 1);
+        let layout = session.source_layout;
+        assert_eq!(
+            (layout.first_active_objects, layout.second_active_objects),
+            (3, 12)
+        );
+        assert_eq!(layout.battle_extent, 136.0);
+        assert_eq!(layout.outer_positive_z, 68.0);
+        let deployed: Vec<_> = session
+            .fighters
+            .iter()
+            .filter(|fighter| !fighter.identity.is_alliance && fighter.alive)
+            .map(|fighter| world.fighter_classes[fighter.class_key].name.as_str())
+            .collect();
+        assert_eq!(deployed, ["TIE Fighter"; 11]);
     }
 }
