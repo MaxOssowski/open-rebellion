@@ -60,6 +60,8 @@ struct SelectedIcon {
     /// The icon's first bitmap when it was chosen, which tells a changed
     /// icon from the one chosen.
     art: u32,
+    /// What lay at its system when it was chosen ([`system_contents`]).
+    contents: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -262,6 +264,7 @@ impl SectorWindowState {
                     system,
                     quadrant: Some(quadrant),
                     art,
+                    contents: system_contents(world, system),
                 });
             }
             return Ok(vec![SectorWindowAction::OpenObjectMenu {
@@ -905,6 +908,7 @@ fn draw_sector_window(
                     system,
                     quadrant: None,
                     art: HEADQUARTERS_MARK,
+                    contents: system_contents(world, system),
                 });
                 if primary_pressed {
                     result.drag_from = press.map(|point| screen_to_logical(layout, point));
@@ -948,17 +952,21 @@ fn draw_sector_window(
                     })
                     .collect();
                 // port: FUN_0045d140 deselects an icon (FUN_0045afc0) on every
-                // change notice FUN_0045b770 takes for its system, changed or
-                // not. The port has no change notices, so the selection lapses
-                // when its icon hides or its art changes
-                // (ghidra/notes/sector-quadrants.md).
+                // change notice FUN_0045b770 takes for its system or an object
+                // at it, changed or not. The port has no change notices, so the
+                // selection lapses when its icon hides or its art changes, or
+                // an object arrives at or leaves its system
+                // (ghidra/notes/sector-quadrants.md; A0
+                // 2026-11-13-defenses-missions-drop/05).
                 if let Some(selected) = window.selection.filter(|icon| icon.system == *system_key) {
-                    result.selection_lapsed = match selected.quadrant {
-                        Some(chosen) => !icons.iter().any(|(quadrant, _, (normal, _))| {
-                            *quadrant == chosen && *normal == selected.art
-                        }),
-                        None => !shows_alliance_headquarters(world, fog, player, *system_key),
-                    };
+                    let moved = selected.contents != system_contents(world, *system_key);
+                    result.selection_lapsed = moved
+                        || match selected.quadrant {
+                            Some(chosen) => !icons.iter().any(|(quadrant, _, (normal, _))| {
+                                *quadrant == chosen && *normal == selected.art
+                            }),
+                            None => !shows_alliance_headquarters(world, fog, player, *system_key),
+                        };
                 }
                 // FUN_0045aac0 opens nothing for the headquarters' kind 1,
                 // but FUN_0045cc10 found it first.
@@ -982,6 +990,7 @@ fn draw_sector_window(
                         system: *system_key,
                         quadrant: Some(*quadrant),
                         art: *normal,
+                        contents: system_contents(world, *system_key),
                     });
                     if primary_pressed {
                         result.drag_from = press.map(|point| screen_to_logical(layout, point));
@@ -1469,6 +1478,33 @@ fn headquarters_hit(cache: &mut BmpCache, rect: egui::Rect, scale: f32, point: e
     let x = ((point.x - rect.min.x) / scale).floor() as usize;
     let y = ((point.y - rect.min.y) / scale).floor() as usize;
     cache.is_resource_hit(DllSource::Strategy, HEADQUARTERS_MARK, x, y)
+}
+
+/// What lies at `system`: its fleets, regiments, squadrons, special
+/// forces, facilities and the characters there, as a key that changes when
+/// one of them arrives or leaves. port: it stands in for the change notices
+/// `FUN_0045b770` takes for the system or an object at it, each of which
+/// deselects its icon (`FUN_0045d140` -> `FUN_0045afc0`).
+fn system_contents(world: &GameWorld, system: SystemKey) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    if let Some(value) = world.systems.get(system) {
+        value.fleets.hash(&mut hasher);
+        value.ground_units.hash(&mut hasher);
+        for entry in &value.fighters {
+            (entry.class, entry.count).hash(&mut hasher);
+        }
+        value.special_forces.hash(&mut hasher);
+        value.defense_facilities.hash(&mut hasher);
+        value.manufacturing_facilities.hash(&mut hasher);
+        value.production_facilities.hash(&mut hasher);
+    }
+    for (key, character) in &world.characters {
+        if character.current_system == Some(system) {
+            key.hash(&mut hasher);
+        }
+    }
+    hasher.finish()
 }
 
 /// The menu object of a window's selection: its quadrant icon's system, or
@@ -4237,7 +4273,7 @@ mod tests {
         // FUN_0045b770 refreshes an icon on its system's change notice, and
         // FUN_0045d140 first deselects it (FUN_0045afc0). port: with no
         // change notices, the port deselects an icon that hides or changes
-        // art, and keeps one that changed nothing it shows. A side change
+        // art, or whose system an object reaches or leaves. A side change
         // repaints it from the new side's pair; FUN_0045ca80 pairs each
         // first bitmap with the next id.
         for (owner, other, (system_art, other_art), (fleet_art, fleet_pressed)) in [
@@ -4291,10 +4327,13 @@ mod tests {
             for fleet in world.systems[system].fleets.clone() {
                 world.fleets[fleet].is_alliance = owner == Faction::Alliance;
             }
+            // The arrival is a change notice: the art stays, the selection
+            // lapses (FUN_0045d140; A0 2026-11-13-defenses-missions-drop/05
+            // for a team that leaves).
             assert_eq!(
                 icons_after_clicks(&world, owner, &mut state, &[]),
-                [system_art, fleet_pressed],
-                "{owner:?}: a second fleet leaves the art as it was"
+                [system_art, fleet_art],
+                "{owner:?}: a second fleet leaves the art as it was, unselected"
             );
             let fleets = std::mem::take(&mut world.systems[system].fleets);
             assert_eq!(
@@ -4307,6 +4346,89 @@ mod tests {
                 icons_after_clicks(&world, owner, &mut state, &[]),
                 [system_art, fleet_art],
                 "{owner:?}: the fleet icon hid and returned"
+            );
+        }
+    }
+
+    #[test]
+    fn a_selected_icon_lapses_when_its_systems_team_leaves_though_its_art_stays() {
+        // FUN_0045b770 refreshes the system's icons on each change notice
+        // for the system or an object at it, and FUN_0045d140 first
+        // deselects (FUN_0045afc0), whether or not the art changes. A0
+        // 2026-11-13-defenses-missions-drop/02, 05: Jerijador's defenses
+        // icon drawn selected (10774) until its team (characters,
+        // regiments, squadrons) is dropped on Yavin; the two shields keep
+        // the icon, drawn unselected (10773). FUN_0045ca80 pairs kind 8
+        // with 10773/10774 (side 1) and 10781/10782 (side 2).
+        for (owner, (defenses_art, defenses_pressed)) in [
+            (Faction::Alliance, (10773, 10774)),
+            (Faction::Empire, (10781, 10782)),
+        ] {
+            let (mut world, system) = owned_icons_world(owner);
+            let alliance = owner == Faction::Alliance;
+            let shield =
+                world
+                    .defense_facilities
+                    .insert(rebellion_core::world::DefenseFacilityInstance {
+                        class_dat_id: DatId::new(0x2200_0001),
+                        side: owner,
+                    });
+            world.systems[system].defense_facilities.push(shield);
+            let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
+                class_dat_id: DatId::new(0x1000_0001),
+                is_alliance: alliance,
+                regiment_strength: 100,
+            });
+            world.systems[system].ground_units.push(regiment);
+            let mut state = SectorWindowState::default();
+            state.open_for_system(&world, system, cockpit(owner));
+            let defenses_icon = state
+                .quadrant_window_point(&world, layout(1.0), system, Quadrant::Defenses)
+                .unwrap();
+            let defenses = |icons: Vec<u32>| {
+                icons
+                    .into_iter()
+                    .filter(|id| [defenses_art, defenses_pressed].contains(id))
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(
+                defenses(icons_after_clicks(
+                    &world,
+                    owner,
+                    &mut state,
+                    &[defenses_icon]
+                )),
+                [defenses_pressed],
+                "{owner:?}: the defenses icon is selected"
+            );
+            assert_eq!(
+                defenses(icons_after_clicks(&world, owner, &mut state, &[])),
+                [defenses_pressed],
+                "{owner:?}: nothing changed, the selection holds"
+            );
+            // A notice for another system leaves this one's icons alone.
+            let elsewhere = world
+                .systems
+                .keys()
+                .find(|&key| key != system)
+                .expect("the fixture holds a second system");
+            world.characters.insert(rebellion_core::world::Character {
+                name: "Elsewhere".into(),
+                is_alliance: alliance,
+                is_empire: !alliance,
+                current_system: Some(elsewhere),
+                ..Default::default()
+            });
+            assert_eq!(
+                defenses(icons_after_clicks(&world, owner, &mut state, &[])),
+                [defenses_pressed],
+                "{owner:?}: a character at another system, the selection holds"
+            );
+            world.systems[system].ground_units.clear();
+            assert_eq!(
+                defenses(icons_after_clicks(&world, owner, &mut state, &[])),
+                [defenses_art],
+                "{owner:?}: the regiment left; the shield keeps the icon, unselected"
             );
         }
     }
