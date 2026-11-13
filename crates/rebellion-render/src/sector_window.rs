@@ -93,6 +93,8 @@ pub struct SectorWindowState {
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_00429ce0` then calls `FUN_0041d2d0`).
     created: bool,
+    /// The drag image the last pass painted ([`Self::drag_image`]).
+    drag_image: Option<(u32, egui::Rect)>,
 }
 
 impl Default for SectorWindowState {
@@ -105,6 +107,7 @@ impl Default for SectorWindowState {
             drawn_gid_markers: Vec::new(),
             gid_caption: None,
             created: false,
+            drag_image: None,
         }
     }
 }
@@ -114,6 +117,14 @@ impl SectorWindowState {
     /// agent's advice hears of (`FUN_0041d2d0`).
     pub fn take_created(&mut self) -> bool {
         std::mem::take(&mut self.created)
+    }
+
+    /// The image a held icon drag painted in the last pass: the dragged
+    /// icon's bitmap and the screen rect it covered (`FUN_004593e0` case
+    /// `0x200`).
+    #[must_use]
+    pub fn drag_image(&self) -> Option<(u32, egui::Rect)> {
+        self.drag_image
     }
 
     /// Show `gid_mode`'s starfield under the windows, the one the galaxy view
@@ -497,6 +508,8 @@ struct WindowDrawResult {
     /// A left release ended the window's drag: where, and whether Ctrl was
     /// held, when it went far enough to drop.
     drag_end: Option<Option<(egui::Pos2, bool)>>,
+    /// The held drag's image: the bitmap and the screen rect it covers.
+    drag_image: Option<(u32, egui::Rect)>,
 }
 
 /// Paint and operate all open sector windows using the recovered strategic
@@ -526,6 +539,7 @@ pub fn draw_sector_windows(
     let mut closed = None;
     let mut switched = None;
     let mut chosen = Vec::new();
+    let mut drag_image = None;
 
     let focused_sector = windows.last().map(|window| window.sector);
     for window in windows {
@@ -556,6 +570,7 @@ pub fn draw_sector_windows(
         if result.switch_side {
             switched = Some(window.sector);
         }
+        drag_image = drag_image.or(result.drag_image);
         if let Some(system) = result.selected {
             actions.push(SectorWindowAction::SelectSystem(system));
         }
@@ -595,6 +610,7 @@ pub fn draw_sector_windows(
         }
     }
 
+    state.drag_image = drag_image;
     for (sector, selection, drag_from) in chosen {
         if let Some(window) = state
             .windows
@@ -861,7 +877,7 @@ fn draw_sector_window(
             // WM_PAINT draws the planet list (`+0x164`), then the overlay
             // list (`+0x174`), so every icon lies above every planet.
             let mut overlays: Vec<(SystemKey, Quadrant, egui::Rect, (u32, u32))> = Vec::new();
-            let mut headquarters: Vec<egui::Rect> = Vec::new();
+            let mut headquarters: Vec<(SystemKey, egui::Rect)> = Vec::new();
             // FUN_0045cc10 walks the overlay list, sorted by id (mode 1,
             // Class_0066e148_vt4), so the headquarters overlay (0x10000)
             // comes before every quadrant icon (sys_id | 0x40000 and up)
@@ -1008,7 +1024,7 @@ fn draw_sector_window(
                     );
                 }
                 if shows_alliance_headquarters(world, fog, player, *system_key) {
-                    headquarters.push(planet_rect);
+                    headquarters.push((*system_key, planet_rect));
                 }
                 let track_values = StatusTrackValues::of(world, system, player);
                 for (row, (x, y, width, height), text) in track_tooltips(&track_values) {
@@ -1100,7 +1116,7 @@ fn draw_sector_window(
                 .or(window.selection.filter(|_| !result.selection_lapsed));
             // FUN_0045bbb0 adds the headquarters overlay (id 0x10000, bitmap
             // 0x388) on the planet's rect.
-            for rect in headquarters {
+            for &(_, rect) in &headquarters {
                 paint_native(
                     ui.painter(),
                     ctx,
@@ -1113,7 +1129,7 @@ fn draw_sector_window(
                     0.0,
                 );
             }
-            for (system, quadrant, rect, (normal, pressed)) in overlays {
+            for &(system, quadrant, rect, (normal, pressed)) in &overlays {
                 let chosen = selected
                     .is_some_and(|icon| icon.system == system && icon.quadrant == Some(quadrant));
                 paint_native(
@@ -1129,6 +1145,59 @@ fn draw_sector_window(
                 );
             }
 
+            // FUN_004593e0 case 0x200: the first move with the button held
+            // (the window holds the capture) starts the drag image
+            // (FUN_0060dbb0, FUN_0060dcb0, FUN_0060dce0) from the window-
+            // sized bitmap FUN_0045b1b0 blitted the chosen icon's first
+            // bitmap (+0x20, not the pressed +0x24) into at the icon's
+            // rect; later moves slide it with the pointer (FUN_0060df00).
+            // The icon itself keeps its pressed art. The image paints over
+            // every window (FUN_0060dce0 clears the frame's
+            // WS_CLIPCHILDREN), cut to the window's bitmap.
+            if let (true, Some(from), Some(point), Some(icon)) =
+                (primary_down, window.drag_from, pointer, selected)
+            {
+                let press = egui::pos2(
+                    layout.canvas.x + f32::from(from.0) * layout.scale,
+                    layout.canvas.y + f32::from(from.1) * layout.scale,
+                );
+                let offset = point - press;
+                let source = match icon.quadrant {
+                    Some(chosen) => overlays
+                        .iter()
+                        .find(|(system, quadrant, _, _)| {
+                            *system == icon.system && *quadrant == chosen
+                        })
+                        .map(|&(_, _, rect, (normal, _))| (normal, rect)),
+                    None => headquarters
+                        .iter()
+                        .find(|(system, _)| *system == icon.system)
+                        .map(|&(_, rect)| (HEADQUARTERS_MARK, rect)),
+                };
+                if let (true, Some((art, rect))) = (offset != egui::Vec2::ZERO, source) {
+                    let painter = ctx
+                        .layer_painter(crate::fleet_window::drag_layer())
+                        .with_clip_rect(window_rect.translate(offset));
+                    paint_native(
+                        &painter,
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        art,
+                        rect.translate(offset),
+                        layout.scale,
+                        0.0,
+                        0.0,
+                    );
+                    let size = cache
+                        .original_resource_size(DllSource::Strategy, art)
+                        .map_or(rect.size(), |[width, height]| {
+                            egui::vec2(width as f32, height as f32) * layout.scale
+                        });
+                    result.drag_image =
+                        Some((art, egui::Rect::from_min_size(rect.min + offset, size)));
+                }
+            }
             // FUN_004593e0 case 0x202: the window holds the capture, so the
             // release ends the drag wherever it lands; it drops only past
             // four pixels from the press in x or y.
@@ -2889,6 +2958,95 @@ mod tests {
             .len(),
             1
         );
+    }
+
+    /// Press the left button at canvas point `from` and move, held, to
+    /// `to`: the window state's drag image and what the last frame painted.
+    fn held_drag(
+        world: &GameWorld,
+        system: SystemKey,
+        from: (f32, f32),
+        to: (f32, f32),
+    ) -> (Option<(u32, egui::Rect)>, Vec<(u32, egui::Pos2)>) {
+        let layout = layout(1.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(world, system, CockpitFaction::Alliance);
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(system);
+        let missions = rebellion_core::missions::MissionState::new();
+        let ctx = egui::Context::default();
+        let mut cache = click_cache();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let at =
+            |point: (f32, f32)| egui::pos2(layout.canvas.x + point.0, layout.canvas.y + point.1);
+        let press = egui::Event::PointerButton {
+            pos: at(from),
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let frames = [
+            vec![egui::Event::PointerMoved(at(from))],
+            vec![press],
+            vec![egui::Event::PointerMoved(at(to))],
+            vec![],
+        ];
+        let mut painted = Vec::new();
+        for (index, events) in frames.into_iter().enumerate() {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 520.0),
+                )),
+                time: Some(index as f64 * 0.05),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                draw_sector_windows(
+                    ctx,
+                    world,
+                    &rebellion_core::movement::MovementState::default(),
+                    crate::quadrant_icons::Travellers::default(),
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                );
+            });
+            painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
+        }
+        (state.drag_image(), painted)
+    }
+
+    #[test]
+    fn a_held_icon_drag_paints_the_icons_art_at_the_pointers_offset() {
+        // FUN_004593e0 case 0x200: the first move with the button held
+        // starts the drag image (FUN_0060dbb0 copies the window-sized
+        // bitmap FUN_0045b1b0 blitted the icon's first bitmap, +0x20, into
+        // at its rect; FUN_0060dcb0 anchors it at the press; FUN_0060dce0
+        // and FUN_0060df00 draw it at the pointer). A0
+        // 2026-11-13-icon-drag-move/21: the fleet icon pressed at (266, 214)
+        // and moved by about (-49, -55) shows 10775 there, no white
+        // outline, while the origin keeps the pressed 10776. Chandrila's
+        // fleet icon is drawn from (93, 76) on the canvas at (10, 20).
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let (image, painted) = held_drag(&world, system, (115.0, 90.0), (66.0, 35.0));
+        let (art, rect) = image.expect("the held drag paints an image");
+        assert_eq!(art, 10_775);
+        assert_eq!(rect.min, egui::pos2(103.0 - 49.0, 96.0 - 55.0));
+        let origin = egui::pos2(103.0, 96.0);
+        assert!(painted.contains(&(10_775, rect.min)), "{painted:?}");
+        assert!(painted.contains(&(10_776, origin)), "{painted:?}");
+        assert!(!painted.contains(&(10_775, origin)), "{painted:?}");
+        // A press that has not moved draws no image yet.
+        let (still, _) = held_drag(&world, system, (115.0, 90.0), (115.0, 90.0));
+        assert_eq!(still, None);
     }
 
     #[test]
