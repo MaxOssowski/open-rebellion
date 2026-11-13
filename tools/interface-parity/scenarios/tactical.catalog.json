@@ -608,6 +608,18 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Presses F1 on the paused battle and compares the frame with A0 TAC-04-C014 for the Alliance at 640 x 480: the cockpit and group bar outside the view, the selected group's panel outside its text, and the chase view's navigation pyramids: each within 3 px of A0's, and each red one within 10 % of A0's area. Coruscant's 11 TIE squadrons are deployed, so the Empire counts 12 objects and the battle extent is 136, as A0's pyramids show."
+    },
+    {
+      "slug": "production-tactical-tips-a0",
+      "description": "A0 TAC-04-C014's paused battle (an Alliance Escort Carrier with an X-wing and a Y-wing squadron against Coruscant's home fleet): the pointer rests on each control A0 a0-vm/2026-11-13-tactical-panel-tips walked, with Task Force 1, then Blue Group, then the battle's options shown. It supports CMD-11-C030, which another gate maps: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65835, "empire": 66091 },
+      "execution_kind": "journey",
+      "tactical_proof": false,
+      "production_participants": true,
+      "tactical_tips_a0": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "At 640 x 480, hovers the 54 points of A0 2026-11-13-tactical-panel-tips (capital-ship panel, HUD, fighter panel, options panel) and requires A0's text from the port's tip log, no tip where A0 has none, the box at A0's place and height with its width within the accepted 12% text deviation (ending at x 639 where A0's does) and its frame on A0's pixels; the Empire is held to the same texts and rule."
     }
   ]
 }

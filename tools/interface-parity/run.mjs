@@ -5073,6 +5073,246 @@ async function probeTacticalCapitalPanelTip(page, viewport, folder, faction) {
   return [probe];
 }
 
+// A0 a0-vm/2026-11-13-tactical-panel-tips (CMD-11-C030, the original under
+// the Windows 10 VM): the Alliance's paused Battle at Averam. Each case is
+// the capture's walked point (the VM pointer: each box stands at that point
+// plus (0, 21), or ends at x 639, or above the pointer near the bottom,
+// win_tooltip::tip_rect), the capture, and the tip's text (TEXTTACT, '&'
+// dropped as the prefix-style tooltip control does), or null for no tip.
+// The panel's ship (Corellian Corvette 1) and the slots a fleet fills differ
+// from the fixture's: `state` marks a case whose tip follows the fixture's
+// own battle (an occupied fighter slot A0 had empty).
+// The Coruscant chase battle's fixture (65835, 66091), which the tips
+// scenario reuses without the chase's F1.
+const coruscantChaseFixture = (scenario) => Boolean(scenario.coruscant_chase || scenario.tactical_tips_a0);
+
+const TACTICAL_TIPS_A0 = "2026-11-13-tactical-panel-tips";
+const TACTICAL_TIP_CASES = {
+  capital: [
+    ["prev-capital", [493, 62], "00-corvette-left-arrow-493-62.png", "Previous Capital Ship in Task Force"],
+    ["next-capital", [621, 62], "01-corvette-right-arrow-621-62.png", "Next Capital Ship in Task Force"],
+    ["ship-picture", [556, 55], "02-corvette-ship-picture-556-55.png", null],
+    ["left-round-button", [502, 112], "03-corvette-shield-button-502-112.png", null],
+    ["hull-bar", [527, 112], "04-corvette-shield-bar-527-112.png", "Hull Integrity"],
+    ["right-round-button", [571, 112], "05-corvette-weapon-button-571-112.png", null],
+    ["shield-bar", [600, 112], "06-corvette-weapon-bar-600-112.png", "Shield Strength"],
+    ["shield-recharge", [503, 138], "07-corvette-icon1-503-138.png", "Shield Recharge"],
+    ["weapon-recharge", [530, 138], "08-corvette-icon2-530-138.png", "Weapon Recharge"],
+    ["tractor-beam", [557, 138], "09-corvette-icon3-557-138.png", "Tractor Beam Power"],
+    ["engines", [584, 138], "10-corvette-icon4-584-138.png", "Engines"],
+    ["hyperspace", [611, 138], "11-corvette-icon5-611-138.png", "Hyperspace Engines"],
+    ["fighter-list", [556, 172], "12-corvette-fighters-area-556-172.png", null],
+    ["fighter-bar", [556, 195], "13-corvette-fighters-bar-556-195.png", null],
+    ["orders-text", [556, 220], "14-corvette-orders-text-556-220.png", null],
+    ["maneuvers", [522, 248], "15-corvette-order-button-522-248.png", "Maneuvers  Tactics"],
+    ["missions", [588, 248], "16-corvette-missions-button-588-248.png", "Missions"],
+  ],
+  hud: [
+    ["nav-1", [497, 284], "17-hud-cube1-497-284.png", "Navigation Point Set 1"],
+    ["nav-2", [536, 284], "18-hud-cube2-536-284.png", "Navigation Point Set 2"],
+    ["nav-3", [575, 284], "19-hud-cube3-575-284.png", "Navigation Point Set 3"],
+    ["nav-4", [614, 284], "20-hud-cube4-614-284.png", "Navigation Point Set 4"],
+    ["highlight-empire", [497, 318], "21-hud-empire-emblem-497-318.png", "Highlight Empire Ships"],
+    ["highlight-alliance", [530, 318], "22-hud-alliance-emblem-530-318.png", "Highlight Alliance Ships"],
+    ["resume", [575, 318], "23-hud-pause-575-318.png", "Resume Battle"],
+    ["game-options", [617, 318], "24-hud-purple-617-318.png", "Game Options"],
+    ["zoom-in", [503, 353], "25-hud-zoom-in-503-353.png", "Zoom In"],
+    ["zoom-out", [620, 353], "26-hud-zoom-out-620-353.png", "Zoom Out"],
+    ["tilt-up", [561, 372], "27-hud-dpad-up-561-372.png", "Tilt Up"],
+    ["rotate-left", [520, 402], "28-hud-dpad-left-520-402.png", "Rotate Left"],
+    ["rotate-right", [602, 402], "29-hud-dpad-right-602-402.png", "Rotate Right"],
+    ["tilt-down", [561, 432], "30-hud-dpad-down-561-432.png", "Tilt Down"],
+    ["camera-subject", [561, 402], "31-hud-dpad-centre-561-402.png", "Reset Camera Subject"],
+    ["camera-view", [503, 457], "32-hud-bottom-left-503-457.png", "Reset Camera View"],
+    ["camera-remember", [614, 457], "33-hud-bottom-right-614-457.png", "Remember Camera Position"],
+    ["task-forces", [35, 10], "34-hud-top-tf-icon-35-10.png", "Task Forces"],
+    ["task-force-1", [72, 10], "35-hud-top-tf1-72-10.png", "Task Force 1"],
+    ["unassigned", [103, 10], "36-hud-top-slot2-103-10.png", "Unassigned Task Force"],
+    ["fighter-squadrons", [320, 10], "37-hud-top-fighters-320-10.png", "Fighter Squadrons"],
+    // A0's Red slot is empty (FUN_0059b690 disables it); the fixture's
+    // Red Group holds X-wings.
+    ["fighter-slot-1", [361, 10], "38-hud-top-btn1-361-10.png", null, "state"],
+    ["fighter-slot-2", [390, 10], "39-hud-top-btn2-390-10.png", "Blue Fighter Group"],
+    ["fighter-slot-3", [418, 10], "40-hud-top-btn3-418-10.png", null],
+    ["fighter-slot-4", [447, 10], "41-hud-top-btn4-447-10.png", null],
+  ],
+  fighter: [
+    ["group-text", [556, 55], "43-fighter-group-text-556-55.png", null],
+    ["craft-picture", [556, 130], "44-fighter-craft-picture-556-130.png", null],
+    ["craft-count", [556, 180], "45-fighter-craft-count-556-180.png", null],
+    ["grid-left", [527, 220], "46-fighter-grid-left-527-220.png", null],
+    ["grid-right", [604, 215], "47-fighter-grid-right-604-215.png", null],
+    ["fighter-maneuvers", [522, 248], "48-fighter-order-button-522-248.png", "Maneuvers  Tactics"],
+    ["fighter-missions", [588, 248], "49-fighter-missions-button-588-248.png", "Missions"],
+  ],
+  options: [
+    ["withdraw", [527, 62], "50-options-top-527-62.png", "Withdraw From Battle"],
+    ["immediate-result", [518, 133], "51-options-fast-518-133.png", "Get Immediate Result"],
+    ["observe", [590, 133], "52-options-play-590-133.png", "Observe Battle / TAKE COMMAND"],
+    ["options-game-options", [530, 227], "53-options-planet-530-227.png", "Game Options"],
+    ["close", [594, 227], "54-options-close-594-227.png", "Close"],
+  ],
+};
+
+// The shared tip's box (win_tooltip FILL inside BORDER) nearest below or
+// above `point`: its bottom-left corner (the HUD's art holds both colours,
+// and A0's pointer may cover the top edge), then the left and bottom edges.
+function tacticalTipBox(image, [px, py]) {
+  const fill = [255, 251, 240];
+  const border = [128, 128, 128];
+  const same = (x, y, colour) => {
+    const k = (y * image.width + x) * 4;
+    return colour.every((value, index) => image.data[k + index] === value);
+  };
+  for (let y = Math.max(1, py - 25); y < Math.min(image.height - 1, py + 60); y++) {
+    for (let x = Math.max(0, px - 220); x < Math.min(image.width - 2, px + 160); x++) {
+      if (!same(x, y, border) || !same(x + 1, y, border) || !same(x + 2, y, border)
+        || !same(x, y - 1, border) || !same(x + 1, y - 1, fill)) continue;
+      let y0 = y;
+      while (y0 > 0 && same(x, y0 - 1, border)) y0 -= 1;
+      if (y + 1 - y0 < 15) continue;
+      let x1 = x + 1;
+      while (x1 < image.width && same(x1, y, border)) x1 += 1;
+      return { x, y: y0, width: x1 - x, height: y + 1 - y0 };
+    }
+  }
+  return null;
+}
+
+// Every tip A0 2026-11-13-tactical-panel-tips shows or lacks, in the
+// fixture's paused battle: the capital-ship panel (Task Force 1 selected),
+// the HUD, the fighter panel (Blue Group selected) and the battle's options
+// panel. For each case: the text equals A0's (the port logs each tip it
+// shows, interface-test builds only), the box stands where A0's does with
+// A0's height and a width within 12% (Liberation Sans for GDI's Arial,
+// user decision 2026-10-30), its frame matches A0's pixels, and a spot
+// without a tip in A0 shows none. The Empire has no A0: its tips are held to
+// the same texts and rule.
+async function probeTacticalTipsA0(page, viewport, folder, consoleLines, ready, faction) {
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  if (!native) return [{ type: "tactical-tips-a0", skipped: "the A0 cases are at 640 x 480" }];
+  const a0Dir = path.join(root, ".artifacts/a0-vm", TACTICAL_TIPS_A0);
+  const hasA0 = faction === "alliance" && fs.existsSync(a0Dir);
+  const click = async (x, y) => {
+    await page.mouse.move(x, y, { steps: 4 });
+    await page.mouse.down({ button: "left" });
+    await page.evaluate(() => new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.mouse.up({ button: "left" });
+    await page.waitForTimeout(300);
+  };
+  const results = [];
+  const failures = [];
+  const hover = async (group, [label, point, capture, text, state]) => {
+    // A spot of the battle view with no tool resets the tip's timers.
+    await page.mouse.move(300, 250, { steps: 4 });
+    await page.waitForTimeout(150);
+    const logged = consoleLines.length;
+    await page.mouse.move(point[0], point[1], { steps: 4 });
+    await page.waitForTimeout(1000);
+    const bytes = await stableInteractionFrame(page, folder, `tip-${group}-${label}`);
+    const image = PNG.sync.read(bytes);
+    const tips = consoleLines.slice(logged).map(({ text: line }) => line.match(
+      /\[tooltip\] shown text="(.*)" pointer=\(([-\d.]+),([-\d.]+)\) box=\(([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)\)/))
+      .filter(Boolean);
+    const shown = tips.at(-1)?.[1] ?? null;
+    const port = tacticalTipBox(image, point);
+    const result = { group, label, point, a0_text: text, port_text: shown, port };
+    const fail = (message) => failures.push(`${faction} ${label}: ${message}`);
+    // The fighter slots follow each side's own squadrons; the Empire has no
+    // A0 for them.
+    if (state || (faction !== "alliance" && label.startsWith("fighter-slot"))) {
+      result.state_dependent = true;
+    } else if (text === null) {
+      if (shown !== null || port) fail(`a tip ${JSON.stringify(shown)} ${JSON.stringify(port)} where A0 has none`);
+    } else {
+      if (shown !== text) fail(`text ${JSON.stringify(shown)}, A0 ${JSON.stringify(text)}`);
+      if (!port) fail("no tip box");
+      else {
+        // The shared rule: below the pointer, above it near the bottom,
+        // moved left to end at 639 (win_tooltip::tip_rect).
+        const y = point[1] + 21 + 19 > 440 ? point[1] - 19 : point[1] + 21;
+        const x = Math.min(point[0], 639 - port.width);
+        if (port.x !== x || port.y !== y || port.height !== 19) {
+          fail(`box ${JSON.stringify(port)} off the rule (${x}, ${y})`);
+        }
+      }
+    }
+    if (hasA0) {
+      const a0Image = PNG.sync.read(fs.readFileSync(path.join(a0Dir, capture)));
+      const a0 = tacticalTipBox(a0Image, point);
+      result.a0 = a0;
+      if ((a0 === null) !== (text === null)) fail(`A0 ${capture} disagrees with the case's text`);
+      if (a0 && port && !state) {
+        const pushed = a0.x + a0.width === 639;
+        result.width_delta = port.width - a0.width;
+        // The text's width: Liberation Sans for GDI's Arial, the accepted
+        // deviation (2026-10-30; the other tip gates allow 12%).
+        // A wider text can push the port's box left to end at 639 where
+        // A0's just fits (win_tooltip::tip_rect).
+        const portPushed = port.x + port.width === 639 && a0.x + port.width > 639;
+        if (port.y !== a0.y || port.height !== a0.height
+          || (pushed || portPushed ? port.x + port.width !== 639 : port.x !== a0.x)
+          || Math.abs(port.width - a0.width) > Math.max(2, Math.ceil(a0.width * 0.12))) {
+          fail(`box ${JSON.stringify(port)}, A0 ${JSON.stringify(a0)}`);
+        }
+        // The frame: the left column, the top and bottom rows they share and
+        // each box's own right column, outside A0's arrow pointer (12 by 21
+        // from its hot spot), which covers a corner of some boxes.
+        const at = (png, x, y) => [0, 1, 2].map((i) => png.data[(y * 640 + x) * 4 + i]).join();
+        // A0's real pointer: the box's own corner (the rule run backwards),
+        // or the walked point's column where the box ends at 639.
+        const real = [pushed ? point[0] : a0.x, a0.y > point[1] ? a0.y - 21 : a0.y + 19];
+        const underPointer = (x, y) => x >= real[0] - 1 && x <= real[0] + 12
+          && y >= real[1] - 1 && y <= real[1] + 21;
+        let checked = 0;
+        let differ = 0;
+        const diffs = [];
+        const compare = (portX, a0X, dy) => {
+          if (underPointer(a0X, a0.y + dy)) return;
+          checked += 1;
+          if (at(image, portX, port.y + dy) !== at(a0Image, a0X, a0.y + dy)) {
+            differ += 1;
+            diffs.push([a0X, a0.y + dy, at(image, portX, port.y + dy), at(a0Image, a0X, a0.y + dy)]);
+          }
+        };
+        const width = Math.min(port.width, a0.width);
+        for (let dy = 0; dy < a0.height; dy++) {
+          for (let dx = 0; dx < width - 1; dx++) {
+            if (dy !== 0 && dy !== a0.height - 1 && dx !== 0) continue;
+            compare(port.x + dx, a0.x + dx, dy);
+          }
+          compare(port.x + port.width - 1, a0.x + a0.width - 1, dy);
+        }
+        // Open item: the port's last glyph can reach its right border (the
+        // text's ink is wider than its advance; A0 32's "View" stays inside).
+        // Such pixels are greys darker than the border, in the right column;
+        // they are counted apart, and anything else fails.
+        const ink = diffs.filter(([x, , portPixel, a0Pixel]) => x === a0.x + a0.width - 1
+          && a0Pixel === "128,128,128" && portPixel.split(",").every((v) => Number(v) < 128));
+        differ -= ink.length;
+        result.frame = { checked, differ, ink_on_right_border: ink.length, diffs };
+        if (differ > 0) fail(`the frame differs from A0's ${JSON.stringify(result.frame)}`);
+      }
+    }
+    results.push(result);
+  };
+  // Task Force 1 (72, 10) shows its first capital ship (A0 41b).
+  await click(72, 10);
+  for (const item of TACTICAL_TIP_CASES.capital) await hover("capital", item);
+  for (const item of TACTICAL_TIP_CASES.hud) await hover("hud", item);
+  // The fighter slot whose group is Blue (A0 42: Blue Fighter Group pressed).
+  await click(390, 10);
+  for (const item of TACTICAL_TIP_CASES.fighter) await hover("fighter", item);
+  // The purple Game Options button (617, 318) opens the battle's options.
+  await click(617, 318);
+  for (const item of TACTICAL_TIP_CASES.options) await hover("options", item);
+  fs.writeFileSync(path.join(folder, "tactical-tips-a0.json"), `${JSON.stringify(results, null, 2)}\n`);
+  assert.deepEqual(failures, [], failures.join("\n"));
+  return [{ type: "tactical-tips-a0", a0: hasA0 ? TACTICAL_TIPS_A0 : null, cases: results.length,
+    widths: results.filter((r) => r.width_delta !== undefined).map((r) => [r.label, r.width_delta]) }];
+}
+
 // A0 TAC-01-C003's battle at Imperial Mon Calamari (one Medium Transport
 // against one Victory Destroyer) played until the Alliance's last hull
 // dies: the battle ends by itself (A0 TAC-01-C013), and the Battle
@@ -6831,6 +7071,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         )
         : scenario.capital_panel_tip
         ? await probeTacticalCapitalPanelTip(page, viewport, folder, faction)
+        : scenario.tactical_tips_a0
+        ? await probeTacticalTipsA0(page, viewport, folder, consoleLines, ready, faction)
         : scenario.umgul_backdrop
         ? await probeTacticalUmgulBackdrop(page, viewport, folder, ready, faction)
         : scenario.coruscant_chase
@@ -6961,7 +7203,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       assert.equal(ready.battle_withdrawal_report, Boolean(scenario.battle_withdrawal_report));
       assert.equal(ready.battle_last_ship_lost, Boolean(scenario.battle_last_ship_lost));
       assert.equal(ready.umgul_backdrop, Boolean(scenario.umgul_backdrop));
-      assert.equal(ready.coruscant_chase, Boolean(scenario.coruscant_chase));
+      assert.equal(ready.coruscant_chase, coruscantChaseFixture(scenario));
       assert.equal(ready.tactical_audio_presentation,
         Boolean(scenario.tactical_audio_presentation));
       assert.equal(ready.hull_scale_presentation,
@@ -7016,7 +7258,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? { first_active_objects: 7, second_active_objects: 2 }
         : { first_active_objects: 2, second_active_objects: 7 };
       const projectileFieldLayout = { first_active_objects: 4, second_active_objects: 4 };
-      assert.deepEqual(ready.source_layout, scenario.coruscant_chase ? {
+      assert.deepEqual(ready.source_layout, coruscantChaseFixture(scenario) ? {
         // A0 TAC-04-C014: the carrier and two squadrons against the Star
         // Destroyer and Coruscant's 11 TIE squadrons, 100 + 3 x 12
         // (FUN_005ab650; A0's pyramids fit extent 136,
@@ -7135,7 +7377,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         inner_positive_z: 33,
       });
       assert.equal(ready.participants.length,
-        scenario.coruscant_chase ? 21
+        coruscantChaseFixture(scenario) ? 21
         : scenario.group_presentation ? 14
           : scenario.effect_presentation ? 9
           : scenario.projectile_field_presentation
@@ -7368,7 +7610,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.equal(of("capital-ship", faction).length, 1);
         assert.equal(of("capital-ship", faction === "alliance" ? "empire" : "alliance").length, 4);
         assert.equal(of("fighter-group", "alliance").length + of("fighter-group", "empire").length, 0);
-      } else if (scenario.coruscant_chase) {
+      } else if (coruscantChaseFixture(scenario)) {
         // A0 TAC-04-C014: the Alliance Escort Carrier (2050) and its X-wing
         // and Y-wing squadrons against Coruscant's Imperial Star Destroyer
         // (2560), each on its side's lane.
@@ -7664,7 +7906,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           const participantFamilies = scenario.hull_scale_presentation ? [2070, 2550]
             : scenario.detail_escort_presentation ? [2080, 2560]
             // A0 TAC-04-C014: the Escort Carrier and the Star Destroyer.
-            : scenario.coruscant_chase ? [2050, 2560] : [2010, 2510];
+            : coruscantChaseFixture(scenario) ? [2050, 2560] : [2010, 2510];
           assert.equal(participantFamilyLogs.length, 2,
             "production participants did not load exactly two source families");
           assert.deepEqual(participantFamilyLogs.map(({ text }) => {
@@ -7964,20 +8206,21 @@ async function main() {
         "production-battle-last-ship-lost",
         "production-umgul-backdrop",
         "production-capital-panel-missions-tip",
-        "production-coruscant-chase"]);
+        "production-coruscant-chase",
+        "production-tactical-tips-a0"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(37).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(38).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined, undefined]);
+        undefined, undefined, undefined, undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 44 }, (_, index) => index === 5));
+      Array.from({ length: 45 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 44 }, (_, index) => index === 6));
+      Array.from({ length: 45 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });
