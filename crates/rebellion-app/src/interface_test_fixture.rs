@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 117;
+const SCENARIO_COUNT: u8 = 118;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -426,6 +426,12 @@ pub enum Scenario {
     /// (Kubindi), and a squadron's Move onto that neutral planet, refused
     /// (A0 icon-drag-move/04, 05, 08, 09).
     QuadrantsNeutralFleet = 116,
+    /// As `Quadrants` with the player's agent at the primary system free,
+    /// not on a mission: the defenses icon's team (the agent and the
+    /// regiment, `FUN_00512700` kind 8) may move, and the battery stays
+    /// behind it, as A0 2026-11-13-defenses-missions-drop/00..06 and 21
+    /// drop Jerijador's defenses icon on Yavin.
+    QuadrantsFreeTeam = 117,
 }
 
 impl Scenario {
@@ -548,6 +554,7 @@ impl Scenario {
             114 => Self::CoruscantRegiments,
             115 => Self::ResearchDiplomacyTargeting,
             116 => Self::QuadrantsNeutralFleet,
+            117 => Self::QuadrantsFreeTeam,
             _ => return None,
         })
     }
@@ -616,6 +623,7 @@ impl Scenario {
             || self.opens_build_selection()
             || self == Self::Quadrants
             || self == Self::QuadrantsNeutralFleet
+            || self == Self::QuadrantsFreeTeam
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
             || self == Self::FleetWindowYavin
@@ -1247,7 +1255,7 @@ pub fn apply(
     }
     if matches!(
         request.scenario,
-        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet
+        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet | Scenario::QuadrantsFreeTeam
     ) {
         place_quadrant_contents(
             request, world, movement, missions, uprisings, sectors, primary,
@@ -2141,7 +2149,7 @@ fn place_coruscant_squadrons(
 /// sector's first other system and Coruscant.
 fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(SystemKey, SystemKey)> {
     match request.scenario {
-        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet => {
+        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet | Scenario::QuadrantsFreeTeam => {
             let primary = world.systems.keys().next()?;
             Some((primary, loading_target(world, primary)?))
         }
@@ -4463,6 +4471,13 @@ fn place_quadrant_contents(
             continue;
         };
         world.characters[agent].current_system = Some(system);
+        // QuadrantsFreeTeam: the player's agent at the primary stays free.
+        if request.scenario == Scenario::QuadrantsFreeTeam
+            && system == primary
+            && alliance == player_is_alliance
+        {
+            continue;
+        }
         let id = missions.dispatch(rebellion_core::missions::MissionRequest::single(
             MissionKind::Diplomacy,
             if alliance {
@@ -4703,6 +4718,7 @@ fn object_menu_report<'a>(
                 | Scenario::BuildSelectionOverMaintenance
                 | Scenario::Quadrants
                 | Scenario::QuadrantsNeutralFleet
+                | Scenario::QuadrantsFreeTeam
                 | Scenario::FleetWindowYavin
                 | Scenario::FleetWindowA0
                 | Scenario::BatteryStatus
@@ -6392,7 +6408,7 @@ fn quadrant_setup(
     };
     let marks = if matches!(
         request.scenario,
-        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet
+        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet | Scenario::QuadrantsFreeTeam
     ) {
         mark_systems(world, primary)
     } else {
@@ -11397,7 +11413,11 @@ mod tests {
     /// agent at the fourth system, an agent waiting at the second system,
     /// and three more agents of each side nowhere.
     fn apply_quadrants(faction: CockpitFaction) -> Applied {
-        apply_to_loading_world_with(request(Scenario::Quadrants, faction), |world| {
+        apply_quadrants_as(Scenario::Quadrants, faction)
+    }
+
+    fn apply_quadrants_as(scenario: Scenario, faction: CockpitFaction) -> Applied {
+        apply_to_loading_world_with(request(scenario, faction), |world| {
             use rebellion_core::world::{Character, Fleet};
             let carried = world.characters.keys().next().unwrap();
             let mut keys = world.systems.keys();
@@ -11538,6 +11558,53 @@ mod tests {
                     "{faction:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn the_free_team_scenario_leaves_the_players_agent_at_the_primary_free_to_move() {
+        // port: the fixture's own stocking; the team is FUN_00512700 kind 8
+        // and its Move check the 0x241's FUN_0054c110 (ghidra/notes/
+        // sector-icon-menus.md), as A0 2026-11-13-defenses-missions-drop/00
+        // enables Jerijador's defenses icon's Move.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied = apply_quadrants_as(Scenario::QuadrantsFreeTeam, faction);
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let (player, side) = match faction {
+                CockpitFaction::Alliance => (Faction::Alliance, MissionFaction::Alliance),
+                CockpitFaction::Empire => (Faction::Empire, MissionFaction::Empire),
+            };
+            // The other side's agent at the primary and the player's in
+            // hyperspace to the second keep their missions.
+            assert_eq!(applied.missions.missions().len(), 2, "{faction:?}");
+            let team = rebellion_render::quadrant_icons::defenses_move_team(
+                world,
+                &applied.missions,
+                player,
+                primary,
+            );
+            assert_eq!(
+                (team.members.len(), team.troops.len()),
+                (1, 1),
+                "{faction:?}"
+            );
+            let MissionMember::Character(agent) = team.members[0] else {
+                panic!("the team's member is the player's agent");
+            };
+            assert!(!world.characters[agent].on_mission, "{faction:?}");
+            assert!(
+                applied
+                    .missions
+                    .move_order_enabled(world, side, &team.members),
+                "{faction:?}"
+            );
+            // The battery stays behind the team.
+            assert_eq!(
+                world.systems[primary].defense_facilities.len(),
+                1,
+                "{faction:?}"
+            );
         }
     }
 
@@ -12368,6 +12435,7 @@ mod tests {
                 Scenario::FleetJoinEnroute,
                 Scenario::ResearchDiplomacyTargeting,
                 Scenario::QuadrantsNeutralFleet,
+                Scenario::QuadrantsFreeTeam,
             ]
         );
     }
