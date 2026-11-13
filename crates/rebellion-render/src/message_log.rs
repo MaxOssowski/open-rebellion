@@ -510,6 +510,9 @@ pub struct MessageLog {
     /// Event codes delivered to each side's advisor and not yet taken:
     /// `(is_alliance, code)`.
     advisor_events: Vec<(bool, u32)>,
+    /// Refused orders' two status words not yet taken by the advisor
+    /// ([`Self::refuse`]).
+    refusals: Vec<(u32, u32)>,
     /// The categories' posting options (`FUN_0048a1c0`): a default and
     /// per-category values by mask; bit [`SILENT`] posts silently.
     posting: (u32, std::collections::BTreeMap<u16, u32>),
@@ -539,6 +542,7 @@ impl MessageLog {
             expiry_due: false,
             now: 0,
             advisor_events: Vec::new(),
+            refusals: Vec::new(),
             posting: (0, std::collections::BTreeMap::new()),
             story_movies: std::collections::VecDeque::new(),
         }
@@ -629,6 +633,25 @@ impl MessageLog {
         if was_open && !open {
             self.expire(idle);
         }
+    }
+
+    /// An order its side's validator refused (`FUN_00487740` →
+    /// `FUN_00487c90`). The original files no message: it hands `status`,
+    /// the validator's two words, to the side's advisor (slot `+0xc`,
+    /// `FUN_004c2940` / `FUN_004c0870`), which schedules a reaction. A0
+    /// 2026-11-13-defenses-missions-drop/30 shows no Message Index entry
+    /// for a refused drop. port: `line` is kept as a log line off every
+    /// rail, which no index lists, for a game without the advisor's
+    /// messages and for the test fixtures.
+    pub fn refuse(&mut self, line: GameMessage, status: (u32, u32)) {
+        self.push(GameMessage { rail: None, ..line });
+        self.refusals.push(status);
+    }
+
+    /// The refused orders' status words since the last call, in order
+    /// ([`Self::refuse`]).
+    pub fn take_refusals(&mut self) -> Vec<(u32, u32)> {
+        std::mem::take(&mut self.refusals)
     }
 
     /// The event codes delivered to the side's advisor since the last call,
@@ -1002,6 +1025,37 @@ fn category_toggle(ui: &mut egui::Ui, label: &str, category: MessageCategory, en
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00487740 hands a refused order's status to FUN_00487c90, which
+    // calls the side's advisor (+0xc0 slot +0xc) and files no message: A0
+    // 2026-11-13-defenses-missions-drop/27..30 (a missions icon dropped on
+    // an own system is refused, and the Message Index lists nothing new).
+    #[test]
+    fn a_refused_order_waits_for_the_advisor_and_files_nothing_in_the_index() {
+        let mut log = MessageLog::default();
+        log.refuse(
+            GameMessage::new(4, "Move refused", MessageCategory::Event),
+            (1, 0x28),
+        );
+        log.refuse(
+            GameMessage::new(5, "Scrap refused", MessageCategory::Event),
+            (0, 0),
+        );
+        // Even a line built for a rail is filed on none.
+        log.refuse(
+            GameMessage::new(6, "Retire refused", MessageCategory::Event)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+            (0, 0),
+        );
+        // The port's line stays off every rail, so no index lists it.
+        assert!(log.messages().iter().all(|message| message.rail.is_none()));
+        assert_eq!(
+            log.messages().last().map(|m| m.text.as_str()),
+            Some("Retire refused")
+        );
+        assert_eq!(log.take_refusals(), [(1, 0x28), (0, 0), (0, 0)]);
+        assert!(log.take_refusals().is_empty(), "taken with the first call");
+    }
 
     #[test]
     fn a_message_takes_a_picture_only_when_its_class_has_one() {

@@ -2296,6 +2296,15 @@ async fn main() {
                     macroquad::logging::info!("[advisor] reaction event code={:#x}", code);
                     schedule.event(code, today);
                 }
+                // A refused order reaches the advisor (FUN_00487c90 → +0xc).
+                for status in msg_log.take_refusals() {
+                    macroquad::logging::info!(
+                        "[advisor] reaction refusal status={:#x}/{:#x} decoys=false",
+                        status.0,
+                        status.1
+                    );
+                    schedule.refused(status, false, today);
+                }
                 schedule.update(dt, today, &mut advisor_state.clips);
                 // The agent carries the advisor's state into the save
                 // (FUN_004397a0).
@@ -2306,6 +2315,7 @@ async fn main() {
         if advisor_schedule.is_none() {
             // Without the advisor's messages the codes have no reader.
             let _ = msg_log.take_advisor_events(player_faction == MissionFaction::Alliance);
+            let _ = msg_log.take_refusals();
         }
         if !interface_fixture_active || advisor_schedule.is_some() {
             advisor_state.update(dt);
@@ -6463,11 +6473,14 @@ async fn main() {
                                     );
                                     // port: FUN_00487c90 plays the side's
                                     // advisor reaction; this line stands in.
-                                    msg_log.push(GameMessage::new(
-                                        clock.tick,
-                                        "Move refused".to_string(),
-                                        MessageCategory::Event,
-                                    ));
+                                    msg_log.refuse(
+                                        GameMessage::new(
+                                            clock.tick,
+                                            "Move refused".to_string(),
+                                            MessageCategory::Event,
+                                        ),
+                                        UNTRACED_REFUSAL,
+                                    );
                                 }
                             }
                             // The manual (p. 134): "drag the HQ icon onto a
@@ -6902,11 +6915,14 @@ async fn main() {
                                     // hyp: an unfinished unit's move command
                                     // refuses (+0x50 bit 2 clear), and one
                                     // refusal refuses the order.
-                                    msg_log.push(GameMessage::new(
-                                        clock.tick,
-                                        "Move refused".to_string(),
-                                        MessageCategory::Event,
-                                    ));
+                                    msg_log.refuse(
+                                        GameMessage::new(
+                                            clock.tick,
+                                            "Move refused".to_string(),
+                                            MessageCategory::Event,
+                                        ),
+                                        UNTRACED_REFUSAL,
+                                    );
                                     continue;
                                 };
                                 issue_team_move(
@@ -7209,11 +7225,14 @@ async fn main() {
                                         });
                                     }
                                     Some(Err(_)) => {
-                                        msg_log.push(GameMessage::new(
-                                            clock.tick,
-                                            "Retire refused".to_string(),
-                                            MessageCategory::Event,
-                                        ));
+                                        msg_log.refuse(
+                                            GameMessage::new(
+                                                clock.tick,
+                                                "Retire refused".to_string(),
+                                                MessageCategory::Event,
+                                            ),
+                                            UNTRACED_REFUSAL,
+                                        );
                                     }
                                     None => {}
                                 }
@@ -7269,11 +7288,14 @@ async fn main() {
                                         lines,
                                     });
                                 } else {
-                                    msg_log.push(GameMessage::new(
-                                        clock.tick,
-                                        "Scrap refused".to_string(),
-                                        MessageCategory::Event,
-                                    ));
+                                    msg_log.refuse(
+                                        GameMessage::new(
+                                            clock.tick,
+                                            "Scrap refused".to_string(),
+                                            MessageCategory::Event,
+                                        ),
+                                        UNTRACED_REFUSAL,
+                                    );
                                 }
                             }
                         }
@@ -8094,11 +8116,14 @@ async fn main() {
                             result
                         );
                         if result.is_err() {
-                            msg_log.push(GameMessage::new(
-                                clock.tick,
-                                "Scrap refused".to_string(),
-                                MessageCategory::Event,
-                            ));
+                            msg_log.refuse(
+                                GameMessage::new(
+                                    clock.tick,
+                                    "Scrap refused".to_string(),
+                                    MessageCategory::Event,
+                                ),
+                                UNTRACED_REFUSAL,
+                            );
                         }
                     }
                     if let Some(MoveConfirmationAction::MoveHeadquarters { destination }) = &answer {
@@ -10571,11 +10596,10 @@ fn issue_team_move(
         );
         // port: FUN_00487c90 plays the side's advisor reaction; this line
         // stands in.
-        msg_log.push(GameMessage::new(
-            context.tick,
-            refusal,
-            MessageCategory::Event,
-        ));
+        msg_log.refuse(
+            GameMessage::new(context.tick, refusal, MessageCategory::Event),
+            UNTRACED_REFUSAL,
+        );
         return;
     };
     let (characters, special_forces): (Vec<MissionMember>, Vec<MissionMember>) = team
@@ -10757,11 +10781,14 @@ fn issue_fleet_move(
     if let Err(error) = checked {
         // port: FUN_00487c90 plays the side's advisor reaction; this line
         // stands in.
-        msg_log.push(GameMessage::new(
-            context.tick,
-            format!("Fleet move rejected: {error}"),
-            MessageCategory::Event,
-        ));
+        msg_log.refuse(
+            GameMessage::new(
+                context.tick,
+                format!("Fleet move rejected: {error}"),
+                MessageCategory::Event,
+            ),
+            UNTRACED_REFUSAL,
+        );
         return;
     }
     // FUN_00487cc0 reads the order's first team id. A fleet icon's is the
@@ -10849,11 +10876,10 @@ fn confirm_character_move(
         rebellion_core::missions::move_place_allowed(world, faction, system, fleet),
     ) else {
         macroquad::logging::info!("[interface] character_move confirm refused");
-        msg_log.push(GameMessage::new(
-            tick,
-            "Move refused".to_string(),
-            MessageCategory::Event,
-        ));
+        msg_log.refuse(
+            GameMessage::new(tick, "Move refused".to_string(), MessageCategory::Event),
+            UNTRACED_REFUSAL,
+        );
         return;
     };
     let blockaded = c.current_fleet.is_none()
@@ -10992,11 +11018,10 @@ fn confirm_troop_move(
     let name = troop_name(world, troop);
     let (Ok(days), Some(name)) = (days, name) else {
         macroquad::logging::info!("[interface] troop_move confirm refused");
-        msg_log.push(GameMessage::new(
-            tick,
-            "Move refused".to_string(),
-            MessageCategory::Event,
-        ));
+        msg_log.refuse(
+            GameMessage::new(tick, "Move refused".to_string(), MessageCategory::Event),
+            UNTRACED_REFUSAL,
+        );
         return;
     };
     let blockaded = world
@@ -11058,11 +11083,14 @@ fn order_headquarters_move(
                 "[interface] command=0x201 headquarters status=refused reason={error}"
             );
             // port: FUN_00487c90's advisor reaction; this line stands in.
-            msg_log.push(GameMessage::new(
-                tick,
-                format!("Headquarters move rejected: {error}"),
-                MessageCategory::Event,
-            ));
+            msg_log.refuse(
+                GameMessage::new(
+                    tick,
+                    format!("Headquarters move rejected: {error}"),
+                    MessageCategory::Event,
+                ),
+                UNTRACED_REFUSAL,
+            );
             return;
         }
     };
@@ -11122,11 +11150,10 @@ fn confirm_squadron_move(
         .map(|value| value.name.clone());
     let (Ok(days), Some(name)) = (days, name) else {
         macroquad::logging::info!("[interface] squadron_move confirm refused");
-        msg_log.push(GameMessage::new(
-            tick,
-            "Move refused".to_string(),
-            MessageCategory::Event,
-        ));
+        msg_log.refuse(
+            GameMessage::new(tick, "Move refused".to_string(), MessageCategory::Event),
+            UNTRACED_REFUSAL,
+        );
         return;
     };
     let blockaded = match from {
@@ -11408,11 +11435,10 @@ fn confirm_special_force_move(
         rebellion_core::missions::move_place_allowed(world, faction, system, fleet),
     ) else {
         macroquad::logging::info!("[interface] special_force_move confirm refused");
-        msg_log.push(GameMessage::new(
-            tick,
-            "Move refused".to_string(),
-            MessageCategory::Event,
-        ));
+        msg_log.refuse(
+            GameMessage::new(tick, "Move refused".to_string(), MessageCategory::Event),
+            UNTRACED_REFUSAL,
+        );
         return;
     };
     // The first member is not a fleet; its container is its system, or a
@@ -11951,6 +11977,15 @@ fn apply_agent_command(
 /// An order the validator refused (`FUN_00487c90`): its two status words,
 /// whether its team was left empty with decoys and no target, and the
 /// port's line for a game without the advisor's messages.
+/// hyp: the validator's two words are not read for this refusal; any words
+/// but the advisor's special ones take its generic reaction (`FUN_004c4390`,
+/// `FUN_004c2230`: one of two messages).
+const UNTRACED_REFUSAL: (u32, u32) = (0, 0);
+/// `FUN_004f4b60`: a movement kind's target of another side (`1`/`0x28`),
+/// whose reaction is the advisor's message `+8` (`FUN_004c3bb0`,
+/// `FUN_004c19f0`).
+const OTHER_SIDE_REFUSAL: (u32, u32) = (1, 0x28);
+
 struct RefusedOrder {
     status: (u32, u32),
     decoys_without_target: bool,
@@ -12143,11 +12178,14 @@ fn apply_panel_action(
             };
             // port: FUN_00487c90's advisor reaction; this line stands in.
             if let Err(error) = result {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Regiment move rejected: {error}"),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        format!("Regiment move rejected: {error}"),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         // FUN_00578f30 → FUN_00556390 for the headquarters
@@ -12168,11 +12206,14 @@ fn apply_panel_action(
             );
             // port: FUN_00487c90's advisor reaction; this line stands in.
             if let Err(error) = result {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Headquarters move rejected: {error}"),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        format!("Headquarters move rejected: {error}"),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         // FUN_00557ce0's 0x201 for a squadron (rebellion_core::squadrons).
@@ -12183,11 +12224,14 @@ fn apply_panel_action(
                 .squadrons
                 .move_squadrons(world, alliance, class, 1, from, to, clock.tick)
             {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Squadron move rejected: {error}"),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        format!("Squadron move rejected: {error}"),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         PanelAction::FocusFleetSystem(sys_key) => {
@@ -12206,11 +12250,14 @@ fn apply_panel_action(
                 *player_faction == MissionFaction::Alliance,
             );
             if let Err(error) = result {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Fleet move rejected: {error}"),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        format!("Fleet move rejected: {error}"),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         PanelAction::SetDestination {
@@ -12260,11 +12307,14 @@ fn apply_panel_action(
                 *player_faction == MissionFaction::Alliance,
             );
             if let Err(error) = result {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Create Fleet rejected: {error}"),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        format!("Create Fleet rejected: {error}"),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         PanelAction::MoveShips {
@@ -12284,11 +12334,14 @@ fn apply_panel_action(
                 *player_faction == MissionFaction::Alliance,
             );
             if let Err(error) = result {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Fleet move rejected: {error}"),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        format!("Fleet move rejected: {error}"),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         PanelAction::DispatchFleet {
@@ -12304,20 +12357,26 @@ fn apply_panel_action(
                 destination,
                 expected_is_alliance,
             ) {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("Fleet move rejected: {error}"),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        format!("Fleet move rejected: {error}"),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
                 return;
             }
             if let Err(error) = troop_transport_state.embark(world, fleet, &troops) {
                 if !troops.is_empty() {
-                    msg_log.push(GameMessage::new(
-                        clock.tick,
-                        format!("Troop embarkation rejected: {error}"),
-                        MessageCategory::Event,
-                    ));
+                    msg_log.refuse(
+                        GameMessage::new(
+                            clock.tick,
+                            format!("Troop embarkation rejected: {error}"),
+                            MessageCategory::Event,
+                        ),
+                        UNTRACED_REFUSAL,
+                    );
                     return;
                 }
             }
@@ -12361,11 +12420,14 @@ fn apply_panel_action(
                         let _ =
                             troop_transport_state.disembark_selected(world, fleet, origin, &troops);
                     }
-                    msg_log.push(GameMessage::new(
-                        clock.tick,
-                        format!("Fleet move rejected: {error}"),
-                        MessageCategory::Event,
-                    ));
+                    msg_log.refuse(
+                        GameMessage::new(
+                            clock.tick,
+                            format!("Fleet move rejected: {error}"),
+                            MessageCategory::Event,
+                        ),
+                        UNTRACED_REFUSAL,
+                    );
                 }
             }
         }
@@ -12589,11 +12651,14 @@ fn apply_panel_action(
                     );
                 }
             } else {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    "Planetary bombardment refused".to_string(),
-                    MessageCategory::Combat,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        "Planetary bombardment refused".to_string(),
+                        MessageCategory::Combat,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         // FUN_00486fb0 -> FUN_00487740: the Move order's 0x241 validates
@@ -12640,11 +12705,18 @@ fn apply_panel_action(
                 result,
             );
             if result.is_err() {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    "Move refused".to_string(),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        "Move refused".to_string(),
+                        MessageCategory::Event,
+                    ),
+                    if result.as_ref().err().map(String::as_str) == Some("1/0x28") {
+                        OTHER_SIDE_REFUSAL
+                    } else {
+                        UNTRACED_REFUSAL
+                    },
+                );
             }
         }
         // A special force's Move: the Move mission 0x41000001 with the unit
@@ -12685,11 +12757,18 @@ fn apply_panel_action(
                 fleet.and_then(|key| fleet_label(world, key)),
             );
             if result.is_err() {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    "Move refused".to_string(),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        "Move refused".to_string(),
+                        MessageCategory::Event,
+                    ),
+                    if result.as_ref().err().map(String::as_str) == Some("1/0x28") {
+                        OTHER_SIDE_REFUSAL
+                    } else {
+                        UNTRACED_REFUSAL
+                    },
+                );
             }
         }
         // A Move's one 0x241 for several members (FUN_0053c810): the Move
@@ -12735,11 +12814,18 @@ fn apply_panel_action(
                 fleet.and_then(|key| fleet_label(world, key)),
             );
             if result.is_err() {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    "Move refused".to_string(),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        "Move refused".to_string(),
+                        MessageCategory::Event,
+                    ),
+                    if result.as_ref().err().map(String::as_str) == Some("1/0x28") {
+                        OTHER_SIDE_REFUSAL
+                    } else {
+                        UNTRACED_REFUSAL
+                    },
+                );
             }
         }
         // FUN_00486fb0 -> FUN_00487740: the Command order validates
@@ -12767,11 +12853,14 @@ fn apply_panel_action(
                 world.characters.get(character).map(|c| c.command),
             );
             if result.is_err() {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    "Command refused".to_string(),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        "Command refused".to_string(),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         // FUN_0041ce20(order, 1): the confirmed Retire validates again
@@ -12799,11 +12888,14 @@ fn apply_panel_action(
                 result
             );
             if result.is_err() {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    "Retire refused".to_string(),
-                    MessageCategory::Event,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        "Retire refused".to_string(),
+                        MessageCategory::Event,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         // FUN_00486fb0 -> FUN_00487740 -> FUN_00563390: the order
@@ -12843,11 +12935,14 @@ fn apply_panel_action(
                     clock.tick,
                 );
             } else {
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    "Planetary assault refused".to_string(),
-                    MessageCategory::Combat,
-                ));
+                msg_log.refuse(
+                    GameMessage::new(
+                        clock.tick,
+                        "Planetary assault refused".to_string(),
+                        MessageCategory::Combat,
+                    ),
+                    UNTRACED_REFUSAL,
+                );
             }
         }
         PanelAction::AdvanceTicks(n) => {
@@ -16706,9 +16801,23 @@ mod fleet_move_tests {
         // The second regiment is gone by the release: nothing moves.
         let mut world = w.world.clone();
         world.troops.remove(troops[1]);
-        let refused = issue_fleet_drop(&world, &transport, drop(troops.to_vec(), false), w.destination);
+        let mut refused = issue_fleet_drop(
+            &world,
+            &transport,
+            drop(troops.to_vec(), false),
+            w.destination,
+        );
         assert!(refused.actions.is_empty(), "{:?}", refused.actions);
         assert!(!refused.confirmation.is_open());
+        // FUN_00487c90 hands the refusal to the side's advisor and files no
+        // message (A0 2026-11-13-defenses-missions-drop/30): the port's line
+        // stays off every rail.
+        assert_eq!(refused.log.take_refusals(), [UNTRACED_REFUSAL]);
+        assert!(refused
+            .log
+            .messages()
+            .iter()
+            .all(|message| message.rail.is_none()));
         assert_eq!(refused.log.messages().len(), 1);
         // The refusal names the regiment's reason, as its own move's does.
         assert!(

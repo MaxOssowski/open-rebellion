@@ -28,10 +28,10 @@ use crate::world::GameWorld;
 use crate::tactical::{
     apply_original_capital_damage, original_capital_maneuverability,
     original_tactical_damage_rolls, original_tactical_mobility, BattlePhase, BattleSession,
-    CombatWinner, FleetBattle, TacticalWeaponArc, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX,
-    ORIGINAL_CAPITAL_WEAPON_STRENGTH, ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
-    ORIGINAL_FIGHTER_TORPEDO_STRENGTH, ORIGINAL_ION_VS_FIGHTER, ORIGINAL_LASER_VS_CAPITAL,
-    ORIGINAL_LASER_VS_FIGHTER, ORIGINAL_TURBOLASER_VS_FIGHTER,
+    CombatWinner, FleetBattle, TacticalWeaponArc, ORIGINAL_CAPITAL_WEAPON_STRENGTH,
+    ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE, ORIGINAL_FIGHTER_TORPEDO_STRENGTH,
+    ORIGINAL_ION_VS_FIGHTER, ORIGINAL_LASER_VS_CAPITAL, ORIGINAL_LASER_VS_FIGHTER,
+    ORIGINAL_TURBOLASER_VS_FIGHTER,
 };
 
 /// `DAT_0066badc`: the time `FUN_0059a530` passes to each abstract step.

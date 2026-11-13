@@ -283,8 +283,16 @@ covers the mission icon's menu only.
     `FUN_0053d430`'s group rule. A mixed group meets the squadrons'
     refusal of another side's planet. The room of a fleet target is
     checked per kind, not for the whole group.
-- The missions icon's drop on a target (2026-11-11) is refused, and a
-  "Move refused" line stands in for `FUN_00487c90`.
+- The missions icon's drop on a target (2026-11-11) is refused. A0
+  2026-11-13-defenses-missions-drop/24..30 (Kubindi's missions icon
+  dropped on Jerijador, the Alliance) shows no window, no change and no
+  Message Index entry, as `FUN_00487c90` files no message. Since
+  2026-11-14 every refused order of the interface reaches the side's
+  advisor (`MessageLog::refuse` -> `AdvisorSchedule::refused`, slot
+  `+0xc`); the port's line stays off every rail, so no index lists it.
+  hyp: most refusals' two status words are not read and take the
+  generic reaction; a character's or special force's Move to another
+  side's system sends `1`/`0x28`.
 - The drag image is not drawn, and Ctrl's multiple selection is not
   ported.
 - The fleet icon's Move never asks (2026-11-11). By `FUN_00487cc0`
