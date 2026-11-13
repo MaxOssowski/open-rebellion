@@ -852,6 +852,7 @@ fn mission_record(m: &Mission) -> MissionRecord {
         leave_rule: m.flag_col10,
         rules: MissionTargetRules {
             container_loss_ends: m.container_loss_ends != 0,
+            explored_container: m.explored_container != 0,
             needs_populated_container: m.needs_populated_container != 0,
             target_loss_ends: m.target_loss_ends != 0,
             own_side_target: m.own_side_target != 0,
@@ -1464,6 +1465,7 @@ mod tests {
                 leave_rule: 1,
                 rules: MissionTargetRules {
                     container_loss_ends: true,
+                    explored_container: false,
                     needs_populated_container: true,
                     target_loss_ends: false,
                     own_side_target: true,

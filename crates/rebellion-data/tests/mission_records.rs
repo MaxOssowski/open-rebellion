@@ -201,6 +201,34 @@ fn every_port_mission_kind_names_its_shipped_record_and_target_columns() {
         .map(u8::from);
         assert_eq!(read, columns, "{kind:?}");
     }
+    // Column 12 (+0x70): the container must be explored at creation, the
+    // creation-only block of FUN_00592600 (0x40/0x11).
+    for (kind, explored) in [
+        (MissionKind::Diplomacy, true),
+        (MissionKind::Rescue, true),
+        (MissionKind::Sabotage, true),
+        (MissionKind::Espionage, true),
+        (MissionKind::Reconnaissance, false),
+        (MissionKind::Recruitment, true),
+        (MissionKind::Abduction, true),
+        (MissionKind::ShipDesignResearch, true),
+        (MissionKind::FacilityDesignResearch, true),
+        (MissionKind::TroopTrainingResearch, true),
+        (MissionKind::InciteUprising, true),
+        (MissionKind::DeathStarSabotage, true),
+        (MissionKind::JediTraining, true),
+        (MissionKind::Dagobah, false),
+        (MissionKind::Palace, false),
+        (MissionKind::SubdueUprising, true),
+        (MissionKind::Assassination, true),
+        (MissionKind::Pickup, false),
+        (MissionKind::Bounty, true),
+        (MissionKind::Move, true),
+    ] {
+        let id = kind.record_id().expect("an original mission kind");
+        let record = world.mission_record(id).expect("a shipped record");
+        assert_eq!(record.rules.explored_container, explored, "{kind:?}");
+    }
     assert_eq!(MissionKind::Autoscrap.record_id(), None);
 }
 

@@ -7970,6 +7970,7 @@ mod tests {
             leave_rule: 1,
             rules: MissionTargetRules {
                 container_loss_ends: true,
+                explored_container: true,
                 needs_populated_container: true,
                 target_loss_ends: true,
                 own_side_target: true,

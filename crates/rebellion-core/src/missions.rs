@@ -977,6 +977,32 @@ fn creation_target_ok(kind: MissionKind, object: Option<MissionTarget>) -> bool 
     }
 }
 
+/// The creation check of `FUN_00592600`'s `+0x70` block (MISSNSD column 12):
+/// with the record's `+0x70` set, a container that is a system
+/// (`0x90..0x98`) must be explored (`+0x88` bit 1), else creation is refused
+/// (`0x40`/`0x11`). The block needs checker `+4` (creation) and `+0xc` (a
+/// target), so a running mission never ends by it. The system, character
+/// and object rules (`FUN_005868c0`, `FUN_00586e20`, `FUN_00593500`) chain
+/// to `FUN_00592600`; the port's place kinds skip it: Move, Return and
+/// Adrift run `FUN_00523450` alone, and Dagobah's and Pickup's records
+/// leave column 12 clear.
+///
+/// port: the container is the mission's system, read from the world; the
+/// original reads the side's own copy of it before phase 5.
+fn creation_container_ok(world: &GameWorld, kind: MissionKind, system: SystemKey) -> bool {
+    if kind.target_rules() == TargetRules::Place {
+        return true;
+    }
+    let Some(record) = kind.record_id().and_then(|id| world.mission_record(id)) else {
+        return true;
+    };
+    !record.rules.explored_container
+        || world
+            .systems
+            .get(system)
+            .is_none_or(|sys| sys.exploration_status == crate::dat::ExplorationStatus::Explored)
+}
+
 /// The creation member check of research (`FUN_0056c510` with creation flag
 /// `+4`): every character member needs a nonzero effective skill in the
 /// tree (`FUN_0056c820` -> `FUN_005337f0`), else the order is refused
@@ -1151,6 +1177,7 @@ pub fn available_kinds(
         })
         .filter(|(kind, _)| kind.target_rules() == target.rules())
         .filter(|(kind, _)| creation_target_ok(*kind, target.object))
+        .filter(|(kind, _)| creation_container_ok(world, *kind, target.system))
         .filter(|(kind, _)| {
             team.iter()
                 .chain(decoys)
@@ -2161,7 +2188,9 @@ impl MissionState {
         world: &mut GameWorld,
     ) -> Result<u64, MissionRefusal> {
         let side_is_alliance = request.faction == MissionFaction::Alliance;
-        if !creation_target_ok(request.kind, request.target_object) {
+        if !creation_target_ok(request.kind, request.target_object)
+            || !creation_container_ok(world, request.kind, request.target_system)
+        {
             return Err(MissionRefusal::TargetUnavailable);
         }
         if let Some(&member) = request
@@ -7702,6 +7731,7 @@ mod tests {
             leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
+                explored_container: true,
                 needs_populated_container: true,
                 target_loss_ends: true,
                 own_side_target: true,
@@ -9128,6 +9158,7 @@ mod tests {
             dat_id: crate::ids::DatId::new(0x6900_0012),
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: false,
+                explored_container: true,
                 needs_populated_container: false,
                 target_loss_ends: true,
                 own_side_target: false,
@@ -10670,6 +10701,7 @@ mod tests {
             leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
+                explored_container: false,
                 needs_populated_container: false,
                 target_loss_ends: true,
                 own_side_target: false,
@@ -10733,6 +10765,7 @@ mod tests {
             leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: false,
+                explored_container: true,
                 needs_populated_container: false,
                 target_loss_ends: true,
                 own_side_target: false,
@@ -10802,6 +10835,7 @@ mod tests {
             leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: false,
+                explored_container: false,
                 needs_populated_container: false,
                 target_loss_ends: true,
                 own_side_target: false,
@@ -11454,6 +11488,7 @@ mod tests {
             leave_rule: 0,
             rules: crate::world::MissionTargetRules {
                 container_loss_ends: true,
+                explored_container: true,
                 needs_populated_container: false,
                 target_loss_ends: true,
                 own_side_target: true,
@@ -11682,6 +11717,92 @@ mod tests {
             kinds,
             vec![MissionKind::Recruitment, MissionKind::Diplomacy]
         );
+    }
+
+    #[test]
+    fn an_unexplored_system_refuses_the_kinds_whose_record_needs_an_explored_container() {
+        // FUN_00592600's +0x70 block: MISSNSD column 12 is 1 for Diplomacy
+        // (0x51000010), and a system container without +0x88 bit 1 refuses
+        // creation (0x40/0x11), in the dialog's list and at dispatch.
+        let (mut world, here, envoy) = dialog_world(vec![diplomacy_record()]);
+        world.systems[here].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+        let kinds = |world: &GameWorld| {
+            available_kinds(
+                world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                MissionFaction::Alliance,
+                &[envoy],
+                &[],
+                here,
+            )
+        };
+        assert!(kinds(&world).is_empty());
+        let MissionMember::Character(character) = envoy else {
+            unreachable!()
+        };
+        let request = MissionRequest::single(
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            character,
+            here,
+            None,
+            0,
+        );
+        let mut state = MissionState::new();
+        assert_eq!(
+            state.dispatch_guarded(request.clone(), &mut world),
+            Err(MissionRefusal::TargetUnavailable)
+        );
+
+        world.systems[here].exploration_status = crate::dat::ExplorationStatus::Explored;
+        assert_eq!(kinds(&world), vec![MissionKind::Diplomacy]);
+        assert!(state.dispatch_guarded(request, &mut world).is_ok());
+    }
+
+    #[test]
+    fn an_unexplored_container_does_not_end_a_running_mission_or_a_record_without_column_12() {
+        // FUN_00592600 runs the +0x70 block only with checker +4, which the
+        // running validator clears (FUN_00582b90). A record with column
+        // 12 = 0, as Reconnaissance's 0x54000015 ships, passes creation.
+        let (mut world, here, envoy) = dialog_world(vec![diplomacy_record()]);
+        world.systems[here].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+        let mission = ActiveMission::new(
+            0,
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            vec![envoy],
+            here,
+            0,
+        );
+        assert_eq!(
+            running_end_code(
+                &mission,
+                &world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                &[]
+            ),
+            0
+        );
+        let mut record = diplomacy_record();
+        record.rules.explored_container = false;
+        world.mission_records = vec![record];
+        assert!(creation_container_ok(&world, MissionKind::Diplomacy, here));
+    }
+
+    #[test]
+    fn a_move_to_an_unexplored_system_is_not_refused_for_its_column_12() {
+        // MISSNSD 0x41000001 (Move) sets column 12, but its validator
+        // FUN_00523450 (slot +0x1bc, FUN_005215e0) never reaches
+        // FUN_00592600's +0x70 block.
+        let (mut world, here, _) = dialog_world(vec![crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x4100_0001),
+            ..diplomacy_record()
+        }]);
+        world.systems[here].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+        assert!(world.mission_records[0].rules.explored_container);
+        assert!(creation_container_ok(&world, MissionKind::Move, here));
     }
 
     #[test]

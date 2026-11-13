@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 114;
+pub const SAVE_VERSION: u32 = 115;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1737,6 +1737,7 @@ mod tests {
             leave_rule: 1,
             rules: rebellion_core::world::MissionTargetRules {
                 container_loss_ends: true,
+                explored_container: true,
                 target_loss_ends: true,
                 ..Default::default()
             },

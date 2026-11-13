@@ -52,8 +52,9 @@ pub struct Mission {
     // A running mission ends (code 7) when its container is destroyed
     // (record +0x6c, FUN_00523450)
     pub container_loss_ends: u32,
-    // Not yet mapped (record +0x70, a creation-only check in FUN_00592600)
-    pub flag_col12: u32,
+    // The container must be explored at creation (record +0x70,
+    // FUN_00592600: a system container's +0x88 bit 1, else 0x40/0x11)
+    pub explored_container: u32,
     // The container must be a populated system, else end 0xd (+0x74, FUN_00592600)
     pub needs_populated_container: u32,
     // The mission ends (code 6) when its target is destroyed (+0x78, FUN_00592600)
@@ -126,7 +127,7 @@ impl Mission {
             can_resign: r.read_u32()?,
             flag_col10: r.read_u32()?,
             container_loss_ends: r.read_u32()?,
-            flag_col12: r.read_u32()?,
+            explored_container: r.read_u32()?,
             needs_populated_container: r.read_u32()?,
             target_loss_ends: r.read_u32()?,
             own_side_target: r.read_u32()?,
@@ -159,7 +160,7 @@ impl Mission {
         w.write_u32(self.can_resign);
         w.write_u32(self.flag_col10);
         w.write_u32(self.container_loss_ends);
-        w.write_u32(self.flag_col12);
+        w.write_u32(self.explored_container);
         w.write_u32(self.needs_populated_container);
         w.write_u32(self.target_loss_ends);
         w.write_u32(self.own_side_target);

@@ -493,6 +493,16 @@ refuse a target outside the family each rule set takes, before any status:
   the object completed, `+0x50` bit 2 (`0x40`/`0x34`).
 - Sabotage (`FUN_0056a110`) then refuses `0x18..0x1c` and `0x30..0x3c`; DS
   Sabotage (`FUN_005744c0`) anything outside `0x18..0x1c`.
+- Base (`FUN_00592600`, read 2026-11-13). Its first two blocks need checker
+  `+4` and `+0xc`. After `FUN_00523450` passes with no status, it refuses a
+  container `C` outside `0x90..0xa0` (`0x40`/`0x10`). Then, with `R +0x70`
+  (col 12), it refuses a system `C` (`0x90..0x98`) whose `+0x88` bit 1
+  (explored) is clear (`0x40`/`0x11`); any other `C` passes. Col 12 is 1
+  in the shipped records except Recon `0x54000015`, Dagobah, Palace, the two
+  Vacations (`0x72`) and Pickup. Move, Return and Adrift set it, but their
+  validator `FUN_00523450` never reaches `FUN_00592600`. Port:
+  `creation_container_ok` in `missions.rs`, which reads the world's
+  `exploration_status`.
 
 So no class takes a fleet (`0x08..0x10`) or an unfinished object, and only
 Sabotage takes an ordinary capital ship (`0x14..0x18`) or a fighter squadron

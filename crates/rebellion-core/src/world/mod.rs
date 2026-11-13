@@ -1420,6 +1420,11 @@ pub struct MissionMemberRules {
 pub struct MissionTargetRules {
     /// End 7 when the container is destroyed (`+0x6c`, `FUN_00523450`).
     pub container_loss_ends: bool,
+    /// Creation is refused (`0x40`/`0x11`) when the container is an
+    /// unexplored system (`+0x70`, `FUN_00592600`: system `+0x88` bit 1).
+    /// Creation only: the block needs checker `+4`, which the running
+    /// validator clears.
+    pub explored_container: bool,
     /// End `0xd` unless the container is a populated system (`+0x74`,
     /// `FUN_00592600`).
     pub needs_populated_container: bool,
