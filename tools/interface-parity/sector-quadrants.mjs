@@ -36,7 +36,7 @@ const CORUSCANT_REGIMENTS = 115;
 // QuadrantsNeutralFleet: as QUADRANTS with the player's fleet at rest at
 // the neutral system (one ship that bombards) and one of the player's
 // squadrons on the primary planet (setup.neutral_fleets).
-const QUADRANTS_NEUTRAL_FLEET = 116;
+const QUADRANTS_NEUTRAL_FLEET = 117;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
