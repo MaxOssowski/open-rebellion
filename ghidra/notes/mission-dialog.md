@@ -70,14 +70,41 @@ closes. `0x64` and `0x65` never submit.
 
 ## Mission kinds
 
-The box lists each record `FUN_004f5380` returns, in that order:
+The box takes each record `FUN_004f5380` returns:
 `FUN_005422f0` keeps every record that is not hidden (`+0x5c`), whose member
 check passes (`FUN_005830a0`), and whose class validator accepts a temporary
 mission built from the order (`FUN_0054c590` -> `FUN_00582b90`). Each item is
 a 200 by 113 surface holding a 130 by 65 GOKRES icon, id `TEXTSTRA id & 0xfff`
 for the Alliance and `+ 0x1000` for the Empire (record `+0x30`), with the
 record's name in gray `0x808080`. For example, Diplomacy (TEXTSTRA 11280) is GOKRES 3088 or 7184.
-`FUN_0046cab0` maps the family to an icon index for the item.
+`FUN_0046cab0` (read 2026-11-13) gives each item its sort key, which
+`FUN_0060ba00` stores at item `+0xc`. `FUN_005f59f0` inserts the item into
+the list `FUN_0060a790(1)` made (vtable `0x0066e148`, held at dialog
+`+0x124`). Its compare (slot 4) in mode 1 is `a+0xc < b+0xc`. The insert
+goes before the first item that sorts after the new one, so the list rises
+by key and equal keys keep insertion order. The box shows the first item.
+
+| Key | Family (record `+0x2c`) | Kind |
+|---|---|---|
+| 1 | `0x55` | Recruitment |
+| 2 | `0x58` | Jedi Training |
+| 3 | `0x57` | Subdue Uprising |
+| 4, 5, 6 | `0x53`, index (`+0x18`) `0x20`, `0x21`, `0x22` | Ship, Facility, Troop research |
+| 7 | `0x51` | Diplomacy |
+| 8 | `0x56` | Incite Uprising |
+| 9 | `0x52` | Espionage |
+| 10 | `0x54` | Reconnaissance |
+| 11 | `0x63` | Assassination |
+| 12 | `0x62` | Abduction |
+| 13 | `0x61` | Rescue |
+| 14 | `0x6a` | Death Star Sabotage |
+| 15 | `0x69` | Sabotage |
+
+Any other family gets `++DAT_006a8794`. That global starts at 100 in
+`.data` (file offset `0x2a6794`), so those items follow the keyed ones. A0
+2026-11-13-mission-dialogs/30..32 shows Dodonna on Drall with Diplomacy,
+then Espionage. 40..43 shows Wedge there with Ship Design Research,
+Diplomacy, then Espionage. Port: `rebellion_render::mission_dialog::box_order`.
 
 The team list starts with the order's team (`+0x28`/`+0x2c`) and the decoy list
 with `+0x58`, which is empty for a fresh `0x240` order.

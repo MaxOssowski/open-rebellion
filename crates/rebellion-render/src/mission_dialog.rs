@@ -1215,6 +1215,33 @@ mod tests {
     }
 
     #[test]
+    fn the_box_orders_every_keyed_kind_by_fun_0046cab0_and_unkeyed_after() {
+        // FUN_0046cab0's keys 1..15; Palace (0x64) falls to the counter.
+        let keyed = [
+            MissionKind::Recruitment,
+            MissionKind::JediTraining,
+            MissionKind::SubdueUprising,
+            MissionKind::ShipDesignResearch,
+            MissionKind::FacilityDesignResearch,
+            MissionKind::TroopTrainingResearch,
+            MissionKind::Diplomacy,
+            MissionKind::InciteUprising,
+            MissionKind::Espionage,
+            MissionKind::Reconnaissance,
+            MissionKind::Assassination,
+            MissionKind::Abduction,
+            MissionKind::Rescue,
+            MissionKind::DeathStarSabotage,
+            MissionKind::Sabotage,
+        ];
+        let mut given = vec![MissionKind::Palace];
+        given.extend(keyed.iter().rev());
+        let mut expected = keyed.to_vec();
+        expected.push(MissionKind::Palace);
+        assert_eq!(box_order(given), expected);
+    }
+
+    #[test]
     fn the_box_puts_unkeyed_families_last_in_their_given_order() {
         // FUN_0046cab0: families outside its switch take DAT_006a8794 + 1,
         // which starts at 100, so they follow the keyed kinds.
