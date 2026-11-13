@@ -99,3 +99,5 @@ these cases rest on the trace and the A0 regiment capture.
   is untraced.
 - A selected ship's tabs do not list travellers: the port seats cargo by
   fleet, and which ship a traveller is reparented to is untraced.
+
+Closed 2026-11-13 by `2026-11-13-travellers-in-fleets`.
