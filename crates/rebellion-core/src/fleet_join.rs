@@ -618,12 +618,24 @@ pub fn move_ships_to_system(
     )?;
     let source = &world.fleets[fleet];
     if source.location == system {
-        return Ok(FleetOrderOutcome::Created(split_off(
-            world,
-            troop_transport,
-            fleet,
-            &ships,
-        )));
+        // The route puts the ships in the side's bit-1 spare there
+        // (`FUN_00552300` -> `FUN_005097d0`), which stays the spare once it
+        // holds ships: a ship of the spare itself stays put (A0
+        // 2026-11-13-drag/22-23), others join it. With no spare the ships
+        // form one (port: the original fills an empty spare).
+        let alliance = source.is_alliance;
+        return Ok(match world.ship_spare(system, alliance) {
+            Some(spare) if spare == fleet => FleetOrderOutcome::Joined(spare),
+            Some(spare) => {
+                move_ships_into(world, troop_transport, fleet, &ships, spare);
+                FleetOrderOutcome::Joined(spare)
+            }
+            None => {
+                let created = split_off(world, troop_transport, fleet, &ships);
+                world.set_ship_spare(system, alliance, created);
+                FleetOrderOutcome::Created(created)
+            }
+        });
     }
     depart(
         world,
@@ -1759,6 +1771,59 @@ mod tests {
         assert_eq!(setup.world.fleets.len(), fleets_before);
         assert_eq!(setup.world.systems[here].fleets, [mover]);
         assert!(movement.is_empty());
+    }
+
+    // FUN_00552300 -> FUN_005097d0: a ship's Move to its own system goes
+    // into the side's bit-1 spare there, which stays the spare once it holds
+    // ships (FUN_0050bc60 clears the bit only from a destroyed one). A0
+    // 2026-11-13-drag/05-06 make Fleet 4 of the first such move; 22-23 move
+    // a ship of that spare (Fleet 6) to its own system, and nothing happens.
+    #[test]
+    fn a_ships_move_to_its_own_system_fills_the_spare_which_keeps_its_own_ships() {
+        let mut setup = setup();
+        let here = setup.here;
+        let first = fleet(&mut setup, here, &[10, 20], true);
+        let second = fleet(&mut setup, here, &[30, 40], true);
+        let mut transport = TroopTransportState::default();
+        let mut move_here = |world: &mut GameWorld, fleet, ships: &[usize]| {
+            let chosen = roster(world, fleet).unwrap();
+            move_ships_to_system(
+                world,
+                &mut MovementState::new(),
+                &mut transport,
+                fleet,
+                ships,
+                chosen,
+                here,
+                true,
+            )
+        };
+
+        // No spare yet: the ship forms one.
+        let created = match move_here(&mut setup.world, first, &[1]) {
+            Ok(FleetOrderOutcome::Created(created)) => created,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(setup.world.ship_spare(here, true), Some(created));
+        assert_eq!(hulls(&setup.world, created), [20]);
+
+        // The next ship there joins that spare.
+        assert_eq!(
+            move_here(&mut setup.world, second, &[0]),
+            Ok(FleetOrderOutcome::Joined(created))
+        );
+        assert_eq!(hulls(&setup.world, created), [20, 30]);
+        assert_eq!(hulls(&setup.world, second), [40]);
+
+        // A ship of the spare itself stays where it is.
+        let fleets = setup.world.fleets.len();
+        assert_eq!(
+            move_here(&mut setup.world, created, &[0]),
+            Ok(FleetOrderOutcome::Joined(created))
+        );
+        assert_eq!(hulls(&setup.world, created), [20, 30]);
+        assert_eq!(setup.world.fleets.len(), fleets);
+        assert_eq!(setup.world.ship_spare(here, true), Some(created));
     }
 
     // FUN_00580b00 → FUN_00509b40: Create Fleet puts the selected ships in a

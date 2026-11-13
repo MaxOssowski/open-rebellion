@@ -2263,6 +2263,54 @@ const cases = [
     },
   },
   {
+    name: "ship-spare",
+    code: FLEET_JOIN,
+    // A ship dropped on the left list's empty space moves to its own system
+    // (FUN_004a3130: the subject, no entry under the point), so it goes
+    // into the side's bit-1 spare there (FUN_00552300 -> FUN_005097d0),
+    // which stays the spare once it holds ships (FUN_0050bc60). A0
+    // 2026-11-13-drag/05-06: the first such drop makes a fleet; 22-23: with
+    // that fleet expanded, a drop of its own ship makes none; the next ship
+    // from another fleet joins it.
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      const [ox, oy] = selected.origin;
+      const empty = { x: ox + 40, y: oy + 29 + 50 * 4 + 25 };
+      const first = point(selected.first_item);
+      await dragItem(page, { x: first.x, y: first.y + 50 }, empty);
+      const created = await until(page, "the ship forms the spare",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1,1]");
+      await shot(page, directory, "spare-created");
+      // Select the new fleet and expand it (A0 22's left list).
+      // Two clicks a few frames apart: the list counts its own double
+      // click (win32_double_click).
+      await page.waitForTimeout(300);
+      await click(page, point(created.fleets[2].entry));
+      await click(page, point(created.fleets[2].entry));
+      const expanded = await until(page, "the spare is selected and expanded",
+        (o) => o.selected === "fleet" && o.entries === 4 && o.items.length === 1);
+      await page.waitForTimeout(300);
+      await dragItem(page, point(expanded.first_item), empty);
+      const kept = await settle(page);
+      await page.waitForTimeout(500);
+      const still = await settle(page);
+      assert.deepEqual(still.fleets.map((f) => f.ships), [1, 1, 1], "the spare's own ship stays (A0 23)");
+      assert.equal(still.entries, 4, JSON.stringify(still));
+      await shot(page, directory, "spare-own-ship-kept");
+      // The first fleet's other ship joins the spare.
+      await page.waitForTimeout(300);
+      await click(page, point(still.fleets[0].entry));
+      const firstFleet = await until(page, "the first fleet is selected",
+        (o) => o.selected === "fleet" && o.items.length === 1 && o.entries === 4);
+      await page.waitForTimeout(300);
+      await dragItem(page, point(firstFleet.first_item), empty);
+      const joined = await until(page, "the next ship joins the spare",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,2]");
+      await shot(page, directory, "spare-joined");
+      return { created: created.fleets, kept: kept.fleets, still: still.fleets, joined: joined.fleets };
+    },
+  },
+  {
     name: "a0-kimanan",
     code: FLEET_WINDOW_A0,
     factions: ["alliance"],

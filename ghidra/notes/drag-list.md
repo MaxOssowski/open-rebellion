@@ -128,9 +128,49 @@ window's selection (slot `+0x58`) and moves it against the drop window
 - port: a Defenses window release inside its own list is no drop (there
   `+0x70` gives only its own system).
 
+## A0 2026-11-13-drag (read 2026-11-13)
+
+Captures and coordinates in `.artifacts/a0-vm/2026-11-13-drag/NOTES.txt`;
+the gates `fleet-window.mjs` (`a0-drag-right`, `a0-drag-left`,
+`ship-spare`) and `sector-quadrants.mjs` (`defenses-a0-regiments`) compare
+the port with them.
+
+- The right list's frame is 10420 at the item's (1, 1): 114 by 37 (x 407..520
+  in 01; NOTES' 406 is a typo, x 406 is black), its bottom-left pixel the
+  blue key. The drag image (03) is the same two outlines and the items' art,
+  no names, at the press offset (58, 18); the left list's frame shows
+  through it. A0's pointer covers x 336..362, y 138..164 there.
+- The left list's selection is 10401's outline (70 by 47 at the entry's
+  (3, 0)). A press on a child row frames it while the button is held (25):
+  the press selects. Its drag image is that outline and the row's art, no
+  name (25, 26). The outline stays over a long name (25: x 325 red through
+  the name's rows), so the port draws a ship row's frame after its name.
+- The Defenses list's frame is 10578 (61 by 25, bottom-left keyed) on the
+  image; the name turns pure red (255, 0, 0), no frame round it (31). The
+  drag image is the framed images on the 70-pixel pitch, no names (32).
+- 22-23 (nothing happens) is not the expanded left list. The drop point
+  (local (51, 253)) is in the left list on no entry, so `+0x70`
+  (`FUN_004a3130`, read in the image at `0x4a3240..0x4a3300`: the left
+  list `+0x160` hit-tested with `FUN_00609d80`/`FUN_00609d10`) gives the
+  subject, the system. A ship's Move to its own system goes into the side's
+  bit-1 spare there (`FUN_00552300` -> `FUN_005097d0`,
+  `ship-deployment-fleet.md`), which stays the spare once it holds ships
+  (`FUN_0050bc60`). Fleet 6 was made by that same drop in 20-21, so it is
+  the spare, and its own ship's move puts it where it already is. 05-06 and
+  20-21 met no numbered spare and made one. Port:
+  `fleet_join::move_ships_to_system` joins the spare, or makes the fleet
+  the spare.
+- `+0x58` (`FUN_004a2c80`) with 0 reads the left list's selection when
+  `+0x14c` bit 1 is clear, else the right list's. Bit 1 is set by a menu
+  opened from the right list (`FUN_004a2c40`, list id 200) and cleared by
+  one from the left (0xc9), and set or cleared by an outside select
+  (`FUN_004a73c0`). So a drag carries the list whose menu opened last, not
+  necessarily the dragged list. port: a drag carries its own list's
+  selection (hyp: the captures 08..12 and 25..27 cannot tell them apart).
+
 ## Open
 
-- A0: the drag image and cursor while dragging (Fleet window right list,
-  two ships); a drop of an expanded left-list ship onto another fleet entry
-  of the same list (confirms flags 0); Shift+click range in the Fleet
-  window's right list.
+- A0: a drop of an expanded left-list ship onto another fleet entry of the
+  same list (confirms flags 0).
+- The `+0x14c` bit 1 source rule above, against a capture that drags from
+  one list after a menu from the other.

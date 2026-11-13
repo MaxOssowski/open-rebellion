@@ -162,6 +162,10 @@ Fleet 2, etc."); untraced.
 - port: no spare fleets. The port creates the fleet when Create Fleet
   executes; the result a player sees, a new fleet of the selected ships in
   their system, is the same.
+- A ship's Move to its own system joins the side's bit-1 spare there
+  (`GameWorld::ship_spare`), or, with none, makes its new fleet the spare;
+  a ship of the spare stays put (A0 2026-11-13-drag/05-06, 20-23;
+  `drag-list.md`).
 - Fleets are runtime objects in the saved `GameWorld` slotmap; no DAT
   identity or id allocator is involved.
 - The port's `apply_fleet_arrival` merged same-side fleets without
