@@ -16821,6 +16821,137 @@ mod fleet_move_tests {
     }
 
     #[test]
+    fn a_team_menus_move_gate_takes_each_members_own_move_gate() {
+        // FUN_0051d990: the 0x201's +0x18 with the whole team runs each
+        // member's own command check; one object keeps its own gates.
+        use rebellion_render::object_menu::OrderGates;
+        let ship = MenuObject::Ship {
+            fleet: FleetKey::default(),
+            index: 0,
+            roster: 0,
+        };
+        let kinds = [
+            (ship, OrderGates { ship_move: true, ..OrderGates::default() }),
+            (
+                MenuObject::Troop(Default::default()),
+                OrderGates { troop_move: true, ..OrderGates::default() },
+            ),
+            (
+                MenuObject::Fighter { fleet: FleetKey::default(), index: 0 },
+                OrderGates { squadron_move: true, ..OrderGates::default() },
+            ),
+            (
+                MenuObject::PlanetFighter {
+                    system: SystemKey::default(),
+                    class: Default::default(),
+                },
+                OrderGates { squadron_move: true, ..OrderGates::default() },
+            ),
+            (
+                MenuObject::Character(Default::default()),
+                OrderGates { character_move: true, ..OrderGates::default() },
+            ),
+            (
+                MenuObject::SpecialForce(Default::default()),
+                OrderGates { special_force_move: true, ..OrderGates::default() },
+            ),
+            (
+                MenuObject::Fleet(FleetKey::default()),
+                OrderGates { fleet_move: true, ..OrderGates::default() },
+            ),
+        ];
+        for (object, own) in kinds {
+            let team = team_gates(&[object, object], |_| own);
+            assert!(team.troop_move && team.fleet_move, "{object:?}");
+            let refused = team_gates(&[object, object], |_| OrderGates::default());
+            assert!(!refused.troop_move, "{object:?}");
+        }
+        let one = team_gates(&[ship], |_| kinds[0].1);
+        assert!(one.ship_move && !one.troop_move);
+    }
+
+    #[test]
+    fn a_team_menus_orders_take_every_member() {
+        // FUN_00487c50 builds the order with the selection as its team: a
+        // Move splits as FUN_0053c4b0 does, Mission takes the members,
+        // Create Fleet the ships of one fleet (manual p. 120).
+        let mut w = defenses_world();
+        let (world_fleets, fleets, _) = world_with_two_fleets();
+        let _ = world_fleets;
+        let fleet = w.world.fleets.insert(Fleet {
+            location: w.origin,
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        rebellion_core::squadrons::add(&mut w.world.fleets[fleet].fighters, w.x_wing, 1);
+        let team = [
+            MenuObject::Character(w.agent),
+            MenuObject::SpecialForce(w.force),
+            MenuObject::Troop(w.troop),
+            MenuObject::PlanetFighter {
+                system: w.origin,
+                class: w.x_wing,
+            },
+            MenuObject::Fighter { fleet, index: 0 },
+        ];
+        let place = Some((w.origin, SquadronPlace::Planet(w.origin)));
+        let Some(TeamMenuOrder::Target(order)) =
+            team_menu_order(&w.world, ObjectMenuCommand::Move, &team, place)
+        else {
+            panic!("a team move");
+        };
+        assert_eq!(
+            order,
+            TargetOrder::TeamMove {
+                system: w.origin,
+                from: SquadronPlace::Planet(w.origin),
+                team: rebellion_render::quadrant_icons::DefensesTeam {
+                    members: vec![
+                        MissionMember::Character(w.agent),
+                        MissionMember::SpecialForce(w.force)
+                    ],
+                    troops: vec![w.troop],
+                    squadrons: vec![w.x_wing, w.x_wing],
+                },
+                confirmed: false,
+            }
+        );
+        let Some(TeamMenuOrder::Target(mission)) =
+            team_menu_order(&w.world, ObjectMenuCommand::Mission, &team[..2], None)
+        else {
+            panic!("a mission");
+        };
+        assert_eq!(
+            mission,
+            TargetOrder::Mission(vec![
+                MissionMember::Character(w.agent),
+                MissionMember::SpecialForce(w.force)
+            ])
+        );
+        let ship = |fleet, index| MenuObject::Ship {
+            fleet,
+            index,
+            roster: 3,
+        };
+        assert!(matches!(
+            team_menu_order(&w.world, ObjectMenuCommand::CreateFleet, &[ship(fleets[0], 0), ship(fleets[0], 2)], None),
+            Some(TeamMenuOrder::Panel(PanelAction::CreateFleet { ref ships, .. })) if *ships == [0, 2]
+        ));
+        // Ships of two fleets make no one order.
+        assert!(team_menu_order(
+            &w.world,
+            ObjectMenuCommand::CreateFleet,
+            &[ship(fleets[0], 0), ship(fleets[1], 0)],
+            None
+        )
+        .is_none());
+    }
+
+    #[test]
     fn a_team_menus_gates_take_scrap_and_retire_from_every_member() {
         // FUN_0051d990: the order's +0x18 with the whole team.
         let gates = |scrap, retire| rebellion_render::object_menu::OrderGates {
