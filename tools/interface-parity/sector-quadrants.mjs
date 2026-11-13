@@ -37,6 +37,9 @@ const CORUSCANT_REGIMENTS = 115;
 // the neutral system (one ship that bombards) and one of the player's
 // squadrons on the primary planet (setup.neutral_fleets).
 const QUADRANTS_NEUTRAL_FLEET = 117;
+// QuadrantsFreeTeam: as QUADRANTS with the player's agent at the primary
+// free (no mission), so the defenses icon's team may move.
+const QUADRANTS_FREE_TEAM = 118;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
@@ -48,6 +51,20 @@ const A0_FILES = {
     "b717628ba2c1b9709dcc5ab26c1457ed3d6d9ff7ff84ba3573bbf0c9bdef4fac",
   "2026-11-13-hyperspace-icons/00-kubindi-fleet-icon-menu-day321.png":
     "775692778ec3581b1e892d608916dda0ccc4c85c21b0f5c84016f9ebf5112c94",
+  "2026-11-13-defenses-missions-drop/00-jerijador-defenses-icon-menu.png":
+    "f65ba930f3ab886eb69966376cb74467056c11aeb1cdd9678674b388d429980e",
+  "2026-11-13-defenses-missions-drop/03-defenses-icon-mid-drag.png":
+    "669f219f71b7801b5b5d46f092fdfd71617954261ba8b0e09753fc409202f023",
+  "2026-11-13-defenses-missions-drop/05-released-on-yavin.png":
+    "c2a7263457120023412405a72c675176ec1ed4b2ac8d03504689faefd4c7d286",
+  "2026-11-13-defenses-missions-drop/21-jerijador-defenses-icon-menu-after.png":
+    "839a46138ecf8ba750a0811567fb5febf4582f021ec56f0fccfc1c984bc6a372",
+  "2026-11-13-defenses-missions-drop/25-missions-icon-mid-drag.png":
+    "e088f02e83502bb0bcfdfd857641121c0384311a2b67c109537e9047e878684d",
+  "2026-11-13-defenses-missions-drop/27-released-on-jerijador.png":
+    "e90b648691f86c26ea12affd677ea1601d1619cbb50846ac2b0fd092e416d40a",
+  "2026-11-13-defenses-missions-drop/28-3s-after-drop.png":
+    "6c4af518ed4feb63bb91856340d2d52006fd043bdb919d0ce96caef55bd82d54",
 };
 const factions = [
   { name: "alliance", byte: 1, side: 1, other: 2, galaxyRight: 540 },
@@ -1804,6 +1821,250 @@ const cases = [
     },
   },
   {
+    name: "missions-icon-drop-refused",
+    // CMD-03-C019: the missions icon dropped on another of the player's
+    // systems. FUN_00422ce0 (window type 1) puts a kind 0x40 entry into a
+    // 0x201 against the drop's +0x70; its team is the members on visible
+    // missions (FUN_00512700), each of which the 0x241's validator refuses
+    // (FUN_0054d280 -> FUN_00542b60 -> FUN_0054c200 -> FUN_00522b30), so
+    // FUN_00487c90 gets the refusal and nothing moves. A0
+    // 2026-11-13-defenses-missions-drop/24..30 (the Alliance, Kubindi's
+    // missions icon dropped on Jerijador): the drag image is the icon's
+    // first bitmap 10777 moved with the pointer, the source drawn selected
+    // (10778, 25); released, nothing changes, the icon stays selected (27,
+    // 28), no window, no Message Index entry (29, 30). Here the primary's
+    // missions icon (the player's agent and the other side's on Diplomacy)
+    // is pressed where A0's was, 19 by 11 from its corner, walked by A0's
+    // (6, 30), and released on the player's system in uprising: the
+    // screen after equals the screen with the icon selected before the
+    // drag, the log names the refusal, and the Missions window still lists
+    // both missions.
+    async run(page, faction, setup, directory, source, consoleLines) {
+      const [left, top] = quadrant(setup, "primary", "missions");
+      const [dx, dy] = [6, 30];
+      const press = { x: Math.round(left) + 19, y: Math.round(top) + 11 };
+      // FUN_004a1f60: the other side's mission wins the primary's art.
+      const normal = resource(source, art.missions[faction.other]);
+      const pressed = resource(source, art.missions[faction.other] + 1);
+      let a0 = null;
+      const held = a0Capture("2026-11-13-defenses-missions-drop/25-missions-icon-mid-drag.png");
+      const released = a0Capture("2026-11-13-defenses-missions-drop/27-released-on-jerijador.png");
+      const later = a0Capture("2026-11-13-defenses-missions-drop/28-3s-after-drop.png");
+      if (held && released && later && faction.side === 1) {
+        // A0's icon is the Alliance's own (Han Solo's Espionage, 23).
+        const [a0Normal, a0Pressed] = [resource(source, art.missions[1]), resource(source, art.missions[1] + 1)];
+        const pointer = [219 + 19 + dx, 159 + 11 + dy];
+        const arrow = (x, y) => x >= pointer[0] && y >= pointer[1] && x < pointer[0] + 12 && y < pointer[1] + 20;
+        a0 = {
+          held_origin: templateMatch(held, a0Pressed, [200, 240], [140, 180]),
+          held_image: templateMatch(held, a0Normal, [200, 250], [170, 210], arrow),
+          released: templateMatch(released, a0Pressed, [200, 240], [140, 180]),
+          later: templateMatch(later, a0Pressed, [200, 240], [140, 180]),
+        };
+        assert.deepEqual([a0.held_origin.x, a0.held_origin.y, a0.held_origin.different], [219, 159, 0], JSON.stringify(a0));
+        assert.deepEqual([a0.held_image.x - a0.held_origin.x, a0.held_image.y - a0.held_origin.y, a0.held_image.different],
+          [dx, dy, 0], JSON.stringify(a0));
+        assert.deepEqual([a0.released.x, a0.released.y, a0.released.different], [219, 159, 0], JSON.stringify(a0));
+        assert.deepEqual([a0.later.x, a0.later.y, a0.later.different], [219, 159, 0], JSON.stringify(a0));
+      }
+      // Select the icon first (a press and release in place), for the
+      // screen the drop must leave unchanged.
+      await click(page, press);
+      await page.waitForTimeout(300);
+      const selected = await stableScreen(page, directory, "missions-icon-selected");
+      const before = compareIcon(selected, [left, top], pressed, "missions-icon-selected", directory);
+      assert.equal(before.different_pixels, 0, `the press selects the icon: ${JSON.stringify(before)}`);
+      const logged = consoleLines.length;
+      await page.mouse.move(press.x, press.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await page.mouse.move(press.x + dx, press.y + dy, { steps: 10 });
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const screen = PNG.sync.read((await shot(page, directory, "missions-icon-held")).bytes);
+      const origin = compareIcon(screen, [left, top], pressed, "missions-icon-origin-pressed", directory);
+      const image = compareIcon(screen, [left + dx, top + dy], normal, "missions-icon-drag-image", directory);
+      assert.equal(origin.different_pixels, 0, `the origin keeps its pressed art: ${JSON.stringify(origin)}`);
+      assert.equal(image.different_pixels, 0, `the drag image: ${JSON.stringify(image)}`);
+      const [toLeft, toTop, toWidth, toHeight] = setup.uprising;
+      const to = { x: Math.round(toLeft + toWidth / 2), y: Math.round(toTop + toHeight / 2) };
+      await page.mouse.move(to.x, to.y, { steps: 12 });
+      await frames(page, 2);
+      await page.waitForTimeout(900);
+      await page.mouse.up();
+      await frames(page, 2);
+      await page.waitForTimeout(3000);
+      const after = await stableScreen(page, directory, "missions-icon-dropped");
+      const lines = consoleLines.slice(logged).map(({ text }) => text).filter((text) => text.includes("[interface] command="));
+      assert.ok(lines.some((text) => text.includes("command=0x201 missions_icon status=refused")), JSON.stringify(lines));
+      assert.ok(!lines.some((text) => text.includes("status=asks")), `no confirmation window: ${JSON.stringify(lines)}`);
+      const still = compareIcon(after, [left, top], pressed, "missions-icon-after-drop", directory);
+      assert.equal(still.different_pixels, 0, `the icon stays, selected: ${JSON.stringify(still)}`);
+      // Nothing else on screen changed: no window, no message.
+      let differing = 0;
+      for (let i = 0; i < after.data.length; i += 4) {
+        if ([0, 1, 2].some((k) => after.data[i + k] !== selected.data[i + k])) differing += 1;
+      }
+      assert.equal(differing, 0, "the drop changed the screen");
+      // The missions go on: the window lists both.
+      await doubleClick(page, press);
+      const opened = await until(page, "the primary's missions icon opens its window",
+        (o, value) => o.missions_windows.some((window) => window.system_dat_id === value), setup.primary_dat_id);
+      const window = missionsWindow(opened, setup.primary_dat_id);
+      await stableScreen(page, directory, "missions-window-after-drop");
+      assert.equal(window.rows.length, 2, JSON.stringify(window));
+      assert.ok(window.rows.some(([, side]) => side === faction.side), JSON.stringify(window));
+      return { press, delta: [dx, dy], before, origin, image, still, differing, lines, rows: window.rows, a0 };
+    },
+  },
+  {
+    name: "defenses-icon-drop-a0",
+    scenario: QUADRANTS_FREE_TEAM,
+    // CMD-03-C019 and CMD-03-C018: the defenses icon of a free team
+    // dropped on another of the player's systems. FUN_00422ce0 (window
+    // type 1) puts the kind 8 entry into a 0x201 against +0x70; its team is
+    // the system's regiments, squadrons, characters and special forces of
+    // the side (FUN_00512700 kind 8), and FUN_00487cc0 asks nothing for an
+    // icon's Move (its first id is the system, whose container is a sector;
+    // ghidra/notes/sector-icon-menus.md). A0
+    // 2026-11-13-defenses-missions-drop (the Alliance, Jerijador's icon at
+    // (220, 233) pressed at (225, 246)): its menu before, Move, Confirmed
+    // Move, Encyclopedia white, Status grey, Scrap white (00, the menu at
+    // (225, 246)); the drag image 10773 moved with the pointer, the source
+    // 10774 (03: by (75, -6)); released on Yavin, no confirmation, no
+    // message, the icon stays and is drawn unselected (05: FUN_0045d140's
+    // refresh deselects on the team's change notices); its menu after,
+    // Move and Confirmed Move grey (the team is gone), Encyclopedia white,
+    // Status grey, Scrap white (21, the menu at (222, 245): Scrap's team
+    // keeps the facilities). Here the primary's team is the player's free
+    // agent and regiment, with the battery behind; the drop is on the
+    // player's system in uprising.
+    async run(page, faction, setup, directory, source, consoleLines) {
+      const [left, top] = quadrant(setup, "primary", "defenses");
+      const [dx, dy] = [75, -6];
+      const press = { x: Math.round(left) + 5, y: Math.round(top) + 13 };
+      const normal = resource(source, art.defenses[faction.side]);
+      const pressed = resource(source, art.defenses[faction.side] + 1);
+      const result = { press, delta: [dx, dy] };
+      const a0Before = a0Capture("2026-11-13-defenses-missions-drop/00-jerijador-defenses-icon-menu.png");
+      const a0Held = a0Capture("2026-11-13-defenses-missions-drop/03-defenses-icon-mid-drag.png");
+      const a0Dropped = a0Capture("2026-11-13-defenses-missions-drop/05-released-on-yavin.png");
+      const a0After = a0Capture("2026-11-13-defenses-missions-drop/21-jerijador-defenses-icon-menu-after.png");
+      const alliance = faction.side === 1 && a0Before && a0Held && a0Dropped && a0After;
+      if (alliance) {
+        const pointer = [220 + 5 + dx, 233 + 13 + dy];
+        const arrow = (x, y) => x >= pointer[0] && y >= pointer[1] && x < pointer[0] + 12 && y < pointer[1] + 20;
+        result.a0 = {
+          held_origin: templateMatch(a0Held, pressed, [200, 240], [220, 250]),
+          held_image: templateMatch(a0Held, normal, [270, 320], [210, 240], arrow),
+          dropped: templateMatch(a0Dropped, normal, [200, 240], [220, 250]),
+        };
+        assert.deepEqual([result.a0.held_origin.x, result.a0.held_origin.y, result.a0.held_origin.different],
+          [220, 233, 0], JSON.stringify(result.a0));
+        assert.deepEqual([result.a0.held_image.x - 220, result.a0.held_image.y - 233, result.a0.held_image.different],
+          [dx, dy, 0], JSON.stringify(result.a0));
+        assert.deepEqual([result.a0.dropped.x, result.a0.dropped.y, result.a0.dropped.different],
+          [220, 233, 0], JSON.stringify(result.a0));
+      }
+      const openMenu = async (label) => {
+        await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+        await rightClick(page, press);
+        await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+          null, { timeout: 10_000 });
+        const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+        assert.deepEqual([menu.left, menu.top, menu.width, menu.height], [press.x, press.y, 104, 102], JSON.stringify(menu));
+        // The pointer stays at the corner, as A0's arrow does.
+        await frames(page, 2);
+        await page.waitForTimeout(300);
+        await frames(page, 2);
+        const screen = PNG.sync.read((await shot(page, directory, label)).bytes);
+        return { menu, screen };
+      };
+      const compareMenu = (screen, a0, corner, kinds) => {
+        const compared = menuAgainstA0(screen, [press.x, press.y], a0, corner, { width: 104, height: 102 }, [0, 0, 22, 40]);
+        assert.deepEqual(compared.a0.map(({ kind }) => kind), kinds, JSON.stringify(compared));
+        assert.deepEqual(compared.port.map(({ kind }) => kind), kinds, JSON.stringify(compared));
+        // Each row's ink within a pixel of A0's; the right edge within two
+        // (the accepted text-width deviation, user decision 2026-10-30).
+        assert.ok(compared.inkDiffs.every((d) => d && d.every((value, k) => Math.abs(value) <= (k === 2 ? 2 : 1))),
+          `rows' ink against A0: ${JSON.stringify(compared)}`);
+        assert.equal(compared.differing, 0, `the frame differs from A0: ${JSON.stringify(compared.first)}`);
+        return compared;
+      };
+      // Before: the team at rest, both moves enabled (A0 00).
+      const first = await openMenu("defenses-icon-menu-before");
+      assert.deepEqual(first.menu.row_states,
+        [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true], ["Status", false], ["Scrap", true]],
+        JSON.stringify(first.menu));
+      result.before = { menu: first.menu };
+      if (alliance) {
+        result.before.a0 = compareMenu(first.screen, a0Before, [225, 246], ["white", "white", "white", "grey", "white"]);
+      }
+      await page.keyboard.press("Escape");
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      const logged = consoleLines.length;
+      await page.mouse.move(press.x, press.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await page.mouse.move(press.x + dx, press.y + dy, { steps: 10 });
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const held = PNG.sync.read((await shot(page, directory, "defenses-icon-held")).bytes);
+      result.origin = compareIcon(held, [left, top], pressed, "defenses-icon-origin-pressed", directory);
+      result.image = compareIcon(held, [left + dx, top + dy], normal, "defenses-icon-drag-image", directory);
+      assert.equal(result.origin.different_pixels, 0, `the origin keeps its pressed art: ${JSON.stringify(result.origin)}`);
+      assert.equal(result.image.different_pixels, 0, `the drag image: ${JSON.stringify(result.image)}`);
+      const [toLeft, toTop, toWidth, toHeight] = setup.uprising;
+      const to = { x: Math.round(toLeft + toWidth / 2), y: Math.round(toTop + toHeight / 2) };
+      await page.mouse.move(to.x, to.y, { steps: 12 });
+      await frames(page, 2);
+      await page.waitForTimeout(900);
+      await page.mouse.up();
+      await frames(page, 2);
+      await page.waitForTimeout(3000);
+      const dropped = await stableScreen(page, directory, "defenses-icon-dropped");
+      result.lines = consoleLines.slice(logged).map(({ text }) => text).filter((text) => text.includes("[interface] command="));
+      assert.ok(!result.lines.some((text) => text.includes("status=asks") || text.includes("status=refused")),
+        `no confirmation window, no refusal: ${JSON.stringify(result.lines)}`);
+      // The battery keeps the icon, drawn unselected (A0 05).
+      result.stays = compareIcon(dropped, [left, top], normal, "defenses-icon-after-drop", directory);
+      assert.equal(result.stays.different_pixels, 0, `the icon stays, unselected: ${JSON.stringify(result.stays)}`);
+      // After: the team gone, both moves grey (A0 21).
+      const second = await openMenu("defenses-icon-menu-after");
+      assert.deepEqual(second.menu.row_states,
+        [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true], ["Status", false], ["Scrap", true]],
+        JSON.stringify(second.menu));
+      result.after = { menu: second.menu };
+      if (alliance) {
+        result.after.a0 = compareMenu(second.screen, a0After, [222, 245], ["grey", "grey", "white", "grey", "white"]);
+      }
+      await page.keyboard.press("Escape");
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      // The agent's part is one Move mission (FUN_0053c810), dispatched;
+      // its members depart in the mission's phase 4 (FUN_00556430,
+      // FUN_00556390), which the paused fixture does not reach, so the
+      // agent is still listed here. A0 07..11 (day 355, two days on) show
+      // Jerijador's lists empty and its shields kept.
+      assert.ok(consoleLines.slice(logged).some(({ text }) => /members_move members=1 .*result=Ok/.test(text)),
+        JSON.stringify(consoleLines.slice(logged).map(({ text }) => text).filter((text) => text.includes("[interface]"))));
+      // The Defenses window: the regiment gone, the agent on its Move, the
+      // battery there.
+      const { window } = await openDefenses(page, setup, "primary");
+      await stableScreen(page, directory, "defenses-window-after-drop");
+      assert.deepEqual(window.counts, [1, 0, 0, 0, 1], JSON.stringify(window));
+      result.counts = window.counts;
+      return result;
+    },
+  },
+  {
     name: "two-defenses",
     // Two systems' Defenses windows stay open together, and minimizing one
     // sends only it to the rail (A0 personnel-states/25: Pzob and Mon
@@ -2909,7 +3170,7 @@ async function inspect(server, source, faction, testCase, executable) {
     await page.evaluate(() => document.fonts.ready);
     const { bytes: _ready, ...before } = await shot(page, directory, "ready");
 
-    const checks = await testCase.run(page, faction, setup, directory, source);
+    const checks = await testCase.run(page, faction, setup, directory, source, consoleLines);
     await page.mouse.move(2, 2);
     await frames(page);
     const { bytes: _final, ...after } = await shot(page, directory, "final");
