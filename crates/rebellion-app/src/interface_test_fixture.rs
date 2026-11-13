@@ -3038,13 +3038,17 @@ pub fn emit_status_rows(
         name: Option<String>,
         rows: Vec<(String, String)>,
         marks: Vec<(String, u32)>,
+        /// The game day, to read an ETA against.
+        today: u64,
     }
+    let today = sources.today;
     let bytes = serde_json::to_vec(&Report {
         status: "status-rows",
         title,
         name,
         rows: rows.into_iter().map(|row| (row.label, row.value)).collect(),
         marks,
+        today,
     })
     .expect("serialize the status rows report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
@@ -6203,6 +6207,9 @@ struct FixtureQuadrantSetup {
     destroyed: Option<[f32; 4]>,
     /// The day readout's centre, which opens the Game Speed menu.
     day_readout: (f32, f32),
+    /// The headquarters' trip in days to the system in uprising
+    /// (`headquarters_move::plan`, `FUN_00555b30`), when its side may go.
+    headquarters_trip_days: Option<u32>,
 }
 
 /// Move the headquarters object (ALLFACSD, family `0x20`) to `to`, with the
@@ -6320,6 +6327,16 @@ fn quadrant_setup(
         }),
         destroyed: planet(marks.get(3)),
         day_readout: day_readout_centre(request.faction, layout),
+        headquarters_trip_days: marks.get(1).and_then(|&revolt| {
+            rebellion_core::headquarters_move::plan(
+                world,
+                &rebellion_core::troop_transport::TroopTransportState::default(),
+                true,
+                revolt,
+            )
+            .ok()
+            .map(|(_, days)| days)
+        }),
     })
 }
 
@@ -11440,6 +11457,55 @@ mod tests {
             .missions()
             .iter()
             .all(|mission| !mission.team.contains(&MissionMember::Character(carried))));
+    }
+
+    #[test]
+    fn the_quadrant_setup_reports_the_headquarters_trip_only_for_the_alliances_revolt() {
+        // port: the gate reads the Status window's ETA against this trip
+        // (headquarters_move::plan), the move's own days.
+        for (faction, alliance) in [
+            (CockpitFaction::Alliance, true),
+            (CockpitFaction::Empire, false),
+        ] {
+            let request = request(Scenario::Quadrants, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                // Three more systems in the primary's sector, 200 apart.
+                let here = world.systems.keys().next().unwrap();
+                let sector = world.systems[here].sector;
+                for index in 0..3u16 {
+                    let mut copy = world.systems[here].clone();
+                    copy.dat_id = rebellion_core::ids::DatId::new(0x9000_0010 + u32::from(index));
+                    copy.x = copy.x.saturating_add(200 * (index + 1));
+                    copy.manufacturing_facilities.clear();
+                    copy.production_facilities.clear();
+                    copy.defense_facilities.clear();
+                    let copy = world.systems.insert(copy);
+                    world.sectors[sector].systems.push(copy);
+                }
+            });
+            let world = &applied.world;
+            let report = quadrant_setup(request, world, &applied.sectors).unwrap();
+            let primary = world.systems.keys().next().unwrap();
+            let marks = mark_systems(world, primary);
+            assert!(marks.len() > 1, "the sector holds the HQ and a revolt");
+            let (origin, revolt) = (marks[0], marks[1]);
+            let expected = rebellion_core::headquarters_move::plan(
+                world,
+                &rebellion_core::troop_transport::TroopTransportState::default(),
+                true,
+                revolt,
+            );
+            if alliance {
+                let (from, days) = expected.unwrap();
+                assert_eq!(from, origin);
+                assert!(days > 0, "the revolt lies 200 away");
+                assert_eq!(report.headquarters_trip_days, Some(days));
+            } else {
+                // The Empire's revolt is no Alliance destination.
+                assert!(expected.is_err());
+                assert_eq!(report.headquarters_trip_days, None);
+            }
+        }
     }
 
     #[test]

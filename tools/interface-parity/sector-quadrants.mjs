@@ -2261,7 +2261,256 @@ const cases = [
       return { at, window, opening, reselected, reselectedChecks, decoyChecks, railChecks, restored, fromIcon, missionMenu, missionStatus };
     },
   },
+  {
+    name: "headquarters-move-a0",
+    // OBJ-13-C005/C006 against A0 2026-11-13-hq-move (the original moving
+    // the Alliance HQ from Jerijador to Yavin): see headquartersMoveA0.
+    factions: ["alliance"],
+    run: (page, faction, setup, directory, source) => headquartersMoveA0(page, setup, directory, source),
+  },
 ];
+
+// A0 2026-11-13-hq-move (REBEXE in the offline VM, an Alliance game, days
+// 346-347, README there): 00 the HQ overlay's menu at Jerijador, opened at
+// (248, 230); 02 just after Move's target click on Yavin, with no
+// confirmation; 03 the HQ's menu at Yavin en route, opened at (404, 232);
+// 04 its Defense Facility Status, the window at (108, 79).
+const HQ_MOVE_A0 = path.join(root, ".artifacts/a0-vm/2026-11-13-hq-move");
+const HQ_MOVE_A0_SHA256 = {
+  "00-hq-overlay-menu-jerijador.png": "9565c0581140c2deed8f5cc4554871771ef221712970c2bb8e2be0a098ce2e89",
+  "02-after-target-click-on-yavin.png": "5d3aa4a67f2247638b31474b1ea7e8be0ab3681ace06745f0133a0fe8c60d3b0",
+  "03-hq-menu-at-yavin-en-route.png": "5a9410e9b5edd1db322b6532dbc7bf4769d91a78912ecda92d7368ee89bf2135",
+  "04-hq-status-en-route.png": "b855840545c5ff267bf2f4a84768c46448c65b060c20e66a8c23d371a9f5227d",
+  "05-final-state-paused.png": "97510ad926deb71556d6337cd943433cd20115c5c30120cc476b2ba903b89540",
+};
+
+function readA0(name) {
+  const bytes = fs.readFileSync(path.join(HQ_MOVE_A0, name));
+  assert.equal(sha256(bytes), HQ_MOVE_A0_SHA256[name], `A0 ${name} changed`);
+  return PNG.sync.read(bytes);
+}
+
+function rgb(png, x, y) {
+  const i = (y * png.width + x) * 4;
+  return [png.data[i], png.data[i + 1], png.data[i + 2]];
+}
+
+// A pop-up menu of `rows` 20-pixel rows (FUN_004abbf0), 104 by 82 from
+// its opening point, on `port` at `portOrigin` against A0's at
+// `a0Origin`. The frame (FUN_00607740 from STRATEGY 10100..10107, passed
+// by FUN_00442860: a (192,192,192) outer line, a white inner one, the
+// sides' tiles on every second row over the window's fill; cockpit.rs
+// paint_gid_frame_border) must class every pixel as A0 does: the outer
+// grey, the inner white or neither. Each row's text ink
+// (white enabled, (128,128,128) disabled: FUN_004aba60 +0x30 / +0x34)
+// must lie within a pixel of A0's. A0's pointer covers the frame's top
+// left and the first row's first two letters, so those stay out.
+function compareMenuWithA0(port, portOrigin, a0, a0Origin, enabled) {
+  const [width, height] = [104, 82];
+  const pointer = (x, y) => x < 22 && y < 24;
+  const kind = ([r, g, b]) => (r === 192 && g === 192 && b === 192 ? "outer"
+    : r === 255 && g === 255 && b === 255 ? "inner" : "behind");
+  const frame = { compared: 0, differing: [] };
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!(x < 2 || y < 2 || x >= width - 2 || y >= height - 2) || pointer(x, y)) continue;
+      frame.compared += 1;
+      const [a, p] = [kind(rgb(a0, a0Origin[0] + x, a0Origin[1] + y)), kind(rgb(port, portOrigin[0] + x, portOrigin[1] + y))];
+      if (a !== p) frame.differing.push([x, y, a, p]);
+    }
+  }
+  const ink = (png, origin, [x0, y0, x1, y1], test) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+      if (!test(rgb(png, origin[0] + x, origin[1] + y))) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+    return box;
+  };
+  const white = (c) => Math.min(...c) > 200;
+  // A0's disabled text is (128,128,128) exactly; the port's glyphs are
+  // smoothed over the fill (the accepted text deviation), so their core
+  // reads 100..128 neutral grey.
+  const grey = ([r, g, b]) => r === g && g === b && r >= 100 && r <= 128;
+  const rows = enabled.map((on, row) => {
+    // Inside the frame: the last row's box stops above the bottom line.
+    const region = [row === 0 ? 22 : 2, 2 + 20 * row, width - 2, Math.min(22 + 20 * row, height - 2)];
+    const [shown, other] = on ? [white, grey] : [grey, white];
+    return {
+      enabled: on,
+      a0: ink(a0, a0Origin, region, shown),
+      port: ink(port, portOrigin, region, shown),
+      a0_other: ink(a0, a0Origin, region, other),
+      port_other: ink(port, portOrigin, region, other),
+    };
+  });
+  return { frame: { compared: frame.compared, differing: frame.differing.length, first: frame.differing.slice(0, 8) }, rows };
+}
+
+function assertMenuMatchesA0(check, label) {
+  assert.ok(check.frame.compared > 300 && check.frame.differing === 0, `${label} frame: ${JSON.stringify(check.frame)}`);
+  check.rows.forEach((row, index) => {
+    assert.ok(row.a0 && row.port && row.a0.every((value, k) => Math.abs(value - row.port[k]) <= 1),
+      `${label} row ${index} ink: ${JSON.stringify(row)}`);
+    // A0 draws the row in one colour; the menu's fill shows what lies
+    // behind it, so the port's other-colour pixels (the scene) are only
+    // reported.
+    assert.equal(row.a0_other, null, `${label} row ${index} colour: ${JSON.stringify(row)}`);
+  });
+}
+
+// Where `image`'s opaque pixels (palette-blue key) best match `png` within
+// `radius` of `around`, skipping `skip(x, y)` image pixels: the place and
+// the differing pixels there.
+function bestMatch(png, image, around, radius, skip = () => false) {
+  let best = null;
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const [left, top] = [around[0] + dx, around[1] + dy];
+      const differing = [];
+      for (let y = 0; y < image.height; y += 1) for (let x = 0; x < image.width; x += 1) {
+        const from = (y * image.width + x) * 4;
+        if (blueKey(image.data, from) || skip(x, y)) continue;
+        const c = rgb(png, left + x, top + y);
+        if (c.some((value, k) => value !== image.data[from + k])) differing.push([x, y, ...c]);
+      }
+      if (!best || differing.length < best.differing.length) best = { at: [left, top], differing };
+    }
+  }
+  return { at: best.at, differing: best.differing.length, first: best.differing.slice(0, 24), all: best.differing };
+}
+
+async function openHeadquartersMenu(page, at) {
+  await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+  await rightClick(page, at);
+  await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+    null, { timeout: 10_000 });
+  return page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+}
+
+async function headquartersMoveA0(page, setup, directory, source) {
+  const result = {};
+  const icon = resource(source, 904);
+  // 00: Move, Confirmed Move, Encyclopedia and Status, all white
+  // (FUN_00526c00, FUN_0051d990; FUN_00578c00 enables both moves at rest).
+  const at = { x: Math.round(setup.headquarters[0]) + 20, y: Math.round(setup.headquarters[1]) + 12 };
+  const menu = await openHeadquartersMenu(page, at);
+  assert.deepEqual(menu.row_states,
+    [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true], ["Status", true]], JSON.stringify(menu));
+  assert.deepEqual([menu.left, menu.top, menu.width, menu.height], [at.x, at.y, 104, 82], JSON.stringify(menu));
+  const menuScreen = await stableScreen(page, directory, "a0-headquarters-menu");
+  result.menu = compareMenuWithA0(menuScreen, [menu.left, menu.top], readA0("00-hq-overlay-menu-jerijador.png"),
+    [248, 230], [true, true, true, true]);
+  assertMenuMatchesA0(result.menu, "the HQ menu (A0 00)");
+
+  // 02: Move (0x201), then the target: no confirmation (FUN_00487cc0 asks
+  // only for Confirmed Move or a blockade), and 904 stands at once over the
+  // destination's planet, its top left on the planet's (FUN_0045bbb0), and
+  // no longer over the origin (FUN_004fbc20's notice 0x300, FUN_00486d80).
+  const height = (menu.height - 2) / menu.rows;
+  await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.move_row + 0.5) });
+  await frames(page, 2);
+  await click(page, { x: Math.round(setup.uprising[0]) + 18, y: Math.round(setup.uprising[1]) + 18 });
+  await page.waitForTimeout(600);
+  const moved = await stableScreen(page, directory, "a0-headquarters-moved");
+  const port = {
+    destination: compareIcon(moved, setup.uprising, icon, "a0-headquarters-destination", directory),
+    origin: compareIcon(moved, setup.headquarters, icon, "a0-headquarters-origin", directory),
+  };
+  assert.equal(port.destination.different_pixels, 0, JSON.stringify(port));
+  assert.ok(port.origin.different_pixels > port.origin.pixels_checked / 2, JSON.stringify(port));
+  const a0Moved = readA0("02-after-target-click-on-yavin.png");
+  // A0's 904 by Yavin; the pointer (white and black) covers a few pixels.
+  const mark = bestMatch(a0Moved, icon, [389, 217], 6);
+  const pointerOnly = mark.all.every(([, , r, g, b]) => (r === 255 && g === 255 && b === 255) || (r + g + b === 0));
+  // Yavin's planet, STRATEGY 10231, under 904's opaque pixels, in A0 05
+  // (day 348, the same view with the pointer away; 904 there exactly).
+  const a0Later = readA0("05-final-state-paused.png");
+  const later = bestMatch(a0Later, icon, mark.at, 0);
+  const planet = bestMatch(a0Later, resource(source, 10231), mark.at, 6,
+    (x, y) => x < icon.width && y < icon.height && !blueKey(icon.data, (y * icon.width + x) * 4));
+  const left = bestMatch(a0Moved, icon, [230, 214], 0);
+  result.moved = { port, a0: { mark: { at: mark.at, differing: mark.differing, pointer_only: pointerOnly },
+    later: { differing: later.differing }, planet: { at: planet.at, differing: planet.differing },
+    origin: { differing: left.differing } } };
+  assert.ok(mark.differing <= 24 && pointerOnly, `A0 904 by Yavin: ${JSON.stringify(result.moved.a0)}`);
+  assert.equal(later.differing, 0, `A0 05 904 by Yavin: ${JSON.stringify(result.moved.a0)}`);
+  assert.equal(planet.differing, 0, `A0 Yavin's planet: ${JSON.stringify(result.moved.a0)}`);
+  // 904's top left on its planet's in A0 as in the port (setup.uprising
+  // is the destination's planet rect).
+  assert.deepEqual(mark.at, planet.at, JSON.stringify(result.moved.a0));
+  assert.ok(left.differing > icon.width * icon.height / 4, `A0 904 left Jerijador: ${JSON.stringify(result.moved.a0)}`);
+
+  // 03: en route, Move and Confirmed Move grey (FUN_004f9860 4).
+  const there = { x: Math.round(setup.uprising[0]) + 20, y: Math.round(setup.uprising[1]) + 12 };
+  const enRoute = await openHeadquartersMenu(page, there);
+  assert.deepEqual(enRoute.row_states,
+    [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true], ["Status", true]], JSON.stringify(enRoute));
+  const enRouteScreen = await stableScreen(page, directory, "a0-headquarters-en-route-menu");
+  result.enRoute = compareMenuWithA0(enRouteScreen, [enRoute.left, enRoute.top], readA0("03-hq-menu-at-yavin-en-route.png"),
+    [404, 232], [false, false, true, true]);
+  assertMenuMatchesA0(result.enRoute, "the en route HQ menu (A0 03)");
+
+  // 04: Defense Facility Status (FUN_00444e20) leads with "ETA
+  // Destination: Day N" (FUN_004fd2b0: the move's day plus the trip at
+  // the GNPRTB 1 speed, A0 346 + 87 = 433), then Location, "Enroute"
+  // (FUN_0044a470), Maintenance Cost 0 and Bombardment Defense Strength
+  // 9; the HQ's picture over the en route streaks 11506 (FUN_0042c3b0).
+  const rowHeight = (enRoute.height - 2) / enRoute.rows;
+  await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+  await click(page, { x: enRoute.left + enRoute.width / 2, y: enRoute.top + 2 + rowHeight * (enRoute.status_window_row + 0.5) });
+  await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+  const status = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+  const statusScreen = await stableScreen(page, directory, "a0-headquarters-en-route-status");
+  assert.equal(status.title, "Defense Facility Status", JSON.stringify(status));
+  assert.deepEqual(status.rows.map(([label]) => label),
+    ["ETA Destination:", "Location:", "Status:", "Maintenance Cost:", "Bombardment Defense Strength:"], JSON.stringify(status));
+  assert.ok(Number.isInteger(setup.headquarters_trip_days) && setup.headquarters_trip_days > 0, JSON.stringify(setup));
+  assert.equal(status.rows[0][1], `Day ${status.today + setup.headquarters_trip_days}`, JSON.stringify(status));
+  assert.deepEqual([status.rows[2][1], status.rows[3][1], status.rows[4][1]], ["Enroute", "0", "9"], JSON.stringify(status));
+  assert.deepEqual(status.marks, [["Strategy", 11506]], JSON.stringify(status));
+  const a0Status = readA0("04-hq-status-en-route.png");
+  const [x0, y0] = [108, 79];
+  // Differing pixels, and those of them A0's pointer (pure white or
+  // black) does not explain: A0 04's pointer rests on the right button.
+  const differing = ([xa, ya, xb, yb]) => {
+    let count = 0;
+    let other = 0;
+    for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+      const a = rgb(a0Status, x0 + x, y0 + y);
+      if (!a.some((value, k) => value !== rgb(statusScreen, x0 + x, y0 + y)[k])) continue;
+      count += 1;
+      if (!a.every((value) => value === 255) && !a.every((value) => value === 0)) other += 1;
+    }
+    return { count, other };
+  };
+  const ink = (png, [xa, ya, xb, yb]) => {
+    let box = null;
+    for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+      if (Math.min(...rgb(png, x0 + x, y0 + y)) <= 200) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+    return box;
+  };
+  result.status = { rows: status.rows, today: status.today, trip_days: setup.headquarters_trip_days,
+    picture: differing([242, 15, 372, 113]), buttons: differing([242, 200, 372, 260]), ink: {} };
+  assert.equal(result.status.picture.count, 0, JSON.stringify(result.status));
+  assert.equal(result.status.buttons.other, 0, JSON.stringify(result.status));
+  // Six label lines 14 apart ("Bombardment" / "Defense Strength:" wrap),
+  // the title and the name; the values Enroute, 0 and 9; of "Day N" its
+  // left, top and bottom ("Day " leads). Location names another system.
+  const regions = { title: [15, 18, 226, 36], name: [242, 137, 372, 181] };
+  for (let k = 0; k < 6; k += 1) regions[`label-${k}`] = [16, 47 + 14 * k, 118, 61 + 14 * k];
+  for (const k of [2, 3, 5]) regions[`value-${k}`] = [119, 47 + 14 * k, 210, 61 + 14 * k];
+  regions["value-0"] = [119, 47, 210, 61];
+  for (const [name, region] of Object.entries(regions)) {
+    const [a, b] = [ink(a0Status, region), ink(statusScreen, region)];
+    result.status.ink[name] = { a0: a, port: b };
+    const compared = name === "value-0" ? [0, 1, 3] : [0, 1, 2, 3];
+    assert.ok(a && b && compared.every((k) => Math.abs(a[k] - b[k]) <= 1), `${name}: ${JSON.stringify(result.status.ink[name])}`);
+  }
+  return result;
+}
 
 async function inspect(server, source, faction, testCase, executable) {
   const directory = path.join(runDir, `${faction.name}-${testCase.name}`);
