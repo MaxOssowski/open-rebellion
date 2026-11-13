@@ -1839,6 +1839,7 @@ mod tests {
                 destination: away,
                 tick: 2,
                 kind: bound.kind,
+                name: None,
             }]
         );
         assert_eq!(advance.newly_idle, [(here, ProductionArea::Shipyard)]);
@@ -1955,5 +1956,187 @@ mod tests {
         let suspended = suspended_systems(&BlockadeState::new(), &uprising);
         assert!(suspended.contains(&restless));
         assert!(!suspended.contains(&calm));
+    }
+
+    /// An Alliance capital ship class of `cost` build points named `name`,
+    /// with `built` of its ships already numbered by the side's counter.
+    fn numbered_class(
+        world: &mut GameWorld,
+        name: &str,
+        id: u32,
+        cost: u32,
+        built: u32,
+    ) -> crate::ids::CapitalShipKey {
+        use crate::world::CapitalShipClass;
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(id),
+            name: name.into(),
+            is_alliance: true,
+            refined_material_cost: cost,
+            ..CapitalShipClass::default()
+        });
+        for _ in 0..built {
+            world.take_ship_number(true, DatId::new(id));
+        }
+        class
+    }
+
+    /// The names of the units queued at `here`'s shipyards.
+    fn queued_names(manufacturing: &ManufacturingState, here: SystemKey) -> Vec<Option<String>> {
+        manufacturing
+            .queue(here, ProductionArea::Shipyard)
+            .map(|queue| queue.items().iter().map(|item| item.name.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Confirm `count` units of `class` at `here` for the Alliance.
+    fn confirm(
+        world: &mut GameWorld,
+        manufacturing: &mut ManufacturingState,
+        here: SystemKey,
+        class: crate::ids::CapitalShipKey,
+        count: u32,
+    ) {
+        assert!(crate::build_selection::confirm_order(
+            world,
+            manufacturing,
+            here,
+            ProductionArea::Shipyard,
+            crate::manufacturing::BuildableKind::CapitalShip(class),
+            count,
+            true,
+        ));
+    }
+
+    #[test]
+    fn a_ship_order_numbers_each_unit_when_it_is_ordered() {
+        // FUN_00529ab0 -> FUN_0052a140 creates each product at the order,
+        // and FUN_00517760 names it "{class} {N}" from its side's counter
+        // (FUN_005302c0). A0 2026-11-11-icon-menu-topic/66: four Carrack
+        // Light Cruisers confirmed with Carrack 1 in play, the band reads
+        // "Carrack Light Cruiser 2 / Building: 4".
+        let mut world = world();
+        let here = system(&mut world);
+        yard(&mut world, here, SHIPYARD, 4);
+        let carrack = numbered_class(&mut world, "Carrack Light Cruiser", 0x1400_0005, 6, 1);
+        let mut manufacturing = ManufacturingState::new();
+
+        confirm(&mut world, &mut manufacturing, here, carrack, 4);
+
+        assert_eq!(
+            queued_names(&manufacturing, here),
+            (2..=5)
+                .map(|n| Some(format!("Carrack Light Cruiser {n}")))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(world.take_ship_number(true, DatId::new(0x1400_0005)), 6);
+    }
+
+    #[test]
+    fn a_death_star_order_stays_unnamed_and_takes_no_number() {
+        // FUN_00517760 numbers the capital ships but the Death Star, which
+        // keeps its class name (A0 personnel-states/27: "Death Star").
+        let mut world = world();
+        let here = system(&mut world);
+        yard(&mut world, here, SHIPYARD, 4);
+        let death_star = numbered_class(
+            &mut world,
+            "Death Star",
+            crate::world::DEATH_STAR_CLASS_ID,
+            6,
+            0,
+        );
+        let mut manufacturing = ManufacturingState::new();
+
+        confirm(&mut world, &mut manufacturing, here, death_star, 1);
+
+        assert_eq!(queued_names(&manufacturing, here), [None]);
+        assert_eq!(
+            world.take_ship_number(true, DatId::new(crate::world::DEATH_STAR_CLASS_ID)),
+            1
+        );
+    }
+
+    #[test]
+    fn replacing_an_order_in_progress_burns_its_number() {
+        // FUN_0052a2c0 scraps the product in progress (reason 0x16); the
+        // counter it took its number from never goes down (FUN_005302c0),
+        // so the new order's ship is the next number. A0
+        // 2026-11-13-band-title-timing/41, 42: Drall's "Alliance Escort
+        // Carrier 4", replaced on day 278, is gone; the new one is
+        // "Alliance Escort Carrier 5".
+        let mut world = world();
+        let here = system(&mut world);
+        yard(&mut world, here, SHIPYARD, 4);
+        let carrier = numbered_class(&mut world, "Alliance Escort Carrier", 0x1400_0006, 6, 3);
+        let mut manufacturing = ManufacturingState::new();
+        let mut state = stocked(10);
+
+        confirm(&mut world, &mut manufacturing, here, carrier, 1);
+        assert_eq!(
+            queued_names(&manufacturing, here),
+            [Some("Alliance Escort Carrier 4".to_owned())]
+        );
+        for tick in 1..=4 {
+            yards_day(&mut state, &world, &mut manufacturing, tick);
+        }
+        confirm(&mut world, &mut manufacturing, here, carrier, 1);
+
+        assert_eq!(
+            queued_names(&manufacturing, here),
+            [Some("Alliance Escort Carrier 5".to_owned())]
+        );
+    }
+
+    #[test]
+    fn replacing_an_order_in_progress_starts_the_new_unit_from_no_points() {
+        // FUN_00529ab0: the manager drops the scrapped product's points
+        // with it. A0 2026-11-13-band-title-timing/03: right after the
+        // Confirm the band's progress bar is empty, and its completion day
+        // (40: 406 = 278 + 128) is a full build's.
+        let mut world = world();
+        let here = system(&mut world);
+        yard(&mut world, here, SHIPYARD, 4);
+        let carrier = numbered_class(&mut world, "Alliance Escort Carrier", 0x1400_0006, 6, 3);
+        let mut manufacturing = ManufacturingState::new();
+        let mut state = stocked(10);
+        confirm(&mut world, &mut manufacturing, here, carrier, 1);
+        for tick in 1..=8 {
+            yards_day(&mut state, &world, &mut manufacturing, tick);
+        }
+        let points = |manufacturing: &ManufacturingState| {
+            manufacturing
+                .queue(here, ProductionArea::Shipyard)
+                .map(crate::manufacturing::ProductionQueue::completed_points)
+        };
+        assert_eq!(points(&manufacturing), Some(2));
+
+        confirm(&mut world, &mut manufacturing, here, carrier, 1);
+
+        assert_eq!(points(&manufacturing), Some(0));
+    }
+
+    #[test]
+    fn replacing_an_order_in_progress_refunds_no_refined_material() {
+        // FUN_0052a2c0 scraps the queued product with reason 0x16;
+        // FUN_00530270 refunds half its cost only for reasons 0x14..0x16 of
+        // a completed object (+0x50 bit 2), which a product in progress
+        // never is. The refined material its yard cycles took stays spent.
+        let mut world = world();
+        let here = system(&mut world);
+        yard(&mut world, here, SHIPYARD, 4);
+        let carrier = numbered_class(&mut world, "Alliance Escort Carrier", 0x1400_0006, 6, 3);
+        let mut manufacturing = ManufacturingState::new();
+        let mut state = stocked(10);
+        confirm(&mut world, &mut manufacturing, here, carrier, 1);
+        for tick in 1..=8 {
+            yards_day(&mut state, &world, &mut manufacturing, tick);
+        }
+        let before = alliance(&state);
+        assert!(before.1 < 10, "the yard cycles took refined material");
+
+        confirm(&mut world, &mut manufacturing, here, carrier, 1);
+
+        assert_eq!(alliance(&state), before);
     }
 }

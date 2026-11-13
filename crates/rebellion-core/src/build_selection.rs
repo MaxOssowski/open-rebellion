@@ -393,6 +393,32 @@ pub fn order_items(
     Some((0..count).map(|_| QueueItem::new(kind, refined)).collect())
 }
 
+/// Confirm (`FUN_00438980` → `FUN_0041ce20` → manager slot `+0x1f0`,
+/// `FUN_00529ab0`): the order's units replace whatever the area was
+/// building. `FUN_0052a2c0` scraps the queued products (reason `0x16`,
+/// which refunds nothing, `FUN_00530270`: a queued product never
+/// completed), then `FUN_0052a140` creates the new ones, each a named
+/// object from its order ([`QueueItem::ordered`]): the first takes its
+/// side's next number for the class, the next ones the numbers after it.
+/// The new current product starts from no points. False when no yard can
+/// build ([`order_items`]); nothing changes then.
+pub fn confirm_order(
+    world: &mut GameWorld,
+    manufacturing: &mut ManufacturingState,
+    system: SystemKey,
+    area: ProductionArea,
+    kind: BuildableKind,
+    count: u32,
+    is_alliance: bool,
+) -> bool {
+    let Some(items) = order_items(world, system, area, kind, count, is_alliance) else {
+        return false;
+    };
+    let items = items.into_iter().map(|item| item.ordered(world)).collect();
+    manufacturing.build_units(system, items);
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -814,6 +840,7 @@ mod tests {
             arrival_tick: 50,
             kind: facility,
             side: Faction::Alliance,
+            name: None,
         };
         let en_route = [travelling];
         assert!(!valid(

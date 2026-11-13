@@ -12376,7 +12376,8 @@ fn apply_panel_action(
             );
         }
         // FUN_00438980 -> FUN_0041ce20: the units replace what the band
-        // was building, each at its class cost in build points.
+        // was building, each at its class cost in build points and named
+        // at the order (build_selection::confirm_order).
         PanelAction::BuildProduction {
             system,
             area,
@@ -12384,15 +12385,15 @@ fn apply_panel_action(
             count,
         } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
-            if let Some(items) = rebellion_core::build_selection::order_items(
+            if rebellion_core::build_selection::confirm_order(
                 world,
+                mfg_state,
                 system,
                 area,
                 kind,
                 count,
                 is_alliance,
             ) {
-                mfg_state.build_units(system, items);
                 macroquad::logging::info!(
                     "[interface] command=0x21x destination=production_build status=queued area={area:?} count={count} system={}",
                     world.systems.get(system).map_or("", |value| value.name.as_str())
@@ -16577,6 +16578,7 @@ mod fleet_move_tests {
                 destination: w.destination,
                 tick: 0,
                 kind: rebellion_core::manufacturing::BuildableKind::Troop(DatId::new(0x1000_0001)),
+                name: None,
             }],
         );
         assert_eq!(deliveries.en_route()[0].side, Faction::Alliance);

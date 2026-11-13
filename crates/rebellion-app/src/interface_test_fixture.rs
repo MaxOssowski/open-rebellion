@@ -705,6 +705,7 @@ pub fn place_deliveries(
         destination: primary,
         tick: 100_000,
         kind,
+        name: None,
     };
     deliveries.depart(
         world,

@@ -197,17 +197,15 @@ pub fn band(
                 .and_then(|fleet| world.fleet_name(fleet))
                 .unwrap_or(rebellion_core::world::FLEET_RECORD_NAME);
             destination = format!("Destination: {fleet}");
-            // The product is a named object from its order (FUN_0052a140),
-            // "{class} {N}" (FUN_00517760): A0 66 "Carrack Light Cruiser 2"
-            // with Carrack 1 in play. port: the port numbers a ship as it
-            // completes, so the current product takes the next number.
-            if !class.is_death_star() {
-                name = format!(
-                    "{name} {}",
-                    world.next_ship_number(class.is_alliance, class.dat_id)
-                );
-            }
         }
+    }
+    // The product is a named object from its order (FUN_0052a140),
+    // "{class} {N}" (FUN_00517760; QueueItem::name): A0
+    // 2026-11-11-icon-menu-topic/66 "Carrack Light Cruiser 2" with Carrack
+    // 1 in play. The window shows this name only when it builds the band
+    // (system_window::SystemWindowState::shown_band).
+    if let Some(own) = &active.name {
+        name.clone_from(own);
     }
     let verb = if area == ProductionArea::TrainingFacility {
         "Training"
@@ -753,11 +751,13 @@ mod tests {
 
     // FUN_004591b0 names the DeploymentKey, the product's container: the
     // destination's spare once it holds ships, "Fleet N" (A0
-    // 2026-11-11-icon-menu-topic: "Destination: Fleet 4"); the product takes
-    // its side's next number for the class ("Carrack Light Cruiser 5" after
-    // 4). Another fleet there is not the spare.
+    // 2026-11-11-icon-menu-topic: "Destination: Fleet 4"); the product is
+    // the object its order created and numbered, "Carrack Light Cruiser 2"
+    // with Carrack 1 in play (FUN_0052a140, FUN_00517760; A0 66), and keeps
+    // that number when another ship of the class is numbered after it.
+    // Another fleet there is not the spare.
     #[test]
-    fn a_ship_band_names_the_spare_and_the_next_numbered_ship() {
+    fn a_ship_band_names_the_spare_and_the_products_own_number() {
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Coruscant", ALLIANCE);
         let class = world.capital_ship_classes.insert(CapitalShipClass {
@@ -784,7 +784,7 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         manufacturing.build(
             system,
-            &QueueItem::new(BuildableKind::CapitalShip(class), 10),
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(&mut world),
             1,
         );
         let shown = |world: &GameWorld| {
@@ -802,7 +802,7 @@ mod tests {
         let spare = fleet(&mut world);
         world.set_ship_spare(system, true, spare);
         assert_eq!(shown(&world).destination, "Destination: Fleet 2");
-        assert_eq!(shown(&world).status, "Carrack Light Cruiser 3");
+        assert_eq!(shown(&world).status, "Carrack Light Cruiser 2");
     }
 
     // FUN_00457c90: a product's name, portrait and units left, "Building: " for
@@ -821,7 +821,7 @@ mod tests {
         manufacturing.set_destination(system, ProductionArea::Shipyard, away);
         manufacturing.build(
             system,
-            &QueueItem::new(BuildableKind::CapitalShip(class), 10),
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(&mut world),
             3,
         );
 
@@ -913,6 +913,7 @@ mod tests {
                 destination: system,
                 tick: 0,
                 kind: BuildableKind::ManufacturingFacility(template),
+                name: None,
             }],
         );
 

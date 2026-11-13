@@ -119,6 +119,12 @@ pub struct QueueItem {
     /// system. A different system makes it travel there once completed
     /// (`FUN_0052bee0`, `crate::delivery`).
     pub destination: Option<SystemKey>,
+    /// The product's name, given when it is ordered: the original creates
+    /// the object at the order (`FUN_0052a140`) and names a capital ship
+    /// "{class} {N}" then (`FUN_00517760`), so the finished ship keeps it.
+    /// None for everything else, the Death Star among it (save v116).
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 impl QueueItem {
@@ -129,7 +135,22 @@ impl QueueItem {
             kind,
             cost,
             destination: None,
+            name: None,
         }
+    }
+
+    /// The same item as an order creates it: a capital ship but the Death
+    /// Star takes its side's next number for the class now
+    /// ([`crate::world::GameWorld::take_ship_name`]), so a product scrapped
+    /// before it completes burns its number (A0
+    /// 2026-11-13-band-title-timing/41, 42).
+    #[must_use]
+    pub fn ordered(self, world: &mut crate::world::GameWorld) -> Self {
+        let name = match self.kind {
+            BuildableKind::CapitalShip(class) => world.take_ship_name(class),
+            _ => None,
+        };
+        QueueItem { name, ..self }
     }
 
     /// The same item, delivered to `destination` once completed.
@@ -540,11 +561,13 @@ impl ManufacturingState {
                     destination,
                     tick,
                     kind: item.kind,
+                    name: item.name,
                 }),
                 None => completions.push(CompletionEvent {
                     system,
                     tick,
                     kind: item.kind,
+                    name: item.name,
                 }),
             }
         }
@@ -574,6 +597,8 @@ pub struct CompletionEvent {
     pub tick: u64,
     /// What was built.
     pub kind: BuildableKind,
+    /// The name its order gave it ([`QueueItem::name`]).
+    pub name: Option<String>,
 }
 
 /// Wraps the outputs of `crate::production_cycle::advance_yards` so the
@@ -605,6 +630,8 @@ pub struct Departure {
     pub tick: u64,
     /// What was built.
     pub kind: BuildableKind,
+    /// The name its order gave it ([`QueueItem::name`]).
+    pub name: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -881,6 +908,7 @@ mod tests {
                 destination: systems[1],
                 tick: 9,
                 kind: cap_ship_item(1).kind,
+                name: None,
             }]
         );
 
@@ -892,6 +920,7 @@ mod tests {
                 system: systems[2],
                 tick: 9,
                 kind: fighter_item(1).kind,
+                name: None,
             }]
         );
     }

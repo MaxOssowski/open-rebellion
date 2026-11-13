@@ -2487,8 +2487,10 @@ fn apply_ai_actions_inner(
                 dispatched.is_ok()
             }
             AIAction::AbortMission { mission_id } => mission_state.abort(*mission_id),
+            // The AI's order creates its product, named, as the player's
+            // does (FUN_0052a140, FUN_00517760; QueueItem::ordered).
             AIAction::EnqueueProduction { system, kind, cost } => {
-                mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
+                mfg_state.enqueue(*system, QueueItem::new(*kind, *cost).ordered(world));
                 true
             }
             AIAction::Scrap { team } => ai_state.faction.is_some_and(|side| {
@@ -2665,7 +2667,7 @@ fn apply_ai_actions_inner(
                 count,
             } => {
                 for _ in 0..*count {
-                    mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
+                    mfg_state.enqueue(*system, QueueItem::new(*kind, *cost).ordered(world));
                 }
                 *count > 0
             }
@@ -4905,6 +4907,7 @@ mod tests {
             system: origin,
             tick: 1,
             kind: BuildableKind::CapitalShip(class),
+            name: None,
         };
         apply_build_completion_inner(&completion, &mut world);
         apply_build_completion_inner(&completion, &mut world);
@@ -4947,6 +4950,7 @@ mod tests {
                     system: yard,
                     tick: 1,
                     kind: BuildableKind::CapitalShip(ship),
+                    name: None,
                 },
                 world,
             );
@@ -4976,6 +4980,44 @@ mod tests {
     }
 
     #[test]
+    fn a_completed_ship_keeps_the_name_its_order_gave_it() {
+        // FUN_0052a140 creates the product at the order and FUN_00517760
+        // names it then; completing it (FUN_0052b960) does not rename it.
+        // A0 2026-11-13-band-title-timing/41: the ship ordered at Drall is
+        // "Alliance Escort Carrier 5" in Fleet 8, and the band of the
+        // reopened window names it so (42).
+        use rebellion_core::manufacturing::{ManufacturingState, ProductionArea, QueueItem};
+        let mut world = GameWorld::default();
+        let drall = add_system(&mut world, "Drall");
+        let carrier = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId(0x1400_0006),
+            name: "Alliance Escort Carrier".into(),
+            is_alliance: true,
+            hull: 100,
+            ..Default::default()
+        });
+        for _ in 0..4 {
+            world.take_ship_number(true, DatId(0x1400_0006));
+        }
+        let mut manufacturing = ManufacturingState::new();
+        let item = QueueItem::new(BuildableKind::CapitalShip(carrier), 1).ordered(&mut world);
+        manufacturing.enqueue(drall, item);
+        // A ship of the class numbered meanwhile takes the next number.
+        assert_eq!(world.take_ship_number(true, DatId(0x1400_0006)), 6);
+
+        let (completions, _) = manufacturing.add_point(drall, ProductionArea::Shipyard, 9);
+        assert_eq!(completions.len(), 1);
+        apply_build_completion_inner(&completions[0], &mut world);
+        world.number_ships();
+
+        let fleet = world.ship_spare(drall, true).expect("the ship's fleet");
+        assert_eq!(
+            world.fleets[fleet].capital_ships[0].name.as_deref(),
+            Some("Alliance Escort Carrier 5")
+        );
+    }
+
+    #[test]
     fn a_craft_completed_where_its_side_has_no_fleet_starts_a_numbered_fleet() {
         // FUN_00517760: each new fleet takes its side's next "Fleet N"
         // (ghidra/notes/fleet-names.md).
@@ -4996,6 +5038,7 @@ mod tests {
                     system,
                     tick: 1,
                     kind,
+                    name: None,
                 },
                 &mut world,
             );
@@ -5026,6 +5069,7 @@ mod tests {
                 system,
                 tick: 1,
                 kind: BuildableKind::CapitalShip(class),
+                name: None,
             },
             &mut world,
         );
@@ -5112,6 +5156,7 @@ mod tests {
                     system,
                     tick: 1,
                     kind: BuildableKind::CapitalShip(class),
+                    name: None,
                 },
                 world,
             );
@@ -5160,6 +5205,7 @@ mod tests {
                     system,
                     tick: 1,
                     kind: BuildableKind::Fighter(tie),
+                    name: None,
                 },
                 &mut world,
             );
@@ -5195,6 +5241,7 @@ mod tests {
                 system,
                 tick: 1,
                 kind: BuildableKind::Troop(DatId::new(0x1000_0003)),
+                name: None,
             },
             &mut world,
         );
@@ -5245,6 +5292,7 @@ mod tests {
                     system,
                     tick: 1,
                     kind,
+                    name: None,
                 },
                 &mut world,
             );
@@ -6139,15 +6187,19 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
             // Fleet 4 beside Fleet 1).
             let fleet_key = world.ship_spare(sys_key, is_alliance);
 
+            // The ship keeps the name its order gave it (QueueItem::name,
+            // FUN_0052a140 creates the named object at the order).
+            let ship = |hull| ShipInstance {
+                name: completion.name.clone(),
+                ..ShipInstance::new(*class_key, hull, is_alliance)
+            };
             if let Some(fk) = fleet_key {
                 if let Some(fleet) = world.fleets.get_mut(fk) {
                     let hull = world
                         .capital_ship_classes
                         .get(*class_key)
                         .map_or(100, |c| c.hull.cast_signed());
-                    fleet
-                        .capital_ships
-                        .push(ShipInstance::new(*class_key, hull, is_alliance));
+                    fleet.capital_ships.push(ship(hull));
                     fleet.has_death_star |= is_death_star;
                 }
             } else {
@@ -6157,7 +6209,7 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                     .map_or(100, |c| c.hull.cast_signed());
                 let fleet = Fleet {
                     location: sys_key,
-                    capital_ships: vec![ShipInstance::new(*class_key, hull, is_alliance)],
+                    capital_ships: vec![ship(hull)],
                     fighters: vec![],
                     characters: vec![],
                     is_alliance,

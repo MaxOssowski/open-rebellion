@@ -2075,19 +2075,7 @@ impl GameWorld {
                 let Some(class) = classes.get(ship.class).filter(|c| !c.is_death_star()) else {
                     continue;
                 };
-                let number = match numbers
-                    .iter_mut()
-                    .find(|(s, id, _)| *s == side && *id == class.dat_id)
-                {
-                    Some((_, _, number)) => {
-                        *number += 1;
-                        *number
-                    }
-                    None => {
-                        numbers.push((side, class.dat_id, 1));
-                        1
-                    }
-                };
+                let number = step_ship_number(numbers, side, class.dat_id);
                 ship.name = Some(format!("{} {number}", class.name));
             }
         }
@@ -2133,16 +2121,27 @@ impl GameWorld {
             .retain(|&(_, _, spare)| spare != fleet);
     }
 
-    /// The number the side's next capital ship of `class` takes (its
-    /// counter plus one, [`Self::number_ships`]).
-    #[must_use]
-    pub fn next_ship_number(&self, alliance: bool, class: DatId) -> u32 {
-        self.fleet_names
-            .ship_numbers
-            .iter()
-            .find(|&&(side, record, _)| side == alliance && record == class)
-            .map_or(0, |&(_, _, number)| number)
-            + 1
+    /// Step the side's counter for capital ship `class` and return the
+    /// number it gives (`FUN_00517760` reads the count through
+    /// `FUN_005302c0`). The counter never goes down, so a number is given
+    /// once: a ship order whose product is scrapped before it completes
+    /// burns its number (A0 2026-11-13-band-title-timing/41, 42: Escort
+    /// Carrier 4 replaced, the new order's ship is Escort Carrier 5).
+    pub fn take_ship_number(&mut self, alliance: bool, class: DatId) -> u32 {
+        step_ship_number(&mut self.fleet_names.ship_numbers, alliance, class)
+    }
+
+    /// The name a new capital ship of class `class` takes: "{class} {N}"
+    /// with N its side's next number ([`Self::take_ship_number`]); none for
+    /// the Death Star, which stays unnumbered (A0 personnel-states/27).
+    pub fn take_ship_name(&mut self, class: crate::ids::CapitalShipKey) -> Option<String> {
+        let class = self
+            .capital_ship_classes
+            .get(class)
+            .filter(|class| !class.is_death_star())?;
+        let (alliance, record, name) = (class.is_alliance, class.dat_id, class.name.clone());
+        let number = self.take_ship_number(alliance, record);
+        Some(format!("{name} {number}"))
     }
 
     pub fn insert_fleet(&mut self, fleet: Fleet) -> FleetKey {
@@ -2331,6 +2330,24 @@ impl GameWorld {
     pub fn set_recruit_pool_empty(&mut self, side: crate::dat::Faction) {
         if let Some(index) = recruit_side_index(side) {
             self.recruit_pool_empty[index] = true;
+        }
+    }
+}
+
+/// Step `side`'s counter for `class` in `numbers` (`FUN_005302c0`) and
+/// return the number it gives, the first being 1.
+fn step_ship_number(numbers: &mut Vec<(bool, DatId, u32)>, side: bool, class: DatId) -> u32 {
+    match numbers
+        .iter_mut()
+        .find(|(s, id, _)| *s == side && *id == class)
+    {
+        Some((_, _, number)) => {
+            *number += 1;
+            *number
+        }
+        None => {
+            numbers.push((side, class, 1));
+            1
         }
     }
 }
@@ -3521,10 +3538,10 @@ mod ship_spare_tests {
         assert_eq!(world.ship_spare(here, false), Some(other));
     }
 
-    // The next number is the side's counter for the class plus one
+    // A number taken is the side's counter for the class plus one
     // (FUN_00517760, number_ships).
     #[test]
-    fn the_next_ship_number_follows_its_sides_counter_for_the_class() {
+    fn taking_a_ship_number_steps_its_sides_counter_for_the_class() {
         let mut world = GameWorld::default();
         let here = system(&mut world);
         let mut class = |id| {
@@ -3544,9 +3561,9 @@ mod ship_spare_tests {
         let empire = fleet(&mut world, here, false);
         world.fleets[empire].capital_ships = vec![ShipInstance::new(first, 1, false)];
         world.number_ships();
-        assert_eq!(world.next_ship_number(true, DatId::new(0x2a)), 3);
-        assert_eq!(world.next_ship_number(true, DatId::new(0x2b)), 2);
-        assert_eq!(world.next_ship_number(false, DatId::new(0x2a)), 2);
-        assert_eq!(world.next_ship_number(false, DatId::new(0x2b)), 1);
+        assert_eq!(world.take_ship_number(true, DatId::new(0x2a)), 3);
+        assert_eq!(world.take_ship_number(true, DatId::new(0x2b)), 2);
+        assert_eq!(world.take_ship_number(false, DatId::new(0x2a)), 2);
+        assert_eq!(world.take_ship_number(false, DatId::new(0x2b)), 1);
     }
 }

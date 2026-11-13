@@ -2300,6 +2300,7 @@ mod tests {
                 destination: system,
                 tick: 0,
                 kind: build(GENCORE, true),
+                name: None,
             }],
         );
         let arrival = deliveries.en_route()[0].arrival_tick;

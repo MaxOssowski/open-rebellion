@@ -34,6 +34,10 @@ pub struct Delivery {
     /// The side it belongs to: its building system's holder at departure
     /// (save v100).
     pub side: crate::dat::Faction,
+    /// The name its order gave it (`crate::manufacturing::QueueItem::name`,
+    /// save v116).
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 /// Objects travelling from their facility to their destination.
@@ -151,6 +155,7 @@ impl DeliveryState {
                 arrival_tick: departure.tick + u64::from(ticks),
                 kind: departure.kind,
                 side,
+                name: departure.name.clone(),
             });
         }
     }
@@ -218,6 +223,7 @@ impl DeliveryState {
                     system: delivery.destination,
                     tick: delivery.arrival_tick,
                     kind: delivery.kind,
+                    name: delivery.name,
                 });
             }
         }
@@ -288,6 +294,7 @@ mod tests {
             destination,
             tick,
             kind,
+            name: None,
         }
     }
 
@@ -315,10 +322,31 @@ mod tests {
             vec![CompletionEvent {
                 system: systems[1],
                 tick: 17,
-                kind
+                kind,
+                name: None,
             }]
         );
         assert!(state.en_route().is_empty());
+    }
+
+    // FUN_00556430 moves the created object itself, so a ship delivered to
+    // another system keeps the name its order gave it (FUN_0052a140,
+    // FUN_00517760).
+    #[test]
+    fn a_delivered_product_arrives_with_the_name_its_order_gave_it() {
+        let (world, systems) = world_with_systems(&[(0, 0), (30, 40)]);
+        let kind = troop(&mut slotmap::SlotMap::with_key());
+        let mut state = DeliveryState::new();
+        let named = Departure {
+            name: Some("Carrack Light Cruiser 2".into()),
+            ..departure(systems[0], systems[1], 7, kind)
+        };
+        state.depart(&world, &[named]);
+        let arrived = state.advance(&world, &[TickEvent { tick: 17 }]);
+        assert_eq!(
+            arrived.arrivals[0].name.as_deref(),
+            Some("Carrack Light Cruiser 2")
+        );
     }
 
     // FUN_005150c0 -> FUN_00556430: a product travels inside its
@@ -342,6 +370,7 @@ mod tests {
             arrival_tick: 10,
             kind,
             side: crate::dat::Faction::Empire,
+            name: None,
         };
         let mut state = DeliveryState::new();
         assert!(!state.surface_arrival_pending(systems[1], crate::dat::Faction::Empire));

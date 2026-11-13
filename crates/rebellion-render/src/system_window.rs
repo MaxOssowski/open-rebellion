@@ -2687,12 +2687,15 @@ mod tests {
         let mut manufacturing = ManufacturingState::new();
         manufacturing.build(
             systems[0],
-            &QueueItem::new(BuildableKind::CapitalShip(class), 10),
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(&mut world),
             2,
         );
         let mut state = opened(&world, systems[0]);
         let run = run_with(&world, &manufacturing, &mut state, hover(at(150.0, 10.0)));
-        assert_eq!(text(&run, "Corellian Corvette 1").1, line_at(60.0, 73.0, 10));
+        assert_eq!(
+            text(&run, "Corellian Corvette 1").1,
+            line_at(60.0, 73.0, 10)
+        );
         assert_eq!(text(&run, "Building: 2").1, line_at(60.0, 104.0, 10));
         let portrait =
             crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap() - 0x4000;
