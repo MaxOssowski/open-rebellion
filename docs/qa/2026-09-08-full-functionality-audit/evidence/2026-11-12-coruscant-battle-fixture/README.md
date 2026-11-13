@@ -637,3 +637,44 @@ equivalent on the original data:
   is Imperial and has a hull.
 - `&&` to `||` in the TIE class filter. The first Imperial fighter class
   is the TIE Fighter.
+
+## Fifth stage: the planet squadrons come from the planet (2026-11-13)
+
+`ghidra/notes/planet-squadrons-in-battle.md` corrects the fourth stage's
+port note. Campaign battles already take the planet squadrons, in both
+modes:
+- `squadrons::scramble` moves them into a fleet before the battle, and
+  `recover` lands them after it;
+- the original's build takes them the same way (`FUN_0040b0e0`,
+  `0x40b7d5`).
+
+Two things were missing:
+- **The seed.** A new game had no planet squadrons.
+  `apply_garrison_seed` dropped the fighter items of CMUNCRTB (10 TIE
+  squadrons), CMUNYVTB (2) and CMUNHQTB (6). The original creates them in
+  the system (`FUN_0051ae20` -> `FUN_0051be90` -> `FUN_0051bf30`). They now
+  land on the planet.
+- **The fixture's entry.** It skipped the scramble.
+
+`coruscant_chase_fleets` now puts A0's 11 TIE squadrons on Coruscant's
+planet: the 10 seeded plus one. The fixture's entry scrambles them, as the
+campaign's does.
+
+The tactical session at the browser seed 0 is unchanged, field for field,
+against the fourth stage's: the layout, every ship and fighter, the
+positions, groups and hangar state. So `production-coruscant-chase` should
+pass as before.
+
+Checks:
+- `the_coruscant_chase_battle_counts_twelve_imperial_objects_as_a0_s_extent_shows`
+  now takes the 11 from the planet, through the scramble and the side
+  fleets. It also loads with seed 0, because a native load seeds from the
+  clock, and one clock seed gave `(3, 14)`.
+- With the old stand-in, the new planet assertion fails: 10 against 11
+  (shown).
+- `a_new_game_lands_the_garrison_tables_fighter_squadrons_on_their_planets`
+  fails without the seed change (`[]` against 10 TIE Fighters, shown).
+- `cargo mutants --in-place`:
+  - `apply_garrison_seed`: 9 of 9 caught;
+  - `coruscant_chase_fleets`: 12 mutants, 10 caught. The 2 missed are the
+    same equivalent filters as the fourth stage.

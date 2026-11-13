@@ -513,7 +513,7 @@ pub(crate) fn apply(
     player_faction: &mut MissionFaction,
     cockpit: &mut CockpitState,
     game_mode: &mut GameMode,
-) -> Result<(), String> {
+) -> Result<Vec<rebellion_core::squadrons::Sortie>, String> {
     // Exercise two real SYSTEMSD picture/palette identities across the faction
     // matrix instead of accepting a hard-coded global palette accidentally:
     // the first and second empty, intact systems the galaxy loaded, in
@@ -904,6 +904,10 @@ pub(crate) fn apply(
     }
 
     let player_is_attacker = request.faction == CockpitFaction::Alliance;
+    // FUN_0040b0e0 (0x40b7d5) builds every battle with the system's planet
+    // squadrons, as the campaign's entry does (squadrons::scramble); they
+    // land again when it ends.
+    let sorties = rebellion_core::squadrons::scramble(world, system);
     tactical_flow::begin_player_battle(
         world,
         troop_transport,
@@ -1076,7 +1080,7 @@ pub(crate) fn apply(
         MissionFaction::Empire
     };
     cockpit.faction = request.faction;
-    Ok(())
+    Ok(sorties)
 }
 
 #[derive(Serialize)]
@@ -1327,20 +1331,27 @@ fn coruscant_chase_fleets(
     // its TIE squadrons aboard, and 11 TIE squadrons on Coruscant (A0
     // manifest TAC-02-C004, TAC-05-C009). So the 12 are the hull and the 11
     // planet squadrons.
-    // port: the port's battle takes no planet squadrons, so the 11 stand in
-    // as the home fleet's unboarded squadrons, which start deployed as the
-    // planet's do.
+    // The new game seeds 10 of them (CMUNCRTB, FUN_0051ae20 -> FUN_0051bf30);
+    // port: the eleventh, which A0's day-2 save also holds, lands here too.
+    // They stay on the planet: the battle entry sends them up
+    // (squadrons::scramble, FUN_0040b0e0 0x40b7d5) as the campaign's does.
     let tie = world
         .fighter_classes
         .iter()
         .find(|(_, class)| !class.is_alliance && class.name == "TIE Fighter")
         .map(|(key, _)| key)
         .ok_or("no TIE Fighter class")?;
-    world.fleets[defender].fighters.push(FighterEntry {
-        class: tie,
-        count: CORUSCANT_PLANET_TIE_SQUADRONS,
-        carrier: None,
-    });
+    let planet = &mut world.systems[system].fighters;
+    let seeded = planet
+        .iter()
+        .filter(|entry| entry.class == tie)
+        .map(|entry| entry.count)
+        .sum::<u32>();
+    rebellion_core::squadrons::add(
+        planet,
+        tie,
+        CORUSCANT_PLANET_TIE_SQUADRONS.saturating_sub(seeded),
+    );
     let (carrier, hull) = world
         .capital_ship_classes
         .iter()
@@ -2145,13 +2156,23 @@ mod tests {
     // (FUN_005ab650, 0x5abb11..0x5abb4b; ghidra/notes/
     // tactical-chase-camera-distance.md): the Star Destroyer and Coruscant's
     // 11 TIE squadrons, whose home-fleet squadrons stay in its hangar
-    // (state 1, 0x40bf0b -> FUN_005b69d0).
+    // (state 1, 0x40bf0b -> FUN_005b69d0). The 11 stand on the planet and
+    // the battle takes them from there (FUN_0040b0e0, 0x40b7d5), through the
+    // same scramble and side fleets as the fixture's entry.
     #[test]
     #[ignore = "requires original data/base DAT files"]
     fn the_coruscant_chase_battle_counts_twelve_imperial_objects_as_a0_s_extent_shows() {
+        use rebellion_core::abstract_battle::side_fleets;
         use rebellion_core::tactical::BattleSession;
         let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
-        let mut world = rebellion_data::load_game_data(&data).expect("load original game data");
+        // The browser build, where the gate runs, seeds its galaxy with 0
+        // (seeds::default_seed on wasm32); a native load seeds from the clock.
+        let options = rebellion_core::world::SeedOptions {
+            rng_seed: Some(0),
+            ..rebellion_core::world::SeedOptions::default()
+        };
+        let mut world = rebellion_data::load_game_data_with_options(&data, &options)
+            .expect("load original game data");
         let system = world
             .systems
             .iter()
@@ -2160,7 +2181,34 @@ mod tests {
             .unwrap();
         let (attacker, defender) = coruscant_chase_fleets(&mut world, system).unwrap();
         world.systems[system].fleets.push(attacker);
-        let session = BattleSession::new(&world, system, attacker, defender, false, 0, 1);
+        let on_planet: Vec<_> = world.systems[system]
+            .fighters
+            .iter()
+            .map(|entry| {
+                (
+                    world.fighter_classes[entry.class].name.as_str(),
+                    entry.count,
+                    entry.carrier,
+                )
+            })
+            .collect();
+        assert_eq!(on_planet, [("TIE Fighter", 11, None)]);
+        assert!(world.fleets[defender]
+            .fighters
+            .iter()
+            .all(|entry| entry.carrier.is_some()));
+        let sorties = rebellion_core::squadrons::scramble(&mut world, system);
+        assert_eq!(sorties.len(), 1);
+        let session = BattleSession::new_for_fleets(
+            &world,
+            system,
+            &side_fleets(&world, system, attacker),
+            &side_fleets(&world, system, defender),
+            false,
+            0,
+            1,
+        )
+        .session;
         let layout = session.source_layout;
         assert_eq!(
             (layout.first_active_objects, layout.second_active_objects),

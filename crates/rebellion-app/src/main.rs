@@ -2155,7 +2155,10 @@ async fn main() {
             &mut cockpit_state,
             &mut game_mode,
         ) {
-            Ok(()) => {
+            Ok(sorties) => {
+                // The planet squadrons the fixture's battle sent up land when
+                // it ends, as a campaign battle's do.
+                battle_sorties = sorties;
                 // port: the fixture's fleets reveal their system as a new
                 // game's do (FogSystem::seed), so the strategy windows
                 // after the battle show the fleets that remain there.
