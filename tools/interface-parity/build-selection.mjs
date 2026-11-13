@@ -1078,6 +1078,15 @@ function a0ManufacturingDir() {
 // side's earlier ships of the class (A0's Empire had one Carrack), so
 // only its form is checked. The Alliance has no A0 here; it orders one of
 // its first class.
+//
+// The band's product line is written only when the window builds the band
+// (FUN_00457b40 from FUN_00458080 at creation and FUN_00457c90's rebuild),
+// never on a rename: after a Confirm of a single unit it is the bare class
+// name until the window is built again (A0 2026-11-13-band-title-timing/03,
+// 10..39 "Alliance Escort Carrier" for 23 days; 42 "Alliance Escort Carrier
+// 5" once the window is closed and opened again), while several units name
+// the first with its number at once (A0 66). The case then closes the
+// System window and opens it again from the sector window's System icon.
 async function shipOrderBandCase(page, faction, directory) {
   const fixtureCode = 89 | (faction.byte << 8);
   await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
@@ -1122,10 +1131,40 @@ async function shipOrderBandCase(page, faction, directory) {
   const band = confirmed.bands.find(({ area }) => area === "ships");
   assert.equal(band.queued, count, JSON.stringify(band));
   const [title, units, destination] = band.lines;
-  assert.match(title, new RegExp(`^${name} [1-9][0-9]*$`), JSON.stringify(band.lines));
+  const numbered = new RegExp(`^${name} [1-9][0-9]*$`);
+  if (count === 1) {
+    assert.equal(title, name, JSON.stringify(band.lines));
+  } else {
+    assert.match(title, numbered, JSON.stringify(band.lines));
+  }
   assert.equal(units, `Building: ${count}`, JSON.stringify(band.lines));
   assert.equal(destination, "Destination: Fleet", JSON.stringify(band.lines));
-  return { class: name, count, lines: band.lines };
+
+  // Close the System window (its close box at (209, 3), the window's
+  // corner 55, 57 left of and above the ships band) and open it again.
+  const icon = confirmed.system_icon;
+  assert.ok(icon, JSON.stringify(confirmed));
+  const corner = { x: band.left - 55, y: band.top - 57 };
+  await click(page, { x: corner.x + 209 + 7, y: corner.y + 3 + 7 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 0,
+    null, { timeout: 10_000 });
+  // egui pairs two clicks only within its double-click time; let the
+  // frames after the close settle first.
+  const at = { x: Math.round(icon[0]) + 4, y: Math.round(icon[1]) + 9 };
+  await page.mouse.move(at.x, at.y);
+  await frames(page, 4);
+  await page.waitForTimeout(500);
+  await page.mouse.dblclick(at.x, at.y);
+  await frames(page, 2);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const reopened = await read();
+  fs.writeFileSync(path.join(directory, "ship-order-band-reopened.png"), await page.screenshot({ animations: "disabled" }));
+  const again = reopened.bands.find(({ area }) => area === "ships");
+  assert.match(again.lines[0], numbered, JSON.stringify(again.lines));
+  if (count > 1) assert.equal(again.lines[0], title, JSON.stringify(again.lines));
+  assert.equal(again.lines[1], `Building: ${count}`, JSON.stringify(again.lines));
+  return { class: name, count, lines: band.lines, reopened: again.lines };
 }
 
 // A regiment in training, part made (OBJ-10 "training"): fixture 101,

@@ -4834,6 +4834,9 @@ struct FixtureProduction {
     /// `[left, top, width, height]`.
     training_tab: Option<[f32; 4]>,
     first_cell: Option<[f32; 4]>,
+    /// The primary's System icon in the open sector window, whose double
+    /// click opens its System window again.
+    system_icon: Option<[f32; 4]>,
 }
 
 fn production_report(
@@ -4842,6 +4845,7 @@ fn production_report(
     manufacturing: &ManufacturingState,
     en_route: &[rebellion_core::delivery::Delivery],
     systems: &SystemWindowState,
+    sectors: &SectorWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
 ) -> Option<FixtureProduction> {
     let primary = world.systems.keys().next()?;
@@ -4878,8 +4882,11 @@ fn production_report(
                         primary,
                         area,
                     );
+                    // The product line as the open window last built it.
                     [
-                        band.status,
+                        systems
+                            .band_status(primary, area)
+                            .map_or(band.status, str::to_owned),
                         band.units.unwrap_or_default(),
                         band.destination,
                     ]
@@ -4940,6 +4947,9 @@ fn production_report(
             )
             .map(ltwh),
         first_cell: systems.cell_screen_rect(layout, primary, 0).map(ltwh),
+        system_icon: sectors
+            .quadrant_screen_rect(world, layout, primary, Quadrant::System)
+            .map(ltwh),
     })
 }
 
@@ -4949,6 +4959,7 @@ pub fn emit_production(
     manufacturing: &ManufacturingState,
     en_route: &[rebellion_core::delivery::Delivery],
     systems: &SystemWindowState,
+    sectors: &SectorWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
 ) {
     // ProductionDelivery's shipyard band shows its product one point short.
@@ -4961,7 +4972,15 @@ pub fn emit_production(
     {
         return;
     }
-    let Some(report) = production_report(request, world, manufacturing, en_route, systems, build_selection)
+    let Some(report) = production_report(
+        request,
+        world,
+        manufacturing,
+        en_route,
+        systems,
+        sectors,
+        build_selection,
+    )
     else {
         return;
     };

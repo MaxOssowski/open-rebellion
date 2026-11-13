@@ -16,7 +16,7 @@ use rebellion_core::dat::Faction;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{DatId, FleetKey, SystemKey};
-use rebellion_core::manufacturing::{ManufacturingState, ProductionArea};
+use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, ProductionArea};
 use rebellion_core::missions::{MissionState, MissionTarget, MissionTargetPick};
 pub(crate) use rebellion_core::pictures::{character_mini_resource_id, character_picture};
 use rebellion_core::world::GameWorld;
@@ -299,6 +299,46 @@ pub struct SystemWindowState {
     /// The last press on the rail: its time and screen point, which the
     /// next press pairs with into a double click.
     rail_press: Option<(f64, egui::Pos2)>,
+    /// Each open window's band titles as the window last built them.
+    band_titles: Vec<BandTitle>,
+}
+
+/// What a band's title was built from: its units left and its current
+/// product, the product's kind and the name its order gave it; none while
+/// it shows nothing building.
+type BandKey = Option<(usize, BuildableKind, Option<String>)>;
+
+/// A band's product line as its window built it. `FUN_00457b40` writes it
+/// only when the band is built, by `FUN_00458080` at the window's creation
+/// and by `FUN_00457c90`'s full rebuild, never when the product is renamed
+/// (`FUN_00517760`), so the line keeps what it read then.
+///
+/// hyp, fitting every A0: the window rebuilds a band when its units left or
+/// its current product change; a Confirm of a single unit rebuilds before
+/// the new product is numbered, so its line is the bare class name until
+/// the next rebuild (A0 2026-11-13-band-title-timing/03, 10..39: "Alliance
+/// Escort Carrier" for 23 days; 42: "Alliance Escort Carrier 5" once the
+/// window is reopened), while one of several units names the first unit
+/// with its number at once (2026-11-11-icon-menu-topic/66: "Carrack Light
+/// Cruiser 2 / Building: 4").
+#[derive(Debug, Clone, PartialEq)]
+struct BandTitle {
+    system: SystemKey,
+    area: ProductionArea,
+    key: BandKey,
+    title: String,
+}
+
+/// What `system`'s `area` band's title is built from.
+fn band_key(
+    manufacturing: &ManufacturingState,
+    visible: bool,
+    system: SystemKey,
+    area: ProductionArea,
+) -> BandKey {
+    let queue = manufacturing.queue(system, area).filter(|_| visible)?;
+    let active = queue.active()?;
+    Some((queue.len(), active.kind, active.name.clone()))
 }
 
 impl Default for SystemWindowState {
@@ -311,6 +351,7 @@ impl Default for SystemWindowState {
             rail_age: Vec::new(),
             created: false,
             rail_press: None,
+            band_titles: Vec::new(),
         }
     }
 }
@@ -358,6 +399,7 @@ impl SystemWindowState {
         }
         let logical_position = clamp_to_galaxy(logical_position, layout);
         self.created = true;
+        self.forget_band_titles(system);
         self.windows.push(OpenSystemWindow {
             system,
             logical_position,
@@ -588,6 +630,88 @@ impl SystemWindowState {
         self.windows.clear();
         self.rail = std::array::from_fn(|_| None);
         self.rail_age.clear();
+        self.band_titles.clear();
+    }
+
+    /// `system`'s `area` band as its visible window shows it: [`band`],
+    /// its product line kept from when the window last built the band. The
+    /// window builds it again when the band's units left or current product
+    /// change ([`BandTitle`]).
+    pub fn shown_band(
+        &mut self,
+        world: &GameWorld,
+        manufacturing: &ManufacturingState,
+        visible: bool,
+        system: SystemKey,
+        area: ProductionArea,
+    ) -> crate::manufacturing_window::Band {
+        let mut shown = band(world, manufacturing, visible, system, area);
+        let key = band_key(manufacturing, visible, system, area);
+        match self
+            .band_titles
+            .iter_mut()
+            .find(|title| title.system == system && title.area == area)
+        {
+            Some(title) if title.key == key => shown.status.clone_from(&title.title),
+            Some(title) => {
+                title.key = key;
+                title.title.clone_from(&shown.status);
+            }
+            None => self.band_titles.push(BandTitle {
+                system,
+                area,
+                key,
+                title: shown.status.clone(),
+            }),
+        }
+        shown
+    }
+
+    /// The product line `system`'s window last built for its `area` band.
+    #[must_use]
+    pub fn band_status(&self, system: SystemKey, area: ProductionArea) -> Option<&str> {
+        self.band_titles
+            .iter()
+            .find(|title| title.system == system && title.area == area)
+            .map(|title| title.title.as_str())
+    }
+
+    /// Confirm has replaced `system`'s `area` production with `count`
+    /// units (`FUN_00438980`). With the system's window open, a single
+    /// unit's band is rebuilt before its product is numbered and keeps the
+    /// bare class name (A0 2026-11-13-band-title-timing/03); several units'
+    /// band names the first with its number (2026-11-11-icon-menu-topic/66).
+    pub fn confirmed_build(
+        &mut self,
+        world: &GameWorld,
+        manufacturing: &ManufacturingState,
+        system: SystemKey,
+        area: ProductionArea,
+        count: u32,
+    ) {
+        if !self.windows.iter().any(|window| window.system == system) {
+            return;
+        }
+        self.band_titles
+            .retain(|title| !(title.system == system && title.area == area));
+        let key = band_key(manufacturing, true, system, area);
+        if count != 1 {
+            return;
+        }
+        if let Some((_, kind, _)) = &key {
+            let title = crate::manufacturing_window::product(world, *kind).0;
+            self.band_titles.push(BandTitle {
+                system,
+                area,
+                key,
+                title,
+            });
+        }
+    }
+
+    /// A window closed or created anew builds its bands afresh.
+    fn forget_band_titles(&mut self, system: SystemKey) {
+        self.band_titles.retain(|title| title.system != system);
     }
 
     /// Empty the slot holding `entry`'s window (`FUN_00429020`): it leaves
@@ -624,6 +748,7 @@ impl SystemWindowState {
 
     fn close(&mut self, system: SystemKey) {
         self.windows.retain(|window| window.system != system);
+        self.forget_band_titles(system);
     }
 
     fn minimize(&mut self, system: SystemKey) -> bool {
@@ -922,10 +1047,14 @@ pub fn draw_system_windows(
         .map(|window| window.system);
     for window in windows {
         let system = window.system;
+        let visible = contents_visible(world, fog, cockpit_faction(faction), system);
+        let bands =
+            BAND_AREAS.map(|area| state.shown_band(world, manufacturing, visible, system, area));
         let mut result = draw_system_window(
             ctx,
             sources,
             window,
+            &bands,
             focused_system == Some(system),
             faction,
             layout,
@@ -1153,6 +1282,7 @@ fn draw_system_window(
     ctx: &egui::Context,
     sources: Sources<'_>,
     window: OpenSystemWindow,
+    bands: &[crate::manufacturing_window::Band; 3],
     focused: bool,
     faction: CockpitFaction,
     layout: CockpitLayout,
@@ -1358,8 +1488,9 @@ fn draw_system_window(
 
                         // FUN_00458080: the band's frame, its strip and its
                         // lines.
-                        let shown =
-                            band(world, sources.manufacturing, visible, window.system, area);
+                        // The band as the window last built it
+                        // (SystemWindowState::shown_band).
+                        let shown = &bands[index];
                         let (bx, by, _, _) = BAND_RECTS[index];
                         let selected = window.selected_band == Some(area);
                         paint(cache, DllSource::Strategy, BAND_FRAME, bx, by);
@@ -1878,7 +2009,7 @@ mod tests {
     use crate::cockpit::CockpitViewport;
     use crate::fleet_window::tests::PAINTED;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
-    use rebellion_core::manufacturing::{BuildableKind, QueueItem};
+    use rebellion_core::manufacturing::QueueItem;
     use rebellion_core::world::ControlKind;
     use rebellion_core::world::{
         CapitalShipClass, ManufacturingFacilityInstance, ProductionFacilityInstance, Sector, System,
@@ -2720,6 +2851,202 @@ mod tests {
                 && rect.width() < bar.width()),
             "{:?}",
             run.fills
+        );
+    }
+
+    /// Drall's Alliance Escort Carrier class with Escort Carriers 1..3
+    /// built and "Alliance Escort Carrier 4" in its shipyard's queue, its
+    /// window open (A0 2026-11-13-band-title-timing/00).
+    fn escort_carrier_at_drall() -> (
+        GameWorld,
+        SystemKey,
+        rebellion_core::ids::CapitalShipKey,
+        ManufacturingState,
+        SystemWindowState,
+    ) {
+        let (mut world, systems) = fixture_world(1);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0006),
+            name: "Alliance Escort Carrier".into(),
+            is_alliance: true,
+            ..CapitalShipClass::default()
+        });
+        for _ in 0..3 {
+            world.take_ship_number(true, DatId::new(0x1400_0006));
+        }
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.build_units(
+            systems[0],
+            vec![QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(&mut world)],
+        );
+        let state = opened(&world, systems[0]);
+        (world, systems[0], class, manufacturing, state)
+    }
+
+    /// Confirm `count` new units of `class` at `system`, as the app applies
+    /// it (build_selection::confirm_order, then the window hears of it).
+    fn confirm_carriers(
+        world: &mut GameWorld,
+        manufacturing: &mut ManufacturingState,
+        state: &mut SystemWindowState,
+        system: SystemKey,
+        class: rebellion_core::ids::CapitalShipKey,
+        count: u32,
+    ) {
+        let items = (0..count)
+            .map(|_| QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(world))
+            .collect();
+        manufacturing.build_units(system, items);
+        state.confirmed_build(
+            world,
+            manufacturing,
+            system,
+            ProductionArea::Shipyard,
+            count,
+        );
+    }
+
+    fn ship_line(
+        world: &GameWorld,
+        manufacturing: &ManufacturingState,
+        state: &mut SystemWindowState,
+        system: SystemKey,
+    ) -> String {
+        state
+            .shown_band(world, manufacturing, true, system, ProductionArea::Shipyard)
+            .status
+    }
+
+    #[test]
+    fn a_single_unit_confirm_leaves_the_band_title_bare_until_the_window_is_rebuilt() {
+        // FUN_00457b40 writes the line only when the band is built
+        // (FUN_00458080, FUN_00457c90), never on a rename. A0
+        // 2026-11-13-band-title-timing: 00 "Alliance Escort Carrier 4"; 03
+        // right after a one-unit Confirm "Alliance Escort Carrier", which
+        // 10..39 keep for 23 days while the progress bar grows.
+        let (mut world, drall, class, mut manufacturing, mut state) = escort_carrier_at_drall();
+        assert_eq!(
+            ship_line(&world, &manufacturing, &mut state, drall),
+            "Alliance Escort Carrier 4"
+        );
+
+        confirm_carriers(&mut world, &mut manufacturing, &mut state, drall, class, 1);
+        assert_eq!(
+            ship_line(&world, &manufacturing, &mut state, drall),
+            "Alliance Escort Carrier"
+        );
+        let run = run_with(&world, &manufacturing, &mut state, hover(at(150.0, 10.0)));
+        assert_eq!(
+            text(&run, "Alliance Escort Carrier").1,
+            line_at(60.0, 73.0, 10)
+        );
+        for _ in 0..3 {
+            let _ = manufacturing
+                .queue_mut(drall, ProductionArea::Shipyard)
+                .add_point();
+            assert_eq!(
+                ship_line(&world, &manufacturing, &mut state, drall),
+                "Alliance Escort Carrier"
+            );
+        }
+
+        // port: a change of the units left rebuilds the band.
+        manufacturing.enqueue(
+            drall,
+            QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(&mut world),
+        );
+        assert_eq!(
+            ship_line(&world, &manufacturing, &mut state, drall),
+            "Alliance Escort Carrier 5"
+        );
+    }
+
+    #[test]
+    fn a_multi_unit_confirm_names_the_first_unit_with_its_number() {
+        // A0 2026-11-11-icon-menu-topic/66: four Carrack Light Cruisers
+        // confirmed, the band reads "Carrack Light Cruiser 2 / Building: 4"
+        // at once (FUN_0052a140 numbers each unit at the order,
+        // FUN_00517760).
+        let (mut world, drall, class, mut manufacturing, mut state) = escort_carrier_at_drall();
+        confirm_carriers(&mut world, &mut manufacturing, &mut state, drall, class, 3);
+        let shown = state.shown_band(
+            &world,
+            &manufacturing,
+            true,
+            drall,
+            ProductionArea::Shipyard,
+        );
+        assert_eq!(shown.status, "Alliance Escort Carrier 5");
+        assert_eq!(shown.units.as_deref(), Some("Building: 3"));
+        assert_eq!(
+            state.band_status(drall, ProductionArea::Shipyard),
+            Some("Alliance Escort Carrier 5")
+        );
+    }
+
+    #[test]
+    fn each_band_of_each_window_keeps_its_own_title() {
+        // Our own cache: a Confirm at one system leaves another window's
+        // bands as they were built, and each band of a window its own line.
+        let (mut world, systems) = fixture_world(2);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0006),
+            name: "Alliance Escort Carrier".into(),
+            is_alliance: true,
+            ..CapitalShipClass::default()
+        });
+        let mut manufacturing = ManufacturingState::new();
+        let mut state = opened(&world, systems[0]);
+        assert!(state.open(
+            &world,
+            systems[1],
+            ORIGIN,
+            CockpitFaction::Alliance,
+            layout(CockpitFaction::Alliance, 2.0)
+        ));
+        for system in systems.iter().copied() {
+            confirm_carriers(&mut world, &mut manufacturing, &mut state, system, class, 1);
+            for area in BAND_AREAS {
+                state.shown_band(&world, &manufacturing, true, system, area);
+            }
+        }
+        confirm_carriers(&mut world, &mut manufacturing, &mut state, systems[1], class, 3);
+
+        assert_eq!(
+            ship_line(&world, &manufacturing, &mut state, systems[0]),
+            "Alliance Escort Carrier"
+        );
+        assert_eq!(
+            state.band_status(systems[0], ProductionArea::TrainingFacility),
+            Some("No Troops in training")
+        );
+    }
+
+    #[test]
+    fn a_reopened_manufacturing_window_names_the_current_product_with_its_number() {
+        // A0 2026-11-13-band-title-timing/42: the window closed and opened
+        // again (FUN_00458080 builds the band) reads "Alliance Escort
+        // Carrier 5", the number its order took (41: Fleet 8 holds Escort
+        // Carrier 5).
+        let (mut world, drall, class, mut manufacturing, mut state) = escort_carrier_at_drall();
+        confirm_carriers(&mut world, &mut manufacturing, &mut state, drall, class, 1);
+        assert_eq!(
+            ship_line(&world, &manufacturing, &mut state, drall),
+            "Alliance Escort Carrier"
+        );
+
+        state.close(drall);
+        assert!(state.open(
+            &world,
+            drall,
+            ORIGIN,
+            CockpitFaction::Alliance,
+            layout(CockpitFaction::Alliance, 2.0)
+        ));
+
+        assert_eq!(
+            ship_line(&world, &manufacturing, &mut state, drall),
+            "Alliance Escort Carrier 5"
         );
     }
 

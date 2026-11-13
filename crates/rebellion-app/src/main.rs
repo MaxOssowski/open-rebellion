@@ -7737,6 +7737,7 @@ async fn main() {
                             &mfg_state,
                             delivery_state.en_route(),
                             &system_window_state,
+                            &sector_window_state,
                             &build_selection_state,
                         );
                     }
@@ -9436,6 +9437,15 @@ async fn main() {
                         &mut fog_empire_state
                     };
                     let mut refusal = None;
+                    let confirmed = match action {
+                        PanelAction::BuildProduction {
+                            system,
+                            area,
+                            count,
+                            ..
+                        } => Some((system, area, count)),
+                        _ => None,
+                    };
                     apply_panel_action(
                         action,
                         &mut world,
@@ -9466,6 +9476,11 @@ async fn main() {
                         #[cfg(not(target_arch = "wasm32"))]
                         &sounds_dir,
                     );
+                    if let Some((system, area, count)) = confirmed {
+                        system_window_state.confirmed_build(
+                            &world, &mfg_state, system, area, count,
+                        );
+                    }
                     // The advisor reacts to a refused order; without its
                     // messages the port's line stands in.
                     if let Some(refused) = refusal.take() {
