@@ -616,6 +616,82 @@ pub fn draw_sector_windows(
     actions
 }
 
+/// What the galaxy view drew, which a child window's copy of it shows
+/// shaded: the starfield (STRATEGY 902 or 903), the markers it drew and
+/// their screen centres, and its caption.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ShadedView<'a> {
+    pub backdrop: u32,
+    pub drawn_gid_markers: &'a [(u32, [f32; 2])],
+    pub gid_caption: Option<&'a crate::GidCaption>,
+}
+
+/// Paint the galaxy view's picture under `window_rect`, shaded: the copy a
+/// child window takes of its parent (`FUN_005fcc30`) mapped through the
+/// shading table `FUN_005fddd0(LAB_004ac550)` builds (`FUN_005fe050`). The
+/// sector window (`FUN_004593e0`) and the GID legend (`FUN_00452240`) both
+/// paint it under their art. port: the copy holds the starfield, the GID
+/// markers and the caption, not other windows under it.
+pub(crate) fn paint_shaded_view(
+    ctx: &egui::Context,
+    painter: &egui::Painter,
+    cache: &mut BmpCache,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+    window_rect: egui::Rect,
+    view: &ShadedView<'_>,
+) {
+    let ShadedView {
+        backdrop,
+        drawn_gid_markers,
+        gid_caption,
+    } = *view;
+    painter.rect_filled(window_rect, 0.0, egui::Color32::from_rgb(42, 42, 42));
+    if let Some(texture) = cache.get_shaded(ctx, DllSource::Strategy, backdrop) {
+        let size = texture.size_vec2();
+        let starfield = crate::galaxy_backdrop_destination(layout, faction, size.x, size.y);
+        let origin = egui::pos2(starfield.x, starfield.y);
+        let extent = egui::vec2(starfield.width, starfield.height);
+        let uv = egui::Rect::from_min_max(
+            ((window_rect.min - origin) / extent).to_pos2(),
+            ((window_rect.max - origin) / extent).to_pos2(),
+        );
+        painter.image(texture.id(), window_rect, uv, egui::Color32::WHITE);
+    }
+    // The view's markers under the window, hung from their cell's top
+    // left as the view drew them (`FUN_0042cde0`), shaded with the
+    // rest of the copy.
+    for &(marker, [x, y]) in drawn_gid_markers {
+        if let Some(texture) = cache.get_shaded(ctx, DllSource::Strategy, marker) {
+            let size = texture.size_vec2() * layout.scale;
+            let corner =
+                egui::vec2(crate::GALAXY_MAP_OFFSET.0, crate::GALAXY_MAP_OFFSET.1) * layout.scale;
+            let rect = egui::Rect::from_min_size(egui::pos2(x, y) - corner, size);
+            if rect.intersects(window_rect) {
+                painter.image(
+                    texture.id(),
+                    rect,
+                    egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            }
+        }
+    }
+    // The view's caption (FUN_00425d00 draws it into the view's
+    // picture), shaded with the rest of the copy: A0
+    // sector-windows/02-second shows "Popular Support" (255, 0, 0)
+    // as (91, 67, 51) under both windows, the starfield palette's
+    // entry FUN_005fddd0's table maps red to.
+    if let Some(caption) = gid_caption {
+        let [red, green, blue, _] = caption.color.to_array();
+        if let Some([red, green, blue]) =
+            cache.shaded_palette_color(DllSource::Strategy, backdrop, [red, green, blue])
+        {
+            caption.paint(painter, egui::Color32::from_rgb(red, green, blue));
+        }
+    }
+}
+
 #[expect(
     clippy::too_many_lines,
     clippy::too_many_arguments,
@@ -687,54 +763,20 @@ fn draw_sector_window(
             // WM_PAINT (FUN_004593e0) copies the galaxy view's picture under
             // the window (its +0x45c at the window's +0x28, +0x2c) and maps
             // it through the shading table FUN_00459e30 built
-            // (FUN_005fddd0(LAB_004ac550), FUN_005fe050). port: the copy is
-            // the starfield alone, without the GID markers under the window.
-            ui.painter()
-                .rect_filled(window_rect, 0.0, egui::Color32::from_rgb(42, 42, 42));
-            if let Some(texture) = cache.get_shaded(ctx, DllSource::Strategy, backdrop) {
-                let size = texture.size_vec2();
-                let starfield = crate::galaxy_backdrop_destination(layout, faction, size.x, size.y);
-                let origin = egui::pos2(starfield.x, starfield.y);
-                let extent = egui::vec2(starfield.width, starfield.height);
-                let uv = egui::Rect::from_min_max(
-                    ((window_rect.min - origin) / extent).to_pos2(),
-                    ((window_rect.max - origin) / extent).to_pos2(),
-                );
-                ui.painter()
-                    .image(texture.id(), window_rect, uv, egui::Color32::WHITE);
-            }
-            // The view's markers under the window, hung from their cell's top
-            // left as the view drew them (`FUN_0042cde0`), shaded with the
-            // rest of the copy.
-            for &(marker, [x, y]) in drawn_gid_markers {
-                if let Some(texture) = cache.get_shaded(ctx, DllSource::Strategy, marker) {
-                    let size = texture.size_vec2() * layout.scale;
-                    let corner = egui::vec2(crate::GALAXY_MAP_OFFSET.0, crate::GALAXY_MAP_OFFSET.1)
-                        * layout.scale;
-                    let rect = egui::Rect::from_min_size(egui::pos2(x, y) - corner, size);
-                    if rect.intersects(window_rect) {
-                        ui.painter().image(
-                            texture.id(),
-                            rect,
-                            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-                            egui::Color32::WHITE,
-                        );
-                    }
-                }
-            }
-            // The view's caption (FUN_00425d00 draws it into the view's
-            // picture), shaded with the rest of the copy: A0
-            // sector-windows/02-second shows "Popular Support" (255, 0, 0)
-            // as (91, 67, 51) under both windows, the starfield palette's
-            // entry FUN_005fddd0's table maps red to.
-            if let Some(caption) = gid_caption {
-                let [red, green, blue, _] = caption.color.to_array();
-                if let Some([red, green, blue]) =
-                    cache.shaded_palette_color(DllSource::Strategy, backdrop, [red, green, blue])
-                {
-                    caption.paint(ui.painter(), egui::Color32::from_rgb(red, green, blue));
-                }
-            }
+            // (FUN_005fddd0(LAB_004ac550), FUN_005fe050).
+            paint_shaded_view(
+                ctx,
+                ui.painter(),
+                cache,
+                layout,
+                faction,
+                window_rect,
+                &ShadedView {
+                    backdrop,
+                    drawn_gid_markers,
+                    gid_caption,
+                },
+            );
             // FUN_00459e30 frames the window with FUN_00607740's tiles, as
             // the GID's menus are (A0 sector-windows/02-second: solid top
             // and bottom, sides on every second row).

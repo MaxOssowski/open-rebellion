@@ -190,6 +190,18 @@ How the legend window behaves (read 2026-10-22):
   A new game, on Display Off without `FUN_00426d00` having run, shows the
   button too (`new-alliance/t18.png`). A QMP click on the button showed
   its "Legend" tip but opened nothing visible.
+- Why (read 2026-11-13): `FUN_00427270` builds the button with
+  `FUN_00452ab0`, flags 3 at `+0x114`. Its window procedure
+  `Class_00659e38_vt14` (`FUN_00452b70`) returns 0 on `WM_LBUTTONDOWN`
+  (flags & 3) and on `WM_LBUTTONUP` (flags & 2, no drag) and posts
+  `WM_COMMAND` only on `WM_LBUTTONDBLCLK` (`0x203`, flags & 2, after a
+  hit test `FUN_005fca00`). So only a double click opens the legend: A0
+  2026-11-13-gid/A1, A2 (a press held, a click: nothing), A3 (a double
+  click opens it at (150, 120)). Bit 1 makes the button draggable: a move
+  with the button held starts a capture and an XOR rectangle, and the
+  release moves it, clamped to bounds from (55, 40) (`+0x11c..+0x128`).
+  The port pairs presses as Windows does (`GidLegendWindow::press_button`)
+  and does not port the drag (not seen in A0).
 - `FUN_00421c70` starts that position at (150, 120) and the display at
   `0x80`, Display Off. `FUN_00425d00` keeps the visible legend's
   position before destroying it.
@@ -197,6 +209,13 @@ How the legend window behaves (read 2026-10-22):
   180 wide (95, 135 or 155 high).
 - `FUN_00452240` paints the parent's pixels under the window first, so the
   galaxy shows through; then the layout and the frame.
+  - Read 2026-11-13: the copy is shaded (`FUN_005fe050` with the table
+    `FUN_00452630` builds, `FUN_005fddd0(LAB_004ac550)`, as the sector
+    window's), and the layout surface (`FUN_005fbea0`, zeroed, key index
+    0 by `FUN_005fd170`) is blitted keyed, so black art shows the galaxy
+    too. Each bitmap item, kind 1 or 2, is blitted keyed on its own first
+    pixel (`FUN_005fd0f0`). A0 2026-11-13-gid/A3, A5, A7, A9 agree pixel
+    for pixel; ported the same day.
 - `FUN_00607740` frames it from 2-pixel tiles, grey outside, white inside:
   top `0x2779`, bottom `0x277a`, left `0x277b`, right `0x2778`, corners
   `0x2775`, `0x2774`, `0x2777`, `0x2776` (top-left, top-right,

@@ -1935,6 +1935,13 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                     ..=resources::strategy::GID_UNEXPLORED
                 | 10159..=10167
                 | 10169..=10170
+                // The GID legends' marks, separator and side key: each
+                // layout item of kind 1 or 2 is blitted keyed
+                // (`FUN_00452630` -> `FUN_005fd0f0`), every one's first
+                // pixel pure blue. A0 2026-11-13-gid/A3, A5, A7, A9 show
+                // the shaded galaxy round them.
+                | 10180..=10182
+                | 10241..=10245
                 | resources::strategy::SECTOR_PLANET_FIRST
                     ..=resources::strategy::SECTOR_PLANET_LAST
                 | resources::strategy::SECTOR_PLANET_SPECIAL_FIRST
@@ -2588,6 +2595,20 @@ fn decode_rgba_image(
     } else if uses_black_key_transparency(source, resource_id) {
         for pixel in rgba.pixels_mut() {
             if pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 0 {
+                pixel[3] = 0;
+            }
+        }
+    }
+    if source == DllSource::Strategy && matches!(resource_id, 10_241 | 10_245) {
+        // The GID legend composes its layout on a zeroed surface
+        // (`FUN_00452630` -> `FUN_005fbea0`, keyed on index 0 by
+        // `FUN_005fd170`) and blits that keyed over the shaded galaxy
+        // (`FUN_00452240` -> `FUN_005fd0f0`), so its art's black (index 0)
+        // shows the galaxy too: A0 2026-11-13-gid/A3 and A5 show it
+        // through the Empire's and Neutral's keys 10241 and 10245. port:
+        // keyed on these two, the only legend art holding black.
+        for pixel in rgba.pixels_mut() {
+            if pixel.0[..3] == [0, 0, 0] {
                 pixel[3] = 0;
             }
         }
@@ -3547,6 +3568,62 @@ pub(crate) mod tests {
             assert_eq!(decoded.pixels[0].a(), 0);
             assert_eq!(decoded.pixels[1].a(), 255);
         }
+    }
+
+    #[test]
+    fn the_gid_legends_art_keys_out_its_blue_first_pixel() {
+        // FUN_00452630 blits each legend bitmap keyed (FUN_005fd0f0); A0
+        // 2026-11-13-gid/A3 shows the shaded galaxy round Loyal's 10181,
+        // Obedient's 10180, the separator 10182 and the side key 10241..
+        // 10245.
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        image.put_pixel(1, 0, image::Rgba([255, 255, 255, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        for resource_id in [10180, 10181, 10182, 10241, 10243, 10245] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            assert_eq!(
+                [decoded.pixels[0].a(), decoded.pixels[1].a()],
+                [0, 255],
+                "{resource_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_gid_legends_empire_and_neutral_keys_show_the_galaxy_through_their_black() {
+        // FUN_00452240 blits the legend's composed layout keyed on index 0
+        // (FUN_005fbea0's zeroed surface, FUN_005fd170): A0 2026-11-13-gid
+        // A3 shows the shaded galaxy through 10241's and 10245's black.
+        let mut image = image::RgbaImage::new(3, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        image.put_pixel(1, 0, image::Rgba([0, 0, 0, 255]));
+        image.put_pixel(2, 0, image::Rgba([3, 251, 251, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let alpha = |resource_id| {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            decoded
+                .pixels
+                .iter()
+                .map(|pixel| pixel.a())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(10241), [0, 0, 255]);
+        assert_eq!(alpha(10245), [0, 0, 255]);
+        // Galaxy marks keep their black.
+        assert_eq!(alpha(10158), [0, 255, 255]);
     }
 
     #[test]

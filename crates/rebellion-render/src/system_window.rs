@@ -1848,7 +1848,7 @@ fn logical_point(parent: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Pos2 {
 /// the default double-click time (`GetDoubleClickTime`, 500 ms) and inside
 /// the 4 by 4 rectangle around the first (`SM_CXDOUBLECLK`,
 /// `SM_CYDOUBLECLK`), in original pixels.
-fn is_double_click(seconds: f64, offset: egui::Vec2) -> bool {
+pub(crate) fn is_double_click(seconds: f64, offset: egui::Vec2) -> bool {
     seconds <= 0.5 && offset.x.abs() <= 2.0 && offset.y.abs() <= 2.0
 }
 

@@ -5503,6 +5503,18 @@ async fn main() {
                     // Register the cockpit background before panels so the
                     // opaque chrome never covers their content or artwork.
                     draw_cockpit_background(ctx, &cockpit_state, &mut bmp_cache);
+                    // The legend shows the galaxy view under it, shaded.
+                    cockpit_state.gid_legend.set_view(
+                        cockpit_state.gid_mode,
+                        &map_state.drawn_gid_markers,
+                        rebellion_render::gid_caption(
+                            galaxy_camera,
+                            cockpit_state.faction,
+                            cockpit_state.gid_mode,
+                            briefing_caption
+                                .and_then(rebellion_render::advisor_schedule::caption_text),
+                        ),
+                    );
                     // Paint the native primary controls before floating
                     // windows. Input resolves after those windows register.
                     if let Some(mode) = draw_cockpit_egui_layer(

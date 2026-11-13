@@ -116,6 +116,14 @@ pub struct GidLegendWindow {
     pub position: egui::Pos2,
     /// The position a drag started from.
     drag_anchor: Option<egui::Pos2>,
+    /// The last press on the legend button that began a double click: its
+    /// time and command-centre point ([`Self::press_button`]).
+    button_press: Option<(f64, egui::Pos2)>,
+    /// The galaxy view's starfield, markers and caption this frame, which
+    /// the window shows shaded under its art (`FUN_00452240`).
+    backdrop: u32,
+    drawn_gid_markers: Vec<(u32, [f32; 2])>,
+    gid_caption: Option<crate::GidCaption>,
 }
 
 impl Default for GidLegendWindow {
@@ -130,6 +138,10 @@ impl Default for GidLegendWindow {
             button_shown: true,
             position: egui::pos2(150.0, 120.0),
             drag_anchor: None,
+            button_press: None,
+            backdrop: crate::bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM,
+            drawn_gid_markers: Vec::new(),
+            gid_caption: None,
         }
     }
 }
@@ -158,6 +170,48 @@ impl GidLegendWindow {
         self.button_shown = true;
     }
 
+    /// Take what the galaxy view drew this frame for `mode`: its starfield
+    /// (`crate::gid_backdrop_resource`), its markers
+    /// (`GalaxyMapState::drawn_gid_markers`) and its caption
+    /// ([`crate::gid_caption`]). `FUN_00452240` copies the view's picture
+    /// under the window and shades it (`FUN_005fe050` with the table
+    /// `FUN_004522f0` builds, `FUN_005fddd0(LAB_004ac550)`), as the sector
+    /// window does.
+    pub fn set_view(
+        &mut self,
+        mode: GidMode,
+        drawn_gid_markers: &[(u32, [f32; 2])],
+        gid_caption: Option<crate::GidCaption>,
+    ) {
+        self.backdrop = crate::gid_backdrop_resource(mode);
+        self.drawn_gid_markers.clear();
+        self.drawn_gid_markers.extend_from_slice(drawn_gid_markers);
+        self.gid_caption = gid_caption;
+    }
+
+    /// A left press at `time` (seconds) and `point` (command-centre
+    /// pixels), on the legend button when `on_button`; returns whether it
+    /// sends the button's command (`0x134`). `FUN_00427270` builds the
+    /// button with `FUN_00452ab0`'s flags 3 (`+0x114`), and its window
+    /// procedure (`Class_00659e38_vt14`, `FUN_00452b70`) swallows
+    /// `WM_LBUTTONDOWN` and `WM_LBUTTONUP` and posts `WM_COMMAND` on
+    /// `WM_LBUTTONDBLCLK` (`0x203`) alone. Windows sends that for a second
+    /// press on the same window within the double-click time and rectangle
+    /// (`crate::system_window::is_double_click`); a press elsewhere, or the
+    /// double click itself, starts over. A0 2026-11-13-gid/A1, A2: a press
+    /// held and a click open nothing; A3: a double click opens the legend.
+    pub fn press_button(&mut self, time: f64, point: egui::Pos2, on_button: bool) -> bool {
+        if !on_button {
+            self.button_press = None;
+            return false;
+        }
+        let double = self.button_press.is_some_and(|(at, from)| {
+            crate::system_window::is_double_click(time - at, point - from)
+        });
+        self.button_press = (!double).then_some((time, point));
+        double
+    }
+
     /// The legend's close button: the legend hides, the button shows.
     pub fn close(&mut self) {
         self.open = false;
@@ -179,7 +233,8 @@ impl GidLegendWindow {
 
     /// The legend button (command `0x134`): the legend shows, the button
     /// hides. hyp: the original shows nothing until a legend exists
-    /// (`+0x124`); the port opens one, the button being on screen.
+    /// (`+0x124`); the port opens one, the button being on screen. Only a
+    /// double click sends the command ([`Self::press_button`]).
     pub fn restore(&mut self) {
         self.open = true;
         self.button_shown = false;
@@ -391,12 +446,45 @@ pub fn draw_gid_legend(
                         egui::Color32::WHITE,
                     );
                 }
-                response.clicked()
+                response.rect
             })
             .inner;
-        if clicked {
-            window.restore();
+        // Each left press anywhere, in order (two may come in one frame): on
+        // the button it may complete a double click.
+        let presses: Vec<(f64, egui::Pos2)> = ctx.input(|input| {
+            input
+                .events
+                .iter()
+                .filter_map(|event| match event {
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        ..
+                    } => Some((input.time, *pos)),
+                    _ => None,
+                })
+                .collect()
+        });
+        for (time, point) in presses {
+            let logical = egui::pos2(
+                (point.x - layout.canvas.x) / scale,
+                (point.y - layout.canvas.y) / scale,
+            );
+            let on_button = input_enabled
+                && clicked.contains(point)
+                && ctx.layer_id_at(point)
+                    == Some(egui::LayerId::new(
+                        egui::Order::Middle,
+                        egui::Id::new("gid_legend_button"),
+                    ));
+            if window.press_button(time, logical, on_button) {
+                window.restore();
+                break;
+            }
         }
+    } else {
+        window.button_press = None;
     }
 
     if !window.open {
@@ -436,6 +524,21 @@ pub fn draw_gid_legend(
                 egui::vec2(layout.canvas.width, layout.canvas.height),
             );
             let painter = ui.painter_at(screen.intersect(canvas));
+            // FUN_00452240: the galaxy view's picture under the window,
+            // shaded, then the layout and the frame.
+            crate::sector_window::paint_shaded_view(
+                ctx,
+                &painter,
+                cache,
+                layout,
+                faction,
+                screen,
+                &crate::sector_window::ShadedView {
+                    backdrop: window.backdrop,
+                    drawn_gid_markers: &window.drawn_gid_markers,
+                    gid_caption: window.gid_caption.as_ref(),
+                },
+            );
             // Each item at its offset from the window's top left.
             let at = |offset: egui::Vec2| to_screen(layout, window.position + offset);
             let mut image = |id: u32, offset: egui::Vec2, logical: Option<egui::Vec2>| {
@@ -822,5 +925,210 @@ mod tests {
         window.close();
         assert!(!contains(&window, GidMode::Refineries, 200.0, 200.0));
         assert!(contains(&window, GidMode::Refineries, 60.0, 60.0));
+    }
+
+    fn mines_legend() {
+        set_gid_legends(GidLegends::from([(
+            0x27ce,
+            GidLegend {
+                width: 180,
+                height: 95,
+                items: Vec::new(),
+            },
+        )]));
+    }
+
+    /// One frame of `draw_gid_legend` at `time` with `events`, its shapes.
+    fn legend_frame(
+        ctx: &egui::Context,
+        cache: &mut BmpCache,
+        window: &mut GidLegendWindow,
+        time: f64,
+        events: Vec<egui::Event>,
+    ) -> Vec<egui::epaint::ClippedShape> {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 1040.0),
+            )),
+            time: Some(time),
+            events,
+            ..Default::default()
+        };
+        ctx.run(input, |ctx| {
+            draw_gid_legend(
+                ctx,
+                cache,
+                layout(),
+                window,
+                GidMode::Mines,
+                CockpitFaction::Alliance,
+                true,
+            );
+        })
+        .shapes
+    }
+
+    #[test]
+    fn the_legend_button_opens_the_legend_only_on_a_double_click() {
+        // FUN_00427270 builds the button with FUN_00452ab0's flags 3;
+        // Class_00659e38_vt14 swallows WM_LBUTTONDOWN and WM_LBUTTONUP and
+        // posts command 0x134 on WM_LBUTTONDBLCLK. A0 2026-11-13-gid/A1,
+        // A2: a press held and a click open nothing; A3: a double click
+        // opens the legend.
+        mines_legend();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let mut window = GidLegendWindow::default();
+        window.show_display(GidMode::Mines);
+        // The button's middle, (70, 65), on the 2x canvas at (10, 20).
+        let point = egui::pos2(10.0 + 70.0 * 2.0, 20.0 + 65.0 * 2.0);
+        let button = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let mut time = 0.0;
+        let mut frame = |window: &mut GidLegendWindow, events| {
+            time += 0.05;
+            let _ = legend_frame(&ctx, &mut cache, window, time, events);
+        };
+        frame(&mut window, vec![egui::Event::PointerMoved(point)]);
+        // A press held a second, then released.
+        frame(&mut window, vec![button(true)]);
+        for _ in 0..20 {
+            frame(&mut window, Vec::new());
+        }
+        frame(&mut window, vec![button(false)]);
+        frame(&mut window, Vec::new());
+        assert!(
+            !window.open && window.button_shown,
+            "a held press opened the legend"
+        );
+        for _ in 0..20 {
+            frame(&mut window, Vec::new());
+        }
+        // A click.
+        frame(&mut window, vec![button(true)]);
+        frame(&mut window, vec![button(false)]);
+        assert!(
+            !window.open && window.button_shown,
+            "a click opened the legend"
+        );
+        for _ in 0..20 {
+            frame(&mut window, Vec::new());
+        }
+        // A click elsewhere, then at once a double click on the button: the
+        // first press elsewhere pairs with nothing (WM_LBUTTONDBLCLK needs
+        // both presses on the button's window).
+        let away = egui::pos2(10.0 + 300.0 * 2.0, 20.0 + 300.0 * 2.0);
+        let elsewhere = |pressed| egui::Event::PointerButton {
+            pos: away,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        frame(
+            &mut window,
+            vec![egui::Event::PointerMoved(away), elsewhere(true)],
+        );
+        frame(&mut window, vec![elsewhere(false)]);
+        frame(&mut window, vec![egui::Event::PointerMoved(point)]);
+        frame(&mut window, vec![button(true)]);
+        assert!(!window.open, "a press elsewhere paired with the button's");
+        frame(&mut window, vec![button(false)]);
+        assert!(
+            !window.open,
+            "a click elsewhere and one on the button opened the legend"
+        );
+        // The second press of the double click opens it.
+        frame(&mut window, vec![button(true)]);
+        assert!(
+            window.open && !window.button_shown,
+            "a double click left the legend shut"
+        );
+        frame(&mut window, vec![button(false)]);
+    }
+
+    #[test]
+    fn the_legend_takes_the_views_starfield_markers_and_caption() {
+        // FUN_00452240 copies what the galaxy view drew: its starfield for
+        // the display (902 with the display off, 903 otherwise), its marks.
+        let mut window = GidLegendWindow::default();
+        window.set_view(GidMode::DisplayOff, &[(10146, [1.0, 2.0])], None);
+        assert_eq!(window.backdrop, 902);
+        assert_eq!(window.drawn_gid_markers, [(10146, [1.0, 2.0])]);
+        window.set_view(GidMode::Mines, &[], None);
+        assert_eq!((window.backdrop, window.drawn_gid_markers.len()), (903, 0));
+    }
+
+    #[test]
+    fn two_presses_on_the_button_pair_within_the_double_click_time_and_rectangle() {
+        // WM_LBUTTONDBLCLK: the second press within GetDoubleClickTime
+        // (500 ms) and 2 pixels; the pair starts over afterwards.
+        let mut window = GidLegendWindow::default();
+        let at = egui::pos2(70.0, 65.0);
+        assert!(!window.press_button(0.0, at, true));
+        assert!(window.press_button(0.4, at + egui::vec2(2.0, -2.0), true));
+        // A third press begins a new pair.
+        assert!(!window.press_button(0.5, at, true));
+        assert!(!window.press_button(1.1, at, true));
+        assert!(!window.press_button(1.2, at + egui::vec2(3.0, 0.0), true));
+        // A press off the button breaks the pair.
+        assert!(!window.press_button(1.3, at, false));
+        assert!(!window.press_button(1.4, at, true));
+        assert!(window.press_button(1.5, at, true));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_legend_shows_the_galaxy_view_shaded_under_it() {
+        // FUN_00452240 copies the galaxy view's picture under the window
+        // (FUN_005fcc30) and maps it through FUN_005fddd0(LAB_004ac550)'s
+        // table (FUN_005fe050), as the sector window does. A0
+        // 2026-11-13-gid/A3: the starfield under the legend shaded, (83,
+        // 84, 128) as (69, 67, 68).
+        mines_legend();
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-legend-shade-{}",
+            std::process::id()
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("903.bmp"),
+            crate::bmp_cache::tests::indexed_bmp(&[[83, 84, 128], [69, 67, 68]]),
+        )
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        cache.set_base_path(&base);
+        let shaded = cache
+            .get_shaded(&ctx, DllSource::Strategy, 903)
+            .map(egui::TextureHandle::id)
+            .unwrap();
+        let mut window = GidLegendWindow::default();
+        window.show_display(GidMode::Mines);
+        window.set_view(GidMode::Mines, &[], None);
+        window.restore();
+        // A new area shows from its second frame.
+        let _ = legend_frame(&ctx, &mut cache, &mut window, 0.05, Vec::new());
+        let shapes = legend_frame(&ctx, &mut cache, &mut window, 0.1, Vec::new());
+        std::fs::remove_dir_all(base).unwrap();
+        // The shaded starfield fills the legend's rectangle, (150, 120)
+        // and 180 by 95, doubled on the canvas at (10, 20).
+        let legend = egui::Rect::from_min_size(egui::pos2(310.0, 260.0), egui::vec2(360.0, 190.0));
+        let painted = shapes.iter().find_map(|clipped| match &clipped.shape {
+            egui::Shape::Mesh(mesh) if mesh.texture_id == shaded => Some(
+                mesh.vertices
+                    .iter()
+                    .fold(egui::Rect::NOTHING, |rect, vertex| {
+                        rect.union(egui::Rect::from_min_max(vertex.pos, vertex.pos))
+                    }),
+            ),
+            _ => None,
+        });
+        assert_eq!(painted, Some(legend));
     }
 }
