@@ -85,6 +85,12 @@ const CORUSCANT_CHASE_SCENARIO: u32 = 43;
 /// plays once the battle ends, over the open Battle Summary (the queue
 /// drains while the clock is not held: `FUN_00488b90`, `FUN_0041dc10`).
 const BATTLE_SUMMARY_STORY_MOVIE_SCENARIO: u32 = 44;
+/// A0 TAC-01-C007 and TAC-01-C009's battle (manifest
+/// `new-game-empire-small-2026-10-24-yavin`, day 234, Show Planet off):
+/// Imperial Fleet 1, an Imperial Star Destroyer with six TIE Fighter
+/// squadrons and a Victory Destroyer with one, against the Alliance's
+/// Corellian Corvette Swift at Yavin.
+const YAVIN_MULTI_SHIP_SCENARIO: u32 = 45;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -152,6 +158,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub summary_story_movie: bool,
     pub umgul_backdrop: bool,
     pub coruscant_chase: bool,
+    pub yavin_multi_ship: bool,
     pub subsystem_field_command_presentation: bool,
     pub live_subsystem_damage_presentation: bool,
     pub subsystem_repair_mobility_presentation: bool,
@@ -389,7 +396,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | BATTLE_LAST_SHIP_LOST_SCENARIO
         | UMGUL_BACKDROP_SCENARIO
         | CORUSCANT_CHASE_SCENARIO
-        | BATTLE_SUMMARY_STORY_MOVIE_SCENARIO => (
+        | BATTLE_SUMMARY_STORY_MOVIE_SCENARIO
+        | YAVIN_MULTI_SHIP_SCENARIO => (
             false,
             true,
             false,
@@ -447,6 +455,7 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         summary_story_movie: scenario == BATTLE_SUMMARY_STORY_MOVIE_SCENARIO,
         umgul_backdrop: scenario == UMGUL_BACKDROP_SCENARIO,
         coruscant_chase: scenario == CORUSCANT_CHASE_SCENARIO,
+        yavin_multi_ship: scenario == YAVIN_MULTI_SHIP_SCENARIO,
         subsystem_field_command_presentation: scenario
             == SUBSYSTEM_FIELD_COMMAND_PRESENTATION_SCENARIO,
         live_subsystem_damage_presentation: scenario == LIVE_SUBSYSTEM_DAMAGE_PRESENTATION_SCENARIO,
@@ -527,6 +536,16 @@ pub(crate) fn apply(
             .find(|(_, system)| !system.is_destroyed && system.name == "Coruscant")
             .map(|(key, _)| key)
             .ok_or("fixture system Coruscant is missing")?
+    } else if request.yavin_multi_ship {
+        // A0 TAC-01-C007 was taken at Yavin. Its own fleets stay out.
+        let key = world
+            .systems
+            .iter()
+            .find(|(_, system)| !system.is_destroyed && system.name == "Yavin")
+            .map(|(key, _)| key)
+            .ok_or("fixture system Yavin is missing")?;
+        world.systems[key].fleets.clear();
+        key
     } else if request.umgul_backdrop {
         // A0 TAC-01-C008 was taken at Umgul: the same system gives the
         // same planet decal. Its own fleets stay out.
@@ -710,6 +729,8 @@ pub(crate) fn apply(
     };
     let (attacker, defender) = if request.coruscant_chase {
         coruscant_chase_fleets(world, system)?
+    } else if request.yavin_multi_ship {
+        yavin_multi_ship_fleets(world, system)?
     } else {
         (
             world.fleets.insert(make_fleet(
@@ -1017,8 +1038,9 @@ pub(crate) fn apply(
             caption: "The Rebel Alliance has sabotaged the Death Star at Endor.".to_owned(),
         });
     }
+    // A0 TAC-01-C007's battle ran with Show Planet off.
     #[cfg(feature = "interface-test-fixtures")]
-    if request.empty_space_presentation {
+    if request.empty_space_presentation || request.yavin_multi_ship {
         tactical.configure_empty_space_fixture();
     }
     #[cfg(feature = "interface-test-fixtures")]
@@ -1085,6 +1107,7 @@ struct FixtureRecord<'a> {
     battle_last_ship_lost: bool,
     umgul_backdrop: bool,
     coruscant_chase: bool,
+    yavin_multi_ship: bool,
     battle_alert_open: bool,
     tactical_music_mdata_id: Option<u32>,
     tactical_weapon_audio_wave_first: u32,
@@ -1321,6 +1344,76 @@ fn coruscant_chase_fleets(
         fighters,
         characters: vec![],
         is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    Ok((attacker, defender))
+}
+
+/// A0 TAC-01-C007's sides, read from the Empire's save four days before the
+/// battle was sent (VM `saves-orig/SAVEGAME.004`, day 131, read-only):
+/// Imperial Fleet 1 holds Imperial Star Destroyer 1 (CAPSHPSD 133) with six
+/// TIE Fighter squadrons (FIGHTSD 5) and three regiments, and Victory
+/// Destroyer 2 (CAPSHPSD 132) with one squadron and one regiment. A0
+/// TAC-03-C009/C015 show the two hulls in Task Force # 1 and one Imperial
+/// fighter group lit. The Alliance's one hull in A0 TAC-01-C007 is Swift,
+/// the first name of the Alliance's small-hull list (TEXTSTRA 0x5200,
+/// `FUN_004d2b30`), a Corellian Corvette (CAPSHPSD 69) in the same save.
+/// port: the regiments stay out; they take no part in the placement.
+fn yavin_multi_ship_fleets(
+    world: &mut GameWorld,
+    system: SystemKey,
+) -> Result<(rebellion_core::ids::FleetKey, rebellion_core::ids::FleetKey), String> {
+    let class = |world: &GameWorld, dat: u32| {
+        world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, class)| class.dat_id.index() == dat)
+            .map(|(key, class)| (key, i32::try_from(class.hull).unwrap_or(i32::MAX)))
+            .ok_or(format!("no CAPSHPSD {dat} class"))
+    };
+    let corvette = class(world, 69)?;
+    let star_destroyer = class(world, 133)?;
+    let victory = class(world, 132)?;
+    let tie = world
+        .fighter_classes
+        .iter()
+        .find(|(_, class)| class.dat_id.index() == 5)
+        .map(|(key, _)| key)
+        .ok_or("no FIGHTSD 5 class")?;
+    let mut numbered = |(class, hull): (CapitalShipKey, i32), is_alliance: bool| {
+        world.last_ship_id += 1;
+        let mut ship = ShipInstance::new(class, hull, is_alliance);
+        ship.id = world.last_ship_id;
+        ship
+    };
+    let swift = numbered(corvette, true);
+    let first = numbered(star_destroyer, false);
+    let second = numbered(victory, false);
+    // Each squadron rides its carrier, so it waits in its hangar
+    // (`FUN_005964c0`: no hyperdrive).
+    let fighters = [(6, first.id), (1, second.id)]
+        .map(|(count, carrier)| FighterEntry {
+            class: tie,
+            count,
+            carrier: Some(carrier),
+        })
+        .to_vec();
+    let attacker = world.fleets.insert(Fleet {
+        location: system,
+        capital_ships: vec![swift],
+        fighters: Vec::new(),
+        characters: vec![],
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    let defender = world.fleets.insert(Fleet {
+        location: system,
+        capital_ships: vec![first, second],
+        fighters,
+        characters: vec![],
+        is_alliance: false,
         has_death_star: false,
         special_forces: Vec::new(),
     });
@@ -1655,6 +1748,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         battle_last_ship_lost: request.battle_last_ship_lost,
         umgul_backdrop: request.umgul_backdrop,
         coruscant_chase: request.coruscant_chase,
+        yavin_multi_ship: request.yavin_multi_ship,
         battle_alert_open: tactical.battle_alert_open(),
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1747,6 +1841,7 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         battle_last_ship_lost: request.battle_last_ship_lost,
         umgul_backdrop: request.umgul_backdrop,
         coruscant_chase: request.coruscant_chase,
+        yavin_multi_ship: request.yavin_multi_ship,
         battle_alert_open: false,
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1896,9 +1991,71 @@ mod tests {
         assert!(decode(0x1012c).unwrap().battle_last_ship_lost);
         assert!(decode(0x1012c).unwrap().summary_story_movie);
         assert!(!decode(0x10129).unwrap().summary_story_movie);
-        assert!(decode(0x1012d).is_none());
+        assert!(decode(0x1012d).unwrap().yavin_multi_ship);
+        assert!(!decode(0x1012c).unwrap().yavin_multi_ship);
+        assert!(decode(0x1012e).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
+    }
+
+    #[test]
+    fn code_45_enters_only_the_yavin_multi_ship_battle_on_either_side() {
+        for (code, faction) in [
+            (0x1012d, CockpitFaction::Alliance),
+            (0x1022d, CockpitFaction::Empire),
+        ] {
+            let request = decode(code).unwrap();
+            assert_eq!(request.faction, faction);
+            assert!(request.yavin_multi_ship);
+            assert!(request.production_participants);
+            assert!(!request.coruscant_chase && !request.hull_scale_presentation);
+            assert!(!request.empty_space_presentation);
+        }
+    }
+
+    // A0 TAC-01-C007 / TAC-01-C009 (manifest
+    // new-game-empire-small-2026-10-24-yavin; sides from the VM's
+    // SAVEGAME.004): the TIE squadrons wait in their carriers' hangars
+    // (FUN_005964c0, FUN_005b84a0), so FUN_005ab650 counts two Imperial
+    // hulls against one: extent 106. The Star Destroyer leads Task Force 1
+    // at x 0 and FUN_005cbbc0 moves the Victory onto its Stand Off place,
+    // 12 on the +x side (FUN_005ec400, FUN_005ea030), where A0's frame
+    // shows it.
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_a0_yavin_battle_keeps_its_ties_aboard_and_the_victory_twelve_beside_the_star_destroyer(
+    ) {
+        use rebellion_core::tactical::{BattleSession, TacticalWorldPosition};
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let mut world = rebellion_data::load_game_data(&data).expect("load original game data");
+        let system = world
+            .systems
+            .iter()
+            .find(|(_, system)| system.name == "Yavin")
+            .map(|(key, _)| key)
+            .unwrap();
+        world.systems[system].fleets.clear();
+        let (attacker, defender) = yavin_multi_ship_fleets(&mut world, system).unwrap();
+        world.systems[system].fleets.extend([attacker, defender]);
+        let session = BattleSession::new(&world, system, attacker, defender, false, 0, 1);
+        assert_eq!(session.source_layout.battle_extent, 106.0);
+        let names: Vec<_> = session
+            .ships
+            .iter()
+            .map(|ship| ship.identity.class_dat_id.index())
+            .collect();
+        assert_eq!(names, [69, 133, 132]);
+        let at = |x: f32, z: f32| TacticalWorldPosition { x, y: 0.0, z };
+        assert_eq!(session.ships[0].source_position, at(0.0, -53.0));
+        assert_eq!(session.ships[1].source_position, at(0.0, 53.0));
+        assert_eq!(session.ships[2].source_position, at(12.0, 53.0));
+        assert_eq!((session.ships[1].task_force, session.ships[2].task_force), (0, 0));
+        assert_eq!(session.fighters.len(), 7);
+        assert!(session.fighters.iter().all(|fighter| fighter.in_hangar && !fighter.alive));
+        assert_eq!((session.ships[1].hangar.len(), session.ships[2].hangar.len()), (6, 1));
+        // FUN_005ae460: seven squadrons of one class make one group.
+        let group = session.fighters[0].fighter_group;
+        assert!(session.fighters.iter().all(|fighter| fighter.fighter_group == group));
     }
 
     #[test]
