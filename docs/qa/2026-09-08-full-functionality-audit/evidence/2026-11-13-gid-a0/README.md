@@ -40,8 +40,8 @@ b4cdea9ed4cf399226bf171664ad98a8abd6537b3509ef52c18405d1eb84cdad  E3-specforces-
   `WM_LBUTTONDOWN` and `WM_LBUTTONUP` while bit 2 is set and posts
   `WM_COMMAND` only on `WM_LBUTTONDBLCLK` (`0x203`). Bit 1 lets the button
   itself be dragged (XOR rectangle, then `MoveWindow` clamped to bounds
-  starting at (55, 40)); A0 has no capture of that and the port does not
-  port it.
+  starting at (55, 40)); A0 has no capture of that; the port ports it from
+  the trace (c5b64a21, white outline instead of XOR).
 - `FUN_00452630` composes the layout on a surface `FUN_005fbea0` makes zeroed
   (key: index 0, `FUN_005fd170`), blitting each bitmap item, kind 1 or 2,
   keyed (`FUN_005fd0f0`). It builds the shading table
@@ -166,7 +166,8 @@ then caught by the added `set_view` test. Not mutated: the drawing code
 
 ## Open
 
-- The legend button's own drag (`FUN_00452ab0` flags bit 1) is not ported;
-  no A0 shows it.
+- The legend button's own drag (`FUN_00452ab0` flags bit 1) is ported from
+  the trace (c5b64a21); no A0 shows it, so the outline's look (white, not
+  XOR) is unverified.
 - The SpecForces view's prefix choice among several rows has no A0 (the
   game had one Alliance row).
