@@ -122,9 +122,10 @@ window's selection (slot `+0x58`) and moves it against the drop window
   `FUN_004a6980` lights `0x67..0x69` from the selected items' `+0x54`
   flags, or'ed. Ported as `selection_items`, `selection_tab_enabled`,
   `selection_counts` and the press rule in `draw_fleet_windows`; a drop or
-  menu from a selected entry takes every selected entry. port: a left
-  click applies the press and its release together (the original selects
-  on the press); ships of several fleets drop as one order per fleet.
+  menu from a selected entry takes every selected entry; a left or right
+  press applies at once and a left release applies a held click, as the
+  original's (A0 2026-11-13-drag/25). port: ships of several fleets drop as
+  one order per fleet.
 - port: a Defenses window release inside its own list is no drop (there
   `+0x70` gives only its own system).
 

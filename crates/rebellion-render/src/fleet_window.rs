@@ -2805,13 +2805,15 @@ struct WindowDrawResult {
     left_scroll: Option<(f32, Option<crate::list_scroll_bar::Hold>)>,
 }
 
-/// A press on a left list entry: the entry, the list point, the keys held,
-/// whether the release came with it, and the list's cells.
+/// A press or release on a left list entry: the entry, the list point, the
+/// keys held, whether the press and the release came this frame, and the
+/// list's cells.
 #[derive(Debug, Clone, PartialEq)]
 struct LeftPress {
     entry: FleetWindowEntry,
     point: (f32, f32),
     modifiers: Modifiers,
+    press: bool,
     release: bool,
     cells: Vec<(FleetWindowEntry, (f32, f32), (f32, f32))>,
 }
@@ -3005,7 +3007,9 @@ pub fn draw_fleet_windows(
             if let Some(press) = result.left_press {
                 let before = open.selected.clone();
                 let hit = Some(press.entry);
-                open.selected.press(hit, press.point, press.modifiers, &press.cells);
+                if press.press {
+                    open.selected.press(hit, press.point, press.modifiers, &press.cells);
+                }
                 if press.release {
                     open.selected.release(hit, press.point, press.modifiers, &press.cells);
                 }
@@ -3532,13 +3536,14 @@ fn draw_fleet_window(
                 );
                 // A press on an entry, in list pixels (FUN_00609d80), with
                 // the list's cells for a Shift range (FUN_00609590).
-                let left_press = |point: egui::Pos2, release| LeftPress {
+                let left_press = |point: egui::Pos2, press, release| LeftPress {
                     entry: *entry,
                     point: (
                         (point.x - local.min.x) / scale - LEFT_LIST.0,
                         (point.y - local.min.y) / scale - LEFT_LIST.1 + left_scroll,
                     ),
                     modifiers: crate::drag_list::modifiers(ui.ctx()),
+                    press,
                     release,
                     cells: entries
                         .iter()
@@ -3552,12 +3557,32 @@ fn draw_fleet_window(
                         })
                         .collect(),
                 };
-                if exact_clicked(&response, entry_area) {
+                // A left or right press applies at once (FUN_006083c0, case
+                // 0x201/0x204: an unselected item is selected alone, with
+                // Ctrl toggled, with Shift added; A0 2026-11-13-drag/25
+                // frames the pressed row while the button is held); the
+                // left release applies a click a press on a selected item
+                // held (flag 0x10).
+                let pressed_at = ui.ctx().input(|input| {
+                    (input.pointer.button_pressed(egui::PointerButton::Primary)
+                        || input.pointer.button_pressed(egui::PointerButton::Secondary))
+                    .then(|| input.pointer.press_origin())
+                    .flatten()
+                    .filter(|point| rect_contains(entry_area, *point))
+                });
+                let released = exact_clicked(&response, entry_area);
+                let pressed = pressed_at.filter(|_| {
+                    response.is_pointer_button_down_on() || released || response.secondary_clicked()
+                });
+                if let Some(point) = pressed {
+                    result.left_press = Some(left_press(point, true, released));
+                    result.focus = true;
+                } else if released {
                     let point = response
                         .interact_pointer_pos()
                         .or_else(|| click.map(|(point, _)| point))
                         .unwrap_or_else(|| entry_area.center());
-                    result.left_press = Some(left_press(point, true));
+                    result.left_press = Some(left_press(point, false, true));
                     result.focus = true;
                 }
                 if response.clicked() && double {
@@ -3580,7 +3605,7 @@ fn draw_fleet_window(
                     // A0 fleet3/02, 08: the right click selects the entry
                     // it opens the menu for (Medium Transport 1, Fleet 7);
                     // on a selected entry it keeps the selection (0x204).
-                    result.left_press = Some(left_press(point, false));
+                    // The press above applied it.
                     result.object_menu = Some((object.menu_object(), point, None));
                 }
                 // A drag out of either list posts 0x29a (FUN_006083c0).
@@ -6569,6 +6594,29 @@ pub(crate) mod tests {
         assert_eq!(
             (state.windows[0].selected.single(), state.windows[0].left_scroll),
             (Some(FleetWindowEntry::Fleet(fleets[6])), 89.0)
+        );
+    }
+
+    #[test]
+    fn a_left_list_press_selects_its_entry_before_the_release() {
+        // FUN_006083c0, case 0x201: a press on an unselected item clears the
+        // list and sets its bit 0 at once (FUN_006094b0); A0
+        // 2026-11-13-drag/25 frames the pressed row while the button is
+        // still held.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleets: Vec<_> = (0..2)
+            .map(|_| add_fleet(&mut world, system, true, 0))
+            .collect();
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        let point = at(40.0, 29.0 + 50.0 + 25.0);
+        let mut frames = hover(point);
+        frames.push(vec![press(point, true)]);
+        frames.push(vec![]);
+        run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        assert_eq!(
+            state.windows[0].selected.items(),
+            [FleetWindowEntry::Fleet(fleets[1])]
         );
     }
 
