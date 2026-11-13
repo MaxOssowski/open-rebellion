@@ -72,8 +72,8 @@ const scenarios = [
   // (TEXTSTRA 11285; MISSNSD mask 0x104).
   { name: "recon", code: 63, page: "mission", kinds: ["Reconnaissance"], icon: { alliance: 3093, empire: 7189 } },
   // Scenario::ResearchTargeting (63): a ship designer on its own system
-  // with a shipyard: the box lists the last record first (box_order), Ship
-  // Design Research (TEXTSTRA 11296) above Espionage.
+  // with a shipyard: the box orders by FUN_0046cab0's key (box_order), Ship
+  // Design Research (TEXTSTRA 11296, key 4) above Espionage (9).
   { name: "research", code: 64, page: "mission", kinds: ["ShipDesignResearch", "Espionage"],
     icon: { alliance: 3104, empire: 7200 } },
   // Scenario::TroopResearchTargeting (100): a troop trainer on its own
@@ -83,6 +83,13 @@ const scenarios = [
   // 3106 (TEXTSTRA 11298) at the window's (70, 86), 0 of 8,320 pixels.
   { name: "troop-research", code: 103, page: "mission", kinds: ["TroopTrainingResearch", "Espionage"],
     icon: { alliance: 3106, empire: 7202 } },
+  // Scenario::ResearchDiplomacyTargeting (115): as "research" with the
+  // target below full support. A0 2026-11-13-mission-dialogs/40..43 (Wedge
+  // on his own Drall, a shipyard): Ship Design Research, Diplomacy,
+  // Espionage, keys 4, 7, 9 (FUN_0046cab0), shown on the first.
+  { name: "research-diplomacy", code: 116, page: "mission",
+    kinds: ["ShipDesignResearch", "Diplomacy", "Espionage"],
+    icon: { alliance: 3104, empire: 7200 } },
 ];
 // REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
 // at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
@@ -536,7 +543,7 @@ async function inspect(server, source, faction, scenario, executable) {
     const { origin } = faction;
     const comparisons = [];
     let targeting = null;
-    if (["targeting", "sabotage", "enemy-character", "uprising", "rescue", "death-star", "recon", "research", "troop-research"].includes(scenario.name)) targeting = await target(page, faction, directory);
+    if (["targeting", "sabotage", "enemy-character", "uprising", "rescue", "death-star", "recon", "research", "troop-research", "research-diplomacy"].includes(scenario.name)) targeting = await target(page, faction, directory);
     const opened = await stableDialog(page, origin, directory, "opened");
     comparisons.push(compare(opened, composeExpected(source, faction, scenario.page), scenario.page, "opened", directory));
     if (scenario.name === "mission") {

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 115;
+const SCENARIO_COUNT: u8 = 116;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -413,6 +413,11 @@ pub enum Scenario {
     /// Regiments page, as A0 2026-11-13-drag/30..33 select and drag
     /// Averam's two. The quadrant gate's second system is Coruscant.
     CoruscantRegiments = 114,
+    /// As `ResearchTargeting` with the target below full support, so
+    /// Diplomacy lists too: Ship Design Research, Diplomacy and Espionage,
+    /// in `FUN_0046cab0`'s key order (A0 2026-11-13-mission-dialogs/40..43:
+    /// Wedge Antilles on his own Drall, which has a shipyard).
+    ResearchDiplomacyTargeting = 115,
 }
 
 impl Scenario {
@@ -533,6 +538,7 @@ impl Scenario {
             112 => Self::GidA0,
             113 => Self::SpecForcesYavin,
             114 => Self::CoruscantRegiments,
+            115 => Self::ResearchDiplomacyTargeting,
             _ => return None,
         })
     }
@@ -593,6 +599,7 @@ impl Scenario {
             || self == Self::SquadronEnroute
             || self == Self::ResearchTargeting
             || self == Self::TroopResearchTargeting
+            || self == Self::ResearchDiplomacyTargeting
             || self == Self::UprisingTargeting
             || self == Self::BatteryStatus
             || self == Self::PersonnelStates
@@ -840,6 +847,7 @@ pub fn apply(
                 | Scenario::ForceStatus
                 | Scenario::ResearchTargeting
                 | Scenario::TroopResearchTargeting
+                | Scenario::ResearchDiplomacyTargeting
                 | Scenario::UprisingTargeting
                 | Scenario::CharacterCommand
                 | Scenario::CharacterMove
@@ -1402,15 +1410,23 @@ pub fn apply(
     }
     if matches!(
         request.scenario,
-        Scenario::ResearchTargeting | Scenario::TroopResearchTargeting
+        Scenario::ResearchTargeting
+            | Scenario::TroopResearchTargeting
+            | Scenario::ResearchDiplomacyTargeting
     ) {
         // FUN_0056c510: an own-side target with a working yard of the tree's
         // area, and a member with the tree's skill. Full support ends
         // Diplomacy (FUN_00573ee0) and the empty pool Recruitment
-        // (FUN_0056b370), so the dialog lists research alone.
+        // (FUN_0056b370), so the dialog lists research alone; the Diplomacy
+        // case keeps the side's support below full.
+        let full = if request.scenario == Scenario::ResearchDiplomacyTargeting {
+            0.72
+        } else {
+            1.0
+        };
         let target = &mut world.systems[secondary];
         target.control = ControlKind::Controlled(player_control);
-        target.popularity_alliance = if player_is_alliance { 1.0 } else { 0.0 };
+        target.popularity_alliance = if player_is_alliance { full } else { 1.0 - full };
         target.popularity_empire = 1.0 - target.popularity_alliance;
         // The troop case holds one training facility (MANFACSD family 0x29,
         // area_family) as A0's Averam does, and no shipyard.
@@ -1445,6 +1461,7 @@ pub fn apply(
             | Scenario::SquadronEnroute
             | Scenario::ResearchTargeting
             | Scenario::TroopResearchTargeting
+            | Scenario::ResearchDiplomacyTargeting
             | Scenario::UprisingTargeting
             | Scenario::CharacterCommand
             | Scenario::CharacterMove
@@ -3138,6 +3155,7 @@ pub fn emit_mission_flow(
                 | Scenario::ReconTargeting
                 | Scenario::ResearchTargeting
                 | Scenario::TroopResearchTargeting
+                | Scenario::ResearchDiplomacyTargeting
                 | Scenario::UprisingTargeting
         )
     {
@@ -8394,6 +8412,81 @@ mod tests {
     }
 
     #[test]
+    fn the_research_diplomacy_scenario_boxes_research_then_diplomacy_then_espionage() {
+        // A0 2026-11-13-mission-dialogs/40..43: Wedge Antilles on his own
+        // Drall (a shipyard, support below full) lists Ship Design Research,
+        // Diplomacy, Espionage: FUN_0046cab0's keys 4, 7, 9, not MISSNSD's
+        // 0x10, 0x13, 0x20 order.
+        for (cockpit_side, side, faction) in [
+            (
+                CockpitFaction::Alliance,
+                Faction::Alliance,
+                MissionFaction::Alliance,
+            ),
+            (
+                CockpitFaction::Empire,
+                Faction::Empire,
+                MissionFaction::Empire,
+            ),
+        ] {
+            let mut world = diplomacy_world(side);
+            let here = world.systems.keys().next().unwrap();
+            let mut second = world.systems[here].clone();
+            second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+            let target = world.systems.insert(second);
+            let template = world.mission_records[0];
+            world.mission_records = [0x5100_0010, 0x5200_0013, 0x5300_0020]
+                .into_iter()
+                .map(|id| rebellion_core::world::MissionRecord {
+                    dat_id: rebellion_core::ids::DatId::new(id),
+                    ..template
+                })
+                .collect();
+            let mut missions = MissionState::default();
+            apply(
+                request(Scenario::ResearchDiplomacyTargeting, cockpit_side),
+                &mut world,
+                &mut GameMode::MainMenu,
+                &mut MissionFaction::Alliance,
+                &mut CockpitState::new(cockpit_side),
+                &mut GalaxyMapState::default(),
+                &mut MovementState::default(),
+                &mut ManufacturingState::default(),
+                &mut EconomyState::default(),
+                &mut missions,
+                &mut BlockadeState::default(),
+                &mut SectorWindowState::default(),
+                &mut SystemWindowState::default(),
+                &mut FleetWindowState::default(),
+                &mut DefensesWindowState::default(),
+                &mut TroopTransportState::default(),
+                &mut rebellion_core::uprising::UprisingState::new(),
+            );
+            let agent = MissionMember::Character(world.characters.keys().next().unwrap());
+
+            let kinds = available_kinds(
+                &world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                faction,
+                &[agent],
+                &[],
+                target,
+            );
+
+            assert_eq!(
+                rebellion_render::mission_dialog::box_order(kinds),
+                [
+                    MissionKind::ShipDesignResearch,
+                    MissionKind::Diplomacy,
+                    MissionKind::Espionage
+                ],
+                "{side:?}"
+            );
+        }
+    }
+
+    #[test]
     fn the_targeting_scenario_frees_the_agent_and_shows_the_target_planet_clear_of_its_window() {
         let mut world = diplomacy_world(Faction::Alliance);
         let sector = world.sectors.insert(rebellion_core::world::Sector {
@@ -12038,6 +12131,7 @@ mod tests {
                 Scenario::SquadronEnroute,
                 Scenario::FleetArrivals,
                 Scenario::FleetJoinEnroute,
+                Scenario::ResearchDiplomacyTargeting,
             ]
         );
     }
