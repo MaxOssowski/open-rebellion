@@ -26,12 +26,12 @@ use crate::ids::{FleetKey, SystemKey};
 use crate::world::GameWorld;
 
 use crate::tactical::{
-    apply_original_capital_damage, original_engine_mode_bonus, original_tactical_damage_rolls,
-    original_tactical_mobility, BattlePhase, BattleSession, CombatWinner, FleetBattle,
-    TacticalWeaponArc, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX, ORIGINAL_CAPITAL_WEAPON_STRENGTH,
-    ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE, ORIGINAL_FIGHTER_TORPEDO_STRENGTH,
-    ORIGINAL_ION_VS_FIGHTER, ORIGINAL_LASER_VS_CAPITAL, ORIGINAL_LASER_VS_FIGHTER,
-    ORIGINAL_TURBOLASER_VS_FIGHTER,
+    apply_original_capital_damage, original_capital_maneuverability,
+    original_tactical_damage_rolls, original_tactical_mobility, BattlePhase, BattleSession,
+    CombatWinner, FleetBattle, TacticalWeaponArc, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX,
+    ORIGINAL_CAPITAL_WEAPON_STRENGTH, ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
+    ORIGINAL_FIGHTER_TORPEDO_STRENGTH, ORIGINAL_ION_VS_FIGHTER, ORIGINAL_LASER_VS_CAPITAL,
+    ORIGINAL_LASER_VS_FIGHTER, ORIGINAL_TURBOLASER_VS_FIGHTER,
 };
 
 /// `DAT_0066badc`: the time `FUN_0059a530` passes to each abstract step.
@@ -295,16 +295,7 @@ fn shield_recharge(session: &BattleSession, unit: AbstractUnit) -> f32 {
 fn maneuverability(session: &BattleSession, unit: AbstractUnit) -> f32 {
     match unit {
         AbstractUnit::Capital(index) => {
-            let ship = &session.ships[index];
-            let engine = original_tactical_mobility(&session.ships, &session.field_effects, index)
-                .map_or(0.0, |mobility| mobility.effective_engine_power);
-            if engine == 0.0 {
-                1.0
-            } else {
-                (original_engine_mode_bonus(ship.maneuver_state_value)
-                    + ship.maneuverability as f32)
-                    .min(ORIGINAL_CAPITAL_MANEUVERABILITY_MAX)
-            }
+            original_capital_maneuverability(&session.ships, &session.field_effects, index)
         }
         AbstractUnit::Fighter(index) => session.fighters[index].effective_maneuverability(),
     }
@@ -7740,6 +7731,110 @@ mod tests {
     // + 1 (FUN_005b3f10); a torpedo is 8.5/16 a point (FUN_005b2c70) and its
     // impact plays variant 0 without a draw; every sound is one of its
     // event's variants (FUN_005bae60).
+    // FUN_005b5100 divides a fighter recipient's damage by its own over the
+    // source's maneuverability (vt+0xbc). A capital source (FUN_005b0be0)
+    // takes its tactical mode contribution (FUN_005ad750) plus its rating,
+    // at most 9, and 1.0 when its engines give no power.
+    #[test]
+    fn a_capital_ship_s_shot_at_fighters_uses_its_mode_bonus_plus_rating() {
+        use crate::tactical::{OriginalFighterTarget, TacticalShot, TacticalUnitRef, WeaponKind};
+        let laser = TacticalShot {
+            source: TacticalUnitRef::Ship(0),
+            target: OriginalFighterTarget::Fighter(0),
+            kind: WeaponKind::LaserCannon,
+            strength: 30.0,
+        };
+        let mut capital = ship(true, TacticalWeaponArc::default(), 0.0);
+        capital.maneuverability = 3;
+        // FUN_005ad750: 9 - 5 = 4, plus the rating 3 = 7.
+        capital.maneuver_state_value = Some(5.0);
+        let mut wing = fighter(false, TacticalWeaponArc::default());
+        // FUN_005ba270: rating 6 + 1 = 7, so the ratio is one.
+        wing.maneuverability = 6;
+        let mut tactical = session(vec![capital.clone()], vec![wing.clone()]);
+        tactical.hit_weapon_shot(laser);
+        assert!(
+            (tactical.fighters[0].hull_current - 66.0).abs() < 1e-3,
+            "{}",
+            tactical.fighters[0].hull_current
+        );
+
+        // The bonus and rating together stop at nine: 4 + 8 = 12 -> 9.
+        capital.maneuverability = 8;
+        wing.maneuverability = 8;
+        let mut tactical = session(vec![capital.clone()], vec![wing.clone()]);
+        tactical.hit_weapon_shot(laser);
+        assert!(
+            (tactical.fighters[0].hull_current - 66.0).abs() < 1e-3,
+            "{}",
+            tactical.fighters[0].hull_current
+        );
+
+        // No engine power: maneuverability 1.0, so the group at 7 takes 30/7.
+        capital.maneuverability = 3;
+        capital.sublight_engine_power = 0.0;
+        wing.maneuverability = 6;
+        let mut tactical = session(vec![capital], vec![wing]);
+        tactical.hit_weapon_shot(laser);
+        assert!(
+            (tactical.fighters[0].hull_current - (96.0 - 30.0 / 7.0)).abs() < 1e-3,
+            "{}",
+            tactical.fighters[0].hull_current
+        );
+    }
+
+    // FUN_005b5100: the damage takes at least 1.0 (0x66c514) before the
+    // shield, and what passes the shield comes off the hull with no floor.
+    #[test]
+    fn what_passes_a_fighter_group_s_shield_comes_off_its_hull_unrounded() {
+        use crate::tactical::{apply_original_fighter_damage, OriginalTacticalImpactStage};
+        let mut wing = fighter(false, TacticalWeaponArc::default());
+        wing.shield = 5.0;
+        wing.shield_max = 5.0;
+        let source = wing.effective_maneuverability();
+        let mut fighters = vec![wing.clone()];
+        // The shield holds a shot it covers (event 0x0d): no hull lost.
+        assert_eq!(
+            apply_original_fighter_damage(&mut fighters, 0, 1.0, source),
+            OriginalTacticalImpactStage::Hit
+        );
+        assert_eq!(fighters[0].hull_current, 96.0);
+        assert_eq!(
+            apply_original_fighter_damage(&mut fighters, 0, 4.25, source),
+            OriginalTacticalImpactStage::Damage
+        );
+        assert_eq!(fighters[0].shield, 0.0);
+        assert!(
+            (fighters[0].hull_current - 95.75).abs() < 1e-4,
+            "{}",
+            fighters[0].hull_current
+        );
+        // A weak shot still costs 1.0 against an empty shield.
+        apply_original_fighter_damage(&mut fighters, 0, 0.25, source);
+        assert!(
+            (fighters[0].hull_current - 94.75).abs() < 1e-4,
+            "{}",
+            fighters[0].hull_current
+        );
+        // A shot that takes the last hull destroys the group.
+        assert_eq!(
+            apply_original_fighter_damage(&mut fighters, 0, 200.0, source),
+            OriginalTacticalImpactStage::Destroyed
+        );
+        assert_eq!(fighters[0].hull_current, 0.0);
+
+        // A group out of the fight takes nothing.
+        let mut gone = wing;
+        gone.alive = false;
+        let mut fighters = vec![gone];
+        assert_eq!(
+            apply_original_fighter_damage(&mut fighters, 0, 50.0, source),
+            OriginalTacticalImpactStage::Hit
+        );
+        assert_eq!(fighters[0].shield, 5.0);
+        assert_eq!(fighters[0].hull_current, 96.0);
+    }
+
     #[test]
     fn shot_events_reach_each_kind_of_target_while_it_fights() {
         use crate::tactical::{

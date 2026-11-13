@@ -94,8 +94,16 @@ effective maneuverability. The target-to-source ratio is clamped to at least
 target therefore receives less damage. Ion damage against fighters is excluded
 by the target modifier before dispatch.
 
-Damage first subtracts from the floating shield pool. Negative shield overflow
-continues into the floating hull pool with a minimum of one hull point at the
+A capital source's maneuverability is its own slot `+0xbc`
+(`FUN_005b0be0`): 1.0 when its engines give no power (slot `+0x90`),
+otherwise its mode contribution plus its `CAPSHPSD` rating, at most 9. The
+mode contribution is `FUN_005ad750` in tactical combat and `FUN_005afb70` in
+the abstract one: `9 - value` of the active maneuver record, clamped to 1-9,
+and 1 with no record.
+
+`FUN_005b5100` raises the divided damage to at least 1.0 (`0x66c514`) and
+subtracts it from the floating shield pool. Negative shield overflow
+continues into the floating hull pool unchanged, with no minimum at the
 crossing. Live craft count is the ceiling of current hull divided by eight.
 Zero hull removes the tactical object.
 

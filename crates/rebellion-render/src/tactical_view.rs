@@ -18170,6 +18170,10 @@ mod tests {
         source.weapon_ranges.laser_cannon = 100.0;
         source.weapon_ranges.ion_cannon = 100.0;
         source.maneuverability = 8;
+        // FUN_005b0be0 gives an engineless ship 1.0; with engines its mode
+        // contribution 1 plus its rating 8 makes 9.
+        source.subsystem_capacity.engines = true;
+        source.subsystem_condition.engines = 100;
         source.order = TacticalOrder::AttackFighters;
         source.attack_target = Some(TacticalAttackTarget::FighterGroup(0));
         let mut target = test_fighter(5, false);

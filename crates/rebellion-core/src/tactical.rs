@@ -3053,6 +3053,28 @@ pub fn original_engine_mode_bonus(maneuver_state_value: Option<f32>) -> f32 {
     })
 }
 
+/// Slot `+0xbc` of a capital ship (`FUN_005b0be0`): 1.0 when its engines
+/// give no power (vt+0x90), otherwise its mode contribution (`FUN_005ad750`
+/// in tactical combat, `FUN_005afb70` in the abstract one; both are
+/// [`original_engine_mode_bonus`]) plus its rating, at most nine.
+pub fn original_capital_maneuverability(
+    ships: &[TacticalShip],
+    field_effects: &[TacticalFieldEffect],
+    index: usize,
+) -> f32 {
+    let Some(ship) = ships.get(index) else {
+        return 1.0;
+    };
+    let engine = original_tactical_mobility(ships, field_effects, index)
+        .map_or(0.0, |mobility| mobility.effective_engine_power);
+    if engine == 0.0 {
+        1.0
+    } else {
+        (original_engine_mode_bonus(ship.maneuver_state_value) + ship.maneuverability as f32)
+            .min(ORIGINAL_CAPITAL_MANEUVERABILITY_MAX)
+    }
+}
+
 /// `FUN_005b2f30` multiplies effective engine power by the non-negative dot
 /// product between the current and desired retained-mode direction vectors.
 pub fn original_movement_alignment(ship: &TacticalShip) -> f32 {
@@ -4135,7 +4157,8 @@ pub fn apply_original_fighter_damage(
 
     // FUN_005b5100, FUN_005b5b60, and FUN_005b5f50 divide incoming damage
     // by target/source maneuverability for a fighter recipient, clamped at
-    // one tenth before division.
+    // one tenth before division. The damage takes at least 1.0 (0x66c514);
+    // what passes the shield comes off the hull with no floor.
     let maneuver_ratio =
         (fighter.effective_maneuverability() / source_maneuverability.max(1.0)).max(0.1);
     let damage = (event_strength / maneuver_ratio).max(1.0);
@@ -4144,7 +4167,7 @@ pub fn apply_original_fighter_damage(
     if fighter.shield < 0.0 {
         let overflow = -fighter.shield;
         fighter.shield = 0.0;
-        fighter.hull_current = (fighter.hull_current - overflow.max(1.0)).max(0.0);
+        fighter.hull_current = (fighter.hull_current - overflow).max(0.0);
         fighter.refresh_craft_count();
     }
 
@@ -7820,8 +7843,7 @@ impl BattleSession {
                 (
                     ship.is_attacker,
                     TacticalVoiceGroup::Capital(ship.task_force),
-                    (ship.maneuverability as f32 + 1.0)
-                        .clamp(1.0, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX),
+                    original_capital_maneuverability(&self.ships, &self.field_effects, index),
                 )
             }
             TacticalUnitRef::Fighter(index) => {
