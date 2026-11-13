@@ -512,6 +512,8 @@ no "Attached" row and no maintenance row. The rows, in order:
   `TroopTransportState` (`troop_transport.rs`, the fleet's regiments aboard).
 - Personnel: `Fleet::characters` plus the special forces aboard. port:
   carriage is kept per fleet, not per ship.
+- The three Embarked rows add the squadrons, regiments and characters on
+  their way into the fleet (mode 3, `status_rows::travellers`).
 - Damaged Ships: port: no flag (`+0x50` bit `0x200`). `hull_current < class
   hull` is the nearest field. That reading is unverified.
 - Hyperdrive Rating: port: `FUN_004fd900` is not traced past its walk. The
@@ -576,7 +578,12 @@ no ":" maximum.
   detection, and every arc maximum: `CapitalShipClass` fields of the same
   names.
 - Embarked: port: no per-ship field, because fighters, regiments and
-  characters are kept per fleet.
+  characters are kept per fleet. The units on their way into the fleet
+  count too: every slot walks mode 3 and `FUN_00556390` makes a unit
+  moving onto a fleet its ship's child at once, so each is counted on the
+  ship `fleet_window::ship_load` seats it on (`FUN_00552300`), as the
+  Fleet window counts it (`status_rows::travellers`). Characters on their
+  way in join the fleet's own on its first alive ship.
 - Ship Damaged: the hull below the class's, or a hit counter set
   (`FUN_00501c00`).
 - Hull: `ShipInstance::hull_current` stands for the value after damage

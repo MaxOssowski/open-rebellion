@@ -2844,8 +2844,9 @@ pub fn emit_personnel_finder(
 
 /// The open Status window's title, name and rows: a Character Status in the
 /// ForceStatus and FleetArrivals scenarios, a facility's (the headquarters') in Quadrants, the
-/// travelling special force's in SpecialForceEnroute and regiment's in
-/// RegimentEnroute (with the picture's marks), and an unfinished unit's or a producer's in any.
+/// travelling special force's in SpecialForceEnroute, regiment's in
+/// RegimentEnroute and the receiving ship's in FleetArrivals (with the
+/// picture's marks), and an unfinished unit's or a producer's in any.
 pub fn emit_status_rows(
     request: FixtureRequest,
     sources: rebellion_render::status_rows::StatusSources<'_>,
@@ -2869,7 +2870,8 @@ pub fn emit_status_rows(
             ("Character Status", None, rows)
         }
         (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_)))
-        | (Scenario::RegimentEnroute, Some(object @ StatusObject::Troop(_))) => {
+        | (Scenario::RegimentEnroute, Some(object @ StatusObject::Troop(_)))
+        | (Scenario::FleetArrivals, Some(object @ StatusObject::Ship { .. })) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };

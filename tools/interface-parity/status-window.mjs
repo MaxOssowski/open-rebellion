@@ -256,6 +256,10 @@ async function chooseStatus(page, at) {
 
 const point = ([x, y]) => ({ x: Math.round(x), y: Math.round(y) });
 
+// What fleet-ship-en-route's target read from the Fleet window: the
+// Fighters and Troops counters and the Personnel list's length.
+let fleetShipEmbarked = null;
+
 async function doubleClick(page, at) {
   await page.mouse.move(at.x, at.y);
   await frames(page);
@@ -566,6 +570,40 @@ const cases = [
       return point(fighters.first_item);
     },
   },
+  // The receiving ship's Capital Ship Status (FUN_00446fd0): Embarked
+  // prints the ship's slots +0x23c / +0x240 (CapShip_vt23c FUN_00500fe0,
+  // CapShip_vt240 FUN_00501040) and FUN_004f25c0(ship, 3)'s characters,
+  // all walk mode 3 (FUN_00513180), so the squadron, regiment and
+  // character on their way in count where they are seated (FUN_00552300).
+  // The fixture's fleet is one ship, so its Embarked equals the Fleet
+  // window's Fighters and Troops counters and Personnel list. No A0
+  // capture.
+  {
+    name: "fleet-ship-en-route",
+    code: FLEET_ARRIVALS,
+    family: "Ship",
+    embarked: () => fleetShipEmbarked,
+    target: async (page) => {
+      fleetShipEmbarked = null;
+      const opened = await openFleetWindow(page);
+      await click(page, point(opened.fleet_entry));
+      const ships = await fleetLoad(page, (o) => o.selected === "fleet" && o.tab === "CapitalShips"
+        && o.first_item && o.troops_tab && o.fighters_tab);
+      assert.equal(ships.items.length, 1, JSON.stringify(ships));
+      await click(page, point(ships.fighters_tab));
+      const fighters = await fleetLoad(page, (o) => o.tab === "Fighters" && o.counts);
+      await click(page, point(ships.troops_tab));
+      const troops = await fleetLoad(page, (o) => o.tab === "Troops" && o.counts);
+      await click(page, { x: Math.round(ships.troops_tab[0] + 32), y: Math.round(ships.troops_tab[1]) });
+      const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0);
+      // Each traveller is one of these (fleet-squadron-en-route).
+      assert.ok(fighters.counts[0] > 0 && troops.counts[0] > 0, JSON.stringify([fighters, troops]));
+      fleetShipEmbarked = [String(fighters.counts[0]), String(troops.counts[0]), String(personnel.items.length)];
+      const step = ships.troops_tab[0] - ships.fighters_tab[0];
+      await click(page, { x: Math.round(ships.fighters_tab[0] - step), y: Math.round(ships.fighters_tab[1]) });
+      return point((await fleetLoad(page, (o) => o.tab === "CapitalShips" && o.first_item)).first_item);
+    },
+  },
   // A character on its way into the fleet (the fixture's Move onto it,
   // FUN_00556390 into the target container +0x74): the Personnel tab lists
   // it, and its Status (FUN_004486f0) names the fleet under Attached, then
@@ -852,6 +890,17 @@ async function inspect(server, source, faction, testCase, executable) {
         assert.deepEqual(marks, expected, JSON.stringify(marks));
       }
     }
+    // The three rows under Embarked against what the case expects.
+    let embarked = null;
+    if (testCase.embarked) {
+      await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+      const { rows } = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+      const start = rows.findIndex(([label]) => label === "Embarked:");
+      assert.ok(start >= 0, JSON.stringify(rows));
+      embarked = rows.slice(start + 1, start + 4);
+      assert.deepEqual(embarked.map(([label]) => label), ["Fighter Squadrons:", "Trooper Regiments:", "Personnel:"], JSON.stringify(rows));
+      assert.deepEqual(embarked.map(([, value]) => value), testCase.embarked(), JSON.stringify(rows));
+    }
     await page.mouse.move(2, 2);
     await page.waitForTimeout(200);
     await frames(page);
@@ -1014,7 +1063,7 @@ async function inspect(server, source, faction, testCase, executable) {
       menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
       assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
     }
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, cellCheck, iconCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, embarked, pictureCheck, cellCheck, iconCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

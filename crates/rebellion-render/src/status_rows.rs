@@ -608,10 +608,44 @@ pub(crate) fn damaged(ship: &ShipInstance, class: &CapitalShipClass) -> bool {
     ship.subsystem_hits != 0 || u32::try_from(ship.hull_current).unwrap_or(0) < class.hull
 }
 
+/// What each of `fleet`'s ships, by index, holds of the units on their way
+/// in: squadrons and regiments.
+///
+/// The ships' slots `+0x23c` (`CapShip_vt23c`, `FUN_00500fe0`) and `+0x240`
+/// (`CapShip_vt240`, `FUN_00501040`) count children in mode 3
+/// (`FUN_00513180`), and `FUN_00556390` makes a unit moving onto a fleet
+/// its ship's child at once, so the travellers count where
+/// [`crate::fleet_window::ship_load`] seats them (`FUN_00552300`).
+fn travellers(sources: StatusSources<'_>, fleet: FleetKey) -> Vec<[usize; 2]> {
+    let world = sources.world;
+    let own = crate::fleet_window::ship_cargo(world, sources.transport, fleet);
+    crate::fleet_window::ship_load(world, sources.transport, &[], fleet)
+        .iter()
+        .zip(&own)
+        .map(|(load, own)| {
+            [
+                load.incoming_squadrons.len(),
+                load.regiments.len().saturating_sub(own.regiments.len()),
+            ]
+        })
+        .collect()
+}
+
+/// The characters on their way into `fleet` that its Personnel walk finds
+/// (`FUN_004f25c0` / `FUN_00536da0` in mode 3; the Fleet window's
+/// [`crate::fleet_window::bound_members`]).
+fn incoming_characters(sources: StatusSources<'_>, fleet: FleetKey) -> usize {
+    let arrivals = crate::quadrant_icons::fleet_arrivals(sources.missions);
+    crate::fleet_window::bound_members(sources.world, &arrivals, fleet)
+        .filter(|member| matches!(member, MissionMember::Character(_)))
+        .count()
+}
+
 /// The Fleet Status rows (`FUN_00449200`).
 ///
 /// port: the fleet's squadrons, regiments and characters are kept on the
-/// fleet, so Embarked and Personnel sum them there. Personnel counts the
+/// fleet, so Embarked and Personnel sum them there, with the units on
+/// their way in ([`travellers`]). Personnel counts the
 /// fleet's characters; the port carries no special force aboard a fleet.
 /// hyp: Hyperdrive Rating reads Yes when an alive ship's class has a
 /// hyperdrive (`FUN_004fd900` is traced only to its walk).
@@ -626,7 +660,16 @@ pub fn fleet_rows(sources: StatusSources<'_>, key: FleetKey) -> Option<Vec<Statu
     let ships: Vec<_> = alive_ships(world, key).collect();
     let fighter_capacity: u32 = ships.iter().map(|(_, class)| class.fighter_capacity).sum();
     let troop_capacity: u32 = ships.iter().map(|(_, class)| class.troop_capacity).sum();
-    let squadrons: u32 = fleet.fighters.iter().map(|entry| entry.count).sum();
+    let [squadrons_in, regiments_in] = travellers(sources, key)
+        .into_iter()
+        .fold([0_usize; 2], |sum, each| [sum[0] + each[0], sum[1] + each[1]]);
+    let incoming = [squadrons_in, regiments_in, incoming_characters(sources, key)];
+    let count = |own: usize, kind: usize| own.saturating_add(incoming[kind]).to_string();
+    let squadrons = fleet
+        .fighters
+        .iter()
+        .map(|entry| entry.count as usize)
+        .sum();
     rows.extend([
         row(
             "Admiral:",
@@ -645,12 +688,12 @@ pub fn fleet_rows(sources: StatusSources<'_>, key: FleetKey) -> Option<Vec<Statu
         row("Fighter Squadrons:", fighter_capacity.to_string()),
         row("Trooper Regiments:", troop_capacity.to_string()),
         heading("Embarked:"),
-        row("Fighter Squadrons:", squadrons.to_string()),
+        row("Fighter Squadrons:", count(squadrons, 0)),
         row(
             "Trooper Regiments:",
-            sources.transport.carried_count(key).to_string(),
+            count(sources.transport.carried_count(key), 1),
         ),
-        row("Personnel:", fleet.characters.len().to_string()),
+        row("Personnel:", count(fleet.characters.len(), 2)),
         row(
             "Damaged Ships:",
             ships
@@ -684,7 +727,9 @@ fn aboard(capacities: &[u32], index: usize, total: u32) -> u32 {
 /// hit counters (`+0x64`) and hull. Ship Damaged reads Yes while the hull is
 /// below its class's or a counter is set (`+0x50` bit `0x200`,
 /// `FUN_00501c00`). The hull is `ShipInstance::hull_current`. port:
-/// Personnel puts the fleet's characters aboard its first alive ship.
+/// Personnel puts the fleet's characters, and those on their way in,
+/// aboard its first alive ship. Embarked counts the squadrons and
+/// regiments on their way in seated on the ship too ([`travellers`]).
 #[must_use]
 pub fn ship_rows(
     sources: StatusSources<'_>,
@@ -712,8 +757,15 @@ pub fn ship_rows(
     };
     let squadrons: u32 = fleet.fighters.iter().map(|entry| entry.count).sum();
     let regiments = u32::try_from(sources.transport.carried_count(fleet_key)).unwrap_or(u32::MAX);
+    let [incoming_squadrons, incoming_regiments] = travellers(sources, fleet_key)
+        .get(index)
+        .copied()
+        .unwrap_or_default();
+    // The characters on their way in board the first usable ship
+    // (FUN_00552300: unlimited room); port: with the fleet's own, the first
+    // alive one.
     let personnel = if position == 0 {
-        fleet.characters.len()
+        fleet.characters.len() + incoming_characters(sources, fleet_key)
     } else {
         0
     };
@@ -738,11 +790,15 @@ pub fn ship_rows(
         heading("Embarked:"),
         row(
             "Fighter Squadrons:",
-            aboard(&capacities(|c| c.fighter_capacity), position, squadrons).to_string(),
+            (aboard(&capacities(|c| c.fighter_capacity), position, squadrons) as usize
+                + incoming_squadrons)
+                .to_string(),
         ),
         row(
             "Trooper Regiments:",
-            aboard(&capacities(|c| c.troop_capacity), position, regiments).to_string(),
+            (aboard(&capacities(|c| c.troop_capacity), position, regiments) as usize
+                + incoming_regiments)
+                .to_string(),
         ),
         row("Personnel:", personnel.to_string()),
         row("Ship Damaged:", yes_no(damaged(ship, class))),
@@ -2127,6 +2183,93 @@ mod tests {
         // A class with no hyperdrive shows its damaged rating (FUN_00446fd0).
         assert_eq!(value(0, "Hyperdrive Rating:", 0), "9:0");
         assert_eq!(value(1, "Hyperdrive Rating:", 0), "2:2");
+    }
+
+    #[test]
+    fn units_on_their_way_aboard_count_as_embarked_on_the_ship_that_seats_them() {
+        // FUN_00446fd0 prints Embarked from the ship's slots +0x23c
+        // (CapShip_vt23c FUN_00500fe0) and +0x240 (CapShip_vt240
+        // FUN_00501040) and Personnel from FUN_004f25c0(ship, 3)'s
+        // characters (0x30..0x3c); FUN_00449200 sums the same per ship.
+        // All walk mode 3, and FUN_00556390 makes a unit moving onto a
+        // fleet the child of its ship at once, so the travellers count
+        // where fleet_window::ship_load seats them (FUN_00552300).
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Hoth", ControlKind::Controlled(Faction::Alliance));
+        let there = system(&mut world, "Bespin", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, there);
+        for (index, ship) in world.fleets[fleet].capital_ships.iter_mut().enumerate() {
+            ship.id = 1 + index as u64;
+        }
+        let xwing = world.fleets[fleet].fighters[0].class;
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0002),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let character = world.characters.insert(rebellion_core::world::Character {
+            is_alliance: true,
+            ..Default::default()
+        });
+        let mut states = States::new();
+        states.transport = with_entry(
+            &states.transport,
+            "transit",
+            rebellion_core::troop_transport::RegimentTransit {
+                troop,
+                origin: here,
+                leg: RegimentLeg::Fleet(fleet),
+                arrival_tick: 20,
+            },
+        );
+        let mut value = serde_json::to_value(&states.transport).unwrap();
+        value["squadrons"]["transits"].as_array_mut().unwrap().push(
+            serde_json::to_value(rebellion_core::squadrons::SquadronTransit {
+                class: xwing,
+                count: 1,
+                origin: here,
+                to: rebellion_core::squadrons::SquadronPlace::Fleet(fleet),
+                arrival_tick: 20,
+            })
+            .unwrap(),
+        );
+        states.transport = serde_json::from_value(value).unwrap();
+        let id = states.missions.dispatch(MissionRequest::single(
+            MissionKind::Diplomacy,
+            MissionFaction::Alliance,
+            character,
+            there,
+            None,
+            0,
+        ));
+        states.missions.set_target_fleet(id, fleet);
+        states.missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::Character(character),
+            mission_id: id,
+            to: there,
+            arrival: 15,
+            abode: None,
+        });
+        let sources = states.sources(&world);
+        let embarked = |rows: Vec<StatusRow>| -> Vec<String> {
+            let start = rows.iter().position(|row| row.label == "Embarked:").unwrap();
+            rows[start + 1..start + 4].iter().map(|row| row.value.clone()).collect()
+        };
+
+        // Bays 2 and 3 hold the fleet's 4 squadrons 2 and 2: the squadron
+        // on its way takes the second ship (1 left against 0). The
+        // regiment takes the first of equals (1 and 1), the character the
+        // first ship.
+        assert_eq!(embarked(ship_rows(sources, fleet, 0).unwrap()), ["2", "1", "2"]);
+        assert_eq!(embarked(ship_rows(sources, fleet, 1).unwrap()), ["3", "0", "0"]);
+        assert_eq!(embarked(fleet_rows(sources, fleet).unwrap()), ["5", "1", "2"]);
+        // port: an unnumbered ship still carries the fleet's characters
+        // and those on their way in on its first alive ship.
+        for ship in &mut world.fleets[fleet].capital_ships {
+            ship.id = 0;
+        }
+        let sources = states.sources(&world);
+        assert_eq!(embarked(ship_rows(sources, fleet, 0).unwrap()), ["2", "1", "2"]);
     }
 
     #[test]

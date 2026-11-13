@@ -108,6 +108,41 @@ moved one by one onto a fleet in another system.
 - port: the seats are recomputed from the port's own seating
   (`ship_cargo`, a hyp) each frame; the original fixes each seat when the
   order executes.
-- The Capital Ship Status Embarked counts (`ship_rows`) leave travellers
-  out; the slots they read are the same mode-3 counts.
+- ~~The Capital Ship Status Embarked counts (`ship_rows`) leave travellers
+  out~~: closed below.
 - No A0 capture shows any of these cases.
+
+## Follow-up: Embarked in the Capital Ship and Fleet Status
+
+- **Trace.** The Capital Ship Status (`FUN_00446fd0`) prints Embarked
+  Fighter Squadrons from slot `+0x23c` (`CapShip_vt23c`, `FUN_00500fe0`),
+  Trooper Regiments from `+0x240` (`CapShip_vt240`, `FUN_00501040`), and
+  Personnel from `FUN_004f25c0(ship, 3)` (families `0x30..0x3c`, counted
+  by `FUN_00513180`); the Fleet Status (`FUN_00449200`) sums the same per
+  ship. All walk mode 3, the Fleet window's own walk, so the travellers
+  count (`ghidra/notes/status-window.md`).
+- **Change.** `status_rows::travellers` takes each ship's squadrons and
+  regiments on their way in from `fleet_window::ship_load`;
+  `incoming_characters` counts the characters bound for the fleet
+  (`fleet_window::bound_members`). `ship_rows` adds them to the ship's
+  Embarked rows (the characters, like the fleet's own, on its first alive
+  ship: port), and `fleet_rows` adds them to the fleet's.
+- **Unit test.**
+  `units_on_their_way_aboard_count_as_embarked_on_the_ship_that_seats_them`
+  failed without the change (`["2", "0", "1"]` against `["2", "1", "2"]`).
+- **Browser.** New `status-window.mjs` case `fleet-ship-en-route` (both
+  sides): the one-ship fleet's Embarked rows equal the Fleet window's
+  Fighters and Troops counters and Personnel list. The fixture bridge
+  (`emit_status_rows`) now reports the ship's rows in FleetArrivals.
+  Linux Chromium, test WASM
+  `b16cb0e7fbc3f952dc03bd6d60d5e5cf6378a31b91183b9aa7e5a0d77f8aa79e`, run
+  `status-window-2026-11-13T00-37-53-703Z-1503194`: 34 of 34 pass; the
+  new case reads Embarked 1, 1, 1 on both sides. An earlier run
+  (`...00-28-27-533Z-1333942`) showed Personnel 0: the fixture's ship is
+  unnumbered (`id` 0), so `ship_load` seats no character; the characters
+  now count from `bound_members` on the first alive ship.
+- `cargo mutants` on `travellers`, `incoming_characters`, `fleet_rows`,
+  `ship_rows`: 40 mutants, 37 caught, 3 unviable, 0 missed.
+- port: the Fleet Status Personnel counts characters only, as before;
+  the original also counts special forces (`0x30..0x3f`), aboard or on
+  their way.

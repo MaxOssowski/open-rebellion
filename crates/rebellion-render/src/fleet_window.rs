@@ -2084,7 +2084,7 @@ fn tab_enabled(
 /// acceptance refuses another side's container (`FUN_00553410`: `1`/`0x24`,
 /// `1`/`0x28`), so a member of another side is never aboard. A prisoner
 /// carries its captor's side (`FUN_004eec60`, `missions::character_side`).
-fn bound_members<'a>(
+pub(crate) fn bound_members<'a>(
     world: &'a GameWorld,
     arrivals: &'a [(MissionMember, FleetKey)],
     fleet: FleetKey,
