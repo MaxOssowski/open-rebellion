@@ -263,6 +263,15 @@ covers the mission icon's menu only.
   squadron, an unfinished unit or a Missions window's mission answers its
   system where the original refuses; the refusal's advisor reaction
   (`FUN_00487c90`) is not played.
+  - Over a sector window's headquarters overlay (id `0x10000`, bitmap
+    0x388), `FUN_0045cc10` finds the overlay before the planet, so `+0x68`
+    names the HQ object (family `0x20`) and the drop sets nothing, while
+    the menu's Destination targeting reads `+0x70`, the planet, and sets
+    the system (2026-11-13; A0 2026-11-13-facility-icon-drop/03..07 on
+    Yavin's dome, 09..11 the menu at the same point, 15, 16 the planet's
+    edge off the dome). The port asks
+    `SectorWindowState::headquarters_at` (the overlay's opaque pixels, as
+    a press does) before the Mission hit test.
 - The defenses icon's Move and Confirmed Move (2026-11-11):
   - Its team is `quadrant_icons::defenses_move_team`.
   - Enabled: `defenses_move_enabled` (`main.rs`).

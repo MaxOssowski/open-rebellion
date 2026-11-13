@@ -6361,6 +6361,7 @@ async fn main() {
                                         sources,
                                         cockpit_layout,
                                         windows,
+                                        &mut bmp_cache,
                                         point,
                                     )
                                 } else {

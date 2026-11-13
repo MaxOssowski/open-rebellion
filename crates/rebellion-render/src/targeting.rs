@@ -364,17 +364,34 @@ pub fn mission_release_target(
 /// one. `FUN_00487cc0` has no case for `0x214`: nothing asks, and Ctrl
 /// changes nothing.
 ///
-/// port: `+0x68` is read through [`mission_release_target`], so a planet's
-/// squadron, an unfinished unit or a Missions window's mission answers its
-/// system here where the original names the object and refuses.
+/// A sector window's `+0x68` over the headquarters overlay's opaque pixels
+/// names the headquarters object (`FUN_0045cc10` walks the overlay list
+/// first; [`SectorWindowState::headquarters_at`]), so that drop sets nothing
+/// (A0 2026-11-13-facility-icon-drop/03..07: Jerijador's icon dropped on
+/// the HQ dome over Yavin; 15, 16: off the dome on the same planet, Yavin).
+///
+/// port: `+0x68` is otherwise read through [`mission_release_target`], so a
+/// planet's squadron, an unfinished unit or a Missions window's mission
+/// answers its system here where the original names the object and refuses.
+///
+/// [`SectorWindowState::headquarters_at`]: crate::sector_window::SectorWindowState::headquarters_at
 #[must_use]
 pub fn destination_drop_target(
     ctx: &egui::Context,
     sources: MissionReleaseSources<'_>,
     layout: CockpitLayout,
     windows: ReleaseWindows<'_>,
+    cache: &mut BmpCache,
     point: egui::Pos2,
 ) -> Option<SystemKey> {
+    if window_layer_at(ctx, point).is_some_and(|layer| {
+        windows
+            .sector
+            .headquarters_at(cache, layout, layer, point)
+            .is_some()
+    }) {
+        return None;
+    }
     drop_destination(mission_release_target(
         ctx,
         sources,
@@ -1302,6 +1319,7 @@ mod tests {
                             },
                             layout,
                             windows,
+                            &mut BmpCache::new(),
                             point,
                         )
                     },

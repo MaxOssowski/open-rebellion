@@ -97,6 +97,9 @@ pub struct SectorWindowState {
     created: bool,
     /// The drag image the last pass painted ([`Self::drag_image`]).
     drag_image: Option<(u32, egui::Rect)>,
+    /// The headquarters overlays the last pass painted: each window's area,
+    /// the system and the mark's planet rect ([`Self::headquarters_at`]).
+    headquarters_marks: Vec<(egui::Id, SystemKey, egui::Rect)>,
 }
 
 impl Default for SectorWindowState {
@@ -110,6 +113,7 @@ impl Default for SectorWindowState {
             gid_caption: None,
             created: false,
             drag_image: None,
+            headquarters_marks: Vec::new(),
         }
     }
 }
@@ -407,6 +411,26 @@ impl SectorWindowState {
         }))
     }
 
+    /// The system whose headquarters overlay the window on `layer` showed
+    /// under `point` in the last pass. `FUN_0045cc10` walks the overlay list
+    /// first, and the overlay (id `0x10000`, `FUN_0045bbb0`) takes a point
+    /// wherever its bitmap 0x388 is opaque, so the window's `+0x68` names the
+    /// headquarters object there, not the planet.
+    pub fn headquarters_at(
+        &self,
+        cache: &mut BmpCache,
+        layout: CockpitLayout,
+        layer: egui::LayerId,
+        point: egui::Pos2,
+    ) -> Option<SystemKey> {
+        self.headquarters_marks
+            .iter()
+            .find(|&&(id, _, rect)| {
+                id == layer.id && headquarters_hit(cache, rect, layout.scale, point)
+            })
+            .map(|&(_, system, _)| system)
+    }
+
     pub fn clear(&mut self) {
         self.windows.clear();
     }
@@ -513,6 +537,9 @@ struct WindowDrawResult {
     drag_end: Option<Option<(egui::Pos2, bool)>>,
     /// The held drag's image: the bitmap and the icon's rect moved with it.
     drag_image: Option<(u32, egui::Rect)>,
+    /// The headquarters overlays painted, each the system and its planet's
+    /// rect.
+    headquarters: Vec<(SystemKey, egui::Rect)>,
 }
 
 /// Paint and operate all open sector windows using the recovered strategic
@@ -543,6 +570,7 @@ pub fn draw_sector_windows(
     let mut switched = None;
     let mut chosen = Vec::new();
     let mut drag_image = None;
+    let mut headquarters_marks = Vec::new();
 
     let focused_sector = windows.last().map(|window| window.sector);
     for window in windows {
@@ -574,6 +602,12 @@ pub fn draw_sector_windows(
             switched = Some(window.sector);
         }
         drag_image = drag_image.or(result.drag_image);
+        headquarters_marks.extend(
+            result
+                .headquarters
+                .iter()
+                .map(|&(system, rect)| (area_id(window.sector), system, rect)),
+        );
         if let Some(system) = result.selected {
             actions.push(SectorWindowAction::SelectSystem(system));
         }
@@ -614,6 +648,7 @@ pub fn draw_sector_windows(
     }
 
     state.drag_image = drag_image;
+    state.headquarters_marks = headquarters_marks;
     for (sector, selection, drag_from) in chosen {
         if let Some(window) = state
             .windows
@@ -1125,6 +1160,7 @@ fn draw_sector_window(
                 .or(window.selection.filter(|_| !result.selection_lapsed));
             // FUN_0045bbb0 adds the headquarters overlay (id 0x10000, bitmap
             // 0x388) on the planet's rect.
+            result.headquarters.clone_from(&headquarters);
             for &(_, rect) in &headquarters {
                 paint_native(
                     ui.painter(),
@@ -2753,6 +2789,62 @@ mod tests {
         let at = (10.0 + 200.0, 20.0 + 150.0);
         assert_eq!(dropped, [(MenuObject::Headquarters(hq), at, false)]);
         assert_eq!(ctrl, [(MenuObject::Headquarters(hq), at, true)]);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_point_on_the_headquarters_mark_names_the_headquarters_not_its_planet() {
+        // FUN_0045cc10 walks the overlay list first, and the headquarters
+        // overlay (0x10000) takes a point wherever its bitmap is opaque, so
+        // the window's +0x68 there names the HQ (family 0x20), an object
+        // that FUN_00537180 refuses as a Destination (1/0x25; FUN_00422ce0
+        // 0x214). A0 2026-11-13-facility-icon-drop/03..07: Jerijador's
+        // facility icon dropped on the HQ dome over Yavin's planet centre
+        // sets nothing; 15, 16: dropped on the planet's edge, off the dome,
+        // it sets Yavin.
+        let (mut world, system, _) = fixture_world();
+        let (_, base) = with_headquarters(&mut world, system);
+        let layout = layout(1.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let mut fog = FogState::new(Faction::Alliance);
+        fog.reveal(system);
+        let ctx = egui::Context::default();
+        let mut cache = click_cache();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(700.0, 520.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            let _ = draw_sector_windows(
+                ctx,
+                &world,
+                &rebellion_core::movement::MovementState::default(),
+                crate::quadrant_icons::Travellers::default(),
+                &fog,
+                &mut state,
+                CockpitFaction::Alliance,
+                layout,
+                &mut cache,
+                &rebellion_core::uprising::UprisingState::default(),
+                &rebellion_core::missions::MissionState::new(),
+            );
+        });
+        let layer = egui::LayerId::new(egui::Order::Middle, area_id(world.systems[system].sector));
+        let at = |x: f32, y: f32| egui::pos2(layout.canvas.x + x, layout.canvas.y + y);
+        // The mark's opaque middle, and the planet's corner where the mark
+        // is keyed out.
+        let on_mark = state.headquarters_at(&mut cache, layout, layer, at(100.0, 85.0));
+        let off_mark = state.headquarters_at(&mut cache, layout, layer, at(76.0, 110.0));
+        let planet = state.release_target(&world, layout, layer, at(76.0, 110.0));
+        without_headquarters_art(base);
+
+        assert_eq!(on_mark, Some(system));
+        assert_eq!(off_mark, None);
+        assert_eq!(planet, Some(Some(system)));
     }
 
     #[test]
