@@ -11,6 +11,12 @@
 // )", "Adar Tallon - Mon Calamari ( Enroute )", "Huoba Neva - Pzob
 // ( General )", "Chewbacca - Yavin").
 //
+// Then, for the Alliance, the SpecForcesYavin fixture (code 114): one
+// Alliance special force at Yavin, as A0 2026-11-13-gid/E1..E6 shows the
+// SpecForces view (OBJ-03-C019). Typing in the name box chooses the row
+// FUN_00609650 finds (FUN_00464c20, 0x408): "Q", which no row begins,
+// chooses the first row; "Y" and "Ya" keep it, and nothing scrolls.
+//
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node personnel-states.mjs [--out=DIR] [--faction=alliance|empire]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
@@ -33,6 +39,8 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
   `personnel-states-${new Date().toISOString().replace(/[:.]/g, "-")}`));
 // Fixture codes are the Scenario index plus one: 92 PersonnelStates.
 const PERSONNEL_STATES = 93;
+// 113 SpecForcesYavin.
+const SPECFORCES_YAVIN = 114;
 const FACTIONS = [
   { name: "alliance", byte: 1, encyclopedia: [62, 52] },
   { name: "empire", byte: 2, encyclopedia: [125, 52] },
@@ -492,6 +500,130 @@ async function run(browser, base, faction) {
   }
 }
 
+// A0 2026-11-13-gid/E1..E6 against the SpecForcesYavin fixture.
+async function runSpecForces(browser, base) {
+  const directory = path.join(OUT, "specforces");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  const steps = [];
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/2026-11-13-gid", file)));
+  // Pixels that differ in a region, outside the name and the count
+  // cells' glyphs (text: the accepted deviation, compared by ink box). A
+  // glyph pixel is a light one (min channel over 150) in either image; the
+  // cells' red box (255, 0, 0) stays compared.
+  const ROW_NAME = [100, 192, 316, 214];
+  const CELLS = [318, 193, 449, 214];
+  const LIST = [99, 192, 449, 353];
+  const inside = ([x0, y0, x1, y1], x, y) => x >= x0 && y >= y0 && x < x1 && y < y1;
+  const light = (png, i) => Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > 150;
+  const differing = (port, ref) => {
+    let count = 0;
+    for (let y = LIST[1]; y < LIST[3]; y += 1) for (let x = LIST[0]; x < LIST[2]; x += 1) {
+      if (inside(ROW_NAME, x, y)) continue;
+      const i = (y * ref.width + x) * 4;
+      if (inside(CELLS, x, y) && (light(ref, i) || light(port, i))) continue;
+      // The count's digit, drawn over its cell's box: 8 pixels from each
+      // cell's left (cells 28 wide from x 318), rows 197..207.
+      if (inside(CELLS, x, y) && y >= 197 && y < 208 && (x - 318) % 28 >= 8 && (x - 318) % 28 < 20) continue;
+      if ([0, 1, 2].some((c) => ref.data[i + c] !== port.data[i + c])) count += 1;
+    }
+    return count;
+  };
+  // The name's ink box: white when chosen (min channel over 200); grey
+  // when not (FUN_00465540: 0x787878; A0 shows (117, 114, 114), the
+  // palette step), a light pixel with red and blue within 20.
+  const isInk = (chosen) => (png, i) => (chosen
+    ? Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > 200
+    : png.data[i] >= 100 && png.data[i] <= 200 && Math.abs(png.data[i] - png.data[i + 2]) <= 20);
+  const ink = (png, [x0, y0, x1, y1], test) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+      if (!test(png, (y * png.width + x) * 4)) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+    return box;
+  };
+  const compare = async (label, a0File, chosen) => {
+    await page.mouse.move(2, 470);
+    await frames(page, 4);
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    const port = PNG.sync.read(bytes);
+    const ref = await a0(a0File);
+    // The row's name below the list's top line (y 192).
+    const name = [100, 194, 316, 214];
+    const step = { label, a0: a0File,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      list_outside_text: differing(port, ref),
+      name_ink: { a0: ink(ref, name, isInk(chosen)), port: ink(port, name, isInk(chosen)) },
+      white_ink: { a0: ink(ref, name, isInk(true)), port: ink(port, name, isInk(true)) } };
+    steps.push(step);
+    assert.equal(step.list_outside_text, 0, JSON.stringify(step));
+    assert.ok(step.name_ink.a0 && step.name_ink.port, JSON.stringify(step));
+    // Left within a pixel, top and bottom within two: the port's
+    // anti-aliased glyphs are 8 rows to A0's 10 (the accepted text
+    // deviation), and so is the width.
+    assert.ok(Math.abs(step.name_ink.a0[0] - step.name_ink.port[0]) <= 1
+      && [1, 3].every((k) => Math.abs(step.name_ink.a0[k] - step.name_ink.port[k]) <= 2), JSON.stringify(step));
+    // Not chosen: no white in the name, in A0 or the port.
+    if (!chosen) assert.deepEqual(step.white_ink, { a0: null, port: null }, JSON.stringify(step));
+  };
+  try {
+    const code = SPECFORCES_YAVIN | (1 << 8);
+    await page.goto(`${base}?fixture-code=${code}`);
+    const deadline = Date.now() + 30_000;
+    while ((await ready(page))?.status !== "ready") {
+      if (Date.now() > deadline) throw new Error("the SpecForcesYavin fixture never reported");
+      await page.waitForTimeout(100);
+    }
+    await frames(page, 6);
+    await page.locator("#glcanvas").focus();
+    await page.keyboard.press("F5");
+    await until(page, "F5 opens the Personnel Finder", (o) => o.tab === "alliance");
+    // The fourth right button (500, 265): the SpecForces view (A0 E1).
+    await click(page, [500, 265]);
+    const view = await until(page, "the SpecForces view shows", (o) => o.rows.length === 1);
+    assert.deepEqual([view.rows, view.chosen, view.name], [["Yavin"], null, ""], JSON.stringify(view));
+    await compare("specforces-alliance", "E1-specforces-finder-alliance.png", false);
+    // E2: the Empire tab lists nothing.
+    await click(page, view.tabs[1]);
+    const empire = await until(page, "the Empire tab shows", (o) => o.tab === "imperial");
+    steps.push({ label: "specforces-empire", rows: empire.rows });
+    assert.deepEqual(empire.rows, [], JSON.stringify(empire.rows));
+    await click(page, view.tabs[0]);
+    await until(page, "the Alliance tab shows again", (o) => o.tab === "alliance" && o.rows.length === 1);
+    // E3: a click in the name box chooses nothing.
+    await click(page, [320, 104]);
+    const boxed = await until(page, "the name box takes the focus", (o) => o.tab === "alliance");
+    assert.deepEqual([boxed.chosen, boxed.name], [null, ""], JSON.stringify(boxed));
+    await compare("specforces-name-box", "E3-specforces-name-box-clicked-empty.png", false);
+    // E4: "Q", which no row begins, chooses the first row.
+    await page.keyboard.type("Q");
+    const q = await until(page, "Q is typed", (o) => o.name === "Q");
+    assert.equal(q.chosen, 0, JSON.stringify(q));
+    await compare("specforces-typed-q", "E4-specforces-typed-Q.png", true);
+    // E5, E6: "Y" and "Ya" keep it; one row, so nothing scrolls.
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type("Y");
+    const y = await until(page, "Y is typed", (o) => o.name === "Y");
+    assert.equal(y.chosen, 0, JSON.stringify(y));
+    await compare("specforces-typed-y", "E5-specforces-typed-Y.png", true);
+    await page.keyboard.type("a");
+    const ya = await until(page, "Ya is typed", (o) => o.name === "Ya");
+    assert.equal(ya.chosen, 0, JSON.stringify(ya));
+    await compare("specforces-typed-ya", "E6-specforces-typed-Ya.png", true);
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "alliance-specforces", status: "pass", steps };
+  } catch (error) {
+    await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
+    return { faction: "alliance-specforces", status: "fail", error: String(error.stack || error), steps, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -502,7 +634,10 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  for (const faction of FACTIONS) results.push(await run(browser, base, faction));
+  if (args.only !== "specforces") {
+    for (const faction of FACTIONS) results.push(await run(browser, base, faction));
+  }
+  if (!args.faction || args.faction === "alliance") results.push(await runSpecForces(browser, base));
 } finally {
   await browser.close();
   server.close();

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 112;
+const SCENARIO_COUNT: u8 = 114;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -398,6 +398,16 @@ pub enum Scenario {
     /// (manual p. 122; `FUN_004ffc90`, `FUN_004feca0`), so the Fleet window
     /// lists one fleet of three ships.
     FleetJoinEnroute = 111,
+    /// The Alliance's galaxy as A0 2026-11-13-gid shows it (days 243 to
+    /// 258): Kubindi explored, uninhabited and held by no side (B2), and
+    /// Adar Tallon alone at Averam on a Troop Training Research mission
+    /// there (C0..C2), on Popular Support (`place_gid_a0`).
+    GidA0 = 112,
+    /// One Alliance special force, of the SpecForces view's first column,
+    /// at Yavin and no other of the Alliance's anywhere, as A0
+    /// 2026-11-13-gid/E1 shows the Personnel Finder's SpecForces view: one
+    /// row, "Yavin" (`place_specforces_yavin`).
+    SpecForcesYavin = 113,
 }
 
 impl Scenario {
@@ -515,6 +525,8 @@ impl Scenario {
             109 => Self::SquadronEnroute,
             110 => Self::FleetArrivals,
             111 => Self::FleetJoinEnroute,
+            112 => Self::GidA0,
+            113 => Self::SpecForcesYavin,
             _ => return None,
         })
     }
@@ -1111,6 +1123,12 @@ pub fn apply(
     }
     if request.scenario == Scenario::ModdellUninhabited {
         place_moddell_uninhabited(world);
+    }
+    if request.scenario == Scenario::GidA0 {
+        place_gid_a0(world, missions);
+    }
+    if request.scenario == Scenario::SpecForcesYavin {
+        place_specforces_yavin(world);
     }
     if request.scenario == Scenario::FleetWindowCoruscant {
         place_coruscant(request, world, cockpit, movement, troop_transport, fleets);
@@ -2813,6 +2831,10 @@ pub fn emit_personnel_finder(
     fog: &FogState,
     finder: &rebellion_render::personnel_finder::PersonnelFinderState,
 ) {
+    if request.scenario == Scenario::SpecForcesYavin {
+        emit_finder_list(request, world, fog, finder);
+        return;
+    }
     if request.scenario != Scenario::PersonnelStates {
         return;
     }
@@ -2839,6 +2861,42 @@ pub fn emit_personnel_finder(
         tabs: tabs.map(|point| (point.x, point.y)),
     })
     .expect("serialize the personnel finder report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+}
+
+/// The Personnel Finder's shown rows in either view, its chosen row and its
+/// name box's text, in the SpecForcesYavin scenario.
+fn emit_finder_list(
+    request: FixtureRequest,
+    world: &GameWorld,
+    fog: &FogState,
+    finder: &rebellion_render::personnel_finder::PersonnelFinderState,
+) {
+    let Some((rows, chosen, name)) = finder.shown_list(world, fog) else {
+        return;
+    };
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let Some((alliance_tab, tabs)) = finder.shown_side_tabs(layout) else {
+        return;
+    };
+    #[derive(Serialize)]
+    struct Report {
+        status: &'static str,
+        rows: Vec<String>,
+        chosen: Option<usize>,
+        name: String,
+        tab: &'static str,
+        tabs: [(f32, f32); 2],
+    }
+    let bytes = serde_json::to_vec(&Report {
+        status: "personnel-finder",
+        rows,
+        chosen,
+        name,
+        tab: if alliance_tab { "alliance" } else { "imperial" },
+        tabs: tabs.map(|point| (point.x, point.y)),
+    })
+    .expect("serialize the personnel finder list");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
@@ -3394,6 +3452,102 @@ fn place_moddell_uninhabited(world: &mut GameWorld) {
         system.defense_facilities.clear();
         system.manufacturing_facilities.clear();
         system.production_facilities.clear();
+    }
+}
+
+/// The `GidA0` scenario, as A0 2026-11-13-gid shows the Alliance's game:
+/// Kubindi explored and uninhabited, held by no side (B1z: two tracks, no
+/// support track; B2: its no-side mark), and Adar Tallon alone at Averam
+/// on a Troop Training Research mission there (C0, C1), Averam the
+/// Alliance's.
+fn place_gid_a0(world: &mut GameWorld, missions: &mut MissionState) {
+    let find = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, system)| system.name == name)
+            .map(|(key, _)| key)
+    };
+    if let Some(kubindi) = find(world, "Kubindi") {
+        // Its sector (Calaron) unexplored but for it and Jerijador (B0,
+        // B2), held by no side: A6 shows their no-side "None" marks.
+        let sector = world.systems[kubindi].sector;
+        for (key, system) in &mut world.systems {
+            if key != kubindi && system.sector == sector && system.name != "Jerijador" {
+                system.exploration_status = ExplorationStatus::Unexplored;
+                system.control = ControlKind::Uncontrolled;
+            }
+        }
+        let system = &mut world.systems[kubindi];
+        system.exploration_status = ExplorationStatus::Explored;
+        system.is_populated = false;
+        system.is_destroyed = false;
+        system.control = ControlKind::Uncontrolled;
+    }
+    let Some(averam) = find(world, "Averam") else {
+        return;
+    };
+    world.systems[averam].exploration_status = ExplorationStatus::Explored;
+    world.systems[averam].control = ControlKind::Controlled(Faction::Alliance);
+    let Some(tallon) = world
+        .characters
+        .iter()
+        .find(|(_, character)| character.name == "Adar Tallon")
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    // Alone at Averam: every other character there leaves for nowhere.
+    for (key, character) in &mut world.characters {
+        if key != tallon && character.current_system == Some(averam) {
+            character.current_system = None;
+        }
+    }
+    let character = &mut world.characters[tallon];
+    character.current_system = Some(averam);
+    character.current_fleet = None;
+    character.is_alliance = true;
+    character.is_empire = false;
+    character.recruited = true;
+    character.on_mission = true;
+    missions.dispatch(rebellion_core::missions::MissionRequest::single(
+        MissionKind::TroopTrainingResearch,
+        MissionFaction::Alliance,
+        tallon,
+        averam,
+        None,
+        0,
+    ));
+}
+
+/// The `SpecForcesYavin` scenario: one Alliance special force of the
+/// SpecForces view's first column (class `0x3c000004`) at Yavin and no
+/// other of the Alliance's on any system or fleet (A0 2026-11-13-gid/E1:
+/// one row, "Yavin", 1 in the first column). The Empire's stay.
+fn place_specforces_yavin(world: &mut GameWorld) {
+    let alliance: Vec<_> = world
+        .special_forces
+        .iter()
+        .filter(|(_, unit)| unit.is_alliance)
+        .map(|(key, _)| key)
+        .collect();
+    for system in world.systems.values_mut() {
+        system.special_forces.retain(|key| !alliance.contains(key));
+    }
+    for fleet in world.fleets.values_mut() {
+        fleet.special_forces.retain(|key| !alliance.contains(key));
+    }
+    let unit = alliance.iter().copied().find(|&key| {
+        world.special_forces[key].class_dat_id == rebellion_core::ids::DatId::new(0x3c00_0004)
+    });
+    let yavin = world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Yavin")
+        .map(|(key, _)| key);
+    if let (Some(unit), Some(yavin)) = (unit, yavin) {
+        world.special_forces[unit].on_mission = false;
+        world.systems[yavin].special_forces.push(unit);
     }
 }
 

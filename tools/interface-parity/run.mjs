@@ -1050,7 +1050,15 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       assert.notDeepEqual(pixelAt(chosen, 151, 121), [255, 255, 255], "choosing the display opened the legend");
     }
     const legendButton = point((faction === "alliance" ? 55 : 113) + 15, 50 + 15);
+    // FUN_00452ab0's flags 3: the button swallows a click and posts its
+    // command on a double click only (Class_00659e38_vt14; A0
+    // 2026-11-13-gid/A2 a click opens nothing, A3 a double click opens).
     await page.mouse.click(legendButton.x, legendButton.y);
+    const single = await stableInteractionFrame(page, folder, "legend-single-click");
+    if (exact) {
+      assert.notDeepEqual(pixelAt(single, 151, 121), [255, 255, 255], "a single click opened the legend");
+    }
+    await page.mouse.dblclick(legendButton.x, legendButton.y);
     const open = await stableInteractionFrame(page, folder, "legend-open");
     if (exact) {
       assert.deepEqual(pixelAt(open, 150, 120), [192, 192, 192], "legend frame corner is not grey");
@@ -1065,7 +1073,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
         "the closed legend left its frame");
     }
     const button = point((faction === "alliance" ? 55 : 113) + 15, 50 + 15);
-    await page.mouse.click(button.x, button.y);
+    await page.mouse.dblclick(button.x, button.y);
     const restored = await stableInteractionFrame(page, folder, "legend-restored");
     assert.notEqual(sha256(restored), sha256(closed), `${scenario.slug}: the legend button did nothing`);
     // The button opened the legend both times, so the frames agree.
