@@ -3429,22 +3429,6 @@ fn draw_fleet_window(
                             .get(fleet)
                             .and_then(|value| value.capital_ships.get(index))
                             .and_then(|ship| world.capital_ship_classes.get(ship.class));
-                        // A0 fleet2/umgul-corvette1-selected: a selected
-                        // ship's entry takes the fleet's frame 10401 at its
-                        // origin, over the tree line.
-                        for (target, item, _) in targets.iter().filter(|(_, _, chosen)| *chosen) {
-                            paint_native(
-                                target,
-                                ctx,
-                                cache,
-                                DllSource::Strategy,
-                                side_art(FLEET_SELECTED, side),
-                                *item,
-                                scale,
-                                0.0,
-                                0.0,
-                            );
-                        }
                         if let Some(class) = class {
                             // A0 fleet3/01: a ship's entry names it where a
                             // fleet's does (cap height at the row's y 6,
@@ -3460,6 +3444,25 @@ fn draw_fleet_window(
                                 egui::Color32::WHITE,
                                 (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                             );
+                        }
+                        // A0 fleet2/umgul-corvette1-selected: a selected
+                        // ship's entry takes the fleet's frame 10401 at its
+                        // origin, over the tree line; A0 2026-11-13-drag/25
+                        // keeps its right edge over a long name.
+                        for (target, item, _) in targets.iter().filter(|(_, _, chosen)| *chosen) {
+                            paint_native(
+                                target,
+                                ctx,
+                                cache,
+                                DllSource::Strategy,
+                                side_art(FLEET_SELECTED, side),
+                                *item,
+                                scale,
+                                0.0,
+                                0.0,
+                            );
+                        }
+                        if let Some(class) = class {
                             if let Some(mini) = capital_ship_mini_id(class.dat_id) {
                                 let damaged = world
                                     .fleets

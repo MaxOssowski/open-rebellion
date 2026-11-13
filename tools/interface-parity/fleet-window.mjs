@@ -476,6 +476,78 @@ async function shot(page, directory, label) {
 // The Fleet window's place in A0's captures.
 const a0Origin = { x: 305, y: 86 };
 
+// `--a0-drag=DIR` (.artifacts/a0-vm/2026-11-13-drag): A0's Yavin Fleet 1
+// with Corellian Corvette 1 and Medium Transport 1 selected (01), dragged
+// (03), and the release on the origin (04), all with the window at (305,
+// 86) as the FleetWindowYavin fixture opens it.
+const a0DragDir = process.argv.find((arg) => arg.startsWith("--a0-drag="))?.slice(10)
+  ?? [path.join(root, ".artifacts/a0-vm/2026-11-13-drag")]
+    .find((dir) => fs.existsSync(path.join(dir, "01-yavin-fleet1-two-ships-ctrl-selected.png")));
+
+function rgb(png, x, y) {
+  const i = (y * png.width + x) * 4;
+  return [png.data[i], png.data[i + 1], png.data[i + 2]];
+}
+
+// The CoolDragList's selection art is pure red (10420, 10401: palette
+// (255, 0, 0)); the set of such pixels in the inclusive [x0, y0, x1, y1].
+function redPixels(png, [x0, y0, x1, y1]) {
+  const set = new Set();
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      const [r, g, b] = rgb(png, x, y);
+      if (r === 255 && g === 0 && b === 0) set.add(`${x},${y}`);
+    }
+  }
+  return set;
+}
+
+// A 1-pixel outline from (x0, y0) to (x1, y1), inclusive, without the
+// corners `skip` names ("bl": 10420's bottom-left pixel is its blue key).
+function outline(x0, y0, x1, y1, skip = []) {
+  const set = new Set();
+  for (let x = x0; x <= x1; x += 1) {
+    set.add(`${x},${y0}`);
+    set.add(`${x},${y1}`);
+  }
+  for (let y = y0; y <= y1; y += 1) {
+    set.add(`${x0},${y}`);
+    set.add(`${x1},${y}`);
+  }
+  if (skip.includes("bl")) set.delete(`${x0},${y1}`);
+  return set;
+}
+
+function sameSets(port, expected, label) {
+  const onlyPort = [...port].filter((key) => !expected.has(key));
+  const onlyExpected = [...expected].filter((key) => !port.has(key));
+  assert.ok(onlyPort.length === 0 && onlyExpected.length === 0,
+    `${label}: ${JSON.stringify({ port: port.size, expected: expected.size,
+      onlyPort: onlyPort.slice(0, 12), onlyExpected: onlyExpected.slice(0, 12) })}`);
+  return { pixels: port.size };
+}
+
+// The pixels of `rect` (inclusive) that differ between two screens, the
+// boxes in `masks` (inclusive [x0, y0, x1, y1]) left out.
+function differing(port, a0, [x0, y0, x1, y1], masks = []) {
+  let compared = 0;
+  const differ = [];
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      if (masks.some(([mx0, my0, mx1, my1]) => x >= mx0 && x <= mx1 && y >= my0 && y <= my1)) continue;
+      compared += 1;
+      const p = rgb(port, x, y);
+      const q = rgb(a0, x, y);
+      if (![0, 1, 2].every((k) => p[k] === q[k])) differ.push([x, y]);
+    }
+  }
+  return { compared, differing: differ.length, first: differ.slice(0, 12) };
+}
+
+async function screen(page, directory, label) {
+  return PNG.sync.read((await shot(page, directory, label)).bytes);
+}
+
 // Capture the Fleet window at A0's (305, 86) as `label` and, when `a0Png`
 // names A0's capture of the same state, count the window's pixels that
 // differ from it; the count must stay within `ceiling`. `masks` ([x, y, w,
@@ -2626,6 +2698,207 @@ const cases = [
       const joined = await compareWindowWithA0(page, directory, "a0-yavin-12-after-ship-confirmed-move",
         a0Fleet3Dir && path.join(a0Fleet3Dir, "12-after-ship-confirmed-move.png"), A0_CONFIRM_JOINED_CEILING);
       return { dialogDiffering, joined };
+    },
+  },
+  {
+    name: "a0-drag-right",
+    code: FLEET_WINDOW_YAVIN,
+    factions: ["alliance"],
+    standalone: true,
+    // A0 2026-11-13-drag/01..04, Yavin's Fleet 1 at (305, 86): a click on
+    // Corellian Corvette 1 and a Ctrl+click on Medium Transport 1 frame both
+    // with 10420 at the item's (1, 1), a 114 by 37 red outline whose
+    // bottom-left pixel is the blue key (x 407..520, y 214..250 and
+    // 264..300). Held and moved, both selected images, art and frame without
+    // the names, follow the pointer at the press's offset (FUN_00609960,
+    // FUN_0060dce0, FUN_0060df00), over the left list (03) and past the
+    // window's edge (20); released back on the press point nothing moves and
+    // the press's item alone stays selected (04, FUN_006083c0 case 0x202).
+    async run(page, faction, setup, directory) {
+      const a0 = (name) => a0DragDir && PNG.sync.read(fs.readFileSync(path.join(a0DragDir, name)));
+      const corvette = { x: 465, y: 232 };
+      const transport = { x: 465, y: 282 };
+      // The cells (x 406..530), short of the pane's red edge at x 531.
+      const list = [406, 213, 529, 377];
+      // The items' names (font 10 under each image) are text: the
+      // accepted text deviation.
+      const names = [[406, 251, 529, 265], [406, 301, 529, 315]];
+      // A0 01 shows Fleet 1 collapsed: the fixture's expanded entry is
+      // closed by a double click (FUN_004a6390).
+      await click(page, { x: 345, y: 86 + 29 + 25 });
+      await click(page, { x: 345, y: 86 + 29 + 25 });
+      await page.mouse.move(600, 470);
+      await page.waitForTimeout(400);
+      await frames(page);
+      await click(page, corvette);
+      await page.waitForTimeout(300);
+      await clickWith(page, transport, "Control");
+      await page.mouse.move(600, 470);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const two = await screen(page, directory, "two-selected");
+      const checks = {};
+      const both = new Set([...outline(407, 214, 520, 250, ["bl"]), ...outline(407, 264, 520, 300, ["bl"])]);
+      checks.frames = sameSets(redPixels(two, list), both, "the two selection frames");
+      const a0Selected = a0("01-yavin-fleet1-two-ships-ctrl-selected.png");
+      if (a0Selected) {
+        checks.frames_a0 = sameSets(redPixels(two, list), redPixels(a0Selected, list), "the frames against A0 01");
+        checks.list_a0 = differing(two, a0Selected, list, names);
+        assert.equal(checks.list_a0.differing, 0, `the right list against A0 01: ${JSON.stringify(checks.list_a0)}`);
+      }
+
+      // Pressed on the corvette at (58, 18) from its frame's corner and
+      // moved to A0 03's (340, 140).
+      await page.mouse.move(corvette.x, corvette.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.move(430, 170, { steps: 4 });
+      await frames(page);
+      await page.mouse.move(340, 140, { steps: 4 });
+      await page.waitForTimeout(150);
+      await frames(page, 2);
+      const held = await screen(page, directory, "drag-over-left-list");
+      const boxes = [282, 122, 395, 208];
+      const image = new Set([...outline(282, 122, 395, 158, ["bl"]), ...outline(282, 172, 395, 208, ["bl"])]);
+      // The left list's own Fleet 1 frame (10401 at the entry, x 312..381,
+      // y 115..161) shows through where the image has no art.
+      const region = [276, 115, 400, 214];
+      // A0's pointer at (340, 140), the drag arrow with its box, covers
+      // x 336..362, y 138..164 in A0 03.
+      const pointer = [336, 138, 362, 164];
+      const outsidePointer = (set) => new Set([...set].filter((key) => {
+        const [x, y] = key.split(",").map(Number);
+        return !(x >= pointer[0] && x <= pointer[2] && y >= pointer[1] && y <= pointer[3]);
+      }));
+      const portRed = redPixels(held, region);
+      for (const key of image) assert.ok(portRed.has(key), `the drag image's frame lacks ${key}`);
+      checks.drag_frames = { pixels: image.size };
+      const a0Held = a0("03-yavin-fleet1-two-ships-mid-drag-over-left-list.png");
+      if (a0Held) {
+        checks.drag_frames_a0 = sameSets(outsidePointer(portRed), outsidePointer(redPixels(a0Held, region)),
+          "the drag image's red against A0 03");
+        // The ship art: each pixel inside A0 03's two boxes that copies A0
+        // 01's item at the press offset (125, 92) and differs from what A0
+        // 04 (the same screen without the image) shows there, A0's pointer
+        // at (340, 140) left out.
+        const a0Under = a0("04-after-release-on-origin-single-selection.png");
+        let art = 0;
+        const wrong = [];
+        for (const top of [122, 172]) for (let y = top + 1; y < top + 36; y += 1) {
+          for (let x = boxes[0] + 1; x < boxes[2]; x += 1) {
+            if (x >= pointer[0] && x <= pointer[2] && y >= pointer[1] && y <= pointer[3]) continue;
+            const source = rgb(a0Selected, x + 125, y + 92);
+            const shown = rgb(a0Held, x, y);
+            const under = rgb(a0Under, x, y);
+            if (![0, 1, 2].every((k) => source[k] === shown[k])
+              || [0, 1, 2].every((k) => under[k] === shown[k])) continue;
+            art += 1;
+            const port = rgb(held, x, y);
+            if (![0, 1, 2].every((k) => port[k] === shown[k])) wrong.push([x, y]);
+          }
+        }
+        checks.drag_art_a0 = { art, differing: wrong.length, first: wrong.slice(0, 12) };
+        assert.ok(art > 300 && wrong.length === 0, `the drag image's art against A0 03: ${JSON.stringify(checks.drag_art_a0)}`);
+      }
+
+      // Past the window over the sector window (A0 20): the image is drawn
+      // over every window.
+      await page.mouse.move(200, 300, { steps: 4 });
+      await page.waitForTimeout(150);
+      await frames(page, 2);
+      const outside = await screen(page, directory, "drag-outside-window");
+      const away = new Set([...outline(142, 282, 255, 318, ["bl"]), ...outline(142, 332, 255, 368, ["bl"])]);
+      const awayRed = redPixels(outside, [136, 276, 261, 374]);
+      for (const key of away) assert.ok(awayRed.has(key), `the image outside the window lacks ${key}`);
+      checks.outside = { pixels: away.size };
+
+      // Back on the press point: no drop, and the release's held click
+      // keeps the corvette alone (A0 04).
+      await page.mouse.move(corvette.x, corvette.y, { steps: 6 });
+      await frames(page);
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      await page.mouse.move(600, 470);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const released = await screen(page, directory, "released-on-origin");
+      checks.released = sameSets(redPixels(released, list), outline(407, 214, 520, 250, ["bl"]), "the corvette alone");
+      const a0Released = a0("04-after-release-on-origin-single-selection.png");
+      if (a0Released) {
+        // A0's pointer, left on the press point, covers x 465..484,
+        // y 232..251 in 04.
+        const notPointer = (set) => new Set([...set].filter((key) => {
+          const [x, y] = key.split(",").map(Number);
+          return !(x >= 465 && x <= 484 && y >= 232 && y <= 251);
+        }));
+        checks.released_a0 = sameSets(notPointer(redPixels(released, list)), notPointer(redPixels(a0Released, list)),
+          "the release against A0 04");
+      }
+      return checks;
+    },
+  },
+  {
+    name: "a0-drag-left",
+    code: FLEET_WINDOW_YAVIN,
+    factions: ["alliance"],
+    standalone: true,
+    // A0 2026-11-13-drag/25, 26: a press on a left-list child row frames it
+    // at once (FUN_006083c0 case 0x201: FUN_006094b0, bit 0), and its drag
+    // image is a red-framed 70 by 47 copy of the row (10401's outline at
+    // the row's (3, 0)) with its art and no name, at the press's offset.
+    // The fixture's Fleet 1 is expanded: Corellian Corvette 1's row is the
+    // second, x 312..381 framed at y 165..211.
+    async run(page, faction, setup, directory) {
+      const row = { x: 345, y: 86 + 29 + 50 + 25 };
+      // The left list (x 4..95 of the window) short of the pane art's
+      // dotted red edge at x 402 (A0 01, 25).
+      const left = [305, 113, 401, 300];
+      await page.mouse.move(600, 470);
+      await frames(page);
+      await page.mouse.move(row.x, row.y);
+      await frames(page);
+      await page.mouse.down();
+      await page.waitForTimeout(150);
+      await frames(page, 2);
+      const pressed = await screen(page, directory, "child-pressed");
+      const checks = {};
+      checks.pressed = sameSets(redPixels(pressed, left), outline(312, 165, 381, 211),
+        "the pressed child row framed while the button is held");
+      await page.mouse.move(row.x + 20, row.y + 30, { steps: 4 });
+      await page.waitForTimeout(150);
+      await frames(page, 2);
+      const held = await screen(page, directory, "child-dragging");
+      checks.dragging = sameSets(redPixels(held, left),
+        new Set([...outline(312, 165, 381, 211), ...outline(332, 195, 401, 241)]),
+        "the row's frame and its drag image's frame");
+      // The image carries the row's art, not its name: every pixel the
+      // image changes below the name's descenders (the row's y 185..210,
+      // at +20, +30) shows the row's own pixel there.
+      let art = 0;
+      const wrong = [];
+      for (let y = 185; y < 211; y += 1) {
+        for (let x = 313; x < 381; x += 1) {
+          const shown = rgb(held, x + 20, y + 30);
+          const before = rgb(pressed, x + 20, y + 30);
+          if ([0, 1, 2].every((k) => shown[k] === before[k])) continue;
+          art += 1;
+          const source = rgb(pressed, x, y);
+          if (![0, 1, 2].every((k) => shown[k] === source[k])) wrong.push([x, y]);
+        }
+      }
+      checks.art = { art, differing: wrong.length, first: wrong.slice(0, 12) };
+      assert.ok(art > 50 && wrong.length === 0, `the drag image's art: ${JSON.stringify(checks.art)}`);
+      // No name: the image's name band (y 168..180 at +30) shows what was
+      // under it before the drag, the list's background.
+      const nameBand = differing(held, pressed, [339, 198, 380, 208]);
+      checks.no_name = nameBand;
+      assert.equal(nameBand.differing, 0, `the drag image carries no name: ${JSON.stringify(nameBand)}`);
+      await page.mouse.move(row.x, row.y, { steps: 4 });
+      await frames(page);
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      return checks;
     },
   },
   {

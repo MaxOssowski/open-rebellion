@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 114;
+const SCENARIO_COUNT: u8 = 115;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -408,6 +408,11 @@ pub enum Scenario {
     /// 2026-11-13-gid/E1 shows the Personnel Finder's SpecForces view: one
     /// row, "Yavin" (`place_specforces_yavin`).
     SpecForcesYavin = 113,
+    /// As `CoruscantSeized`, with a second Alliance Army Regiment there:
+    /// the player's own two regiments on the Defenses window's Trooper
+    /// Regiments page, as A0 2026-11-13-drag/30..33 select and drag
+    /// Averam's two. The quadrant gate's second system is Coruscant.
+    CoruscantRegiments = 114,
 }
 
 impl Scenario {
@@ -527,6 +532,7 @@ impl Scenario {
             111 => Self::FleetJoinEnroute,
             112 => Self::GidA0,
             113 => Self::SpecForcesYavin,
+            114 => Self::CoruscantRegiments,
             _ => return None,
         })
     }
@@ -1147,6 +1153,24 @@ pub fn apply(
     }
     if request.scenario == Scenario::CoruscantSeized {
         place_coruscant_seized(request, world, movement, sectors);
+    }
+    if request.scenario == Scenario::CoruscantRegiments {
+        place_coruscant_seized(request, world, movement, sectors);
+        // A0 31's "Alliance Army Regiment" (TROOPSD 2) twice.
+        if let Some(coruscant) = coruscant(world) {
+            let army = rebellion_core::ids::DatId::new(0x1000_0002);
+            for key in world.systems[coruscant].ground_units.clone() {
+                if let Some(unit) = world.troops.get_mut(key) {
+                    unit.class_dat_id = army;
+                }
+            }
+            let regiment = world.troops.insert(TroopUnit {
+                class_dat_id: army,
+                is_alliance: true,
+                regiment_strength: 100,
+            });
+            world.systems[coruscant].ground_units.push(regiment);
+        }
     }
     if request.scenario == Scenario::CoruscantSquadrons {
         place_coruscant_squadrons(request, world, sectors);
@@ -2068,7 +2092,9 @@ fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(Syste
             let primary = world.systems.keys().next()?;
             Some((primary, loading_target(world, primary)?))
         }
-        Scenario::CoruscantSeized | Scenario::CoruscantSquadrons => {
+        Scenario::CoruscantSeized
+        | Scenario::CoruscantSquadrons
+        | Scenario::CoruscantRegiments => {
             let coruscant = coruscant(world)?;
             Some((loading_target(world, coruscant)?, coruscant))
         }

@@ -30,6 +30,9 @@ const CORUSCANT_SEIZED = 107;
 // CoruscantSquadrons: the Empire's Coruscant with ten TIE Fighter
 // squadrons, as A0 2026-11-11-icon-menu-topic/05; the second system again.
 const CORUSCANT_SQUADRONS = 109;
+// CoruscantRegiments: as CoruscantSeized with the Alliance's two Army
+// Regiments there, seen by the Alliance (A0 2026-11-13-drag/30..33).
+const CORUSCANT_REGIMENTS = 115;
 const factions = [
   { name: "alliance", byte: 1, side: 1, other: 2, galaxyRight: 540 },
   { name: "empire", byte: 2, side: 2, other: 1, galaxyRight: 600 },
@@ -1715,6 +1718,181 @@ const cases = [
         (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && JSON.stringify(w.selection) === "[0,1,3,4,6,7,9]"), dat), dat);
       await shot(page, directory, "shift-range");
       return { two, range };
+    },
+  },
+  {
+    name: "defenses-a0-regiments",
+    scenario: CORUSCANT_REGIMENTS,
+    factions: ["alliance"],
+    // A0 2026-11-13-drag/31..33 (Averam's Defenses window at (82, 86), the
+    // Alliance): a click on the first regiment and a Ctrl+click on the
+    // second frame each image with the side's 10578 (a 61 by 25 red outline
+    // at the cell's corner) and turn its name red (FUN_004a9ab0); no frame
+    // goes round the name. Held and moved, the drag image is the two framed
+    // images on the list's 70-pixel pitch without names (FUN_00609960), at
+    // the press's offset, drawn over the window's edge (32). The fixture's
+    // Coruscant holds the player's two Alliance Army Regiments.
+    async run(page, faction, setup, directory) {
+      const a0File = (name) => path.join(root, ".artifacts/a0-vm/2026-11-13-drag", name);
+      const a0Origin = [82, 86];
+      const { dat, window } = await openDefenses(page, setup, "second");
+      const tab = window.tabs.find(([name]) => name === "regiments")[1];
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await click(page, { x: tab[0] + 18, y: tab[1] + 16 });
+      const opened = defensesWindow(await until(page, "the regiments page opens",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.page === "regiments"), dat), dat);
+      assert.equal(opened.rows.length, 2, JSON.stringify(opened));
+      const origin = corner(opened);
+      // A0 31's click points (119, 180) and (189, 180): the cell's (30, 13).
+      const cell = (index) => ({ x: origin[0] + 7 + 70 * index + 30, y: origin[1] + 81 + 13 });
+      const withKey = async (key, at) => {
+        await page.keyboard.down(key);
+        await frames(page);
+        await click(page, at);
+        await page.waitForTimeout(300);
+        await page.keyboard.up(key);
+        await frames(page);
+      };
+      await click(page, cell(0));
+      await page.waitForTimeout(300);
+      await withKey("Control", cell(1));
+      await until(page, "Ctrl+click selects both regiments",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && JSON.stringify(w.selection) === "[0,1]"), dat);
+      const two = await stableScreen(page, directory, "two-selected");
+      const rgbAt = (png, x, y) => {
+        const i = (y * png.width + x) * 4;
+        return [png.data[i], png.data[i + 1], png.data[i + 2]];
+      };
+      const isRed = ([r, g, b]) => r === 255 && g === 0 && b === 0;
+      const isWhite = ([r, g, b]) => r === 255 && g === 255 && b === 255;
+      // The red pixels of a window-relative box [x0, y0, x1, y1], as
+      // window coordinates.
+      const red = (png, [wx, wy], [x0, y0, x1, y1]) => {
+        const set = new Set();
+        for (let y = y0; y <= y1; y += 1) for (let x = x0; x <= x1; x += 1) {
+          if (isRed(rgbAt(png, wx + x, wy + y))) set.add(`${x},${y}`);
+        }
+        return set;
+      };
+      const same = (a, b, label) => {
+        const onlyPort = [...a].filter((key) => !b.has(key));
+        const onlyA0 = [...b].filter((key) => !a.has(key));
+        assert.ok(onlyPort.length === 0 && onlyA0.length === 0,
+          `${label}: ${JSON.stringify({ port: a.size, a0: b.size, onlyPort: onlyPort.slice(0, 12), onlyA0: onlyA0.slice(0, 12) })}`);
+        return { pixels: a.size };
+      };
+      const checks = {};
+      // The images' band (the cells' y 0..25): the two 10578 outlines.
+      const band = [7, 81, 228, 107];
+      const frame = (x) => {
+        const set = new Set();
+        for (let k = 0; k < 61; k += 1) {
+          set.add(`${x + k},81`);
+          set.add(`${x + k},105`);
+        }
+        for (let k = 0; k < 25; k += 1) {
+          set.add(`${x},${81 + k}`);
+          set.add(`${x + 60},${81 + k}`);
+        }
+        // 10578's bottom-left pixel is its blue key.
+        set.delete(`${x},105`);
+        return set;
+      };
+      checks.frames = same(red(two, origin, band), new Set([...frame(7), ...frame(77)]), "the two 10578 frames");
+      // The names: red ink, no white, no frame (the cells' y 27..70). The
+      // port's text is smoothed, so its ink is any strongly red pixel, and
+      // its box is compared (the accepted text-width deviation).
+      const names = [7, 108, 228, 150];
+      const reddish = ([r, g, b]) => r >= 128 && g < 64 && b < 96;
+      const ink = (png, [wx, wy]) => {
+        let reds = 0;
+        let whites = 0;
+        let box = null;
+        for (let y = names[1]; y <= names[3]; y += 1) for (let x = names[0]; x <= names[2]; x += 1) {
+          const value = rgbAt(png, wx + x, wy + y);
+          if (isWhite(value)) whites += 1;
+          if (!reddish(value)) continue;
+          reds += 1;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+        return { reds, whites, box };
+      };
+      checks.names = ink(two, origin);
+      assert.ok(checks.names.reds > 100 && checks.names.whites === 0, `the selected names: ${JSON.stringify(checks.names)}`);
+      if (fs.existsSync(a0File("31-averam-two-regiments-ctrl-selected-red-names.png"))) {
+        const a0 = PNG.sync.read(fs.readFileSync(a0File("31-averam-two-regiments-ctrl-selected-red-names.png")));
+        checks.frames_a0 = same(red(two, origin, band), red(a0, a0Origin, band), "the frames against A0 31");
+        checks.names_a0 = { port: checks.names, a0: ink(a0, a0Origin) };
+        const [p, q] = [checks.names.box, checks.names_a0.a0.box];
+        const ratio = (p[2] - p[0] + 1) / (q[2] - q[0] + 1);
+        // The accepted text deviation: "Alliance Army Regiment" in A0's
+        // GDI font against the port's, both red, the ink box's left and top
+        // within 2 pixels and its width within 15%.
+        assert.ok(checks.names_a0.a0.whites === 0 && Math.abs(p[0] - q[0]) <= 2 && Math.abs(p[1] - q[1]) <= 2
+          && ratio > 0.85 && ratio < 1.15,
+          `the red names against A0 31: ${JSON.stringify({ ...checks.names_a0, ratio })}`);
+        // The list's every pixel but the names (text), on the same
+        // backdrop 10577.
+        checks.list_a0 = wholeWindow(two, origin, a0File("31-averam-two-regiments-ctrl-selected-red-names.png"),
+          a0Origin, [[0, 0, 235, 81], [0, 108, 235, 44], [0, 291, 235, 13]]);
+        assert.equal(checks.list_a0.differing, 0, `the list against A0 31: ${JSON.stringify(checks.list_a0)}`);
+      }
+
+      // A0 32: pressed at (119, 180) and held at (280, 220), +(161, 40).
+      const start = cell(0);
+      await page.mouse.move(start.x, start.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.move(start.x + 80, start.y + 20, { steps: 4 });
+      await page.mouse.move(start.x + 161, start.y + 40, { steps: 4 });
+      await page.waitForTimeout(150);
+      await frames(page, 2);
+      const held = PNG.sync.read((await shot(page, directory, "drag-held")).bytes);
+      const image = [7 + 161, 81 + 40, 7 + 161 + 130, 81 + 40 + 24];
+      checks.drag_frames = same(
+        new Set([...red(held, origin, [image[0], image[1], image[0] + 60, image[3]]),
+          ...red(held, origin, [image[0] + 70, image[1], image[2], image[3]])]),
+        new Set([...frame(7), ...frame(77)].map((key) => {
+          const [x, y] = key.split(",").map(Number);
+          return `${x + 161},${y + 40}`;
+        })),
+        "the drag image's frames at the press offset");
+      if (fs.existsSync(a0File("32-two-regiments-mid-drag-inside-window.png"))) {
+        const a0 = PNG.sync.read(fs.readFileSync(a0File("32-two-regiments-mid-drag-inside-window.png")));
+        const a0Selected = PNG.sync.read(fs.readFileSync(a0File("31-averam-two-regiments-ctrl-selected-red-names.png")));
+        // The image's pixels: those of A0 32's two boxes that copy A0 31's
+        // cells at the press offset and differ from what A0 31 (the same
+        // screen without the image) shows there; the port must show the
+        // same.
+        let art = 0;
+        const wrong = [];
+        for (const left of [image[0], image[0] + 70]) {
+          for (let y = image[1]; y <= image[3]; y += 1) for (let x = left; x <= left + 60; x += 1) {
+            const shown = rgbAt(a0, a0Origin[0] + x, a0Origin[1] + y);
+            const source = rgbAt(a0Selected, a0Origin[0] + x - 161, a0Origin[1] + y - 40);
+            const under = rgbAt(a0Selected, a0Origin[0] + x, a0Origin[1] + y);
+            if (![0, 1, 2].every((k) => shown[k] === source[k])
+              || [0, 1, 2].every((k) => shown[k] === under[k])) continue;
+            art += 1;
+            const port = rgbAt(held, origin[0] + x, origin[1] + y);
+            if (![0, 1, 2].every((k) => port[k] === shown[k])) wrong.push([x, y]);
+          }
+        }
+        checks.drag_a0 = { art, differing: wrong.length, first: wrong.slice(0, 12) };
+        assert.ok(art > 300 && wrong.length === 0, `the drag image against A0 32: ${JSON.stringify(checks.drag_a0)}`);
+      }
+      // Back on the press point: no drop, and the held click keeps the
+      // first regiment alone (FUN_006083c0 case 0x202).
+      await page.mouse.move(start.x, start.y, { steps: 6 });
+      await frames(page);
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      const released = defensesWindow(await until(page, "the release keeps the first regiment alone",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && JSON.stringify(w.selection) === "[0]"), dat), dat);
+      assert.equal(released.rows.length, 2, "nothing moved");
+      return checks;
     },
   },
   {
