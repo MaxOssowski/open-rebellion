@@ -1061,6 +1061,25 @@ pub fn apply(
             };
             manufacturing.enqueue(secondary, QueueItem::new(kind, 10).delivered_to(primary));
         }
+        // build-selection.mjs reads every facility class at number 1, so
+        // the primary keeps a free energy slot past its facilities, the
+        // four queued above and the three `place_deliveries` sends, and a
+        // raw deposit past its mines (FUN_00507750, the room
+        // FUN_005385f0's order needs).
+        let system = &mut world.systems[primary];
+        let mines = system
+            .production_facilities
+            .iter()
+            .filter(|key| world.production_facilities.get(**key).is_some_and(|value| value.is_mine))
+            .count()
+            + 2;
+        let facilities = system.defense_facilities.len()
+            + system.manufacturing_facilities.len()
+            + system.production_facilities.len()
+            + 7;
+        let room = |taken: usize| u8::try_from(taken + 1).unwrap_or(u8::MAX);
+        system.total_energy = system.total_energy.max(room(facilities));
+        system.raw_materials = system.raw_materials.max(room(mines));
     }
     if matches!(
         request.scenario,
@@ -4813,6 +4832,7 @@ fn production_report(
     request: FixtureRequest,
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    en_route: &[rebellion_core::delivery::Delivery],
     systems: &SystemWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
 ) -> Option<FixtureProduction> {
@@ -4886,6 +4906,7 @@ fn production_report(
             let estimate = rebellion_core::build_selection::estimate(
                 world,
                 manufacturing,
+                en_route,
                 primary,
                 dialog.area(),
                 dialog.kind(),
@@ -4918,6 +4939,7 @@ pub fn emit_production(
     request: FixtureRequest,
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    en_route: &[rebellion_core::delivery::Delivery],
     systems: &SystemWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
 ) {
@@ -4931,7 +4953,7 @@ pub fn emit_production(
     {
         return;
     }
-    let Some(report) = production_report(request, world, manufacturing, systems, build_selection)
+    let Some(report) = production_report(request, world, manufacturing, en_route, systems, build_selection)
     else {
         return;
     };
@@ -8652,6 +8674,7 @@ mod tests {
         defenses: DefensesWindowState,
         transport: TroopTransportState,
         missions: MissionState,
+        manufacturing: ManufacturingState,
     }
 
     fn apply_to_fleet_world(request: FixtureRequest) -> Applied {
@@ -8666,6 +8689,7 @@ mod tests {
             defenses: DefensesWindowState::default(),
             transport: TroopTransportState::default(),
             missions: MissionState::default(),
+            manufacturing: ManufacturingState::default(),
         };
         apply(
             request,
@@ -8675,7 +8699,7 @@ mod tests {
             &mut CockpitState::new(request.faction),
             &mut applied.map,
             &mut applied.movement,
-            &mut ManufacturingState::default(),
+            &mut applied.manufacturing,
             &mut EconomyState::default(),
             &mut applied.missions,
             &mut applied.blockade,
@@ -8721,6 +8745,7 @@ mod tests {
             defenses: DefensesWindowState::default(),
             transport: TroopTransportState::default(),
             missions: MissionState::default(),
+            manufacturing: ManufacturingState::default(),
         };
         apply(
             request,
@@ -8730,7 +8755,7 @@ mod tests {
             &mut CockpitState::new(request.faction),
             &mut applied.map,
             &mut applied.movement,
-            &mut ManufacturingState::default(),
+            &mut applied.manufacturing,
             &mut EconomyState::default(),
             &mut applied.missions,
             &mut applied.blockade,
@@ -9758,6 +9783,49 @@ mod tests {
                 &mut none,
             );
             assert!(none.en_route().is_empty());
+        }
+    }
+
+    // build-selection.mjs reads every facility class's values at the
+    // primary at number 1 (A0 build-selection4, build-selection-empire2),
+    // so the primary keeps a free energy slot and raw deposit for each
+    // (FUN_00507750, the room FUN_005385f0's order needs) with the three
+    // products sent to it on their way.
+    #[test]
+    fn the_build_selection_scenarios_primary_has_room_for_one_more_facility_of_each_class() {
+        use rebellion_core::manufacturing::{BuildableKind, FacilityBuild};
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::BuildSelection, faction);
+            let applied = apply_to_loading_world_with(request, |_| {});
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let mut deliveries = rebellion_core::delivery::DeliveryState::default();
+            place_deliveries(request, world, &mut deliveries);
+            let is_alliance = faction == CockpitFaction::Alliance;
+            // A defense, a yard of each kind, a mine and a refinery.
+            let classes = [0x2200_0001, 0x2800_0001, 0x2900_0005, 0x2a00_0001, 0x2c00_0001, 0x2d00_0002]
+                .map(|raw| {
+                    let class = rebellion_core::ids::DatId::new(raw);
+                    let build = FacilityBuild { class, is_alliance };
+                    match class.family() {
+                        0x22 => BuildableKind::DefenseFacility(build),
+                        0x2c | 0x2d => BuildableKind::ProductionFacility(build),
+                        _ => BuildableKind::ManufacturingFacility(build),
+                    }
+                });
+            for kind in classes {
+                assert!(
+                    !rebellion_core::build_selection::lacks_facility_room(
+                        world,
+                        &applied.manufacturing,
+                        deliveries.en_route(),
+                        primary,
+                        kind,
+                        1,
+                    ),
+                    "{faction:?} {kind:?}"
+                );
+            }
         }
     }
 

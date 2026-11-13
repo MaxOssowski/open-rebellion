@@ -7687,6 +7687,7 @@ async fn main() {
                         ctx,
                         &world,
                         &mfg_state,
+                        delivery_state.en_route(),
                         &mut build_selection_state,
                         cockpit_layout,
                         &mut bmp_cache,
@@ -7734,6 +7735,7 @@ async fn main() {
                             request,
                             &world,
                             &mfg_state,
+                            delivery_state.en_route(),
                             &system_window_state,
                             &build_selection_state,
                         );

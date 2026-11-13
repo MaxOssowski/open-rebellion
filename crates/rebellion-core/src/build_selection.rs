@@ -6,7 +6,7 @@
 //! prices an order as each class cost times the quantity and asks the
 //! manager for the best completion and deployment times.
 
-use crate::delivery::transit_days;
+use crate::delivery::{transit_days, Delivery};
 use crate::ids::{DatId, SystemKey};
 use crate::manufacturing::{
     completion_day, BuildableKind, FacilityBuild, ManufacturingState, ProductionArea, QueueItem,
@@ -235,8 +235,10 @@ pub struct BuildEstimate {
     pub maintenance: u32,
     /// Best time to completion, in days; `None` when the order is not
     /// valid, which shows "n/a" in all four values and disables Confirm
-    /// (`FUN_00439160`): the manager has no yard to build with, or the
-    /// order's maintenance exceeds its side's ([`exceeds_maintenance`]).
+    /// (`FUN_00439160`): the manager has no yard to build with, the
+    /// order's maintenance exceeds its side's ([`exceeds_maintenance`]),
+    /// or its destination has no room for the facilities
+    /// ([`lacks_facility_room`]).
     pub completion: Option<u32>,
     /// Best time to deployment: the days from the manager's system to its
     /// destination.
@@ -252,13 +254,103 @@ pub fn exceeds_maintenance(maintenance: u32, unallocated: i32) -> bool {
     maintenance != 0 && i64::from(maintenance) > i64::from(unallocated)
 }
 
+/// A facility kind's place in a system's room (`FUN_0054f5b0`'s ranges
+/// `0x20..0x30` and `0x2c..0x2d`): `Some(true)` for a mine (PROFACSD family
+/// `0x2c`), `Some(false)` for any other facility, `None` for a ship, a
+/// squadron, a regiment or a special force.
+fn facility_slot(kind: BuildableKind) -> Option<bool> {
+    match kind {
+        BuildableKind::ProductionFacility(build) => Some(build.class.family() == 0x2c),
+        BuildableKind::DefenseFacility(_) | BuildableKind::ManufacturingFacility(_) => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether `count` units of the facility `kind` find no room at `site`,
+/// which makes the order not valid (`FUN_005385f0`: per unit
+/// `FUN_00551a20` -> `FUN_005504d0`, `FUN_00552300`, `FUN_00552dd0`).
+///
+/// The system's room (vtable `0x0065e640` slot `+0x78`, `FUN_00507750`):
+/// - for families `0x20..0x2f`: its energy (`+0x5c`, `FUN_00509650`) less
+///   its facilities of those families (`FUN_00539d70`), refused with
+///   `{0x90, 1}`;
+/// - for a mine (`0x2c`), also: its raw materials (`+0x64`,
+///   `FUN_00509660`) less its mines (`FUN_0052d610`), refused with
+///   `{0x90, 2}`.
+///
+/// The walk has no side filter and mode 3, existing (the route context's
+/// `+0x20`, `FUN_00551100`, is the 3 `FUN_005385f0` passes to
+/// `FUN_00551190`), so both sides' facilities count. A product exists from
+/// its order (`FUN_0052a140`, `FUN_004f7d50(.., 1, 0)`: created), so units
+/// queued for `site` and on their way there count too. Each unit takes one
+/// slot: `FUN_005504d0` asks one per unit, and `FUN_00550eb0` writes the
+/// lowered room back (`FUN_0054fca0`, `FUN_0054ff00`).
+#[must_use]
+pub fn lacks_facility_room(
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    en_route: &[Delivery],
+    site: SystemKey,
+    kind: BuildableKind,
+    count: u32,
+) -> bool {
+    let Some(mine) = facility_slot(kind) else {
+        return false;
+    };
+    let Some(system) = world.systems.get(site) else {
+        return true;
+    };
+    let built = system
+        .defense_facilities
+        .iter()
+        .filter(|key| world.defense_facilities.contains_key(**key))
+        .map(|_| false)
+        .chain(
+            system
+                .manufacturing_facilities
+                .iter()
+                .filter(|key| world.manufacturing_facilities.contains_key(**key))
+                .map(|_| false),
+        )
+        .chain(
+            system
+                .production_facilities
+                .iter()
+                .filter_map(|key| world.production_facilities.get(*key))
+                .map(|facility| facility.is_mine),
+        );
+    let queued = manufacturing
+        .queues()
+        .iter()
+        .flat_map(|((at, _), queue)| queue.items().iter().map(move |item| (*at, item)))
+        .filter(|(at, item)| item.destination.unwrap_or(*at) == site)
+        .filter_map(|(_, item)| facility_slot(item.kind));
+    let travelling = en_route
+        .iter()
+        .filter(|delivery| delivery.destination == site)
+        .filter_map(|delivery| facility_slot(delivery.kind));
+    let (mut facilities, mut mines) = (0_u32, 0_u32);
+    for is_mine in built.chain(queued).chain(travelling) {
+        facilities += 1;
+        mines += u32::from(is_mine);
+    }
+    let short = |slots: u8, taken: u32| u32::from(slots).saturating_sub(taken) < count;
+    short(system.total_energy, facilities) || (mine && short(system.raw_materials, mines))
+}
+
 /// Price `count` units of `kind` at `system`'s `area` for a side whose
 /// unallocated maintenance is `unallocated`
-/// ([`crate::side_resources::MaintenanceTotals::unallocated`]).
+/// ([`crate::side_resources::MaintenanceTotals::unallocated`]), with
+/// `en_route` the products on their way ([`crate::delivery::DeliveryState::en_route`]).
 #[must_use]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "FUN_00538220 reads the manager, the order and the side's state together."
+)]
 pub fn estimate(
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    en_route: &[Delivery],
     system: SystemKey,
     area: ProductionArea,
     kind: BuildableKind,
@@ -276,7 +368,10 @@ pub fn estimate(
             &yard_periods(world, system, area, is_alliance),
             refined.saturating_mul(count),
         )
-        .filter(|_| !exceeds_maintenance(maintenance, unallocated)),
+        .filter(|_| {
+            !exceeds_maintenance(maintenance, unallocated)
+                && !lacks_facility_room(world, manufacturing, en_route, destination, kind, count)
+        }),
         deployment: transit_days(world, kind, system, destination),
     }
 }
@@ -516,6 +611,7 @@ mod tests {
         let at_home = estimate(
             &world,
             &manufacturing,
+            &[],
             home,
             ProductionArea::TrainingFacility,
             regiment,
@@ -537,6 +633,7 @@ mod tests {
         let sent = estimate(
             &world,
             &manufacturing,
+            &[],
             home,
             ProductionArea::TrainingFacility,
             regiment,
@@ -551,6 +648,7 @@ mod tests {
         let empire = estimate(
             &world,
             &manufacturing,
+            &[],
             away,
             ProductionArea::TrainingFacility,
             regiment,
@@ -574,6 +672,7 @@ mod tests {
             estimate(
                 &world,
                 &manufacturing,
+                &[],
                 home,
                 ProductionArea::TrainingFacility,
                 regiment,
@@ -593,6 +692,150 @@ mod tests {
         assert!(!exceeds_maintenance(0, -402));
         assert!(!exceeds_maintenance(10, 10));
         assert!(exceeds_maintenance(11, 10));
+    }
+
+    // FUN_005385f0 -> FUN_00551a20 -> FUN_00552300/FUN_00552dd0 against
+    // the system's room (FUN_00507750): energy (+0x5c) less every existing
+    // facility of 0x20..0x2f, both sides', and for a mine also raw
+    // materials (+0x64) less the mines; refused {0x90, 1} and {0x90, 2}.
+    // A0 2026-11-13-build-confirm/21, 23: Jerijador, one construction yard,
+    // Construction Yard and GenCore Level I at number 1 read n/a with
+    // Confirm grey.
+    #[test]
+    fn a_facility_order_needs_a_free_energy_slot_per_unit_at_its_destination() {
+        use crate::world::{DefenseFacilityInstance, ProductionFacilityInstance};
+        let mut world = catalog();
+        let home = system(&mut world, 0);
+        let away = system(&mut world, 200);
+        yard(&mut world, home, 0x2a00_0003, true);
+        yard(&mut world, home, 0x2900_0002, true);
+        world.systems[home].total_energy = 4;
+        world.systems[home].raw_materials = 1;
+        world.systems[away].total_energy = 1;
+        world.systems[away].raw_materials = 1;
+        // The other side's shield counts against the same energy.
+        let shield = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2500_0004),
+            side: Faction::Empire,
+        });
+        world.systems[home].defense_facilities.push(shield);
+        let facility = BuildableKind::ManufacturingFacility(FacilityBuild {
+            class: DatId::new(0x2a00_0003),
+            is_alliance: true,
+        });
+        let mine = BuildableKind::ProductionFacility(FacilityBuild {
+            class: DatId::new(0x2c00_0001),
+            is_alliance: true,
+        });
+        let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+        let yards = ProductionArea::ConstructionYard;
+        let valid = |world: &GameWorld,
+                     manufacturing: &ManufacturingState,
+                     en_route: &[Delivery],
+                     area,
+                     kind,
+                     count| {
+            estimate(
+                world,
+                manufacturing,
+                en_route,
+                home,
+                area,
+                kind,
+                count,
+                true,
+                ROOMY,
+            )
+            .completion
+            .is_some()
+        };
+        let mut manufacturing = ManufacturingState::new();
+
+        // Energy 4 less three facilities (two yards, the shield): one slot.
+        assert!(valid(&world, &manufacturing, &[], yards, facility, 1));
+        assert!(!valid(&world, &manufacturing, &[], yards, facility, 2));
+        // Regiments take no slot.
+        let training = ProductionArea::TrainingFacility;
+        assert!(valid(&world, &manufacturing, &[], training, regiment, 5));
+        // A mine takes an energy slot and a raw-material deposit.
+        assert!(valid(&world, &manufacturing, &[], yards, mine, 1));
+        let built = world
+            .production_facilities
+            .insert(ProductionFacilityInstance {
+                class_dat_id: DatId::new(0x2c00_0001),
+                side: Faction::Alliance,
+                is_mine: true,
+            });
+        world.systems[away].production_facilities.push(built);
+        assert!(lacks_facility_room(
+            &world,
+            &manufacturing,
+            &[],
+            away,
+            mine,
+            1
+        ));
+        world.systems[away].total_energy = 2;
+        assert!(lacks_facility_room(
+            &world,
+            &manufacturing,
+            &[],
+            away,
+            mine,
+            1
+        ));
+        assert!(!lacks_facility_room(
+            &world,
+            &manufacturing,
+            &[],
+            away,
+            facility,
+            1
+        ));
+        world.systems[away].raw_materials = 2;
+        assert!(!lacks_facility_room(
+            &world,
+            &manufacturing,
+            &[],
+            away,
+            mine,
+            1
+        ));
+
+        // A unit queued for the system holds its slot from its order on
+        // (FUN_0052a140), here one built at away for home.
+        manufacturing.enqueue(away, QueueItem::new(facility, 10).delivered_to(home));
+        assert!(!valid(&world, &manufacturing, &[], yards, facility, 1));
+        let mut manufacturing = ManufacturingState::new();
+        // So does one on its way there.
+        let travelling = Delivery {
+            origin: away,
+            destination: home,
+            arrival_tick: 50,
+            kind: facility,
+            side: Faction::Alliance,
+        };
+        let en_route = [travelling];
+        assert!(!valid(
+            &world,
+            &manufacturing,
+            &en_route,
+            yards,
+            facility,
+            1
+        ));
+        // The room is the destination's (FUN_004c27b0, the TargetKey):
+        // away has energy 2 less its mine.
+        manufacturing.set_destination(home, yards, away);
+        assert!(valid(&world, &manufacturing, &en_route, yards, facility, 1));
+        assert!(!valid(
+            &world,
+            &manufacturing,
+            &en_route,
+            yards,
+            facility,
+            2
+        ));
     }
 
     #[test]

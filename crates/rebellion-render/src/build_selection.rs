@@ -9,6 +9,7 @@
 
 use egui_macroquad::egui;
 use rebellion_core::build_selection::{estimate, BuildEstimate};
+use rebellion_core::delivery::Delivery;
 use rebellion_core::ids::SystemKey;
 use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, ProductionArea};
 use rebellion_core::world::GameWorld;
@@ -351,6 +352,7 @@ pub fn draw_build_selection(
     ctx: &egui::Context,
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    en_route: &[Delivery],
     state: &mut BuildSelectionState,
     layout: CockpitLayout,
     cache: &mut BmpCache,
@@ -362,6 +364,7 @@ pub fn draw_build_selection(
     let estimate: BuildEstimate = estimate(
         world,
         manufacturing,
+        en_route,
         dialog.system,
         dialog.area,
         dialog.kind(),
@@ -932,9 +935,16 @@ mod tests {
                 ..Default::default()
             };
             let output = ctx.run(input, |ctx| {
-                if let Some(action) =
-                    draw_build_selection(ctx, world, &manufacturing, state, layout, &mut cache, unallocated)
-                {
+                if let Some(action) = draw_build_selection(
+                    ctx,
+                    world,
+                    &manufacturing,
+                    &[],
+                    state,
+                    layout,
+                    &mut cache,
+                    unallocated,
+                ) {
                     emitted = Some(action);
                 }
             });
@@ -1280,7 +1290,16 @@ mod tests {
                         ..Default::default()
                     },
                     |ctx| {
-                        let _ = draw_build_selection(ctx, &world, &manufacturing, &mut state, layout, &mut cache, ROOMY);
+                        let _ = draw_build_selection(
+                            ctx,
+                            &world,
+                            &manufacturing,
+                            &[],
+                            &mut state,
+                            layout,
+                            &mut cache,
+                            ROOMY,
+                        );
                     },
                 ));
             }
