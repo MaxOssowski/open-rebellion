@@ -40,6 +40,9 @@ const QUADRANTS_NEUTRAL_FLEET = 117;
 // QuadrantsFreeTeam: as QUADRANTS with the player's agent at the primary
 // free (no mission), so the defenses icon's team may move.
 const QUADRANTS_FREE_TEAM = 118;
+// QuadrantsFacility: as QUADRANTS with a shipyard of the player's at the
+// primary, so its facility icon has managers (Destination enabled).
+const QUADRANTS_FACILITY = 119;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
@@ -51,6 +54,8 @@ const A0_FILES = {
     "b717628ba2c1b9709dcc5ab26c1457ed3d6d9ff7ff84ba3573bbf0c9bdef4fac",
   "2026-11-13-hyperspace-icons/00-kubindi-fleet-icon-menu-day321.png":
     "775692778ec3581b1e892d608916dda0ccc4c85c21b0f5c84016f9ebf5112c94",
+  "2026-11-13-facility-icon-drop/08-facilities-icon-menu.png":
+    "56a2e41e827f3b41228565ac6af51477554cdfd95666735657c47e260fa641f5",
   "2026-11-13-defenses-missions-drop/00-jerijador-defenses-icon-menu.png":
     "f65ba930f3ab886eb69966376cb74467056c11aeb1cdd9678674b388d429980e",
   "2026-11-13-defenses-missions-drop/03-defenses-icon-mid-drag.png":
@@ -660,6 +665,62 @@ function compareMissionTabs(screenshot, source, window, directory, prefix) {
     const id = MISSION_TABS[window.tab_side][name] + (window.tab === name ? 1 : 0);
     return { id, ...compareIcon(screenshot, rect, resource(source, id), `${prefix}-tab-${name}`, directory) };
   });
+}
+
+// The facility icon's pop-up menu, opened at `press`.
+async function openFacilityMenu(page, press) {
+  await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+  await rightClick(page, press);
+  await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+    null, { timeout: 10_000 });
+  return page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+}
+
+// The System window's three "Destination: ..." lines: the icon's double
+// click opens it, its close box at (209, 3) closes it again.
+async function facilityDestinations(page, press, dat, directory, label) {
+  await page.mouse.move(2, 2);
+  await frames(page, 4);
+  await page.waitForTimeout(500);
+  await doubleClick(page, press);
+  const opened = await until(page, label,
+    (o, value) => o.system_destinations.some(([system]) => system === value), dat);
+  const [, origin] = opened.system_windows.find(([system]) => system === dat);
+  const lines = opened.system_destinations.find(([system]) => system === dat)[1];
+  await stableScreen(page, directory, label);
+  await click(page, { x: origin[0] + 209 + 7, y: origin[1] + 3 + 7 });
+  await until(page, `${label}: the window closes`,
+    (o, value) => !o.system_windows.some(([system]) => system === value), dat);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(300);
+  return lines;
+}
+
+// Drag the facility icon from `press` and release it at `to` (A0's: press,
+// rest, walk, rest 0.9 s on the target, release): the interface lines it
+// logged and the 0x214 Destinations it set.
+async function dropFacilityIcon(page, press, to, consoleLines) {
+  const logged = consoleLines.length;
+  await page.mouse.move(press.x, press.y);
+  await frames(page);
+  await page.mouse.down();
+  await frames(page, 2);
+  await page.waitForTimeout(300);
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await frames(page, 2);
+  await page.waitForTimeout(900);
+  await page.mouse.up();
+  await frames(page, 2);
+  await page.waitForTimeout(600);
+  const lines = consoleLines.slice(logged).map(({ text }) => text).filter((text) => text.includes("[interface] command="));
+  return { to, lines, set: lines.filter((text) => text.includes("command=0x214 destination=production_destination status=set")) };
+}
+
+// The primary's planet below its centre, between its bottom icons: the
+// system-icon quadrant ends at the centre (FUN_00459e30).
+function ownPlanet(setup) {
+  const [left, top, width, height] = quadrant(setup, "primary", "system");
+  return { x: Math.round(left + width), y: Math.round(top + height) + 12 };
 }
 
 const cases = [
@@ -2062,6 +2123,131 @@ const cases = [
       assert.deepEqual(window.counts, [1, 0, 0, 0, 1], JSON.stringify(window));
       result.counts = window.counts;
       return result;
+    },
+  },
+  {
+    name: "facility-icon-drop",
+    scenario: QUADRANTS_FACILITY,
+    // CMD-03-C019 and CMD-03-C018: the facility icon (kind 4) of a system
+    // with the player's managers. FUN_00422ce0 (window type 1) splits the
+    // kind 4 entry into a 0x214 order against the drop window's +0x68;
+    // FUN_00537180 takes a system there, and FUN_00487cc0 asks nothing
+    // for 0x214 (ghidra/notes/sector-icon-menus.md). A0
+    // 2026-11-13-facility-icon-drop (the Alliance, Jerijador's icon): its
+    // menu Destination, Encyclopedia, Status grey, Reserved, Scrap (08, at
+    // (225, 218), 90 by 102); dropped on its own planet, every area's
+    // Destination names it, idle areas too, no question or message
+    // (12..14); dropped on Yavin's planet off the HQ mark, all three name
+    // Yavin (15, 16). Here the drop on the player's system in uprising,
+    // then back on the primary's own planet.
+    async run(page, faction, setup, directory, source, consoleLines) {
+      const [left, top] = quadrant(setup, "primary", "system");
+      const press = { x: Math.round(left) + 14, y: Math.round(top) + 9 };
+      const dat = setup.primary_dat_id;
+      const result = {};
+      const facilityMenu = await openFacilityMenu(page, press);
+      assert.deepEqual(facilityMenu.row_states,
+        [["Destination", true], ["Encyclopedia", true], ["Status", false], ["Reserved", true], ["Scrap", true]],
+        JSON.stringify(facilityMenu));
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const menuScreen = PNG.sync.read((await shot(page, directory, "facility-icon-menu")).bytes);
+      const a0Menu = a0Capture("2026-11-13-facility-icon-drop/08-facilities-icon-menu.png");
+      if (a0Menu && faction.side === 1) {
+        assert.deepEqual([facilityMenu.width, facilityMenu.height], [90, 102], JSON.stringify(facilityMenu));
+        const compared = menuAgainstA0(menuScreen, [press.x, press.y], a0Menu, [225, 218],
+          { width: 90, height: 102 }, [0, 0, 22, 40]);
+        const kinds = ["white", "white", "grey", "white", "white"];
+        assert.deepEqual(compared.a0.map(({ kind }) => kind), kinds, JSON.stringify(compared));
+        assert.deepEqual(compared.port.map(({ kind }) => kind), kinds, JSON.stringify(compared));
+        // Each row's ink within a pixel of A0's; the right edge within two
+        // (the accepted text-width deviation, user decision 2026-10-30).
+        assert.ok(compared.inkDiffs.every((d) => d && d.every((value, k) => Math.abs(value) <= (k === 2 ? 2 : 1))),
+          `rows' ink against A0: ${JSON.stringify(compared)}`);
+        assert.equal(compared.differing, 0, `the frame differs from A0: ${JSON.stringify(compared.first)}`);
+        result.a0Menu = compared;
+      }
+      result.menu = facilityMenu;
+      await page.keyboard.press("Escape");
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      // The areas' own Destination before any drop: the system itself.
+      const own = await facilityDestinations(page, press, dat, directory, "facility-destinations-before");
+      assert.equal(own.length, 3, JSON.stringify(own));
+      assert.ok(own.every((line) => line === own[0]), JSON.stringify(own));
+      const [toLeft, toTop, toWidth, toHeight] = setup.uprising;
+      const revolt = await dropFacilityIcon(page, press, { x: Math.round(toLeft + toWidth / 2), y: Math.round(toTop + toHeight / 2) },
+        consoleLines);
+      assert.equal(revolt.set.length, 1, JSON.stringify(revolt));
+      const to = revolt.set[0].match(/ areas=3 to=(.+)$/)?.[1];
+      assert.ok(to, JSON.stringify(revolt));
+      const there = await facilityDestinations(page, press, dat, directory, "facility-destinations-after-revolt");
+      assert.deepEqual(there, Array(3).fill(`Destination: ${to}`), JSON.stringify(there));
+      // Back on its own planet (A0 12..14).
+      const home = await dropFacilityIcon(page, press, ownPlanet(setup), consoleLines);
+      assert.equal(home.set.length, 1, JSON.stringify(home));
+      const back = await facilityDestinations(page, press, dat, directory, "facility-destinations-after-home");
+      assert.deepEqual(back, own, JSON.stringify({ back, own }));
+      return { ...result, own, revolt, there, home, back };
+    },
+  },
+  {
+    name: "facility-icon-drop-on-headquarters",
+    scenario: QUADRANTS_FACILITY,
+    // The Empire sees no headquarters here (the Alliance's, the other
+    // side's system), so the case is the Alliance's.
+    factions: ["alliance"],
+    // FUN_0045cc10 walks the overlay list first, and the headquarters
+    // overlay (0x10000, bitmap 0x388) takes a point wherever its bitmap is
+    // opaque, so the window's +0x68 there names the HQ object (family
+    // 0x20), which FUN_00537180 refuses as a Destination (1/0x25): the drop
+    // sets nothing, while the menu's Destination targeting reads +0x70,
+    // the planet, and sets the system. A0 2026-11-13-facility-icon-drop:
+    // dropped on the HQ dome over Yavin's planet centre (410, 238), 18 by
+    // 18 into the planet, nothing changes (03..07); the menu's Destination
+    // clicked at that point sets Yavin (09..11); dropped on the planet's
+    // edge (396, 252), 4 by 32 into it and off the dome, Yavin again
+    // (15, 16).
+    async run(page, faction, setup, directory, source, consoleLines) {
+      const [left, top] = quadrant(setup, "primary", "system");
+      const press = { x: Math.round(left) + 14, y: Math.round(top) + 9 };
+      const dat = setup.primary_dat_id;
+      const [hqLeft, hqTop] = setup.headquarters;
+      const dome = { x: Math.round(hqLeft) + 18, y: Math.round(hqTop) + 18 };
+      const edge = { x: Math.round(hqLeft) + 4, y: Math.round(hqTop) + 32 };
+      const own = await facilityDestinations(page, press, dat, directory, "facility-destinations-before");
+      // The drop on the dome sets nothing.
+      const onDome = await dropFacilityIcon(page, press, dome, consoleLines);
+      assert.deepEqual(onDome.set, [], `the drop on the HQ mark sets nothing: ${JSON.stringify(onDome)}`);
+      assert.ok(onDome.lines.some((text) => text.includes("command=0x214 destination=production_destination status=refused drop=1")),
+        JSON.stringify(onDome));
+      const unchanged = await facilityDestinations(page, press, dat, directory, "facility-destinations-after-dome");
+      assert.deepEqual(unchanged, own, JSON.stringify({ unchanged, own }));
+      // The menu's Destination at the same point sets the HQ's system.
+      const logged = consoleLines.length;
+      const menu = await openFacilityMenu(page, press);
+      const height = (menu.height - 2) / menu.rows;
+      const row = menu.row_states.findIndex(([label]) => label === "Destination");
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (row + 0.5) });
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await click(page, dome);
+      await page.waitForTimeout(600);
+      const targeted = consoleLines.slice(logged).map(({ text }) => text).filter((text) => text.includes("command=0x214"));
+      const hq = targeted.find((text) => text.includes("status=set"))?.match(/ areas=3 to=(.+)$/)?.[1];
+      assert.ok(hq, `the menu's Destination sets the HQ's system: ${JSON.stringify(targeted)}`);
+      const viaMenu = await facilityDestinations(page, press, dat, directory, "facility-destinations-after-menu");
+      assert.deepEqual(viaMenu, Array(3).fill(`Destination: ${hq}`), JSON.stringify(viaMenu));
+      // Home again, then the planet's edge off the mark sets the HQ's
+      // system (A0 15, 16).
+      const home = await dropFacilityIcon(page, press, ownPlanet(setup), consoleLines);
+      assert.equal(home.set.length, 1, JSON.stringify(home));
+      const onEdge = await dropFacilityIcon(page, press, edge, consoleLines);
+      assert.deepEqual(onEdge.set.map((text) => text.match(/ to=(.+)$/)?.[1]), [hq], JSON.stringify(onEdge));
+      const edgeLines = await facilityDestinations(page, press, dat, directory, "facility-destinations-after-edge");
+      assert.deepEqual(edgeLines, Array(3).fill(`Destination: ${hq}`), JSON.stringify(edgeLines));
+      return { own, onDome, unchanged, targeted, viaMenu, home, onEdge, edgeLines };
     },
   },
   {
