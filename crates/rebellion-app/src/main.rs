@@ -10579,10 +10579,7 @@ fn issue_team_move(
             .iter()
             .zip(troop_days)
             .filter_map(|(&troop, days)| {
-                // The class's name (FUN_004f6270), aboard a fleet as on a
-                // planet.
-                let class = world.troops.get(troop)?.class_dat_id;
-                Some((world.buildable_classes.get(&class)?.name.clone(), days))
+                Some((troop_name(world, troop)?, days))
             }),
     );
     lines.extend(team.squadrons.iter().filter_map(|&class| {
@@ -10883,6 +10880,14 @@ fn confirm_ship_move(
     });
 }
 
+/// A regiment's name in a move's confirmation: its class's (`FUN_0053c2e0`
+/// lists each member by `FUN_004f6270`), wherever it stands, on a planet or
+/// aboard a fleet.
+fn troop_name(world: &GameWorld, troop: rebellion_core::ids::TroopKey) -> Option<String> {
+    let unit = world.troops.get(troop)?;
+    Some(world.buildable_classes.get(&unit.class_dat_id)?.name.clone())
+}
+
 /// A regiment's Confirmed Move (`0x202`): the confirmation lists the
 /// regiment's days (`FUN_0053c2e0`) and warns of an evacuation when it
 /// stands on a blockaded planet (`FUN_0049a350`).
@@ -10900,8 +10905,7 @@ fn confirm_troop_move(
     move_confirmation_state: &mut MoveConfirmationState,
 ) {
     let days = transport.move_days(world, movement, blockaded_systems, troop, target);
-    let name =
-        rebellion_core::scrap::target_name(world, rebellion_core::scrap::ScrapTarget::Troop(troop));
+    let name = troop_name(world, troop);
     let (Ok(days), Some(name)) = (days, name) else {
         macroquad::logging::info!("[interface] troop_move confirm refused");
         msg_log.push(GameMessage::new(
@@ -15502,6 +15506,63 @@ mod fleet_move_tests {
             })
             .collect();
         (world, fleets, destination)
+    }
+
+    /// An Alliance Army Regiment (TROOPSD 1) aboard the first fleet.
+    fn embarked_regiment(
+        world: &mut GameWorld,
+        fleet: FleetKey,
+    ) -> (TroopTransportState, rebellion_core::ids::TroopKey) {
+        let class = DatId::new(0x1000_0001);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                name: "Alliance Army Regiment".into(),
+                is_alliance: true,
+                ..Default::default()
+            },
+        );
+        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: class,
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let ship = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[ship].troop_capacity = 2;
+        let origin = world.fleets[fleet].location;
+        world.systems[origin].control = ControlKind::Controlled(Faction::Alliance);
+        world.systems[origin].ground_units.push(troop);
+        let mut transport = TroopTransportState::default();
+        transport.embark(world, fleet, &[troop]).expect("the regiment boards");
+        world.systems[origin].ground_units.retain(|&key| key != troop);
+        (transport, troop)
+    }
+
+    #[test]
+    fn an_embarked_regiments_confirmed_move_asks_with_its_name() {
+        // FUN_00487cc0 asks for every 0x202, and FUN_0049a350 lists the
+        // regiment by its class's name (FUN_0053c2e0), wherever it stands:
+        // aboard a fleet as on a planet.
+        let (mut world, fleets, _) = world_with_two_fleets();
+        let origin = world.fleets[fleets[0]].location;
+        let (transport, troop) = embarked_regiment(&mut world, fleets[0]);
+        let mut log = MessageLog::new();
+        let mut confirmation = MoveConfirmationState::default();
+        confirm_troop_move(
+            &world,
+            &MovementState::new(),
+            &transport,
+            &HashSet::new(),
+            MissionFaction::Alliance,
+            troop,
+            (origin, RegimentTarget::System(origin)),
+            0,
+            &mut log,
+            &mut confirmation,
+        );
+        assert!(log.messages().is_empty(), "{:?}", log.messages());
+        let window = confirmation.confirmation().expect("the confirmation opens");
+        assert_eq!(window.lines, [("Alliance Army Regiment".to_string(), 0)]);
     }
 
     struct Issued {
