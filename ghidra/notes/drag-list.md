@@ -126,6 +126,10 @@ window's selection (slot `+0x58`) and moves it against the drop window
   press applies at once and a left release applies a held click, as the
   original's (A0 2026-11-13-drag/25). port: ships of several fleets drop as
   one order per fleet.
+- The release is measured at `WM_LBUTTONUP`'s own point (`lParam`),
+  `drag_list::release_point` (2026-11-13): measuring where the pointer had
+  moved on to by the frame turned a click on a fleet entry into a drop on
+  itself ("a fleet cannot move into itself").
 - port: a Defenses window release inside its own list is no drop (there
   `+0x70` gives only its own system).
 
@@ -165,13 +169,20 @@ the port with them.
   `+0x14c` bit 1 is clear, else the right list's. Bit 1 is set by a menu
   opened from the right list (`FUN_004a2c40`, list id 200) and cleared by
   one from the left (0xc9), and set or cleared by an outside select
-  (`FUN_004a73c0`). So a drag carries the list whose menu opened last, not
-  necessarily the dragged list. port: a drag carries its own list's
-  selection (hyp: the captures 08..12 and 25..27 cannot tell them apart).
+  (`FUN_004a73c0`).
+- Read 2026-11-13: the bit follows every notification, not only menus.
+  The Fleet window's `WM_COMMAND` (`Class_0065bda0_vt14` 0x111 ->
+  `FUN_004a6390`) sets `+0x14c` bit 1 for any notification from list 200
+  (the right list, `+0x164`) and clears it for any from 0xc9 (the left,
+  `+0x160`, `FUN_004a4b10`) before it forwards a `0x29a` to the galaxy
+  view (`param_1[0x52]`) with its own id. `FUN_00422ce0` then calls slot
+  `+0x58` with 0, which reads the list the `0x29a` came from. So a drag
+  always carries its own list's selection, after a menu from the other
+  list too; the port's rule is the original's (no code change). The bit
+  matters elsewhere only to `+0x58(0)` callers outside a drag
+  (`FUN_00422ce0` commands `0xbbf`, `0xbc0` on the focused window).
 
 ## Open
 
 - A0: a drop of an expanded left-list ship onto another fleet entry of the
   same list (confirms flags 0).
-- The `+0x14c` bit 1 source rule above, against a capture that drags from
-  one list after a menu from the other.
