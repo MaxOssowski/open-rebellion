@@ -7452,10 +7452,29 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.match(planetSceneLogs[0]?.text || "",
           new RegExp(`resource=${ready.planet_resource_id} `
             + `palette_resource_id=${ready.palette_resource_id} dimensions=256x256 `
-            // FUN_005d4d10 hangs the planet at +2e x, outside the first
-            // view (A0 TAC-01-C002/C003 show no planet until the camera turns).
-            + "visible=false source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60,FUN_005d4d10"),
+            + "visible=(false|true center=(-?[0-9.]+),(-?[0-9.]+) size=([0-9.]+)) "
+            + "source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60,FUN_005d4d10"),
         "tactical planet scene used the wrong resource or placement");
+        // FUN_005d4d10 hangs the planet at +2e x, outside the first view
+        // (A0 TAC-01-C002/C003 show no planet until the camera turns). The
+        // port draws the 256x256 decal when its square reaches the view, but
+        // the planet is the disc inside it (transparent black corners), so
+        // the disc must stay outside the scene viewport (17, 30, 440, 438
+        // at 640x480, tactical_scene_viewport). Fixture 45's corrected
+        // Stand Off places some fleets so the square's corner touches it.
+        const shown = (planetSceneLogs[0]?.text || "")
+          .match(/visible=true center=(-?[0-9.]+),(-?[0-9.]+) size=([0-9.]+)/);
+        if (shown) {
+          const s = Math.min(viewport.width / 640, viewport.height / 480);
+          const ox = (viewport.width - 640 * s) / 2;
+          const oy = (viewport.height - 480 * s) / 2;
+          const rect = { x: ox + 17 * s, y: oy + 30 * s, w: 440 * s, h: 438 * s };
+          const [cx, cy, size] = shown.slice(1).map(Number);
+          const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+          const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+          assert.ok(Math.hypot(cx - nx, cy - ny) >= size / 2,
+            `tactical planet disc reaches the first view (center ${cx},${cy} size ${size})`);
+        }
         probes.push({
           type: "system-selected-tactical-planet",
           executable_functions: [
