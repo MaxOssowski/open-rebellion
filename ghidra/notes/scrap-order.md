@@ -109,8 +109,19 @@ port:
   fleet is ported (2026-11-13, `ScrapTarget::FleetFighter`, the same
   `FUN_005575f0` as on a planet; A0 `2026-11-13-drag/16`: Scrap white on
   three of a fleet's squadrons).
-- Reason `0x16` (queue scrap) does not refund yet. Reason `0x15` does,
-  in `autoscrap.rs` (2026-10-17).
+- Reason `0x15` refunds, in `autoscrap.rs` (2026-10-17).
+
+## Reason `0x16` never refunds a queued product (2026-11-13)
+
+The manufacturing manager's queue scrap (`FUN_0052a2c0`, from Build's
+slot `+0x1f0` `FUN_00529ab0`, Stop's `+0x1f8` and a yardless manager)
+destroys each queued product with reason `0x16`. `FUN_00530270` refunds
+only a completed object (`+0x50` bit 2), and a queued product is created
+with completed = 0 (`FUN_0052a140` → `FUN_004f7d50(.., 1, 0)`) and stays
+so until it completes, when it leaves the queue. So `0x16` refunds
+nothing in practice. The port's `ManufacturingState::stop` and
+`build_units` drop the queue without a refund
+(`production_cycle::tests::replacing_an_order_in_progress_refunds_no_refined_material`).
 - The autorouting of characters in a scrapped fleet (`FUN_004ef2e0`):
   the port sets them adrift at the fleet's system instead.
 

@@ -38,6 +38,32 @@ unit with `FUN_004f7d50(class, side, ctx, created = 1, completed = 0)` and
 sets its BuilderKey to the manager. It is Existing at once, so its upkeep
 counts from then.
 
+Its creation numbers it: event `0x300` reaches `FUN_00517760`, which names
+an unnamed capital ship "{class} {N}" with N from its side's per-class
+counter (`FUN_005302c0`). The counter never goes down, so a product
+scrapped before it completes burns its number. A0
+`2026-11-13-band-title-timing/41`, `42`: Drall's "Alliance Escort Carrier
+4", replaced by a one-unit Confirm on day 278, is gone; the new order's
+ship in Fleet 8 is "Alliance Escort Carrier 5". With several units the
+first takes the next number and the others the ones after it
+(`2026-11-11-icon-menu-topic/66`: "Carrack Light Cruiser 2 / Building: 4"
+with Carrack 1 in play).
+
+## The band's product line
+
+`FUN_00457b40` writes the band's product line, and only when the band is
+built: by `FUN_00458080` when the window is created and by `FUN_00457c90`'s
+full rebuild. A rename (`FUN_00517760`, or Rename `0x215`) does not
+rewrite it. Inference fitting every A0: after a Confirm of exactly one unit
+the window rebuilt the band before the product was numbered, so the line is
+the bare class name and stays so until the next rebuild (A0
+`2026-11-13-band-title-timing/03`, `10..39`: "Alliance Escort Carrier" for
+23 days with the window open; `42`: "Alliance Escort Carrier 5" after the
+window is closed and opened; `2026-11-13-build-confirm/16` bare). With
+several units the line names the first unit with its number at once (A0
+66). What triggers `FUN_00457c90` is not traced; the port rebuilds when the
+band's units left or current product change.
+
 ## Queue membership and the current product
 
 Two events keep the queue in step with its products:
@@ -126,7 +152,9 @@ that feed it.
 
 | Original | Port |
 |---|---|
-| Build replaces the queue; Stop empties it | Same (`build`, `build_units`, `stop`). |
+| Build replaces the queue; Stop empties it | Same (`build_selection::confirm_order`, `build_units`, `stop`). The scrapped products refund nothing (cause `0x16`, see Open 3) and the new current product starts from no points. |
+| A product is named at its order from its side's counter | Same (`QueueItem::ordered`, `GameWorld::take_ship_name`, save v116); the name rides the queue item, its delivery and its completion to the ship. The Death Star stays unnamed. |
+| The band's product line is written when the window builds the band | `SystemWindowState::shown_band` keeps each open window's line until the band's units left or current product change, or the window is opened anew; a one-unit Confirm leaves the bare class name (`confirmed_build`). |
 | A unit costs its class refined cost in points | Same (`QueueItem::cost`, `ProductionQueue::add_point`). |
 | A point goes to the current product, or to the overflow once its cost is met | Same. |
 | Completion at non-zero points that reach the cost; the next product starts with `min(cost, overflow)` | Same, chained. |
@@ -138,7 +166,7 @@ that feed it.
 | Suspended yards (system in uprising or blockaded) do not count | They are put to state 4 and lose the cycle they were in (`production_cycle::suspended_systems`). Whether a suspended yard's running cycle still ends in the original is not traced. |
 | A manager with no yard scraps its queue | Same (`production_cycle::scrap_yardless_queues`); the queued units are dropped, not destroyed as objects. |
 | Build is refused without a usable yard of the area | `build_selection::order_items` gives no order, and the AI orders only what a system's own yards build (`ai.rs`). |
-| Products exist, and cost upkeep, from the order | Upkeep counts queued units (`side_resources.rs`); the objects are created at completion. |
+| Products exist, and cost upkeep, from the order | Upkeep counts queued units (`side_resources.rs`); the objects are created at completion, with the name their order gave them. |
 | A yard stopped in a cycle | Its refined material is spent; whether the original returns it is not traced. |
 | No order to remove or reorder one unit | `cancel` and `prioritize` remain as port helpers with no caller; they leave the points as they are. |
 
@@ -147,5 +175,10 @@ that feed it.
 1. Which of `0x210..0x216` calls which manager slot, from the order events'
    fire functions.
 2. The validations at slots `+0x1c8`, `+0x1d0` and `+0x1dc`.
-3. What scrapping with cause `0x16` refunds, if anything, beyond the
-   destruction refund in `side-resource-monitors.md`.
+3. Settled 2026-11-13: scrapping with cause `0x16` refunds nothing for
+   a queued product. `FUN_00530270` refunds half the class refined cost
+   only for causes `0x14..0x16` of a completed object (`+0x50` bit 2),
+   and a queued product never is (`scrap-order.md`). The refined
+   material its yard cycles took stays spent.
+4. What triggers the band's full rebuild `FUN_00457c90` (see "The band's
+   product line").
