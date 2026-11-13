@@ -3221,6 +3221,9 @@ mod tests {
         let there = system(&mut world, "Bespin", ControlKind::Controlled(Faction::Alliance));
         let fleet = carrier_fleet(&mut world, there);
         let name = fleet_label(&world, fleet).unwrap();
+        // The special force boards another fleet there.
+        let other = carrier_fleet(&mut world, there);
+        let other_name = fleet_label(&world, other).unwrap();
         let character = world
             .characters
             .insert(rebellion_core::world::Character::default());
@@ -3232,10 +3235,10 @@ mod tests {
         });
         world.systems[here].special_forces.push(unit);
         let mut states = States::new();
-        // Each member's own Move, whose target container is the fleet.
-        for (member, arrival) in [
-            (MissionMember::Character(character), 15),
-            (MissionMember::SpecialForce(unit), 16),
+        // Each member's own Move, whose target container is its fleet.
+        for (member, arrival, fleet) in [
+            (MissionMember::Character(character), 15, fleet),
+            (MissionMember::SpecialForce(unit), 16, other),
         ] {
             let id = states.missions.dispatch(MissionRequest::single(
                 MissionKind::Diplomacy,
@@ -3268,7 +3271,7 @@ mod tests {
         assert_eq!(
             super::tests::rows(&rows[..3]),
             vec![
-                ("Attached: ", name.as_str()),
+                ("Attached: ", other_name.as_str()),
                 ("Status:", "Enroute"),
                 ("ETA Destination:", "Day 16"),
             ]

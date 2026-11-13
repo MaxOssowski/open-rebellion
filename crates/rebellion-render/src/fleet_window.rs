@@ -6432,6 +6432,12 @@ pub(crate) mod tests {
         let mut movement = MovementState::default();
         assert!(movement.order(mover, elsewhere, system, 5));
         movement.set_join(mover, target);
+        // A fleet on a plain move to the system joins nothing: it is listed
+        // as itself.
+        let passer = add_fleet(&mut world, elsewhere, true, 0);
+        world.systems[elsewhere].fleets.clear();
+        assert!(movement.order(passer, elsewhere, system, 5));
+        assert_eq!(joining_fleets(&world, &movement, target), [mover]);
         let mut open = window(system, Some(FleetWindowEntry::Fleet(target)));
         open.expanded.push(target);
 
@@ -6441,6 +6447,7 @@ pub(crate) mod tests {
                 FleetWindowEntry::Fleet(target),
                 FleetWindowEntry::Ship { fleet: target, index: 0 },
                 FleetWindowEntry::Ship { fleet: mover, index: 0 },
+                FleetWindowEntry::Fleet(passer),
             ]
         );
         let selected = open.selected;
@@ -6587,6 +6594,12 @@ pub(crate) mod tests {
         assert!(personnel[0].en_route);
         assert!(tab_enabled(&world, &transport, &arrivals, ship(2), FleetWindowTab::Fighters));
         assert!(!tab_enabled(&world, &transport, &arrivals, ship(2), FleetWindowTab::Troops));
+        // A destroyed first ship is not usable (mode 1): the member boards
+        // the next.
+        world.fleets[fleet].capital_ships[0].alive = false;
+        let load = ship_load(&world, &transport, &arrivals, fleet);
+        assert!(load[0].characters.is_empty());
+        assert_eq!(load[1].characters, [character]);
     }
 
     // hyp (as the regiments): squadrons fill the live ships' fighter
