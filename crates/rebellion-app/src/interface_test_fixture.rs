@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 118;
+const SCENARIO_COUNT: u8 = 119;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -432,6 +432,12 @@ pub enum Scenario {
     /// behind it, as A0 2026-11-13-defenses-missions-drop/00..06 and 21
     /// drop Jerijador's defenses icon on Yavin.
     QuadrantsFreeTeam = 117,
+    /// As `Quadrants` with a shipyard of the player's at the primary
+    /// system, so its facility icon has managers (`FUN_00512700` kind 4):
+    /// the icon's drop and its menu's Destination, as A0
+    /// 2026-11-13-facility-icon-drop drops Jerijador's facility icon on
+    /// its own planet, on Yavin's HQ mark and on Yavin's planet edge.
+    QuadrantsFacility = 118,
 }
 
 impl Scenario {
@@ -555,6 +561,7 @@ impl Scenario {
             115 => Self::ResearchDiplomacyTargeting,
             116 => Self::QuadrantsNeutralFleet,
             117 => Self::QuadrantsFreeTeam,
+            118 => Self::QuadrantsFacility,
             _ => return None,
         })
     }
@@ -624,6 +631,7 @@ impl Scenario {
             || self == Self::Quadrants
             || self == Self::QuadrantsNeutralFleet
             || self == Self::QuadrantsFreeTeam
+            || self == Self::QuadrantsFacility
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
             || self == Self::FleetWindowYavin
@@ -1255,7 +1263,10 @@ pub fn apply(
     }
     if matches!(
         request.scenario,
-        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet | Scenario::QuadrantsFreeTeam
+        Scenario::Quadrants
+            | Scenario::QuadrantsNeutralFleet
+            | Scenario::QuadrantsFreeTeam
+            | Scenario::QuadrantsFacility
     ) {
         place_quadrant_contents(
             request, world, movement, missions, uprisings, sectors, primary,
@@ -2149,7 +2160,10 @@ fn place_coruscant_squadrons(
 /// sector's first other system and Coruscant.
 fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(SystemKey, SystemKey)> {
     match request.scenario {
-        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet | Scenario::QuadrantsFreeTeam => {
+        Scenario::Quadrants
+        | Scenario::QuadrantsNeutralFleet
+        | Scenario::QuadrantsFreeTeam
+        | Scenario::QuadrantsFacility => {
             let primary = world.systems.keys().next()?;
             Some((primary, loading_target(world, primary)?))
         }
@@ -4407,6 +4421,16 @@ fn place_quadrant_contents(
                 is_mine: true,
             });
     world.systems[primary].production_facilities.push(mine);
+    if request.scenario == Scenario::QuadrantsFacility {
+        let yard = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+                side: player,
+                is_shipyard: true,
+            },
+        );
+        world.systems[primary].manufacturing_facilities.push(yard);
+    }
     let battery = world
         .defense_facilities
         .insert(rebellion_core::world::DefenseFacilityInstance {
@@ -4719,6 +4743,7 @@ fn object_menu_report<'a>(
                 | Scenario::Quadrants
                 | Scenario::QuadrantsNeutralFleet
                 | Scenario::QuadrantsFreeTeam
+                | Scenario::QuadrantsFacility
                 | Scenario::FleetWindowYavin
                 | Scenario::FleetWindowA0
                 | Scenario::BatteryStatus
@@ -6408,7 +6433,10 @@ fn quadrant_setup(
     };
     let marks = if matches!(
         request.scenario,
-        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet | Scenario::QuadrantsFreeTeam
+        Scenario::Quadrants
+            | Scenario::QuadrantsNeutralFleet
+            | Scenario::QuadrantsFreeTeam
+            | Scenario::QuadrantsFacility
     ) {
         mark_systems(world, primary)
     } else {
@@ -6513,6 +6541,9 @@ struct QuadrantObservation {
     defenses_windows: Vec<FixtureDefensesWindow>,
     missions_windows: Vec<FixtureMissionsWindow>,
     rail: Vec<(u32, &'static str, [f32; 4])>,
+    /// Each open System window's three bands' "Destination: ..." lines
+    /// (`manufacturing_window::band`), Ship Construction first.
+    system_destinations: Vec<(u32, Vec<String>)>,
 }
 
 /// The windows and pages the quadrant observation reads.
@@ -6645,6 +6676,26 @@ impl QuadrantWatch {
                 .collect(),
             defenses_windows,
             missions_windows,
+            system_destinations: windows
+                .systems
+                .open_windows()
+                .filter_map(|(system, _)| {
+                    let lines = rebellion_core::manufacturing::ProductionArea::ALL
+                        .iter()
+                        .map(|&area| {
+                            rebellion_render::manufacturing_window::band(
+                                world,
+                                windows.production.manufacturing,
+                                true,
+                                system,
+                                area,
+                            )
+                            .destination
+                        })
+                        .collect();
+                    Some((world.systems.get(system)?.dat_id.raw(), lines))
+                })
+                .collect(),
             rail: windows
                 .systems
                 .rail_entries()
@@ -11609,6 +11660,38 @@ mod tests {
     }
 
     #[test]
+    fn the_facility_scenario_gives_the_primarys_facility_icon_managers_of_the_player() {
+        // port: the fixture's own stocking; the facility icon's team is
+        // FUN_00512700 kind 4 (quadrant_icons::facility_icon_has_managers),
+        // as A0 2026-11-13-facility-icon-drop/08 enables Jerijador's
+        // Destination.
+        for (faction, player) in [
+            (CockpitFaction::Alliance, Faction::Alliance),
+            (CockpitFaction::Empire, Faction::Empire),
+        ] {
+            let plain = apply_quadrants(faction);
+            let primary = plain.world.systems.keys().next().unwrap();
+            assert!(
+                !rebellion_render::quadrant_icons::facility_icon_has_managers(
+                    &plain.world,
+                    primary,
+                    player
+                ),
+                "{faction:?}"
+            );
+            let applied = apply_quadrants_as(Scenario::QuadrantsFacility, faction);
+            assert!(
+                rebellion_render::quadrant_icons::facility_icon_has_managers(
+                    &applied.world,
+                    primary,
+                    player
+                ),
+                "{faction:?}"
+            );
+        }
+    }
+
+    #[test]
     fn the_quadrant_scenario_leaves_an_agent_aboard_a_fleet_where_it_is() {
         let applied = apply_quadrants(CockpitFaction::Alliance);
         let world = &applied.world;
@@ -12436,6 +12519,7 @@ mod tests {
                 Scenario::ResearchDiplomacyTargeting,
                 Scenario::QuadrantsNeutralFleet,
                 Scenario::QuadrantsFreeTeam,
+                Scenario::QuadrantsFacility,
             ]
         );
     }
