@@ -74,6 +74,28 @@ const LABEL: egui::Color32 = egui::Color32::from_rgb(0xff, 0xfb, 0xf0);
 /// The most units one order builds (`FUN_00438c30`, `FUN_00438c60`).
 pub const MAX_QUANTITY: u32 = 255;
 
+/// The number edit's text limit, `FUN_006050c0(0x19)` from `FUN_00437f80`.
+const NUMBER_LIMIT: usize = 0x19;
+
+/// The number an edit's text orders (`FUN_00438d30`): its leading digits as
+/// `atoi` reads them (`FUN_00619560`: blanks, a sign, then digits), held
+/// to 1 through 255. A minus sign makes any number less than 1, so it
+/// holds to 1 as no digits do. port: a number past `i64` saturates instead
+/// of wrapping.
+fn number_of(text: &str) -> u32 {
+    let text = text.trim_start_matches(|c: char| c.is_ascii_whitespace());
+    let digits = text.strip_prefix('+').unwrap_or(text);
+    let value = digits
+        .bytes()
+        .take_while(u8::is_ascii_digit)
+        .fold(0_i64, |value, digit| {
+            value
+                .saturating_mul(10)
+                .saturating_add(i64::from(digit - b'0'))
+        });
+    u32::try_from(value.clamp(1, i64::from(MAX_QUANTITY))).unwrap_or(1)
+}
+
 /// The class list's box: under the 195 by 63 item at (6, 22).
 const CLASS_LIST: crate::selection_list::DropDown = crate::selection_list::DropDown {
     x: 6.0,
@@ -95,7 +117,10 @@ pub struct BuildSelection {
     /// The classes `FUN_0052e580` listed when the window was built.
     kinds: Vec<BuildableKind>,
     selected: usize,
-    quantity: u32,
+    /// The number edit's text (`+0x128`, a `CoolStringField`): what the
+    /// player typed, which the window reads as a number when it needs one
+    /// (`FUN_00438d30`).
+    number: String,
     /// The class list is open (`CoolSelectionBoxClass +0xe8`).
     list_open: bool,
     /// The class list's first visible pixel and the held press on its bar
@@ -120,7 +145,13 @@ impl BuildSelection {
 
     #[must_use]
     pub fn quantity(&self) -> u32 {
-        self.quantity
+        number_of(&self.number)
+    }
+
+    /// The number edit's text as drawn.
+    #[must_use]
+    pub fn number_text(&self) -> &str {
+        &self.number
     }
 
     /// The shown class's place in the list.
@@ -141,24 +172,39 @@ impl BuildSelection {
         }
     }
 
-    /// Quantity up (`0x69`, keypad `+`) or down (`0x6a`, keypad `-`), held
-    /// to 1 through 255.
+    /// Quantity up (`0x69`, keypad `+`, `FUN_00438c30`) or down (`0x6a`,
+    /// keypad `-`, `FUN_00438c60`): the edit's number, held to 1 through
+    /// 255, steps once while within them and is written back
+    /// (`FUN_00438c90`). At a limit the edit keeps its text.
     pub fn step_quantity(&mut self, up: bool) {
-        self.quantity = if up {
-            (self.quantity + 1).min(MAX_QUANTITY)
+        let number = self.quantity();
+        let stepped = if up {
+            (number < MAX_QUANTITY).then_some(number + 1)
         } else {
-            self.quantity.saturating_sub(1).max(1)
+            (number > 1).then_some(number - 1)
         };
+        if let Some(stepped) = stepped {
+            self.number = stepped.to_string();
+        }
     }
 
-    /// A digit typed into the number edit; the value stays in 1..=255.
-    pub fn type_digit(&mut self, digit: u32) {
-        self.quantity = (self.quantity * 10 + digit).clamp(1, MAX_QUANTITY);
+    /// A character typed into the number edit (`Class_0066e038_vt14`,
+    /// `WM_CHAR`): any printable one (`FUN_0061a050`, mask `0x157`) goes in
+    /// at the caret while the text is under its 25-character limit. The
+    /// window opens with "1" and the caret after it (`FUN_00604f90`, caret
+    /// -1), and no selection, so a digit typed at once follows the 1.
+    /// port: the caret stays at the end; the arrows, Home, End, Delete,
+    /// Insert's overtype and the mouse's selection are not ported.
+    pub fn type_char(&mut self, typed: char) {
+        if (typed.is_ascii_graphic() || typed == ' ') && self.number.len() < NUMBER_LIMIT {
+            self.number.push(typed);
+        }
     }
 
-    /// Backspace in the number edit.
+    /// Backspace in the number edit: the character before the caret goes,
+    /// down to an empty edit, which orders 1 (`FUN_00438d30`).
     pub fn erase_digit(&mut self) {
-        self.quantity = (self.quantity / 10).max(1);
+        self.number.pop();
     }
 }
 
@@ -217,7 +263,7 @@ impl BuildSelectionState {
             is_alliance,
             kinds,
             selected,
-            quantity: 1,
+            number: "1".to_owned(),
             list_open: false,
             list_scroll: 0.0,
             list_hold: None,
@@ -279,7 +325,7 @@ impl BuildSelectionState {
             system: dialog.system,
             area: dialog.area,
             kind,
-            count: dialog.quantity,
+            count: dialog.quantity(),
             agent: dialog.agent,
         })
     }
@@ -368,7 +414,7 @@ pub fn draw_build_selection(
         dialog.system,
         dialog.area,
         dialog.kind(),
-        dialog.quantity,
+        dialog.quantity(),
         dialog.is_alliance,
         unallocated_maintenance,
     );
@@ -394,9 +440,11 @@ pub fn draw_build_selection(
                     _ => {}
                 }
             }
+            // port: egui does not tell the keypad's + and - from the main
+            // keys', so both step the number and neither is typed.
             if let egui::Event::Text(text) = event {
-                for digit in text.chars().filter_map(|c| c.to_digit(10)) {
-                    dialog.type_digit(digit);
+                for typed in text.chars().filter(|c| !matches!(c, '+' | '-' | '=')) {
+                    dialog.type_char(typed);
                 }
             }
         }
@@ -515,7 +563,7 @@ pub fn draw_build_selection(
                 at(x, y, w, h),
                 scale,
                 4,
-                &dialog.quantity.to_string(),
+                &dialog.number,
                 egui::Color32::WHITE,
                 (GdiAlign::Left, GdiVAlign::VCenter),
             );
@@ -1210,9 +1258,9 @@ mod tests {
         assert_eq!(dialog.quantity(), 1);
         dialog.step_quantity(true);
         assert_eq!(dialog.quantity(), 2);
-        dialog.type_digit(5);
+        dialog.type_char('5');
         assert_eq!(dialog.quantity(), 25);
-        dialog.type_digit(9);
+        dialog.type_char('9');
         assert_eq!(dialog.quantity(), 255);
         dialog.step_quantity(true);
         assert_eq!(dialog.quantity(), 255);
@@ -1221,6 +1269,75 @@ mod tests {
         dialog.erase_digit();
         dialog.erase_digit();
         assert_eq!(dialog.quantity(), 1);
+    }
+
+    // The number edit is a CoolStringField (FUN_00604cf0) holding text:
+    // WM_CHAR (Class_0066e038_vt14) puts a printable character at the
+    // caret under the 25-character limit (FUN_006050c0(0x19)), Backspace
+    // can empty it, and FUN_00438d30 reads atoi(text) held to 1..=255
+    // without writing it back.
+    #[test]
+    fn backspace_empties_the_number_so_digits_typed_next_stand_alone() {
+        let mut state = open();
+        let dialog = state.dialog_mut().unwrap();
+        dialog.erase_digit();
+        assert_eq!(dialog.number_text(), "");
+        assert_eq!(dialog.quantity(), 1);
+        dialog.type_char('9');
+        dialog.type_char('9');
+        assert_eq!(dialog.number_text(), "99");
+        assert_eq!(dialog.quantity(), 99);
+    }
+
+    #[test]
+    fn a_number_over_255_stays_as_typed_and_orders_255() {
+        let mut state = open();
+        let dialog = state.dialog_mut().unwrap();
+        dialog.type_char('0');
+        dialog.type_char('0');
+        assert_eq!(dialog.number_text(), "100");
+        dialog.type_char('0');
+        assert_eq!(dialog.number_text(), "1000");
+        assert_eq!(dialog.quantity(), 255);
+        // Up at the limit leaves the text; down writes the stepped number.
+        dialog.step_quantity(true);
+        assert_eq!(dialog.number_text(), "1000");
+        dialog.step_quantity(false);
+        assert_eq!(dialog.number_text(), "254");
+        // Letters go in too; atoi stops at them.
+        dialog.type_char('x');
+        assert_eq!((dialog.number_text(), dialog.quantity()), ("254x", 254));
+        for _ in 0..40 {
+            dialog.type_char('7');
+        }
+        assert_eq!(dialog.number_text().len(), 25);
+        let action = state.confirm();
+        assert!(matches!(
+            action,
+            Some(BuildSelectionAction::Confirm { count: 254, .. })
+        ));
+    }
+
+    // FUN_00438d30 reads the text with atoi (FUN_00619560: blanks, a
+    // sign, digits) and holds it to 1..=255; FUN_00438c60 steps down only
+    // above 1, so at 1 the edit keeps its text.
+    #[test]
+    fn the_number_reads_its_text_as_atoi_does_and_down_at_one_keeps_it() {
+        assert_eq!(number_of(" 12x"), 12);
+        assert_eq!(number_of("+7"), 7);
+        assert_eq!(number_of("-5"), 1);
+        assert_eq!(number_of("-300"), 1);
+        assert_eq!(number_of("x5"), 1);
+        assert_eq!(number_of("99999999999999999999999"), 255);
+        let mut state = open();
+        let dialog = state.dialog_mut().unwrap();
+        dialog.step_quantity(false);
+        assert_eq!(dialog.number_text(), "1");
+        // A blank goes in like any printable character.
+        dialog.erase_digit();
+        dialog.type_char(' ');
+        dialog.type_char('8');
+        assert_eq!((dialog.number_text(), dialog.quantity()), (" 8", 8));
     }
 
     // FUN_00438980 remembers the confirmed class for its kind of manager;
