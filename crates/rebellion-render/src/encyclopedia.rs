@@ -1728,12 +1728,30 @@ fn draw_original_index_content(
         content.topic_label,
         GdiAlign::Left,
     );
-    text(
-        (143.0, 47.0, 240.0, 16.0),
-        crate::DEFAULT_FONT,
-        &content.selected_name,
-        GdiAlign::Left,
-    );
+    // The Topic box's text (CoolStringField's paint, FUN_00605160): the
+    // control's rect less its shadow offset (+0xe0 = 1), (0, 0, 244, 17),
+    // DT_SINGLELINE | DT_VCENTER (0x824), drawn by FUN_00600fd0 first in
+    // +0xe8 (black, the constructor's 0) one pixel down and right, then in
+    // +0xe4 (white, FUN_0045ddc0). A0 2026-11-13-all-databases-fleet/04
+    // sets "Fle" with its cap at window y 48 over a black shadow.
+    for (offset, colour) in [(1.0, Color32::BLACK), (0.0, Color32::WHITE)] {
+        crate::theme::paint_gdi_text(
+            painter,
+            encyclopedia_rect(
+                window_rect,
+                scale,
+                143.0 + offset,
+                45.0 + offset,
+                244.0,
+                17.0,
+            ),
+            scale,
+            crate::DEFAULT_FONT,
+            content.selected_name,
+            colour,
+            (GdiAlign::Left, GdiVAlign::VCenter),
+        );
+    }
     // The Topic box (FUN_00604cf0 at (143, 45), 245 by 18) takes the keys
     // when pressed. port: its caret is not drawn.
     let box_rect = encyclopedia_rect(window_rect, scale, 143.0, 45.0, 245.0, 18.0);
