@@ -218,6 +218,30 @@ pub fn clicked_first<T: PartialEq>(clicked: T, selected: impl IntoIterator<Item 
     team
 }
 
+/// Where this frame's left release came up: `WM_LBUTTONUP`'s own point
+/// (`lParam`), which `FUN_006083c0` case `0x202` measures from the press,
+/// not where the pointer has moved on to by the time the frame is read.
+/// The pointer's latest place when the frame holds no release event.
+#[must_use]
+pub fn release_point(ctx: &egui_macroquad::egui::Context) -> Option<egui_macroquad::egui::Pos2> {
+    use egui_macroquad::egui::{Event, PointerButton};
+    ctx.input(|input| {
+        input
+            .events
+            .iter()
+            .find_map(|event| match event {
+                Event::PointerButton {
+                    pos,
+                    button: PointerButton::Primary,
+                    pressed: false,
+                    ..
+                } => Some(*pos),
+                _ => None,
+            })
+            .or_else(|| input.pointer.latest_pos())
+    })
+}
+
 /// The keys held now, as `wParam` reports them with a press.
 #[must_use]
 pub fn modifiers(ctx: &egui_macroquad::egui::Context) -> Modifiers {

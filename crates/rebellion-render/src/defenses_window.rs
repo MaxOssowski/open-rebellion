@@ -715,14 +715,17 @@ impl DefensesWindowState {
     ///
     /// port: a release inside the list is no drop; there `+0x70` gives only
     /// the window's own system (`FUN_004aa470`), a move in place.
+    ///
+    /// The distance is the release's own point's (`lParam` of
+    /// `WM_LBUTTONUP`, [`crate::drag_list::release_point`]).
     fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<DragEnd> {
-        let (released, down, point) = ctx.input(|input| {
+        let (released, down) = ctx.input(|input| {
             (
                 input.pointer.primary_released(),
                 input.pointer.primary_down(),
-                input.pointer.latest_pos(),
             )
         });
+        let point = crate::drag_list::release_point(ctx);
         if !released {
             if !down {
                 self.drag = None;
@@ -3422,6 +3425,37 @@ mod tests {
             drag_from(at(100.0, 83.0), at(100.0, 79.5)),
             (true, vec![], false)
         );
+    }
+
+    #[test]
+    fn a_drag_is_measured_and_dropped_at_the_release_events_own_point() {
+        // FUN_006083c0 case 0x202 measures WM_LBUTTONUP's own point (lParam)
+        // from the press: a release just outside the list drops there, and
+        // a release where the press lay drops nothing, though the pointer
+        // moves on within the release's frame.
+        let (world, system, missions) = stocked();
+        let start = at(100.0, 83.0);
+        let release = |held_at: egui::Pos2, up_at: egui::Pos2, moved_on: egui::Pos2| {
+            let mut state = opened(&world, system);
+            let mut frames = hover(start);
+            frames.extend([
+                vec![press(start, true)],
+                vec![egui::Event::PointerMoved(held_at)],
+                vec![press(up_at, false), egui::Event::PointerMoved(moved_on)],
+            ]);
+            run(&world, &missions, &mut state, frames)
+                .actions
+                .into_iter()
+                .filter_map(|action| match action {
+                    DefensesWindowAction::DragSelection { point, .. } => Some(point),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let near = at(100.0, 78.0);
+        let outside = at(-60.0, 40.0);
+        assert_eq!(release(near, near, outside), vec![near]);
+        assert_eq!(release(start, start, outside), vec![]);
     }
 
     #[test]

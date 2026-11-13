@@ -1511,14 +1511,18 @@ impl FleetWindowState {
     ///
     /// With Ctrl down at the release the drop is Confirmed Move (`0x202`,
     /// `FUN_00422ce0`).
+    ///
+    /// The distance is the release's own point's (`lParam` of
+    /// `WM_LBUTTONUP`, [`crate::drag_list::release_point`]): a click whose
+    /// pointer moves on within its release frame is no drop.
     fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<DragEnd> {
-        let (released, down, point) = ctx.input(|input| {
+        let (released, down) = ctx.input(|input| {
             (
                 input.pointer.primary_released(),
                 input.pointer.primary_down(),
-                input.pointer.latest_pos(),
             )
         });
+        let point = crate::drag_list::release_point(ctx);
         if !released {
             if !down {
                 self.drag = None;
@@ -6715,6 +6719,70 @@ pub(crate) mod tests {
                 confirmed: false,
             }]
         );
+    }
+
+    #[test]
+    fn a_click_whose_pointer_moves_on_in_its_release_frame_drops_nothing() {
+        // FUN_006083c0 case 0x202 measures the release by WM_LBUTTONUP's
+        // own point (lParam), not where the pointer is when the frame is
+        // read: a click on a fleet entry released in place is no 0x29a, so
+        // no move of the fleet into itself, though the pointer moves on
+        // past sqrt(24) list pixels before the frame runs.
+        let (world, transport, system, fleet, _) = fleet_with_regiment();
+        let entry = at(40.0, 40.0);
+        let moved_on = at(46.0, 40.0);
+        let mut state = opened(&world, system);
+        let mut frames = hover(entry);
+        frames.extend([
+            vec![press(entry, true)],
+            vec![press(entry, false), egui::Event::PointerMoved(moved_on)],
+            vec![],
+        ]);
+        let clicked = run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            frames,
+        );
+        assert!(
+            !clicked.actions.iter().any(|action| matches!(
+                action,
+                FleetWindowAction::DragFleet { .. } | FleetWindowAction::DragShip { .. }
+            )),
+            "{:?}",
+            clicked.actions
+        );
+        assert_eq!(
+            state.windows[0].selected.single(),
+            Some(FleetWindowEntry::Fleet(fleet))
+        );
+
+        // A release past sqrt(24) list pixels from the press drops at the
+        // release's own point, though the pointer moves on.
+        let released = at(46.0, 40.0);
+        let mut state = opened(&world, system);
+        let mut frames = hover(entry);
+        frames.extend([
+            vec![press(entry, true)],
+            vec![egui::Event::PointerMoved(released)],
+            vec![
+                press(released, false),
+                egui::Event::PointerMoved(at(300.0, 200.0)),
+            ],
+        ]);
+        let dragged = run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            frames,
+        );
+        assert!(dragged.actions.contains(&FleetWindowAction::DragFleet {
+            fleets: vec![fleet],
+            point: released,
+            confirmed: false,
+        }));
     }
 
     #[test]
