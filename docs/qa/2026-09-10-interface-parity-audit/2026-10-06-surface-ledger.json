@@ -1807,17 +1807,19 @@
         {
           "id": "CMD-02-C017",
           "requirement": "matching legend",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-legend-layouts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-legend-window/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-legend-drop-and-display-senders/",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-gid-a0/README.md",
+            "tools/interface-parity/gid-a0.mjs"
           ],
-          "note": "The 22 legend layouts (FUN_004522f0, RCDATA 0x27c7..0x27d8, 0x2d50..0x2d57) draw in the legend window (FUN_00426d00), checked by the Linux GID gate; no A0 legend comparison per display. 2026-10-31: FUN_00426d00 builds the legend under the galaxy view (HWND_BOTTOM): A0 shows only the button after each display chosen (gid/d-*.png, gid-displays/alt-*.png), and the port now does the same; the legend window opened from the button has no A0 capture (a QMP click on it opened nothing visible).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The 22 legend layouts (FUN_004522f0, RCDATA 0x27c7..0x27d8, 0x2d50..0x2d57) draw in the legend window (FUN_00426d00), checked by the Linux GID gate; no A0 legend comparison per display. 2026-10-31: FUN_00426d00 builds the legend under the galaxy view (HWND_BOTTOM): A0 shows only the button after each display chosen (gid/d-*.png, gid-displays/alt-*.png), and the port now does the same; the legend window opened from the button has no A0 capture (a QMP click on it opened nothing visible). 2026-11-13: A0 2026-11-13-gid settles the legend window. The button answers only a double click (FUN_00427270 builds it with FUN_00452ab0 flags 3; Class_00659e38_vt14 swallows the press and release and posts 0x134 on WM_LBUTTONDBLCLK; A0 A1, A2 nothing, A3 opens); the port did open on a click and now pairs two presses on the button the Windows way. The legend shows the galaxy view under it shaded (FUN_00452240, FUN_005fe050), which the port lacked, and keys its art (FUN_00452630 -> FUN_005fd0f0, and black through the composed surface's index-0 key), which the port drew opaque for 10180..10182, 10241..10245. Linux browser (gid-a0.mjs, GidA0 fixture): Popular Support (A3), Idle Fleets (A5), Active Personnel (A7) and Uprisings (A9) legends have 0 differing art, frame and close-box pixels, every text ink box within a pixel (accepted text deviation), and the shaded galaxy differs only at the game-state marks (21..50 of 3436..6202 pixels); Alt+number closes the legend (A4). Not ported: the button itself drags (flags bit 1), not seen in A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-02-C018",
@@ -1850,15 +1852,17 @@
         {
           "id": "CMD-02-C020",
           "requirement": "uninhabited",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-unpopulated-marks/",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-gid-a0/README.md",
+            "tools/interface-parity/gid-a0.mjs"
           ],
-          "note": "An explored unpopulated system takes its holder's no-side mark (FUN_00426ee0, FUN_0050b610), unit-tested and run in the Linux GID gate; not compared with A0. 2026-11-11 b191: the mark art matches A0; no A0 shows a system known to be uninhabited on the galaxy view.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "An explored unpopulated system takes its holder's no-side mark (FUN_00426ee0, FUN_0050b610), unit-tested and run in the Linux GID gate; not compared with A0. 2026-11-11 b191: the mark art matches A0; no A0 shows a system known to be uninhabited on the galaxy view. 2026-11-13: A0 2026-11-13-gid/B2 (day 258) shows Kubindi explored and uninhabited with the no-side 10155 among unexplored Calaron neighbours; the GidA0 fixture (Kubindi explored, unpopulated, no holder) draws 10155 at Kubindi's corner (274, 92), 0 of 17 pixels off, and the neighbours' 10158, in the Linux browser (gid-a0.mjs).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-02-C021",
@@ -1888,15 +1892,17 @@
         {
           "id": "CMD-02-C023",
           "requirement": "mission",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-gid-a0/README.md",
+            "tools/interface-parity/gid-a0.mjs"
           ],
-          "note": "Characters on a mission count as Active Personnel (FUN_0042b330 0x44, +0x78 bit 7) and the mission fixture runs in the Linux GID gate; no A0 and no other mission mark is traced. 2026-11-11 b191: Active Personnel marks (Alliance 10146, Empire 10153) match A0 art; no A0 shows a mission under way on Active Personnel.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Characters on a mission count as Active Personnel (FUN_0042b330 0x44, +0x78 bit 7) and the mission fixture runs in the Linux GID gate; no A0 and no other mission mark is traced. 2026-11-11 b191: Active Personnel marks (Alliance 10146, Empire 10153) match A0 art; no A0 shows a mission under way on Active Personnel. 2026-11-13: A0 2026-11-13-gid/C2 (day 245): Adar Tallon on a mission at Averam makes it the Alliance's largest Active Personnel mark 10146 (A6 before: 10149). The GidA0 fixture (Tallon alone at Averam on Troop Training Research) draws 10146 at Averam's corner (214, 146), 0 of 53 pixels off, and all 67 systems it shows unexplored take the no-side \"None\" mark 10154 there, as A6's 68 do (gid-a0.mjs, Linux browser).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-02-C024",
@@ -5228,15 +5234,17 @@
         {
           "id": "OBJ-03-C019",
           "requirement": "SpecForces Finder system-name search",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-finder-prefix-search/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-icon-menu-and-topic-box-a0/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-icon-menu-and-topic-box-a0/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-gid-a0/README.md",
+            "tools/interface-parity/personnel-states.mjs"
           ],
-          "note": "Prefix search follows FUN_00609650 (list_prefix, unit tests); the README notes the Personnel Finder's case 100 (FUN_00464890) does no prefix match, so the search behaviour is not settled against A0. 2026-11-11 b183: settled by trace: every Finder answers a name edit (0x408) with FUN_00609650 on its shown list (Personnel +0x150, case-insensitive longest prefix, ties keep the earlier row, an emptied name chooses the first row); the Personnel Finder's tabs (FUN_00464890 cases 100/0x6e) only rebuild and keep the stored id. Ported with unit tests; no A0 of typing. 2026-11-11 b187: A0 of the Encyclopedia Topic box: a freshly opened index takes typing at once (port changed), Index gives the box the keys, a category icon takes them, an edit keeping the row scrolls nothing.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Prefix search follows FUN_00609650 (list_prefix, unit tests); the README notes the Personnel Finder's case 100 (FUN_00464890) does no prefix match, so the search behaviour is not settled against A0. 2026-11-11 b183: settled by trace: every Finder answers a name edit (0x408) with FUN_00609650 on its shown list (Personnel +0x150, case-insensitive longest prefix, ties keep the earlier row, an emptied name chooses the first row); the Personnel Finder's tabs (FUN_00464890 cases 100/0x6e) only rebuild and keep the stored id. Ported with unit tests; no A0 of typing. 2026-11-11 b187: A0 of the Encyclopedia Topic box: a freshly opened index takes typing at once (port changed), Index gives the box the keys, a category icon takes them, an edit keeping the row scrolls nothing. 2026-11-13: A0 2026-11-13-gid/E1..E6: in the SpecForces view (one Alliance row, Yavin) typing \"Q\", which no row begins, chooses the row; \"Y\" and \"Ya\" keep it; nothing scrolls. The SpecForcesYavin fixture matches in the Linux browser (personnel-states.mjs): the list outside the glyphs 0 pixels off in each frame, the row grey then white, its ink within a pixel at the left and two rows top and bottom (accepted text deviation: the port's glyphs are 8 rows to A0's 10; A0's grey is the palette step (117, 114, 114) of 0x787878). E2: the Empire tab is empty; the port listed the Empire's special forces there and now lists the other side's only where the player sees them, as its Characters view does (hyp, FUN_004f3d50 views). A0 has one row only, so prefix choice among rows rests on the trace and unit tests.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
