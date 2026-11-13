@@ -17802,7 +17802,9 @@ mod tests {
         assert_eq!(ships[0].source_position.x, 0.0);
     }
 
-    // Source: FUN_005ea250 / FUN_005ec400 formation footprint and slots.
+    // Source: FUN_005ea250 / FUN_005ec400 formation footprint and slots;
+    // the first follower stands on the slot axis's negative side
+    // (0x005ec448..0x005ec452, the anchor less the slot at 0x005eb040).
     #[test]
     fn task_force_followers_use_largest_footprint_and_alternating_slots() {
         let mut ships = (0..3)
@@ -17827,8 +17829,8 @@ mod tests {
         assert_eq!(ships[1].task_force, 0);
         assert_eq!(ships[2].task_force, 0);
         assert_eq!(ships[0].source_position.x.to_bits(), (-0.0_f32).to_bits());
-        assert_eq!(ships[1].source_position.x, 12.0);
-        assert_eq!(ships[2].source_position.x, -12.0);
+        assert_eq!(ships[1].source_position.x, -12.0);
+        assert_eq!(ships[2].source_position.x, 12.0);
         assert!(ships.iter().all(|ship| ship.source_position.y == 0.0));
     }
 
@@ -17855,7 +17857,11 @@ mod tests {
             });
         }
         BattleSession::assign_original_task_forces(&mut ships);
-        assert_eq!(ships[1].source_position.z, -12.0);
+        assert_eq!(ships[1].source_position.z, 12.0);
+        // The follower faces -x, toward the mover's place for it, which
+        // stands on the side axis's negative side.
+        ships[1].source_forward.x = -1.0;
+        ships[1].source_desired_forward.x = -1.0;
         let goal = TacticalWorldPosition {
             x: 50.0,
             y: 0.0,
@@ -17876,14 +17882,15 @@ mod tests {
         assert!((mover.lateral.z + applied.sin()).abs() < 1e-5, "{mover:?}");
         assert!((mover.anchor.x - 0.95 * 5.0 * 0.25).abs() < 1e-4);
         // The lead unit snaps onto the anchor; the follower steers toward
-        // its slot, 12 along the turned axis, at its own pace.
+        // its slot, 12 along the turned axis's negative side, at its own
+        // pace.
         assert!((session.ships[0].source_position.x - mover.anchor.x).abs() < 1e-4);
         let place = TacticalWorldPosition {
-            x: mover.anchor.x + mover.lateral.x * 12.0,
+            x: mover.anchor.x - mover.lateral.x * 12.0,
             y: 0.0,
-            z: mover.anchor.z + mover.lateral.z * 12.0,
+            z: mover.anchor.z - mover.lateral.z * 12.0,
         };
-        let before = (place.x - 0.0).hypot(place.z + 12.0);
+        let before = (place.x - 0.0).hypot(place.z - 12.0);
         let follower = session.ships[1].source_position;
         let after = (place.x - follower.x).hypot(place.z - follower.z);
         assert!(after < before, "{follower:?} {place:?}");
@@ -22396,7 +22403,8 @@ mod tests {
     }
 
     // A ship added to a task force takes its formation place at once
-    // (FUN_005ec400's first follower, one spacing to the side).
+    // (FUN_005ec400's first follower, one spacing to the side: at least
+    // FUN_005ea030's 12).
     #[test]
     fn a_ship_assigned_to_a_task_force_takes_its_formation_place() {
         let leader = test_ship(64, 0, true, true);
@@ -22408,7 +22416,7 @@ mod tests {
         session.ships[0].task_force = 0;
         assert_eq!(assign_selected_to_task_force(&mut session, 0), 1);
         let offset = session.ships[1].source_position.x - session.ships[0].source_position.x;
-        assert_eq!(offset.abs(), ORIGINAL_BATTLE_SLOT_SPACING);
+        assert_eq!(offset.abs(), ORIGINAL_FORMATION_BASE_SPACING);
 
         // Joining a force keeps its formation; a blank slot is a new force,
         // which starts Stand Off (0x005cbf50).

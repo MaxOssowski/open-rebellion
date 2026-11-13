@@ -4591,6 +4591,91 @@ mod tests {
         );
     }
 
+    // A0 TAC-01-C007 and TAC-01-C009 (Battle at Yavin, Imperial player):
+    // the Imperial Star Destroyer and Victory Destroyer 2 of Task Force 1
+    // against the Corellian Corvette Swift, squadrons in their hangars, so
+    // the extent is 106 (FUN_005ab650). The Star Destroyer leads at x 0 and
+    // the Victory stands one Stand Off slot from it (FUN_005ec400, the
+    // anchor less the slot at 0x005eb040, spacing FUN_005ea030's 12 over
+    // the 1.2-scaled footprints of TACTICAL.DLL meshes 2560 and 2550).
+    // Their boxes are the meshes' bounds (x3, 0x005d5b10) about the hulls,
+    // facing the Empire's -z (0x005ab921). A0 shows:
+    // - TAC-01-C009's sequence, frame 1 (three zoom-outs, before either
+    //   ship moved): the Star Destroyer's box at x 62..99, y 365..398 and
+    //   the Victory's at x 17 (the view's edge)..45, y 346..375;
+    // - TAC-03-C009 and C015 (first view): the Star Destroyer's box at
+    //   x 17 (edge)..54, y 404..447, and no box or hull of the Victory;
+    // - TAC-01-C007 (first view): Swift's hull pixels centred at
+    //   (369.4, 133.4).
+    #[test]
+    fn the_a0_yavin_battle_frames_its_hulls_where_the_original_does() {
+        use rebellion_core::tactical::{
+            original_formation_lateral_offset, original_formation_spacing,
+            OriginalTacticalLayout,
+        };
+        const STAR_DESTROYER: [f32; 6] = [-1.527, -0.437, -3.002, 1.559, 1.137, 3.007];
+        const VICTORY: [f32; 6] = [-1.57, -0.426, -2.633, 1.57, 0.943, 2.877];
+        let layout = OriginalTacticalLayout::from_active_counts(1, 2);
+        assert_eq!(layout.battle_extent, 106.0);
+        let lane = layout.outer_positive_z;
+        // The Empire's forward (0, 0, -1) gives the slot axis (-1, 0, 0).
+        let spacing = original_formation_spacing(&[Some(6.755), Some(6.342)], 1);
+        let victory_x = -original_formation_lateral_offset(1, spacing);
+        assert_eq!(victory_x, 12.0);
+        let viewport = tactical_scene_viewport((16.0, 28.0, 444.0, 439.0));
+        let axes = original_hull_axes(vec3(0.0, 0.0, -1.0));
+        let frame = |zoom_outs: usize, bounds: [f32; 6], source: Vec3| {
+            let mut camera = OriginalTacticalCamera::new(true, layout.battle_extent);
+            for _ in 0..zoom_outs {
+                camera.zoom_out();
+            }
+            let mut renderer = TacticalAssetRenderer::default();
+            renderer.restore_camera_state(camera);
+            let centre = vec3(source.x, source.y, -source.z);
+            let mut low = Vec2::splat(f32::MAX);
+            let mut high = Vec2::splat(f32::MIN);
+            for corner in 0..8 {
+                let pick = |bit: usize, axis: usize| {
+                    if corner & bit == 0 {
+                        bounds[axis]
+                    } else {
+                        bounds[axis + 3]
+                    }
+                };
+                let local = vec3(pick(1, 0), pick(2, 1), -pick(4, 2));
+                let point = centre + axes[0] * local.x + axes[1] * local.y + axes[2] * local.z;
+                let pixel = renderer.project_in_scene_viewport(viewport, point).unwrap();
+                low = low.min(pixel);
+                high = high.max(pixel);
+            }
+            let middle = renderer.project_in_scene_viewport(viewport, centre).unwrap();
+            (low, high, middle)
+        };
+        let near = |actual: f32, original: f32| {
+            assert!((actual - original).abs() <= 1.5, "{actual} against A0 {original}");
+        };
+        let (low, high, _) = frame(3, STAR_DESTROYER, vec3(0.0, 0.0, lane));
+        near(low.x, 62.0);
+        near(high.x, 99.0);
+        near(low.y, 365.0);
+        near(high.y, 398.0);
+        let (low, high, _) = frame(3, VICTORY, vec3(victory_x, 0.0, lane));
+        assert!(low.x < 17.0, "{low}");
+        near(high.x, 45.0);
+        near(low.y, 346.0);
+        near(high.y, 375.0);
+        let (low, high, _) = frame(0, STAR_DESTROYER, vec3(0.0, 0.0, lane));
+        assert!(low.x < 17.0, "{low}");
+        near(high.x, 54.0);
+        near(low.y, 404.0);
+        near(high.y, 447.0);
+        let (_, high, _) = frame(0, VICTORY, vec3(victory_x, 0.0, lane));
+        assert!(high.x < 17.0, "the Victory is in A0's empty first view: {high}");
+        let (_, _, swift) = frame(0, STAR_DESTROYER, vec3(0.0, 0.0, -lane));
+        near(swift.x, 369.4);
+        near(swift.y, 133.4);
+    }
+
     #[test]
     fn a_decal_is_drawn_only_when_its_square_reaches_the_view() {
         let view = (16.0, 28.0, 440.0, 440.0);

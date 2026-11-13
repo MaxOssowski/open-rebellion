@@ -272,6 +272,26 @@ pub const ORIGINAL_FORMATION_RANGE_PRIORITY: f32 = 10_000.0;
 /// `FUN_005ea250` expands each member footprint by 1.2 before retaining the
 /// largest value for `FUN_005ec400`'s alternating follower slots.
 pub const ORIGINAL_FORMATION_FOOTPRINT_SCALE: f32 = 1.2;
+/// `FUN_005ea030` starts a mover's slot spacing (`+0x13c`) at
+/// `DAT_0066d848` (3.0) × `DAT_0066d864` (4.0); `FUN_005ea250` and
+/// `FUN_005ec400` only raise it.
+pub const ORIGINAL_FORMATION_BASE_SPACING: f32 = 12.0;
+
+/// The Stand Off slot spacing of the member at `member_ordinal` (the lead
+/// is 0), from the footprints of the members ahead of it and its own:
+/// `FUN_005ea250` raises the mover's `+0x13c` to each added member's
+/// footprint × 1.2 before `FUN_005ec400` reads it with the new member's own
+/// (`0x005ec45d`..`0x005ec481`), so a later, larger member does not widen
+/// the slots before it. The slot truncates it (`__ftol`, `0x005ec487`).
+pub fn original_formation_spacing(footprints: &[Option<f32>], member_ordinal: usize) -> f32 {
+    footprints
+        .iter()
+        .take(member_ordinal + 1)
+        .flatten()
+        .map(|footprint| footprint * ORIGINAL_FORMATION_FOOTPRINT_SCALE)
+        .fold(ORIGINAL_FORMATION_BASE_SPACING, f32::max)
+        .trunc()
+}
 
 /// port: a ship's `task_force` when its force holds none of the eight group
 /// slots (`+0x164`). `FUN_005aded0` gives a ship such a force, and every
@@ -3613,18 +3633,22 @@ pub fn original_side_vector(is_alliance: bool) -> TacticalWorldVector {
     }
 }
 
-/// Exact alternating slot sequence from `FUN_005ec400`: leader center, first
-/// follower right one spacing, second follower left one spacing, then right
-/// and left at each increasing multiple.
+/// A Stand Off member's place along the mover's lateral axis
+/// `(f.z, 0, -f.x)`, from `FUN_005ec400`: the lead (count 1) has no slot;
+/// member count `c` takes `trunc(sign × spacing) × (c >> 1)` with sign +1
+/// for an odd count and -1 for an even one (`0x005ec448`..`0x005ec452`)
+/// along `(-f.z, 0, f.x)`, and stands at the anchor less it (`0x005eb040`).
+/// So the first follower is one spacing on the negative side, the second
+/// one on the positive side, then two each, and so on.
 pub fn original_formation_lateral_offset(member_ordinal: usize, spacing: f32) -> f32 {
     if member_ordinal == 0 {
         return 0.0;
     }
     let magnitude = member_ordinal.div_ceil(2) as f32 * spacing;
     if member_ordinal & 1 == 1 {
-        magnitude
-    } else {
         -magnitude
+    } else {
+        magnitude
     }
 }
 
@@ -4664,11 +4688,15 @@ impl BattleSession {
                 z: anchor.z - slot.z,
             };
         }
-        let spacing = members
+        let footprints = members
             .iter()
-            .filter_map(|index| self.ships[*index].source_collision_envelope)
-            .map(|envelope| (envelope.planar_diameter * ORIGINAL_FORMATION_FOOTPRINT_SCALE).trunc())
-            .fold(ORIGINAL_BATTLE_SLOT_SPACING, f32::max);
+            .map(|index| {
+                self.ships[*index]
+                    .source_collision_envelope
+                    .map(|envelope| envelope.planar_diameter)
+            })
+            .collect::<Vec<_>>();
+        let spacing = original_formation_spacing(&footprints, ordinal);
         let offset = original_formation_lateral_offset(ordinal, spacing);
         if offset == 0.0 {
             return anchor;
@@ -5988,9 +6016,10 @@ impl BattleSession {
 
     /// Apply `FUN_005ea250`, `FUN_005ec400`, and `FUN_005cbbc0`'s retained
     /// follower placement to the current task-force ownership. Before decoded
-    /// mesh footprints arrive, the recovered five-unit source setup spacing is
-    /// used. A later asset report expands the group to the largest 1.2-scaled
-    /// close-mesh footprint without changing its source-selected leader. The
+    /// mesh footprints arrive, the mover's base spacing 12 (`FUN_005ea030`)
+    /// is used. A later asset report widens it to the 1.2-scaled close-mesh
+    /// footprints ([`original_formation_spacing`]) without changing its
+    /// source-selected leader. The
     /// lateral axis follows the leader's current retained-mode forward vector,
     /// so the formation remains attached while the leader turns and moves.
     pub fn refresh_original_task_force_geometry(
@@ -6054,13 +6083,14 @@ impl BattleSession {
                     }
                     .normalized()
                 };
-                let spacing = members
+                let footprints = members
                     .iter()
-                    .filter_map(|index| ships[*index].source_collision_envelope)
-                    .map(|envelope| {
-                        (envelope.planar_diameter * ORIGINAL_FORMATION_FOOTPRINT_SCALE).trunc()
+                    .map(|index| {
+                        ships[*index]
+                            .source_collision_envelope
+                            .map(|envelope| envelope.planar_diameter)
                     })
-                    .fold(ORIGINAL_BATTLE_SLOT_SPACING, f32::max);
+                    .collect::<Vec<_>>();
                 for (member_ordinal, index) in members.into_iter().enumerate() {
                     if member_ordinal == 0 {
                         // Retain the source slot's signed zero and every other
@@ -6068,6 +6098,7 @@ impl BattleSession {
                         ships[index].source_position = anchor;
                         continue;
                     }
+                    let spacing = original_formation_spacing(&footprints, member_ordinal);
                     let offset = original_formation_lateral_offset(member_ordinal, spacing);
                     ships[index].source_position = TacticalWorldPosition {
                         x: anchor.x + lateral.x * offset,

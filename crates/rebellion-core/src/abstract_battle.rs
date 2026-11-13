@@ -7929,6 +7929,78 @@ mod tests {
         assert_eq!(OriginalTacticalLayout::from_active_counts(9, 2).battle_extent, 127.0);
     }
 
+    // A0 TAC-01-C007 / TAC-01-C009 (Battle at Yavin, day 234, Imperial
+    // player): Imperial Fleet 1 is Imperial Star Destroyer 1 (CAPSHPSD 133,
+    // six TIE Fighter squadrons) and Victory Destroyer 2 (CAPSHPSD 132, one),
+    // both Task Force # 1, Stand Off; the Alliance's Swift is a Corellian
+    // Corvette (CAPSHPSD 69, name 0x5200 of FUN_004d2b30). Placement:
+    // - FUN_005ab650: the squadrons wait in their hangars (state 1, set by
+    //   FUN_005b84a0), so they are neither counted nor placed: extent
+    //   100 + 3 x 2 = 106, the ships at x 0 then 5, z +-53.
+    // - FUN_005c83c0 builds the force (lead: the Star Destroyer, sublight 4
+    //   against 3 at range 50) and FUN_005cbbc0 moves each member onto the
+    //   mover's place, the anchor less its slot (0x005eb040).
+    // - The Stand Off slot (FUN_005ec400, 0x005ec448..0x005ec452) is
+    //   trunc(sign x spacing) x (count >> 1), sign +1 for an odd member
+    //   count and -1 for an even one, along (-f.z, 0, f.x); the spacing is at
+    //   least FUN_005ea030's 3.0 x 4.0 (DAT_0066d848, DAT_0066d864) = 12 and
+    //   the members' footprints x 1.2 (TACTICAL.DLL meshes 2560 and 2550:
+    //   6.755 and 6.342 x 1.2 < 12).
+    // - With the Empire's forward (0, 0, -1) the Victory stands at x +12:
+    //   A0 TAC-01-C009's frame 1 boxes it at x 17..45, y 346..375, where
+    //   x +12 projects to 9.8..45.7, 346.9..375.3, and A0 TAC-01-C007 shows
+    //   no hull at x -8 (55..103, 427..468 in its view).
+    #[test]
+    fn the_a0_yavin_battle_puts_the_victory_twelve_beside_the_star_destroyer() {
+        use crate::tactical::{OriginalTacticalCollisionEnvelope, TacticalWorldPosition};
+        let capital = |alliance: bool, dat: u32, sublight: f32, footprint: f32| {
+            let mut unit = ship(alliance, TacticalWeaponArc::default(), 0.0);
+            unit.identity.class_dat_id = DatId::new(dat);
+            unit.sublight_engine_power = sublight;
+            unit.weapon_ranges.turbolaser = 50.0;
+            unit.source_collision_envelope = Some(OriginalTacticalCollisionEnvelope {
+                vertical_radius: 0.5,
+                planar_diameter: footprint,
+            });
+            unit
+        };
+        let mut swift = capital(true, 69, 6.0, 3.114);
+        swift.weapon_ranges.turbolaser = 0.0;
+        swift.weapon_ranges.laser_cannon = 17.0;
+        let mut ships = vec![
+            swift,
+            capital(false, 133, 4.0, 6.755),
+            capital(false, 132, 3.0, 6.342),
+        ];
+        let mut squadrons = (0..7)
+            .map(|_| {
+                let mut squadron = fighter(false, TacticalWeaponArc::default());
+                squadron.alive = false;
+                squadron.in_hangar = true;
+                squadron
+            })
+            .collect::<Vec<_>>();
+        let layout = BattleSession::assign_original_world_positions(&mut ships, &mut squadrons);
+        assert_eq!(layout.battle_extent, 106.0);
+        BattleSession::assign_original_task_forces(&mut ships);
+        let at = |x: f32, z: f32| TacticalWorldPosition { x, y: 0.0, z };
+        assert_eq!(ships[0].source_position, at(0.0, -53.0));
+        assert_eq!(ships[1].source_position, at(0.0, 53.0));
+        assert_eq!(ships[2].source_position, at(12.0, 53.0));
+        assert_eq!((ships[1].task_force, ships[2].task_force), (0, 0));
+
+        // The mover's places (FUN_005ea030's anchor on the lead) agree.
+        let mut tactical = session(ships, squadrons);
+        tactical.player_is_attacker = false;
+        tactical.update_force_movers();
+        let empire = tactical
+            .force_movers
+            .iter()
+            .find(|mover| mover.forward.z < 0.0)
+            .unwrap();
+        assert_eq!(tactical.force_member_place(empire, &[1, 2], 1), at(12.0, 53.0));
+    }
+
     // FUN_005a96b0 runs at a turn's start (every fourth step) the events
     // stamped +0x878 - 1, only once +0x878 has reached +0x8ac (3), and
     // drops older ones (0x005bec3c, 0x005bec7e).
@@ -9240,9 +9312,12 @@ mod tests {
         );
     }
 
-    // FUN_005ec400: Stand Off's places alternate along the slot axis,
-    // spaced by the largest footprint x 1.2 (at least 5); 0x005eb040 and
-    // 0x005eb8d0: Surround's stand at the anchor less slot k + 1.
+    // FUN_005ec400: Stand Off's places alternate along the slot axis, the
+    // first follower on its negative side (0x005ec448..0x005ec452, the
+    // anchor less the slot at 0x005eb040), spaced by the footprints x 1.2 of
+    // the members up to it (FUN_005ea250), at least 12 (FUN_005ea030:
+    // DAT_0066d848 x DAT_0066d864), truncated; 0x005eb8d0: Surround's stand
+    // at the anchor less slot k + 1.
     #[test]
     fn formation_places_follow_their_slots() {
         use crate::tactical::{original_surround_slot, OriginalTacticalCollisionEnvelope};
@@ -9251,7 +9326,11 @@ mod tests {
             .collect::<Vec<_>>();
         ships[1].source_collision_envelope = Some(OriginalTacticalCollisionEnvelope {
             vertical_radius: 1.0,
-            planar_diameter: 10.0,
+            planar_diameter: 9.0,
+        });
+        ships[2].source_collision_envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 1.0,
+            planar_diameter: 15.5,
         });
         let tactical = session(ships, Vec::new());
         let members = (0..12).collect::<Vec<_>>();
@@ -9264,13 +9343,18 @@ mod tests {
         mover.lateral = vector(0.6, 0.0, 0.8);
         let place = |ordinal| tactical.force_member_place(&mover, &members, ordinal);
         assert_eq!(place(0), mover.anchor);
+        // 9 x 1.2 = 10.8 < 12: the base spacing.
         let first = place(1);
-        assert!((first.x - (1.0 + 0.6 * 12.0)).abs() < 1e-5, "{first:?}");
-        assert!((first.z - (3.0 + 0.8 * 12.0)).abs() < 1e-5, "{first:?}");
+        assert!((first.x - (1.0 - 0.6 * 12.0)).abs() < 1e-5, "{first:?}");
+        assert!((first.z - (3.0 - 0.8 * 12.0)).abs() < 1e-5, "{first:?}");
         assert_eq!(first.y, 2.0);
+        // 15.5 x 1.2 = 18.6, truncated to 18, from the second follower on.
         let second = place(2);
-        assert!((second.x - (1.0 - 0.6 * 12.0)).abs() < 1e-5, "{second:?}");
-        assert!((second.z - (3.0 - 0.8 * 12.0)).abs() < 1e-5, "{second:?}");
+        assert!((second.x - (1.0 + 0.6 * 18.0)).abs() < 1e-5, "{second:?}");
+        assert!((second.z - (3.0 + 0.8 * 18.0)).abs() < 1e-5, "{second:?}");
+        let third = place(3);
+        assert!((third.x - (1.0 - 0.6 * 36.0)).abs() < 1e-4, "{third:?}");
+        assert!((third.z - (3.0 - 0.8 * 36.0)).abs() < 1e-4, "{third:?}");
         mover.tactic = TacticalTactic::Surround;
         for ordinal in [0, 1, 11] {
             let slot = original_surround_slot(ordinal + 1);
@@ -9779,9 +9863,10 @@ mod tests {
         let mut member = ship(true, TacticalWeaponArc::default(), 0.0);
         member.source_forward = vector(1.0, 0.0, 0.0);
         member.source_desired_forward = vector(1.0, 0.0, 0.0);
-        // A second member of the same force, at its place 5 along +x.
+        // A second member of the same force, at its place 12 along -x
+        // (FUN_005ec400: the first follower, base spacing 12, FUN_005ea030).
         let mut beside = member.clone();
-        beside.source_position.x = 5.0;
+        beside.source_position.x = -12.0;
         let mut tactical = session(vec![member, beside], Vec::new());
         tactical.advance_original_tactical_movement(250.0);
         let key = tactical.force_key(0);
@@ -9798,7 +9883,7 @@ mod tests {
         // member, with no record, stays at its place.
         assert!((tactical.ships[0].source_position.x - speed * 0.25).abs() < 1e-5);
         assert!((tactical.ships[0].source_position.y - speed * 0.4 * 0.25).abs() < 1e-5);
-        assert_eq!(tactical.ships[1].source_position.x, 5.0);
+        assert_eq!(tactical.ships[1].source_position.x, -12.0);
         // A Stand Off turn turns the offset by the same angle.
         tactical.force_detours[0].offset = vector(20.0, 4.0, 10.0);
         tactical.ships[0].source_waypoint = Some(TacticalWorldPosition {
