@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 116;
+const SCENARIO_COUNT: u8 = 117;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -418,6 +418,14 @@ pub enum Scenario {
     /// in `FUN_0046cab0`'s key order (A0 2026-11-13-mission-dialogs/40..43:
     /// Wedge Antilles on his own Drall, which has a shipyard).
     ResearchDiplomacyTargeting = 115,
+    /// As `Quadrants` with the player's fleet at rest at the explored
+    /// neutral system, its one ship of the player's first class that
+    /// bombards, and one of the player's squadrons on the primary planet:
+    /// the fleet icon's drag and its menu at a neutral system, as A0
+    /// 2026-11-13-icon-drag-move/20..22 and 2026-11-13-hyperspace-icons/00
+    /// (Kubindi), and a squadron's Move onto that neutral planet, refused
+    /// (A0 icon-drag-move/04, 05, 08, 09).
+    QuadrantsNeutralFleet = 116,
 }
 
 impl Scenario {
@@ -539,6 +547,7 @@ impl Scenario {
             113 => Self::SpecForcesYavin,
             114 => Self::CoruscantRegiments,
             115 => Self::ResearchDiplomacyTargeting,
+            116 => Self::QuadrantsNeutralFleet,
             _ => return None,
         })
     }
@@ -606,6 +615,7 @@ impl Scenario {
             || self.targets_an_object()
             || self.opens_build_selection()
             || self == Self::Quadrants
+            || self == Self::QuadrantsNeutralFleet
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
             || self == Self::FleetWindowYavin
@@ -1235,7 +1245,10 @@ pub fn apply(
     if request.scenario == Scenario::EndingVictory {
         place_win(request.faction == CockpitFaction::Alliance, world);
     }
-    if request.scenario == Scenario::Quadrants {
+    if matches!(
+        request.scenario,
+        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet
+    ) {
         place_quadrant_contents(
             request, world, movement, missions, uprisings, sectors, primary,
         );
@@ -2128,7 +2141,7 @@ fn place_coruscant_squadrons(
 /// sector's first other system and Coruscant.
 fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(SystemKey, SystemKey)> {
     match request.scenario {
-        Scenario::Quadrants => {
+        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet => {
             let primary = world.systems.keys().next()?;
             Some((primary, loading_target(world, primary)?))
         }
@@ -3010,6 +3023,7 @@ pub fn emit_status_rows(
             (view.title, Some(view.name), view.rows)
         }
         (Scenario::Quadrants, Some(object @ StatusObject::ManufacturingFacility(_)))
+        | (Scenario::QuadrantsNeutralFleet, Some(object @ StatusObject::PlanetFighter { .. }))
         | (
             _,
             Some(
@@ -4366,6 +4380,9 @@ fn place_quadrant_contents(
     if let Some(fleet) = fleet {
         world.fleets[fleet].location = primary;
     }
+    if request.scenario == Scenario::QuadrantsNeutralFleet {
+        place_neutral_fleet(world, fleet, primary, elsewhere, player_is_alliance);
+    }
     reconcile_fleet_orbits(movement, world);
     for character in world.characters.values_mut() {
         if character.current_system == Some(primary) || character.current_system == Some(second) {
@@ -4685,6 +4702,7 @@ fn object_menu_report<'a>(
                 | Scenario::BuildSelectionTraining
                 | Scenario::BuildSelectionOverMaintenance
                 | Scenario::Quadrants
+                | Scenario::QuadrantsNeutralFleet
                 | Scenario::FleetWindowYavin
                 | Scenario::FleetWindowA0
                 | Scenario::BatteryStatus
@@ -6222,6 +6240,8 @@ struct FixtureQuadrantSetup {
     neutral: Option<[[f32; 4]; 2]>,
     /// The neutral system's defenses icon rect (its player battery).
     neutral_defenses: Option<[f32; 4]>,
+    /// The neutral system's fleet icon rect (`QuadrantsNeutralFleet`).
+    neutral_fleets: Option<[f32; 4]>,
     /// A destroyed system's rect (A0 menus3/05: Averam's asteroid field
     /// STRATEGY 10240 and its white name).
     destroyed: Option<[f32; 4]>,
@@ -6268,6 +6288,56 @@ fn move_headquarters_object(world: &mut GameWorld, to: SystemKey) {
         world.manufacturing_facilities.remove(*extra);
     }
     world.systems[to].manufacturing_facilities.push(hq);
+}
+
+/// The `QuadrantsNeutralFleet` variant: the player's fleet alone at the
+/// neutral mark system, its one ship of the player's first class that
+/// bombards (no regiments aboard, so Planetary Assault stays grey), no
+/// squadrons aboard; and one of the player's squadrons, of its side's first
+/// fighter class, alone on the primary planet.
+fn place_neutral_fleet(
+    world: &mut GameWorld,
+    fleet: Option<FleetKey>,
+    primary: SystemKey,
+    elsewhere: SystemKey,
+    player_is_alliance: bool,
+) {
+    let (Some(fleet), Some(&neutral)) = (fleet, mark_systems(world, primary).get(2)) else {
+        return;
+    };
+    for (key, value) in &mut world.fleets {
+        if key != fleet && value.location == neutral {
+            value.location = elsewhere;
+        }
+    }
+    let value = &mut world.fleets[fleet];
+    value.location = neutral;
+    value.fighters.clear();
+    if let Some((class, hull)) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| {
+            class.is_alliance == player_is_alliance
+                && class.bombardment_modifier > 0
+                && class.hyperdrive > 0
+        })
+        .map(|(key, class)| (key, class.hull))
+    {
+        world.fleets[fleet].capital_ships = vec![ShipInstance::new(
+            class,
+            i32::try_from(hull).unwrap_or(i32::MAX),
+            player_is_alliance,
+        )];
+    }
+    world.systems[primary].fighters.clear();
+    if let Some(class) = world
+        .fighter_classes
+        .iter()
+        .find(|(_, class)| class.is_alliance == player_is_alliance)
+        .map(|(key, _)| key)
+    {
+        rebellion_core::squadrons::add(&mut world.systems[primary].fighters, class, 1);
+    }
 }
 
 /// The primary's sector's first four systems other than the primary and
@@ -6320,7 +6390,10 @@ fn quadrant_setup(
             .and_then(|&system| sectors.planet_screen_rect(world, layout, system))
             .map(|rect| [rect.min.x, rect.min.y, rect.width(), rect.height()])
     };
-    let marks = if request.scenario == Scenario::Quadrants {
+    let marks = if matches!(
+        request.scenario,
+        Scenario::Quadrants | Scenario::QuadrantsNeutralFleet
+    ) {
         mark_systems(world, primary)
     } else {
         Vec::new()
@@ -6343,6 +6416,10 @@ fn quadrant_setup(
         }),
         neutral_defenses: marks.get(2).and_then(|&system| {
             let icon = sectors.quadrant_screen_rect(world, layout, system, Quadrant::Defenses)?;
+            Some([icon.min.x, icon.min.y, icon.width(), icon.height()])
+        }),
+        neutral_fleets: marks.get(2).and_then(|&system| {
+            let icon = sectors.quadrant_screen_rect(world, layout, system, Quadrant::Fleets)?;
             Some([icon.min.x, icon.min.y, icon.width(), icon.height()])
         }),
         destroyed: planet(marks.get(3)),
@@ -12290,6 +12367,7 @@ mod tests {
                 Scenario::FleetArrivals,
                 Scenario::FleetJoinEnroute,
                 Scenario::ResearchDiplomacyTargeting,
+                Scenario::QuadrantsNeutralFleet,
             ]
         );
     }
