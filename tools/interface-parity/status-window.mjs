@@ -241,6 +241,65 @@ async function click(page, point, button = "left") {
   await frames(page);
 }
 
+// An object menu's frame and rows against A0's, relative to each corner:
+// the two-pixel ring's frame-art pixels (grey 128, 192 or 255) and each
+// 20-pixel row's ink box and the class of its commonest ink colour. Ink
+// is the text's colours only: a near-grey above 100 (white, grey and the
+// port's antialiased edges) or the side's highlight red or green (the
+// submenu arrow too); the shaded fill
+// stays at or below 92, but a bright planet under it can pass 100 in A0.
+// `cursor` (x, y, w, h from the corner) is the arrow A0's capture shows
+// there, left out of both. The fill shades another scene and is not
+// compared.
+function textInk([r, g, b]) {
+  return (Math.max(r, g, b) - Math.min(r, g, b) <= 16 && Math.max(r, g, b) > 100) || (r === 255 && g === 0 && b === 0) || (r === 0 && g === 255 && b === 0);
+}
+
+function menuAgainstA0(port, [mx, my], a0, [ax, ay], { width, height }, cursor) {
+  const pixel = (png, x, y) => Array.from(png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+  const masked = (x, y) => x >= cursor[0] && y >= cursor[1] && x < cursor[0] + cursor[2] && y < cursor[1] + cursor[3];
+  const rows = (height - 2) / 20;
+  const rowInk = (png, x0, y0, row) => {
+    let box = null;
+    const colours = new Map();
+    for (let y = 2 + 20 * row; y < Math.min(22 + 20 * row, height - 2); y += 1) {
+      for (let x = 3; x < width - 3; x += 1) {
+        if (masked(x, y)) continue;
+        const value = pixel(png, x0 + x, y0 + y);
+        if (!textInk(value)) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        colours.set(value.join(","), (colours.get(value.join(",")) ?? 0) + 1);
+      }
+    }
+    const colour = [...colours.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    // The class by the row's brightest grey: the port's glyphs are
+    // antialiased, so a grey row's commonest ink can sit a few steps under
+    // 128 where A0's is all 128 (the accepted text deviation).
+    const brightest = Math.max(-1, ...[...colours.keys()].map((key) => key.split(",").map(Number))
+      .filter(([r, g, b]) => r === g && g === b).map(([r]) => r));
+    const kind = colour === "0,255,0" || colour === "255,0,0" ? "highlight"
+      : brightest >= 250 ? "white"
+        : Math.abs(brightest - 128) <= 1 ? "grey" : colour;
+    return { box, colour, kind };
+  };
+  const portRows = [...Array(rows).keys()].map((row) => rowInk(port, mx, my, row));
+  const a0Rows = [...Array(rows).keys()].map((row) => rowInk(a0, ax, ay, row));
+  const inkDiffs = a0Rows.map(({ box }, row) => (box && portRows[row].box
+    ? box.map((value, k) => portRows[row].box[k] - value) : null));
+  const frameArt = (value) => value[0] === value[1] && value[1] === value[2] && [128, 192, 255].includes(value[0]);
+  let ring = 0;
+  const differing = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if ((x > 1 && x < width - 2 && y > 1 && y < height - 2) || masked(x, y)) continue;
+      ring += 1;
+      const [a, b] = [pixel(a0, ax + x, ay + y), pixel(port, mx + x, my + y)];
+      if (frameArt(a) !== frameArt(b) || (frameArt(a) && a.join() !== b.join())) differing.push([x, y, a, b]);
+    }
+  }
+  return { port: portRows, a0: a0Rows, inkDiffs, ring, differing: differing.length, first: differing.slice(0, 8) };
+}
+
 // Right-click `at`, wait for the pop-up menu and choose its Status row.
 // Rows below a 2-pixel border share one height (object_menu.rs).
 async function chooseStatus(page, at) {
@@ -556,6 +615,14 @@ const cases = [
     defensesIcon: { alliance: 10773, empire: 10781 },
     a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"],
       states: [false, false, true, true, false] },
+    // A0 2026-11-13-icon-drag-move/17 (an X-wing on its way to Yavin, on
+    // Yavin's Fighter Squadrons page; the menu at (342, 180), the arrow at
+    // its corner): the frame and each row's ink and colour class.
+    a0MenuInk: { file: "2026-11-13-icon-drag-move/17-en-route-xwing-menu-move-confirmed-scrap-grey.png",
+      sha256: "ccaedfe73bc8b182dbfa2b349d3e355f8c90b0c47d5b6bcca8c6f9599fe4a73a", corner: [342, 180],
+      side: "alliance", kinds: ["grey", "grey", "white", "white", "grey"],
+      // A0's move arrow over the corner, 20 by 22 (x 342..361, y 180..201).
+      cursor: [0, 0, 20, 22] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
   // Units on their way into a fleet (FUN_00556390 into the fleet at once;
@@ -888,6 +955,37 @@ async function inspect(server, source, faction, testCase, executable) {
       await frames(page);
       await page.waitForTimeout(300);
     }
+    // The menu, the pointer left at its corner, against A0's.
+    let menuInk = null;
+    if (testCase.a0MenuInk && faction.name === testCase.a0MenuInk.side) {
+      const { file, corner, kinds } = testCase.a0MenuInk;
+      const a0File = path.join(root, ".artifacts/a0-vm", file);
+      if (fs.existsSync(a0File)) {
+        const bytes = fs.readFileSync(a0File);
+        assert.equal(sha256(bytes), testCase.a0MenuInk.sha256, `${file} is not the recorded capture`);
+        await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+        await click(page, target, "right");
+        await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu", null, { timeout: 10_000 });
+        const shown = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+        await frames(page);
+        await page.waitForTimeout(300);
+        await frames(page);
+        const bytesPort = await page.screenshot({ animations: "disabled" });
+        fs.writeFileSync(path.join(directory, "menu-a0-ink.png"), bytesPort);
+        menuInk = menuAgainstA0(PNG.sync.read(bytesPort), [Math.round(shown.left), Math.round(shown.top)],
+          PNG.sync.read(bytes), corner, { width: shown.width, height: shown.height }, testCase.a0MenuInk.cursor);
+        assert.deepEqual(menuInk.a0.map(({ kind }) => kind), kinds, JSON.stringify(menuInk));
+        assert.deepEqual(menuInk.port.map(({ kind }) => kind), kinds, JSON.stringify(menuInk));
+        // Each row's ink within a pixel of A0's; the right edge within two
+        // (the accepted text-width deviation, user decision 2026-10-30).
+        assert.ok(menuInk.inkDiffs.every((d) => d && d.every((value, k) => Math.abs(value) <= (k === 2 ? 2 : 1))),
+          `rows' ink against A0: ${JSON.stringify(menuInk)}`);
+        assert.equal(menuInk.differing, 0, `the frame differs from A0: ${JSON.stringify(menuInk.first)}`);
+        await page.keyboard.press("Escape");
+        await frames(page);
+        await page.waitForTimeout(300);
+      }
+    }
     const openStatus = () => chooseStatus(page, target);
     const opened = new RegExp(`command=0x103 destination=status_window status=opened object=${testCase.family}[ (].+ rect=(\\d+),(\\d+),(\\d+),(\\d+)`);
     const closed = /destination=status_window status=closed action=(\w+)/;
@@ -1098,7 +1196,7 @@ async function inspect(server, source, faction, testCase, executable) {
       menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
       assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
     }
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, embarked, pictureCheck, cellCheck, iconCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, embarked, pictureCheck, menuInk, cellCheck, iconCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

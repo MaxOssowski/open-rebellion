@@ -33,6 +33,22 @@ const CORUSCANT_SQUADRONS = 109;
 // CoruscantRegiments: as CoruscantSeized with the Alliance's two Army
 // Regiments there, seen by the Alliance (A0 2026-11-13-drag/30..33).
 const CORUSCANT_REGIMENTS = 115;
+// QuadrantsNeutralFleet: as QUADRANTS with the player's fleet at rest at
+// the neutral system (one ship that bombards) and one of the player's
+// squadrons on the primary planet (setup.neutral_fleets).
+const QUADRANTS_NEUTRAL_FLEET = 116;
+// A0 captures these cases read, by path under .artifacts/a0-vm, with the
+// SHA-256 of each (its directory's SHA256SUMS).
+const A0_FILES = {
+  "2026-11-13-icon-drag-move/20-fleet-icon-drag-start.png":
+    "511d44431ecd9424c9df400a14a192e6364b4acfc411304982ffb9b4860baf53",
+  "2026-11-13-icon-drag-move/21-fleet-icon-dragged-over-kubindi.png":
+    "dc359652bd9afb198573dfdf92d1d06ac06d2d0a7e9f554199e6485c10a6ffd3",
+  "2026-11-13-icon-drag-move/22-fleet-icon-released-on-kubindi.png":
+    "b717628ba2c1b9709dcc5ab26c1457ed3d6d9ff7ff84ba3573bbf0c9bdef4fac",
+  "2026-11-13-hyperspace-icons/00-kubindi-fleet-icon-menu-day321.png":
+    "775692778ec3581b1e892d608916dda0ccc4c85c21b0f5c84016f9ebf5112c94",
+};
 const factions = [
   { name: "alliance", byte: 1, side: 1, other: 2, galaxyRight: 540 },
   { name: "empire", byte: 2, side: 2, other: 1, galaxyRight: 600 },
@@ -254,6 +270,98 @@ function compareIcon(screenshot, rect, icon, label, directory, keyed = true) {
   fs.writeFileSync(path.join(directory, `${label}-expected.png`), PNG.sync.write(icon));
   fs.writeFileSync(path.join(directory, `${label}-diff.png`), PNG.sync.write(diff));
   return { label, pixels_checked: checked, different_pixels: different };
+}
+
+// An A0 capture of A0_FILES, its hash checked, or null when it is absent.
+function a0Capture(relative) {
+  const file = path.join(root, ".artifacts/a0-vm", relative);
+  if (!fs.existsSync(file)) return null;
+  const bytes = fs.readFileSync(file);
+  assert.equal(sha256(bytes), A0_FILES[relative], `${relative} is not the recorded capture`);
+  return PNG.sync.read(bytes);
+}
+
+// Where the opaque pixels of `icon` (blue key out) match `png` best with
+// its corner in [x0, x1] by [y0, y1], skipping `skip(x, y)` screen pixels
+// (a captured cursor): the corner and the pixels that differ there.
+function templateMatch(png, icon, [x0, x1], [y0, y1], skip = () => false) {
+  let best = null;
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      let checked = 0;
+      let different = 0;
+      for (let iy = 0; iy < icon.height; iy += 1) {
+        for (let ix = 0; ix < icon.width; ix += 1) {
+          const from = (iy * icon.width + ix) * 4;
+          if (blueKey(icon.data, from) || skip(x + ix, y + iy)) continue;
+          checked += 1;
+          const at = ((y + iy) * png.width + x + ix) * 4;
+          if ([0, 1, 2].some((k) => png.data[at + k] !== icon.data[from + k])) different += 1;
+        }
+      }
+      if (!best || different < best.different) best = { x, y, checked, different };
+    }
+  }
+  return best;
+}
+
+// An object menu's frame and rows against A0's, relative to each corner:
+// the two-pixel ring's frame-art pixels (grey 128, 192 or 255) and each
+// 20-pixel row's ink box and the class of its commonest ink colour. Ink
+// is the text's colours only: a near-grey above 100 (white, grey and the
+// port's antialiased edges) or the side's highlight red or green (the
+// submenu arrow too); the shaded fill
+// stays at or below 92, but a bright planet under it can pass 100 in A0.
+// `cursor` (x, y, w, h from the corner) is the arrow A0's capture shows
+// there, left out of both. The fill shades another scene and is not
+// compared.
+function textInk([r, g, b]) {
+  return (Math.max(r, g, b) - Math.min(r, g, b) <= 16 && Math.max(r, g, b) > 100) || (r === 255 && g === 0 && b === 0) || (r === 0 && g === 255 && b === 0);
+}
+
+function menuAgainstA0(port, [mx, my], a0, [ax, ay], { width, height }, cursor) {
+  const pixel = (png, x, y) => Array.from(png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+  const masked = (x, y) => x >= cursor[0] && y >= cursor[1] && x < cursor[0] + cursor[2] && y < cursor[1] + cursor[3];
+  const rows = (height - 2) / 20;
+  const rowInk = (png, x0, y0, row) => {
+    let box = null;
+    const colours = new Map();
+    for (let y = 2 + 20 * row; y < Math.min(22 + 20 * row, height - 2); y += 1) {
+      for (let x = 3; x < width - 3; x += 1) {
+        if (masked(x, y)) continue;
+        const value = pixel(png, x0 + x, y0 + y);
+        if (!textInk(value)) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        colours.set(value.join(","), (colours.get(value.join(",")) ?? 0) + 1);
+      }
+    }
+    const colour = [...colours.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    // The class by the row's brightest grey: the port's glyphs are
+    // antialiased, so a grey row's commonest ink can sit a few steps under
+    // 128 where A0's is all 128 (the accepted text deviation).
+    const brightest = Math.max(-1, ...[...colours.keys()].map((key) => key.split(",").map(Number))
+      .filter(([r, g, b]) => r === g && g === b).map(([r]) => r));
+    const kind = colour === "0,255,0" || colour === "255,0,0" ? "highlight"
+      : brightest >= 250 ? "white"
+        : Math.abs(brightest - 128) <= 1 ? "grey" : colour;
+    return { box, colour, kind };
+  };
+  const portRows = [...Array(rows).keys()].map((row) => rowInk(port, mx, my, row));
+  const a0Rows = [...Array(rows).keys()].map((row) => rowInk(a0, ax, ay, row));
+  const inkDiffs = a0Rows.map(({ box }, row) => (box && portRows[row].box
+    ? box.map((value, k) => portRows[row].box[k] - value) : null));
+  const frameArt = (value) => value[0] === value[1] && value[1] === value[2] && [128, 192, 255].includes(value[0]);
+  let ring = 0;
+  const differing = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if ((x > 1 && x < width - 2 && y > 1 && y < height - 2) || masked(x, y)) continue;
+      ring += 1;
+      const [a, b] = [pixel(a0, ax + x, ay + y), pixel(port, mx + x, my + y)];
+      if (frameArt(a) !== frameArt(b) || (frameArt(a) && a.join() !== b.join())) differing.push([x, y, a, b]);
+    }
+  }
+  return { port: portRows, a0: a0Rows, inkDiffs, ring, differing: differing.length, first: differing.slice(0, 8) };
 }
 
 async function click(page, point) {
@@ -1469,6 +1577,230 @@ const cases = [
         assert.equal(differing.length, 0, `the frame differs from A0 at ${JSON.stringify(differing.slice(0, 8))}`);
       }
       return { menu, port, a0 };
+    },
+  },
+  {
+    name: "fleet-icon-drag-image",
+    scenario: QUADRANTS_NEUTRAL_FLEET,
+    // FUN_004593e0 case 0x200: the first move with the button held starts
+    // the drag image (FUN_0060dbb0, FUN_0060dcb0, FUN_0060dce0), the
+    // window-sized bitmap FUN_0045b1b0 blitted the icon's first bitmap
+    // (+0x20) into, moved with the pointer (FUN_0060df00); the icon keeps
+    // its pressed art. A0 2026-11-13-icon-drag-move/20, 21: Jerijador's
+    // fleet icon pressed at (266, 214), 10776 at (249, 213), and walked
+    // until 10775 shows at (199, 157): the image is the icon's normal art
+    // moved by (-50, -56) (the arrow covers some of its pixels there). Case
+    // 0x202 past four pixels posts 0x29a, and the fleet's Move departs
+    // without asking (FUN_00487cc0; A0 22: 10775 at Kubindi (219, 139), no
+    // confirmation). Here the release is on the primary system's planet;
+    // the fleet is shown there at once and its menu greys Move.
+    async run(page, faction, setup, directory, source) {
+      const [left, top] = setup.neutral_fleets;
+      const [dx, dy] = [-50, -56];
+      const press = { x: Math.round(left) + 17, y: Math.round(top) + 5 };
+      const normal = resource(source, art.fleets[faction.side]);
+      const pressed = resource(source, art.fleets[faction.side] + 1);
+      // A0: the offset between the pressed origin and the drag image, and
+      // each one's differing pixels (the image's under the arrow left out).
+      let a0 = null;
+      const start = a0Capture("2026-11-13-icon-drag-move/20-fleet-icon-drag-start.png");
+      const held = a0Capture("2026-11-13-icon-drag-move/21-fleet-icon-dragged-over-kubindi.png");
+      const dropped = a0Capture("2026-11-13-icon-drag-move/22-fleet-icon-released-on-kubindi.png");
+      if (start && held && dropped && faction.side === 1) {
+        const pointer = [266 + dx, 214 + dy];
+        const arrow = (x, y) => x >= pointer[0] && y >= pointer[1] && x < pointer[0] + 12 && y < pointer[1] + 20;
+        a0 = {
+          pressed: templateMatch(start, pressed, [230, 280], [190, 230]),
+          held_origin: templateMatch(held, pressed, [230, 280], [190, 230]),
+          held_image: templateMatch(held, normal, [180, 240], [140, 180], arrow),
+          dropped: templateMatch(dropped, normal, [190, 240], [130, 180]),
+        };
+        assert.deepEqual([a0.pressed.x, a0.pressed.y, a0.pressed.different], [249, 213, 0], JSON.stringify(a0));
+        assert.deepEqual([a0.held_origin.x, a0.held_origin.y, a0.held_origin.different], [249, 213, 0], JSON.stringify(a0));
+        assert.deepEqual([a0.held_image.x - a0.held_origin.x, a0.held_image.y - a0.held_origin.y, a0.held_image.different],
+          [dx, dy, 0], JSON.stringify(a0));
+        assert.deepEqual([a0.dropped.x, a0.dropped.y, a0.dropped.different], [219, 139, 0], JSON.stringify(a0));
+      }
+      await page.mouse.move(press.x, press.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await page.mouse.move(press.x + dx, press.y + dy, { steps: 10 });
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const screen = PNG.sync.read((await shot(page, directory, "fleet-icon-held")).bytes);
+      const origin = compareIcon(screen, [left, top], pressed, "fleet-icon-origin-pressed", directory);
+      const image = compareIcon(screen, [left + dx, top + dy], normal, "fleet-icon-drag-image", directory);
+      assert.equal(origin.different_pixels, 0, `the origin keeps its pressed art: ${JSON.stringify(origin)}`);
+      assert.equal(image.different_pixels, 0, `the drag image: ${JSON.stringify(image)}`);
+      // Release on the primary system's planet (its fleet icon's quadrant
+      // is the planet's top right: the planet's centre lies 19.5 below and
+      // half a pixel left of its corner).
+      const [toLeft, toTop] = quadrant(setup, "primary", "fleets");
+      const to = { x: Math.round(toLeft), y: Math.round(toTop) + 19 };
+      await page.mouse.move(to.x, to.y, { steps: 12 });
+      await frames(page, 2);
+      await page.waitForTimeout(900);
+      await page.mouse.up();
+      await frames(page, 2);
+      await page.waitForTimeout(600);
+      const after = await stableScreen(page, directory, "fleet-icon-dropped");
+      const arrived = compareIcon(after, [toLeft, toTop], normal, "fleet-icon-destination", directory);
+      const gone = compareIcon(after, [left, top], normal, "fleet-icon-origin-after", directory);
+      assert.equal(arrived.different_pixels, 0, `the fleet shows at its destination at once: ${JSON.stringify(arrived)}`);
+      assert.ok(gone.different_pixels > gone.pixels_checked / 2, `the origin shows no fleet icon: ${JSON.stringify(gone)}`);
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, { x: Math.round(toLeft) + 17, y: Math.round(toTop) + 5 });
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      await stableScreen(page, directory, "fleet-icon-en-route-menu");
+      // Departed: an en route fleet's moves are grey (FUN_004f9860).
+      assert.deepEqual(menu.row_states.slice(0, 2), [["Move", false], ["Confirmed Move", false]], JSON.stringify(menu));
+      return { press, delta: [dx, dy], origin, image, arrived, gone, menu, a0 };
+    },
+  },
+  {
+    name: "fleet-icon-menu-neutral",
+    scenario: QUADRANTS_NEUTRAL_FLEET,
+    // The fleet icon's menu for the player's fleet at rest at a neutral
+    // system, against A0 2026-11-13-hyperspace-icons/00 (Kubindi, the menu
+    // at (232, 144), 172 by 142): Move, Confirmed Move, Planetary
+    // Bombardment (its submenu), Planetary Assault grey (no regiment
+    // aboard), Encyclopedia, Status grey (an icon's Status), Scrap. The
+    // pointer stays at the corner, as A0's arrow does; the arrow's 22 by 40
+    // pixels there (with its outline) stay out of the comparison.
+    async run(page, faction, setup, directory) {
+      const [left, top] = setup.neutral_fleets;
+      const at = { x: Math.round(left) + 17, y: Math.round(top) + 5 };
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, at);
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      assert.deepEqual(menu.row_states, [["Move", true], ["Confirmed Move", true], ["Planetary Bombardment", true],
+        ["Planetary Assault", false], ["Encyclopedia", true], ["Status", false], ["Scrap", true]], JSON.stringify(menu));
+      assert.deepEqual([menu.left, menu.top, menu.width, menu.height], [at.x, at.y, 172, 142], JSON.stringify(menu));
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const screen = PNG.sync.read((await shot(page, directory, "fleet-icon-menu")).bytes);
+      const a0 = a0Capture("2026-11-13-hyperspace-icons/00-kubindi-fleet-icon-menu-day321.png");
+      let compared = null;
+      if (a0) {
+        compared = menuAgainstA0(screen, [at.x, at.y], a0, [232, 144], { width: 172, height: 142 }, [0, 0, 22, 40]);
+        const kinds = ["white", "white", "white", "grey", "white", "grey", "white"];
+        assert.deepEqual(compared.a0.map(({ kind }) => kind), kinds, JSON.stringify(compared));
+        assert.deepEqual(compared.port.map(({ kind }) => kind), kinds, JSON.stringify(compared));
+        // Each row's ink within a pixel of A0's; the right edge within two
+        // (the accepted text-width deviation, user decision 2026-10-30).
+        assert.ok(compared.inkDiffs.every((d) => d && d.every((value, k) => Math.abs(value) <= (k === 2 ? 2 : 1))),
+          `rows' ink against A0: ${JSON.stringify(compared)}`);
+        assert.equal(compared.differing, 0, `the frame differs from A0: ${JSON.stringify(compared.first)}`);
+      }
+      return { menu, compared };
+    },
+  },
+  {
+    name: "squadron-neutral-refused",
+    scenario: QUADRANTS_NEUTRAL_FLEET,
+    // A squadron's Move to a system not of its side is refused with no
+    // message (squadrons::check_route, OtherSidePlanet): A0
+    // 2026-11-13-icon-drag-move/04, 05 (an X-wing dropped on neutral,
+    // unpopulated Kubindi: nothing changes), 08 (its menu Move targeted at
+    // Kubindi: nothing changes) and 09 (its Status still attached where it
+    // was). Here the player's squadron on the primary planet's Fighter
+    // Squadrons page, dragged and then Move-targeted onto the neutral
+    // planet: its count, its cell and its Status stay.
+    async run(page, faction, setup, directory) {
+      const { dat, window } = await openDefenses(page, setup, "primary");
+      // The window covers the planets: drag it by its title bar off to
+      // the right, as defenses-icon-scrap does.
+      const [rowLeft, rowTop] = window.tabs[0][1];
+      const grab = { x: Math.round(rowLeft) + 60, y: Math.round(rowTop) - 12 };
+      await page.mouse.move(grab.x, grab.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      await page.mouse.move(grab.x + 260, grab.y, { steps: 12 });
+      await frames(page, 2);
+      await page.mouse.up();
+      await frames(page, 2);
+      await page.waitForTimeout(600);
+      const moved = defensesWindow(await latest(page), dat);
+      const tab = moved.tabs.find(([name]) => name === "squadrons")[1];
+      await click(page, { x: Math.round(tab[0]) + 18, y: Math.round(tab[1]) + 16 });
+      const before = defensesWindow(await until(page, "the squadron page opens",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.page === "squadrons"
+          && w.cells.length > 0), dat), dat);
+      assert.equal(before.counts[2], 1, JSON.stringify(before));
+      const cell = before.cells[0];
+      const from = { x: Math.round(cell[0] + cell[2] / 2), y: Math.round(cell[1] + cell[3] / 2) };
+      const [planet] = setup.neutral;
+      const to = { x: Math.round(planet[0] + planet[2] / 2), y: Math.round(planet[1] + planet[3] / 2) };
+      const status = async (label) => {
+        await page.waitForTimeout(400);
+        await page.evaluate(() => {
+          window.__openRebellionInterfaceObjectMenu = undefined;
+          window.__openRebellionInterfaceStatusRows = undefined;
+        });
+        await rightClick(page, from);
+        await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+          null, { timeout: 10_000 });
+        const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+        const height = (menu.height - 2) / menu.rows;
+        await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.status_window_row + 0.5) });
+        await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+        const rows = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+        await stableScreen(page, directory, label);
+        await page.keyboard.press("Escape");
+        await frames(page, 2);
+        return { menu, rows };
+      };
+      const statusBefore = await status("squadron-status-before");
+      assert.deepEqual(statusBefore.menu.row_states, [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true],
+        ["Status", true], ["Scrap", true]], JSON.stringify(statusBefore.menu));
+      assert.equal(statusBefore.rows.rows[0][0], "Attached: ", JSON.stringify(statusBefore.rows));
+      // Close the Status window by its Close button (FUN_00443020: 0x65 at
+      // its (324, 218)) if Escape left it.
+      await page.waitForTimeout(400);
+      // The drag: press, rest, walk, rest over the planet, release (A0's).
+      await page.mouse.move(from.x, from.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await page.mouse.move(to.x, to.y, { steps: 14 });
+      await frames(page, 2);
+      await page.waitForTimeout(900);
+      await page.mouse.up();
+      await frames(page, 2);
+      await page.waitForTimeout(3000);
+      const dropped = defensesWindow(await latest(page), dat);
+      await stableScreen(page, directory, "squadron-dropped-on-neutral");
+      assert.deepEqual([dropped.counts[2], dropped.cells.length], [1, 1], JSON.stringify(dropped));
+      // The menu's Move, then a click on the neutral planet.
+      await page.waitForTimeout(400);
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, from);
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      assert.equal(menu.move_row, 0, JSON.stringify(menu));
+      const height = (menu.height - 2) / menu.rows;
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.move_row + 0.5) });
+      await frames(page, 2);
+      await click(page, to);
+      await page.waitForTimeout(3000);
+      const targeted = defensesWindow(await latest(page), dat);
+      await stableScreen(page, directory, "squadron-move-targeted-neutral");
+      assert.deepEqual([targeted.counts[2], targeted.cells.length], [1, 1], JSON.stringify(targeted));
+      const statusAfter = await status("squadron-status-after");
+      assert.deepEqual(statusAfter.rows.rows, statusBefore.rows.rows, JSON.stringify({ statusBefore, statusAfter }));
+      return { before: before.counts, dropped: dropped.counts, targeted: targeted.counts,
+        status: statusAfter.rows.rows.slice(0, 2), a0: ["04", "05", "08", "09"] };
     },
   },
   {
