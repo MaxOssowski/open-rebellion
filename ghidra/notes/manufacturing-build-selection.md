@@ -262,6 +262,18 @@ resources `0x3810..0x3813`; their exact English strings remain to be bound.
 increment, and keypad `-` as decrement. `FUN_00438c30` and `FUN_00438c60`
 clamp the quantity to 1 through 255; `FUN_00438c90` writes it to the edit.
 
+The number edit (read 2026-11-13) is a `CoolStringField` (`FUN_00604cf0`)
+holding text, limit 25 (`FUN_006050c0(0x19)`). It opens with "1", the
+caret after it and nothing selected (`FUN_00604f90` sets the caret to -1,
+the end; `WM_SETFOCUS` selects nothing). `WM_CHAR` (`Class_0066e038_vt14`)
+puts any printable character (`FUN_0061a050`, mask `0x157`) at the caret
+under the limit; Backspace removes the one before it and may empty the
+edit. `FUN_00438d30` reads `atoi` of the text (`FUN_00619560`) held to
+1..255 and does not write it back, so the edit keeps "300" or "" while the
+order uses 255 or 1. Up and down step only within 1..255 and then write the
+number (`FUN_00438c30`, `FUN_00438c60`, `FUN_00438c90`). Typing "9" at
+once gives "19"; Backspace first gives "9".
+
 Confirm copies the selected class key and quantity into the pending order,
 updates the remembered selection for its producer category, and calls
 `FUN_0041ce20(target, 0)`. `FUN_00439160` disables Confirm when
@@ -337,8 +349,38 @@ So an order whose maintenance exceeds what the side has not yet allocated
 is not valid. This explains A0 `manufacturing/11`, `12` (the Empire at
 -402). The Alliance's refusal at Vjun (`20`..`26`: monitor 239,
 Construction Yard maintenance 10) is not explained by it; the later
-checks (`FUN_005513a0`, `FUN_00552210`, `FUN_00551a20`, which try the new
-object at the system) remain untraced. hyp: Vjun has no free energy slot.
+checks explain it (read 2026-11-13, below).
+
+**The facility room** (read 2026-11-13). After `FUN_0052e970`,
+`FUN_005385f0` builds route nodes for the manager's TargetKey
+(`FUN_004c27b0`; `FUN_005513a0` -> `FUN_00552d10` -> `FUN_00550700`) and
+then, per unit, calls `FUN_00551a20(type, target)`:
+
+- `FUN_005504d0` counts the unit in each of the nine type ranges of
+  `FUN_0054f5b0` that hold its type (`0x14`, `0x18`, `0x1c`, `0x20..0x2f`,
+  `0x2c`, `0x30..0x3f`, `0x10..0x13`, `0x08..0x0f`, `0x40..0x7f`).
+- `FUN_00552300` scores the target (`FUN_00552b10`); `FUN_00552dd0` ->
+  `FUN_00550eb0` checks the node's room per range (`FUN_00550bd0` ->
+  `FUN_0054fd90` -> `FUN_0054fca0`: room less need below 0 takes the
+  room's refusal) and writes the lowered room back (`FUN_0054ff00`), so
+  each unit takes one.
+- A system's room is slot `+0x78`, `FUN_00507750`: facilities
+  (`0x20..0x2f`) are limited by its energy `+0x5c` (`FUN_00509650`) less
+  the facilities `FUN_00539d70` walks (`0x20..0x2f`, mines included),
+  refusal `{0x90, 1}`; a mine (`0x2c`) also by its raw materials `+0x64`
+  (`FUN_00509660`) less its mines (`FUN_0052d610`), refusal `{0x90, 2}`.
+  Regiments, fighters, fleets, characters and `0x40..0x7f` are unlimited.
+- The walk's mode is the route context's `+0x20` (`FUN_00551100`), the 3
+  that `FUN_005385f0` passes to `FUN_00551190`: existing objects. It has
+  no side filter. A product exists from its order (`FUN_0052a140`), so
+  queued and travelling facilities count.
+
+So a facility order needs one free energy slot per unit at its
+destination, counting both sides' facilities; a mine also needs a free
+raw deposit. Ported as `build_selection::lacks_facility_room`. A0
+2026-11-13-build-confirm/21, 23 (Jerijador: Construction Yard and GenCore
+Level I n/a at number 1) fits it; Jerijador's energy and facility count
+are not in those captures.
 
 **List** (`FUN_0052e580`): the classes of the manager's production family
 (`0x28` ships, `0x29` regiments and special forces, `0x2a` facilities) that
