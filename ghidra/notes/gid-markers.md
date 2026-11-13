@@ -200,8 +200,24 @@ How the legend window behaves (read 2026-10-22):
   click opens it at (150, 120)). Bit 1 makes the button draggable: a move
   with the button held starts a capture and an XOR rectangle, and the
   release moves it, clamped to bounds from (55, 40) (`+0x11c..+0x128`).
-  The port pairs presses as Windows does (`GidLegendWindow::press_button`)
-  and does not port the drag (not seen in A0).
+  The port pairs presses as Windows does (`GidLegendWindow::press_button`).
+- The drag (read 2026-11-13, ported the same day,
+  `GidLegendWindow::move_button_pointer`/`release_button`): the bounds are
+  `FUN_00427270`'s arguments 11..14 to `FUN_00452ab0`, (55, 40, 540, 390)
+  for the Alliance and (120, 40, 600, 395) for the Empire. The press is
+  swallowed (no capture), so the moves over the button reach it; the first
+  move with `MK_LBUTTON` on an opaque pixel (`FUN_005fca00`) sets `+0x118`,
+  captures, keeps the button's rect at `+0x12c..+0x138` and the point at
+  `+0x13c`/`+0x140`. Each later move XORs the old rectangle away and draws
+  the new one, the rect moved by the pointer since that first move
+  (`GetWindowDC` of the parent, white pen, null brush, `R2_XORPEN`). The
+  release erases it and `MoveWindow`s the button to the rect's corner:
+  if either corner is outside the bounds (`PtInRect`), x goes to
+  `right - width` when past the right, else to `left` when left of it; y
+  to `top` when above, else `bottom - height` when past the bottom.
+  port: the outline is drawn white, not XORed into the palette; hyp: the
+  first erase also XORs an outline at the button's own place, which the
+  parent's child clipping may hide (not seen in A0).
 - `FUN_00421c70` starts that position at (150, 120) and the display at
   `0x80`, Display Off. `FUN_00425d00` keeps the visible legend's
   position before destroying it.

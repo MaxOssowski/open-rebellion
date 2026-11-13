@@ -55,6 +55,55 @@ fn legend_button_origin(faction: CockpitFaction) -> egui::Pos2 {
     }
 }
 
+/// The bounds a dragged legend button is dropped inside (`FUN_00427270`
+/// passes them to `FUN_00452ab0`, which keeps them at `+0x11c..+0x128`):
+/// left, top, right, bottom (55, 40, 540, 390) for the Alliance and
+/// (120, 40, 600, 395) for the Empire.
+fn legend_button_bounds(faction: CockpitFaction) -> egui::Rect {
+    match faction {
+        CockpitFaction::Alliance => {
+            egui::Rect::from_min_max(egui::pos2(55.0, 40.0), egui::pos2(540.0, 390.0))
+        }
+        CockpitFaction::Empire => {
+            egui::Rect::from_min_max(egui::pos2(120.0, 40.0), egui::pos2(600.0, 395.0))
+        }
+    }
+}
+
+/// Where the dropped button's outline at `at` puts it (`FUN_00452b70` case
+/// `0x202`): past the bounds' right edge it goes to `right - 30`, else left
+/// of them to `left`; above them to `top`, else past their bottom to
+/// `bottom - 30`.
+fn inside_button_bounds(at: egui::Pos2, faction: CockpitFaction) -> egui::Pos2 {
+    let bounds = legend_button_bounds(faction);
+    let corner = at + egui::Vec2::splat(LEGEND_BUTTON_SIZE);
+    let x = if bounds.max.x < corner.x {
+        bounds.max.x - LEGEND_BUTTON_SIZE
+    } else if at.x < bounds.min.x {
+        bounds.min.x
+    } else {
+        at.x
+    };
+    let y = if at.y < bounds.min.y {
+        bounds.min.y
+    } else if bounds.max.y < corner.y {
+        bounds.max.y - LEGEND_BUTTON_SIZE
+    } else {
+        at.y
+    };
+    egui::pos2(x, y)
+}
+
+/// A drag of the legend button (`FUN_00452b70`, `+0x118` set): the point
+/// of the move that began it (`+0x13c`/`+0x140`) and the outline's place
+/// (`+0x12c`/`+0x130`), drawn from the next move on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ButtonDrag {
+    anchor: egui::Pos2,
+    outline: egui::Pos2,
+    drawn: bool,
+}
+
 /// The window's close button (`FUN_004522f0`): 0x277c, 0x277d pressed.
 const CLOSE_BUTTON: u32 = 0x277c;
 const CLOSE_BUTTON_PRESSED: u32 = 0x277d;
@@ -119,6 +168,10 @@ pub struct GidLegendWindow {
     /// The last press on the legend button that began a double click: its
     /// time and command-centre point ([`Self::press_button`]).
     button_press: Option<(f64, egui::Pos2)>,
+    /// Where a drag left the legend button; `None` keeps `FUN_00427270`'s
+    /// place for the side.
+    button_position: Option<egui::Pos2>,
+    button_drag: Option<ButtonDrag>,
     /// The galaxy view's starfield, markers and caption this frame, which
     /// the window shows shaded under its art (`FUN_00452240`).
     backdrop: u32,
@@ -139,6 +192,8 @@ impl Default for GidLegendWindow {
             position: egui::pos2(150.0, 120.0),
             drag_anchor: None,
             button_press: None,
+            button_position: None,
+            button_drag: None,
             backdrop: crate::bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM,
             drawn_gid_markers: Vec::new(),
             gid_caption: None,
@@ -212,6 +267,61 @@ impl GidLegendWindow {
         double
     }
 
+    /// The legend button's place in command-centre pixels.
+    #[must_use]
+    pub fn button_origin(&self, faction: CockpitFaction) -> egui::Pos2 {
+        self.button_position
+            .unwrap_or_else(|| legend_button_origin(faction))
+    }
+
+    /// The pointer moved to `point` (command-centre pixels). `FUN_00452b70`
+    /// case `0x200`, the button's flags bit 1 (`FUN_00452ab0`'s 3): with
+    /// the left button `held` and the point on an opaque pixel of the
+    /// button's art (`hit`, `FUN_005fca00`) a move starts a drag and
+    /// captures the mouse; each later move puts the outline (an XOR
+    /// rectangle) at the button's place moved by the pointer since that
+    /// first move. The button itself stays until the release.
+    pub fn move_button_pointer(
+        &mut self,
+        faction: CockpitFaction,
+        point: egui::Pos2,
+        held: bool,
+        hit: bool,
+    ) {
+        let origin = self.button_origin(faction);
+        match &mut self.button_drag {
+            Some(drag) => {
+                drag.outline = origin + (point - drag.anchor);
+                drag.drawn = true;
+            }
+            None if held && hit => {
+                self.button_drag = Some(ButtonDrag {
+                    anchor: point,
+                    outline: origin,
+                    drawn: false,
+                });
+            }
+            None => {}
+        }
+    }
+
+    /// The left button came up (`FUN_00452b70` case `0x202`): a drag ends
+    /// and the button moves to its outline, kept inside the side's bounds
+    /// ([`inside_button_bounds`]).
+    pub fn release_button(&mut self, faction: CockpitFaction) {
+        if let Some(drag) = self.button_drag.take() {
+            self.button_position = Some(inside_button_bounds(drag.outline, faction));
+        }
+    }
+
+    /// The outline of a drag under way, once a move has drawn it.
+    #[must_use]
+    pub fn button_outline(&self) -> Option<egui::Pos2> {
+        self.button_drag
+            .filter(|drag| drag.drawn)
+            .map(|drag| drag.outline)
+    }
+
     /// The legend's close button: the legend hides, the button shows.
     pub fn close(&mut self) {
         self.open = false;
@@ -266,7 +376,7 @@ impl GidLegendWindow {
             (pointer.y - layout.canvas.y) / layout.scale,
         );
         let button = egui::Rect::from_min_size(
-            legend_button_origin(faction),
+            self.button_origin(faction),
             egui::Vec2::splat(LEGEND_BUTTON_SIZE),
         );
         let window = size.map(|size| egui::Rect::from_min_size(self.position, size));
@@ -391,6 +501,94 @@ pub fn rect_to_screen(layout: CockpitLayout, logical: egui::Rect) -> egui::Rect 
     )
 }
 
+/// The legend button's drag (`FUN_00452b70`, flags bit 1): the frame's
+/// pointer moves, then the release, on the button at `button` (screen).
+/// The button swallows its press (`WM_LBUTTONDOWN`, flags & 3), so no
+/// window holds the mouse and the moves over it reach it while the button
+/// pressed on it is held. While dragged its outline follows the pointer;
+/// port: the outline is drawn white where the original XORs a white pen
+/// (`SetROP2(R2_XORPEN)`) into the palette.
+fn drag_button(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    layout: CockpitLayout,
+    window: &mut GidLegendWindow,
+    faction: CockpitFaction,
+    input_enabled: bool,
+    button: egui::Rect,
+) {
+    let (moves, down, press) = ctx.input(|input| {
+        let moves: Vec<egui::Pos2> = input
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                egui::Event::PointerMoved(point) => Some(*point),
+                _ => None,
+            })
+            .collect();
+        (
+            moves,
+            input.pointer.primary_down(),
+            input.pointer.press_origin(),
+        )
+    });
+    let layer = Some(egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("gid_legend_button"),
+    ));
+    let on_button = |point: egui::Pos2| {
+        input_enabled && button.contains(point) && ctx.layer_id_at(point) == layer
+    };
+    let held = down && press.is_some_and(on_button);
+    let logical = |point: egui::Pos2| {
+        egui::pos2(
+            (point.x - layout.canvas.x) / layout.scale,
+            (point.y - layout.canvas.y) / layout.scale,
+        )
+    };
+    for point in moves {
+        let at = logical(point);
+        let inside = at - window.button_origin(faction);
+        // FUN_005fca00 on the button's art at the point's offset.
+        let hit = on_button(point)
+            && inside.x >= 0.0
+            && inside.y >= 0.0
+            && cache.is_resource_hit(
+                DllSource::Strategy,
+                LEGEND_BUTTON,
+                inside.x as usize,
+                inside.y as usize,
+            );
+        window.move_button_pointer(faction, at, held, hit);
+    }
+    if !down {
+        window.release_button(faction);
+    }
+    if let Some(outline) = window.button_outline() {
+        // GDI's Rectangle with a 1-pixel pen: the outline's outer pixels.
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("gid_legend_button_outline"),
+        ));
+        let side = LEGEND_BUTTON_SIZE;
+        for (x, y, w, h) in [
+            (0.0, 0.0, side, 1.0),
+            (0.0, side - 1.0, side, 1.0),
+            (0.0, 1.0, 1.0, side - 2.0),
+            (side - 1.0, 1.0, 1.0, side - 2.0),
+        ] {
+            painter.rect_filled(
+                rect_to_screen(
+                    layout,
+                    egui::Rect::from_min_size(outline + egui::vec2(x, y), egui::vec2(w, h)),
+                ),
+                0.0,
+                egui::Color32::WHITE,
+            );
+        }
+    }
+}
+
 /// Draw the legend button and the legend window for `mode`.
 #[expect(
     clippy::cast_precision_loss,
@@ -415,7 +613,7 @@ pub fn draw_gid_legend(
         let rect = rect_to_screen(
             layout,
             egui::Rect::from_min_size(
-                legend_button_origin(faction),
+                window.button_origin(faction),
                 egui::Vec2::splat(LEGEND_BUTTON_SIZE),
             ),
         );
@@ -483,8 +681,12 @@ pub fn draw_gid_legend(
                 break;
             }
         }
+        if window.button_shown {
+            drag_button(ctx, cache, layout, window, faction, input_enabled, clicked);
+        }
     } else {
         window.button_press = None;
+        window.button_drag = None;
     }
 
     if !window.open {
@@ -1130,5 +1332,175 @@ mod tests {
             _ => None,
         });
         assert_eq!(painted, Some(legend));
+    }
+
+    /// A cache whose STRATEGY 10168 is a 30 by 30 bitmap opaque but for
+    /// its key, the first stored pixel (bottom-left); and its folder.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn button_art_cache() -> (BmpCache, std::path::PathBuf) {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-legend-button-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        let (side, stride) = (30_u32, 32_u32);
+        let offset = 14 + 40 + 4 * 2;
+        let mut bytes = Vec::new();
+        bytes.extend(b"BM");
+        bytes.extend((offset + stride * side).to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend(offset.to_le_bytes());
+        bytes.extend(40u32.to_le_bytes());
+        bytes.extend(side.to_le_bytes());
+        bytes.extend(side.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(8u16.to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend((stride * side).to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(2u32.to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend([0, 0, 0, 0, 255, 255, 255, 0]);
+        for index in 0..stride * side {
+            bytes.push(u8::from(index != 0));
+        }
+        std::fs::write(folder.join(format!("{LEGEND_BUTTON}.bmp")), bytes).unwrap();
+        let mut cache = BmpCache::new();
+        cache.set_base_path(&base);
+        (cache, base)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_legend_button_drags_by_an_outline_and_drops_inside_its_bounds() {
+        // FUN_00427270 builds the button with FUN_00452ab0's flags 3 and
+        // the Alliance's bounds (55, 40, 540, 390). FUN_00452b70: with bit
+        // 1, a move with the left button held on an opaque pixel
+        // (FUN_005fca00) starts the drag; later moves put the XOR outline
+        // at the button's place moved by the pointer since that move; the
+        // release (0x202) moves the button there, kept inside the bounds.
+        mines_legend();
+        let ctx = egui::Context::default();
+        let (mut cache, base) = button_art_cache();
+        let mut window = GidLegendWindow::default();
+        window.show_display(GidMode::Mines);
+        let screen = |x: f32, y: f32| egui::pos2(10.0 + x * 2.0, 20.0 + y * 2.0);
+        let button = |x, y, pressed| egui::Event::PointerButton {
+            pos: screen(x, y),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let moved = |x, y| egui::Event::PointerMoved(screen(x, y));
+        let mut time = 0.0;
+        let mut frame = |window: &mut GidLegendWindow, events| {
+            // Apart, so no two presses make a double click.
+            time += 1.0;
+            let _ = legend_frame(&ctx, &mut cache, window, time, events);
+        };
+        frame(&mut window, vec![moved(70.0, 65.0)]);
+        frame(&mut window, vec![moved(70.0, 65.0)]);
+
+        // A press, a move that starts the drag, a move that draws the
+        // outline: the button stays until the release.
+        frame(&mut window, vec![button(70.0, 65.0, true)]);
+        frame(&mut window, vec![moved(71.0, 66.0)]);
+        assert_eq!(window.button_outline(), None);
+        frame(&mut window, vec![moved(171.0, 116.0)]);
+        assert_eq!(window.button_outline(), Some(egui::pos2(155.0, 100.0)));
+        assert_eq!(
+            window.button_origin(CockpitFaction::Alliance),
+            egui::pos2(55.0, 50.0)
+        );
+        frame(&mut window, vec![button(171.0, 116.0, false)]);
+        let dropped = window.button_origin(CockpitFaction::Alliance);
+        assert_eq!(
+            (dropped, window.button_outline()),
+            (egui::pos2(155.0, 100.0), None)
+        );
+        assert!(!window.open, "a drag opened the legend");
+        let contains = |window: &GidLegendWindow, x: f32, y: f32| {
+            window.contains_screen_point(
+                layout(),
+                GidMode::Mines,
+                CockpitFaction::Alliance,
+                (screen(x, y).x, screen(x, y).y),
+            )
+        };
+        assert!(contains(&window, 170.0, 115.0) && !contains(&window, 70.0, 65.0));
+
+        // Past the bounds' right and bottom: right - 30, bottom - 30.
+        frame(&mut window, vec![moved(170.0, 115.0)]);
+        frame(&mut window, vec![button(170.0, 115.0, true)]);
+        frame(&mut window, vec![moved(171.0, 116.0)]);
+        frame(&mut window, vec![moved(650.0, 460.0)]);
+        frame(&mut window, vec![button(650.0, 460.0, false)]);
+        assert_eq!(
+            window.button_origin(CockpitFaction::Alliance),
+            egui::pos2(510.0, 360.0)
+        );
+
+        // Left of and above them: left and top.
+        frame(&mut window, vec![moved(525.0, 375.0)]);
+        frame(&mut window, vec![button(525.0, 375.0, true)]);
+        frame(&mut window, vec![moved(526.0, 376.0)]);
+        frame(&mut window, vec![moved(1.0, 1.0)]);
+        frame(&mut window, vec![button(1.0, 1.0, false)]);
+        assert_eq!(
+            window.button_origin(CockpitFaction::Alliance),
+            egui::pos2(55.0, 40.0)
+        );
+
+        // A press off the button, or a move onto its edge column (offset
+        // x 0, which FUN_005fca00 refuses), starts no drag.
+        frame(&mut window, vec![moved(300.0, 300.0)]);
+        frame(&mut window, vec![button(300.0, 300.0, true)]);
+        frame(&mut window, vec![moved(70.0, 55.0)]);
+        frame(&mut window, vec![moved(200.0, 200.0)]);
+        frame(&mut window, vec![button(200.0, 200.0, false)]);
+        frame(&mut window, vec![moved(70.0, 55.0)]);
+        frame(&mut window, vec![button(70.0, 55.0, true)]);
+        frame(&mut window, vec![moved(55.0, 55.0)]);
+        frame(&mut window, vec![moved(200.0, 200.0)]);
+        frame(&mut window, vec![button(200.0, 200.0, false)]);
+        std::fs::remove_dir_all(base).unwrap();
+        assert_eq!(
+            window.button_origin(CockpitFaction::Alliance),
+            egui::pos2(55.0, 40.0)
+        );
+    }
+
+    #[test]
+    fn the_empires_legend_button_drops_inside_its_own_bounds() {
+        // FUN_00427270, the Empire's branch: bounds (120, 40, 600, 395).
+        let mut window = GidLegendWindow::default();
+        let empire = CockpitFaction::Empire;
+        assert_eq!(window.button_origin(empire), egui::pos2(113.0, 50.0));
+        window.move_button_pointer(empire, egui::pos2(120.0, 60.0), true, true);
+        window.move_button_pointer(empire, egui::pos2(800.0, 600.0), true, true);
+        window.release_button(empire);
+        assert_eq!(window.button_origin(empire), egui::pos2(570.0, 365.0));
+        window.move_button_pointer(empire, egui::pos2(580.0, 380.0), true, true);
+        window.move_button_pointer(empire, egui::pos2(0.0, 0.0), true, true);
+        window.release_button(empire);
+        assert_eq!(window.button_origin(empire), egui::pos2(120.0, 40.0));
+        // Inside them it stays where the outline was.
+        window.move_button_pointer(empire, egui::pos2(130.0, 50.0), true, true);
+        window.move_button_pointer(empire, egui::pos2(230.0, 150.0), true, true);
+        window.release_button(empire);
+        assert_eq!(window.button_origin(empire), egui::pos2(220.0, 140.0));
+        // Without the button held, or off its art, a move starts nothing.
+        window.move_button_pointer(empire, egui::pos2(230.0, 150.0), false, true);
+        window.move_button_pointer(empire, egui::pos2(330.0, 250.0), true, false);
+        assert_eq!(window.button_outline(), None);
+        // The far corner decides: the outline's own corner (580, 370) lies
+        // inside, the button's far one (610, 400) does not.
+        window.move_button_pointer(empire, egui::pos2(230.0, 150.0), true, true);
+        window.move_button_pointer(empire, egui::pos2(590.0, 380.0), true, true);
+        window.release_button(empire);
+        assert_eq!(window.button_origin(empire), egui::pos2(570.0, 365.0));
     }
 }
