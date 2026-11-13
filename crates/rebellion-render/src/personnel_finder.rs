@@ -494,16 +494,26 @@ pub fn character_rows_travelling(
 
 /// Build the SpecForces view rows for `tab` (FUN_00464e10 view 2,
 /// FUN_00465540).
+///
+/// The list holds the player's side's views, as the Characters view's
+/// (`FUN_004f3d50`). A0 2026-11-13-gid/E2 (an Alliance game, day 244)
+/// lists no Imperial special force. hyp: as for the characters, the port
+/// lists the other side's units only where the player sees the other
+/// side's objects (`opposing_contents_visible`).
 #[must_use]
 pub fn specforces_rows(
     world: &GameWorld,
-    _fog: &FogState,
-    _player: Faction,
+    fog: &FogState,
+    player: Faction,
     tab: PersonnelTab,
 ) -> Vec<PersonnelFinderRow> {
     let mut rows = Vec::new();
+    let others = (player == Faction::Alliance) != (tab == PersonnelTab::Alliance);
 
     for (system_key, system) in &world.systems {
+        if others && !opposing_contents_visible(world, fog, player, system_key) {
+            continue;
+        }
         // Direct SF units at this system.
         let ground: Vec<SpecialForceKey> = system
             .special_forces
@@ -719,6 +729,31 @@ impl PersonnelFinderState {
             .map(|row| row.display_name().to_owned())
             .collect()
         })
+    }
+
+    /// The open window's shown rows (either view), its chosen row and its
+    /// name box's text, for the interface fixtures.
+    #[must_use]
+    pub fn shown_list(
+        &self,
+        world: &GameWorld,
+        fog: &FogState,
+    ) -> Option<(Vec<String>, Option<usize>, String)> {
+        let window = self.window.as_ref()?;
+        let list = rows(
+            world,
+            fog,
+            player_side(window.faction),
+            window.tab,
+            window.view,
+        );
+        Some((
+            list.iter()
+                .map(|row| row.display_name().to_owned())
+                .collect(),
+            window.chosen,
+            window.name.clone(),
+        ))
     }
 
     /// The travelling characters' destinations (the missions' member
@@ -1491,6 +1526,34 @@ mod tests {
         } else {
             panic!("expected SpecForces row");
         }
+    }
+
+    #[test]
+    fn the_other_sides_specforces_list_only_where_the_player_sees_them() {
+        // FUN_004f3d50: the list holds the player's side's views. A0
+        // 2026-11-13-gid/E2: an Alliance game's Imperial SpecForces tab is
+        // empty though the Empire holds special forces.
+        let mut world = GameWorld::default();
+        let coruscant = add_system(&mut world, "Coruscant");
+        world.systems[coruscant].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        add_sf(&mut world, coruscant, 0x3c00_0007, false);
+        let fog = FogState::new(Faction::Alliance);
+        assert!(
+            specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).is_empty()
+        );
+        // The Empire's own tab lists them; so does the Alliance's view of
+        // a system it holds.
+        assert_eq!(
+            specforces_rows(&world, &fog, Faction::Empire, PersonnelTab::Imperial).len(),
+            1
+        );
+        world.systems[coruscant].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Alliance);
+        assert_eq!(
+            specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).len(),
+            1
+        );
     }
 
     #[test]
