@@ -2164,13 +2164,23 @@ fn tab_enabled(
                 FleetWindowTab::Personnel => flags & CONTENT_PERSONNEL != 0,
             };
         }
-        // A copied fleet's tabs light by what the copy holds.
+        // A copied fleet's tabs light by what the copy holds. One copied
+        // with its name only, made after the side last saw the system, has
+        // all four lit though they list nothing: A0 2026-11-14-stale-views/
+        // 06-kothlis-fleet16-d374-montage (sha256 prefix 955559b56955015b)
+        // selects each of Fleet 16's four tabs, the Fighters and Troops
+        // tabs printing 0 and 0. hyp: its ships' copies exist, unfinished
+        // (FUN_0053f760), so their content flags reach the entry
+        // (FUN_004a66a0) while the lists' mode-3 walks skip them.
         Some(entry @ FleetWindowEntry::Copy { .. }) => {
             let Some(copy) = entry.copy(world) else {
                 return false;
             };
+            if copy.ships.is_empty() {
+                return true;
+            }
             return match tab {
-                FleetWindowTab::CapitalShips => !copy.ships.is_empty(),
+                FleetWindowTab::CapitalShips => true,
                 FleetWindowTab::Fighters => !copy.fighters.is_empty(),
                 FleetWindowTab::Troops => !copy.troops.is_empty(),
                 FleetWindowTab::Personnel => !copy.characters.is_empty(),
@@ -2811,6 +2821,35 @@ fn tab_counts(
             FleetWindowTab::Troops => Some((
                 u32::try_from(own.regiments.len()).unwrap_or(u32::MAX),
                 class.troop_capacity,
+            )),
+            FleetWindowTab::CapitalShips | FleetWindowTab::Personnel => None,
+        };
+    }
+    // A copied fleet prints what its copy holds: its squadrons or
+    // regiments and its copied ships' room (0 and 0 for a fleet copied with
+    // its name only, A0 06-kothlis-fleet16-d374-montage).
+    if let Some(entry @ FleetWindowEntry::Copy { .. }) = selected {
+        let copy = entry.copy(world)?;
+        let room = |capacity: fn(&rebellion_core::world::CapitalShipClass) -> u32| {
+            copy.ships
+                .iter()
+                .filter_map(|ship| {
+                    world
+                        .capital_ship_classes
+                        .values()
+                        .find(|class| class.dat_id == ship.class)
+                })
+                .map(capacity)
+                .sum::<u32>()
+        };
+        return match tab {
+            FleetWindowTab::Fighters => Some((
+                copy.fighters.iter().map(|(_, count)| count).sum(),
+                room(|class| class.fighter_capacity),
+            )),
+            FleetWindowTab::Troops => Some((
+                u32::try_from(copy.troops.len()).unwrap_or(u32::MAX),
+                room(|class| class.troop_capacity),
             )),
             FleetWindowTab::CapitalShips | FleetWindowTab::Personnel => None,
         };
@@ -9394,6 +9433,7 @@ pub(crate) mod tests {
         world.fleets[imperial]
             .capital_ships
             .push(ShipInstance::new(full, 100, true));
+        world.capital_ship_classes[full].fighter_capacity = 4;
         let name = world.fleet_name(imperial).unwrap().to_owned();
         let missions = rebellion_core::missions::MissionState::new();
         let movement = MovementState::default();
@@ -9431,6 +9471,8 @@ pub(crate) mod tests {
             ["TIE Fighter", "TIE Fighter"]
         );
         assert!(tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::CapitalShips));
+        // The copy's squadrons against its ships' room (2 of 2 x 4).
+        assert_eq!(tab_counts(&world, &transport, Some(copied), FleetWindowTab::Fighters), Some((2, 8)));
         assert!(tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::Fighters));
         assert!(!tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::Troops));
         assert!(!tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::Personnel));
@@ -9471,11 +9513,12 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_fleet_copied_with_its_name_only_opens_four_empty_tabs() {
+    fn a_fleet_copied_with_its_name_only_opens_four_lit_empty_tabs() {
         // A0 2026-11-14-stale-views/06-kothlis-fleet16-d374-montage (sha256
         // prefix 955559b56955015b): Imperial Fleet 16, made in Kothlis after
-        // the Alliance last saw it, lists with all four tabs empty
-        // (FUN_0053f760's frozen copy; its ships never sync).
+        // the Alliance last saw it, lists with all four tabs selectable and
+        // empty, Fighters and Troops printing 0 and 0 (FUN_0053f760's
+        // frozen copy; its ships never sync).
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
         let id = world.systems[system].dat_id;
         world.object_views.alliance_systems.insert(
@@ -9512,7 +9555,11 @@ pub(crate) mod tests {
             FleetWindowTab::Personnel,
         ] {
             assert!(right_items(&world, &transport, &[], Some(copied), tab).is_empty());
-            assert!(!tab_enabled(&world, &transport, &[], Some(copied), tab));
+            assert!(tab_enabled(&world, &transport, &[], Some(copied), tab));
         }
+        // The Fighters and Troops tabs print 0 and 0.
+        assert_eq!(tab_counts(&world, &transport, Some(copied), FleetWindowTab::Fighters), Some((0, 0)));
+        assert_eq!(tab_counts(&world, &transport, Some(copied), FleetWindowTab::Troops), Some((0, 0)));
+        assert_eq!(tab_counts(&world, &transport, Some(copied), FleetWindowTab::Personnel), None);
     }
 }
