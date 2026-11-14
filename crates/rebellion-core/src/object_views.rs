@@ -109,6 +109,20 @@ pub struct ObjectViews {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub empire: HashMap<DatId, ObjectView>,
+    /// The Alliance's views of each system's own fields and of the
+    /// facilities, planet squadrons, special forces and characters in it,
+    /// by the system's id (v118).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub alliance_systems: HashMap<DatId, SystemView>,
+    /// The Empire's views of the systems (v118).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub empire_systems: HashMap<DatId, SystemView>,
     /// port: the debug "see everything" mode: the windows show every live
     /// object of both sides and ignore the views and the fog. Not saved.
     #[serde(skip)]
@@ -144,6 +158,30 @@ impl ObjectViews {
             Faction::Empire => Some(&mut self.empire),
             Faction::Neutral => None,
         }
+    }
+
+    /// `side`'s views of the systems.
+    #[must_use]
+    pub fn systems(&self, side: Faction) -> Option<&HashMap<DatId, SystemView>> {
+        match side {
+            Faction::Alliance => Some(&self.alliance_systems),
+            Faction::Empire => Some(&self.empire_systems),
+            Faction::Neutral => None,
+        }
+    }
+
+    fn systems_mut(&mut self, side: Faction) -> Option<&mut HashMap<DatId, SystemView>> {
+        match side {
+            Faction::Alliance => Some(&mut self.alliance_systems),
+            Faction::Empire => Some(&mut self.empire_systems),
+            Faction::Neutral => None,
+        }
+    }
+
+    /// `side`'s view of the system `id`.
+    #[must_use]
+    pub fn system(&self, side: Faction, id: DatId) -> Option<&SystemView> {
+        self.systems(side)?.get(&id)
     }
 
     /// `side`'s view of the object `id`.
@@ -255,6 +293,146 @@ fn regiment_place(
         .iter()
         .find(|(_, value)| value.ground_units.contains(&key))
         .map(|(system, value)| (system, ViewPlace::Surface(value.dat_id), None))
+}
+
+/// A facility as a side's copy holds it: its class and side, and for a
+/// production facility whether it is a mine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FacilityView {
+    pub class: DatId,
+    pub side: Faction,
+    pub is_mine: bool,
+}
+
+/// A side's copy of a system (`FUN_004f9a60` on the system and, through
+/// the inherited seen bit `FUN_004f7bf0`, on its stationary contents): its
+/// own fields as the System window shows them and the facilities, planet
+/// squadrons, special forces and characters in it, in the system's order.
+///
+/// port: one record per system; a unit on its way in or out is not in it
+/// (the port holds travellers outside their systems), and its regiments
+/// are copied one by one ([`RegimentView`]).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SystemView {
+    /// The copy's sync state: live (1) or frozen (2).
+    pub live: bool,
+    pub control: crate::world::ControlKind,
+    pub popularity_alliance: f32,
+    pub popularity_empire: f32,
+    pub is_populated: bool,
+    pub total_energy: u8,
+    pub raw_materials: u8,
+    pub defense_facilities: Vec<FacilityView>,
+    pub manufacturing_facilities: Vec<FacilityView>,
+    pub production_facilities: Vec<FacilityView>,
+    /// The planet's squadrons: each class's id and count.
+    pub fighters: Vec<(DatId, u32)>,
+    /// The special forces' class ids and sides.
+    pub special_forces: Vec<(DatId, bool)>,
+    /// The living characters at the system, by their ids, as the Defenses
+    /// window's personnel walk finds them (`current_system`).
+    pub characters: Vec<DatId>,
+}
+
+impl SystemView {
+    /// The system as `live` copies it now.
+    #[must_use]
+    pub fn of(world: &GameWorld, system: &crate::world::System, live: bool) -> Self {
+        let facility = |class: DatId, side: Faction, is_mine: bool| FacilityView {
+            class,
+            side,
+            is_mine,
+        };
+        Self {
+            live,
+            control: system.control,
+            popularity_alliance: system.popularity_alliance,
+            popularity_empire: system.popularity_empire,
+            is_populated: system.is_populated,
+            total_energy: system.total_energy,
+            raw_materials: system.raw_materials,
+            defense_facilities: system
+                .defense_facilities
+                .iter()
+                .filter_map(|key| world.defense_facilities.get(*key))
+                .map(|value| facility(value.class_dat_id, value.side, false))
+                .collect(),
+            manufacturing_facilities: system
+                .manufacturing_facilities
+                .iter()
+                .filter_map(|key| world.manufacturing_facilities.get(*key))
+                .map(|value| facility(value.class_dat_id, value.side, false))
+                .collect(),
+            production_facilities: system
+                .production_facilities
+                .iter()
+                .filter_map(|key| world.production_facilities.get(*key))
+                .map(|value| facility(value.class_dat_id, value.side, value.is_mine))
+                .collect(),
+            fighters: system
+                .fighters
+                .iter()
+                .filter_map(|entry| {
+                    Some((world.fighter_classes.get(entry.class)?.dat_id, entry.count))
+                })
+                .collect(),
+            special_forces: system
+                .special_forces
+                .iter()
+                .filter_map(|key| world.special_forces.get(*key))
+                .map(|unit| (unit.class_dat_id, unit.is_alliance))
+                .collect(),
+            characters: world
+                .characters
+                .values()
+                .filter(|character| {
+                    !character.is_killed
+                        && character.current_system.is_some_and(|at| {
+                            world
+                                .systems
+                                .get(at)
+                                .is_some_and(|value| value.dat_id == system.dat_id)
+                        })
+                })
+                .map(|character| character.dat_id)
+                .collect(),
+        }
+    }
+}
+
+/// The day's system view changes (`FUN_004f9a60` on each system): a live
+/// copy, or one that was live and freezes now, takes the system's state.
+#[must_use]
+pub fn compute_systems(
+    world: &GameWorld,
+    movement: &MovementState,
+) -> Vec<(Faction, DatId, SystemView)> {
+    let mut out = Vec::new();
+    for side in [Faction::Alliance, Faction::Empire] {
+        let Some(views) = world.object_views.systems(side) else {
+            continue;
+        };
+        for (key, system) in &world.systems {
+            let live = system_seen(world, movement, side, key);
+            let old = views.get(&system.dat_id);
+            if !live && !old.is_some_and(|view| view.live) {
+                continue;
+            }
+            let view = SystemView::of(world, system, live);
+            if old != Some(&view) {
+                out.push((side, system.dat_id, view));
+            }
+        }
+    }
+    out
+}
+
+fn apply_systems(world: &mut GameWorld, updates: Vec<(Faction, DatId, SystemView)>) {
+    for (side, id, view) in updates {
+        if let Some(views) = world.object_views.systems_mut(side) {
+            views.insert(id, view);
+        }
+    }
 }
 
 /// A change to one side's views.
@@ -405,10 +583,17 @@ pub fn apply(world: &mut GameWorld, updates: &[ViewUpdate]) {
 pub fn advance(world: &mut GameWorld, transport: &TroopTransportState, movement: &MovementState) {
     number_regiments(world);
     let mut updates = compute(world, transport, movement);
+    let mut systems = compute_systems(world, movement);
     for (side, system) in std::mem::take(&mut world.object_views.pushes) {
         updates.extend(push_system(world, transport, movement, side, system));
+        // Event319_Handle levels 8 and 10 copy the whole system.
+        if let Some(value) = world.systems.get(system) {
+            let live = system_seen(world, movement, side, system);
+            systems.push((side, value.dat_id, SystemView::of(world, value, live)));
+        }
     }
     apply(world, &updates);
+    apply_systems(world, systems);
 }
 
 /// Seeds the views from the current state for the systems each side's fog
@@ -442,6 +627,28 @@ pub fn seed_from_fog(
         }
     }
     apply(world, &updates);
+    seed_systems_from_fog(world, movement, fogs);
+}
+
+/// Seeds each side's system views from the current state for the systems
+/// its fog shows or it sees (the v117 migration; part of
+/// [`seed_from_fog`]), live or frozen by `FUN_004f9a60`.
+pub fn seed_systems_from_fog(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    fogs: [&FogState; 2],
+) {
+    let mut systems = Vec::new();
+    for fog in fogs {
+        let side = fog.faction;
+        for (key, system) in &world.systems {
+            let live = system_seen(world, movement, side, key);
+            if live || fog.is_visible(key) {
+                systems.push((side, system.dat_id, SystemView::of(world, system, live)));
+            }
+        }
+    }
+    apply_systems(world, systems);
 }
 
 #[cfg(test)]

@@ -459,3 +459,164 @@ fn a_regiment_in_a_fleets_cargo_is_placed_in_the_fleets_system() {
         }
     );
 }
+
+/// port: a KDY-150 (DEFFACSD family 0x22) on `at`, the Empire's.
+fn battery(world: &mut GameWorld, at: SystemKey) -> crate::ids::DefenseFacilityKey {
+    let key = world
+        .defense_facilities
+        .insert(crate::world::DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2200_0001),
+            side: Faction::Empire,
+        });
+    world.systems[at].defense_facilities.push(key);
+    key
+}
+
+fn alliance_system_view(setup: &Setup) -> Option<SystemView> {
+    let id = setup.world.systems[setup.chandrila].dat_id;
+    setup
+        .world
+        .object_views
+        .system(Faction::Alliance, id)
+        .cloned()
+}
+
+#[test]
+fn a_seen_system_is_copied_live_with_its_facilities_and_fields() {
+    // FUN_0050ac80: the Alliance fleet sets the seen bit; FUN_004f7bf0: the
+    // system's facilities take it.
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    battery(&mut setup.world, chandrila);
+    setup.world.systems[chandrila].total_energy = 7;
+    step(&mut setup);
+    assert_eq!(alliance_system_view(&setup), None);
+    fleet(&mut setup.world, chandrila, true);
+    step(&mut setup);
+    let view = alliance_system_view(&setup).unwrap();
+    assert!(view.live);
+    assert_eq!(view.total_energy, 7);
+    assert_eq!(view.control, ControlKind::Controlled(Faction::Empire));
+    assert_eq!(
+        view.defense_facilities,
+        [FacilityView {
+            class: DatId::new(0x2200_0001),
+            side: Faction::Empire,
+            is_mine: false,
+        }]
+    );
+}
+
+#[test]
+fn an_unseen_system_keeps_its_copy_as_it_was() {
+    // FUN_004f9a60: the seen bit gone, the copy freezes (FUN_005404d0).
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    step(&mut setup);
+    setup.world.fleets.remove(watcher);
+    step(&mut setup);
+    battery(&mut setup.world, chandrila);
+    setup.world.systems[chandrila].control = ControlKind::Uncontrolled;
+    step(&mut setup);
+    let view = alliance_system_view(&setup).unwrap();
+    assert!(!view.live);
+    assert!(view.defense_facilities.is_empty());
+    assert_eq!(view.control, ControlKind::Controlled(Faction::Empire));
+    // Seen again, it is rebuilt.
+    fleet(&mut setup.world, chandrila, true);
+    step(&mut setup);
+    let view = alliance_system_view(&setup).unwrap();
+    assert!(view.live);
+    assert_eq!(view.defense_facilities.len(), 1);
+    assert_eq!(view.control, ControlKind::Uncontrolled);
+}
+
+#[test]
+fn a_push_copies_the_system_frozen() {
+    // Event319_Handle (FUN_0050d5a0) levels 8 and 10 copy the whole system.
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    battery(&mut setup.world, chandrila);
+    setup
+        .world
+        .object_views
+        .queue_push(Faction::Alliance, chandrila);
+    step(&mut setup);
+    let view = alliance_system_view(&setup).unwrap();
+    assert!(!view.live);
+    assert_eq!(view.defense_facilities.len(), 1);
+}
+
+#[test]
+fn a_system_copy_holds_its_squadrons_special_forces_and_characters() {
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let tie = setup
+        .world
+        .fighter_classes
+        .insert(crate::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            ..Default::default()
+        });
+    setup.world.systems[chandrila]
+        .fighters
+        .push(crate::world::FighterEntry {
+            class: tie,
+            count: 3,
+            carrier: None,
+        });
+    let force = setup
+        .world
+        .special_forces
+        .insert(crate::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0002),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: false,
+        });
+    setup.world.systems[chandrila].special_forces.push(force);
+    let vader = DatId::new(0x3000_0001);
+    setup.world.characters.insert(crate::world::Character {
+        dat_id: vader,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
+    fleet(&mut setup.world, chandrila, true);
+    // A killed character is not copied.
+    setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0002),
+        current_system: Some(chandrila),
+        is_killed: true,
+        ..Default::default()
+    });
+    step(&mut setup);
+    let view = alliance_system_view(&setup).unwrap();
+    assert_eq!(view.fighters, [(DatId::new(0x1c00_0005), 3)]);
+    assert_eq!(view.special_forces, [(DatId::new(0x3c00_0002), false)]);
+    assert_eq!(view.characters, [vader]);
+}
+
+#[test]
+fn seeding_copies_each_system_in_the_sides_fog() {
+    let mut setup = setup();
+    let mut fog_alliance = FogState::new(Faction::Alliance);
+    fog_alliance.reveal(setup.chandrila);
+    let fog_empire = FogState::new(Faction::Empire);
+    seed_systems_from_fog(
+        &mut setup.world,
+        &setup.movement,
+        [&fog_alliance, &fog_empire],
+    );
+    assert!(!alliance_system_view(&setup).unwrap().live);
+    let coruscant = setup.world.systems[setup.coruscant].dat_id;
+    assert!(setup
+        .world
+        .object_views
+        .system(Faction::Alliance, coruscant)
+        .is_none());
+    // The Empire holds both: they are live in its copies.
+    let empire = &setup.world.object_views.empire_systems;
+    assert_eq!(empire.len(), 2);
+    assert!(empire.values().all(|view| view.live));
+}

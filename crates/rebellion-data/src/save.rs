@@ -76,35 +76,51 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 117;
+pub const SAVE_VERSION: u32 = 118;
 
-/// The one older version that still loads: v116, from before the object
-/// views. Its body lacks `SaveState::object_views` ([`migrate_v116_body`]).
+/// The oldest version that still loads: v116, from before the object
+/// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
 pub const MIGRATED_VERSION: u32 = 116;
 
-/// Whether a save of `version` loads (the current one, or v116 through its
-/// migration).
+/// v117: the object views without the system views
+/// (`ObjectViews::alliance_systems`, `empire_systems`), its last fields.
+pub const V117: u32 = 117;
+
+/// Whether a save of `version` loads (the current one, or v116 and v117
+/// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
-    version == SAVE_VERSION || version == MIGRATED_VERSION
+    (MIGRATED_VERSION..=SAVE_VERSION).contains(&version)
 }
 
-/// A v116 body as a v117 one: `SaveState::object_views` is the last field,
-/// so an empty one's encoding is appended.
+/// The two system view maps v118 added at the end of `ObjectViews`, empty.
+type SystemViewsTail = (
+    std::collections::HashMap<rebellion_core::ids::DatId, rebellion_core::object_views::SystemView>,
+    std::collections::HashMap<rebellion_core::ids::DatId, rebellion_core::object_views::SystemView>,
+);
+
+/// An older body as a current one. `SaveState::object_views` is the last
+/// field and the system views are its last fields, so a v116 body takes an
+/// empty `ObjectViews`'s encoding and a v117 body two empty maps'.
 ///
 /// # Errors
-/// Returns an error if the empty views cannot be encoded.
-pub fn migrate_v116_body(mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-    body.extend(bincode::serialize(
-        &rebellion_core::object_views::ObjectViews::default(),
-    )?);
+/// Returns an error if the empty fields cannot be encoded.
+pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+    if version == MIGRATED_VERSION {
+        body.extend(bincode::serialize(
+            &rebellion_core::object_views::ObjectViews::default(),
+        )?);
+    } else if version == V117 {
+        body.extend(bincode::serialize(&SystemViewsTail::default())?);
+    }
     Ok(body)
 }
 
 /// Decodes a save body of `version`, checks it against the fingerprint the
 /// file holds, and readies it for play: the views go into the world, and a
-/// v116 save's views are seeded from each side's fog
-/// (`object_views::seed_from_fog`).
+/// v116 or v117 save's views are seeded from each side's fog
+/// (`object_views::seed_from_fog`; a v117 save keeps its regiment views and
+/// gains its system views).
 ///
 /// # Errors
 /// Returns an error for an unsupported version, an undecodable body or a
@@ -117,13 +133,9 @@ pub fn decode_body(
     anyhow::ensure!(
         version_loads(version),
         "save version {version} is not supported by this build (it reads only versions \
-         {MIGRATED_VERSION} and {SAVE_VERSION}). Please start a new game."
+         {MIGRATED_VERSION} to {SAVE_VERSION}). Please start a new game."
     );
-    let body = if version == MIGRATED_VERSION {
-        migrate_v116_body(body)?
-    } else {
-        body
-    };
+    let body = migrate_body(version, body)?;
     let mut state: SaveState =
         anyhow::Context::context(bincode::deserialize(&body), "deserializing save state")?;
     let found = fingerprint_as(&state, version)?;
@@ -131,19 +143,19 @@ pub fn decode_body(
         expected == found,
         "save state fingerprint mismatch: expected {expected}, computed {found}"
     );
+    state.world.object_views = state.object_views.clone();
+    let fogs = [&state.fog_alliance, &state.fog_empire];
     if version == MIGRATED_VERSION {
-        let (world, transport, movement) =
-            (&mut state.world, &state.troop_transport, &state.movement);
         rebellion_core::object_views::seed_from_fog(
-            world,
-            transport,
-            movement,
-            [&state.fog_alliance, &state.fog_empire],
+            &mut state.world,
+            &state.troop_transport,
+            &state.movement,
+            fogs,
         );
-        state.object_views = state.world.object_views.clone();
-    } else {
-        state.world.object_views = state.object_views.clone();
+    } else if version == V117 {
+        rebellion_core::object_views::seed_systems_from_fog(&mut state.world, &state.movement, fogs);
     }
+    state.object_views = state.world.object_views.clone();
     let fingerprint = compute_state_fingerprint(&state)?;
     Ok((state, fingerprint))
 }
@@ -245,12 +257,17 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 }
 
 /// The fingerprint a save of `version` wrote for `state`: a v116 save had no
-/// `object_views` field.
+/// `object_views` field, a v117 one no system views in it.
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
-    if version == MIGRATED_VERSION {
-        if let serde_json::Value::Object(fields) = &mut canonical_state {
+    if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version == MIGRATED_VERSION {
             fields.remove("object_views");
+        } else if version == V117 {
+            if let Some(serde_json::Value::Object(views)) = fields.get_mut("object_views") {
+                views.remove("alliance_systems");
+                views.remove("empire_systems");
+            }
         }
     }
     canonicalize_fingerprint_value(&mut canonical_state, None)?;
@@ -350,7 +367,7 @@ pub struct SaveState {
     // ── v117: each side's views of the other side's objects ─────────────
     /// `GameWorld::object_views` (`FUN_004f9a60`; `ghidra/notes/per-side-
     /// object-views.md`). It stays the last field: a v116 body is read by
-    /// appending an empty one ([`migrate_v116_body`]). The loaders copy it
+    /// appending an empty one ([`migrate_body`]). The loaders copy it
     /// into `world.object_views`; the world's own encoding skips it.
     pub object_views: rebellion_core::object_views::ObjectViews,
 }
@@ -390,7 +407,7 @@ mod native {
     use super::{
         compute_mod_hash, compute_state_fingerprint, decode_body, version_loads, SaveMeta,
         SaveState, StateFingerprint, MAX_SAVE_SLOTS, MIGRATED_VERSION, SAVE_MAGIC, SAVE_VERSION,
-        STATE_FINGERPRINT_VERSION,
+        STATE_FINGERPRINT_VERSION, V117,
     };
     use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
@@ -535,7 +552,7 @@ mod native {
         anyhow::ensure!(
             version_loads(version),
             "save version {version} is not supported by this build (it reads only versions \
-             {MIGRATED_VERSION} and {SAVE_VERSION}). Please start a new game."
+             {MIGRATED_VERSION} to {SAVE_VERSION}). Please start a new game."
         );
 
         let mut name_len_buf = [0u8; 4];
@@ -857,7 +874,7 @@ pub mod wasm_impl {
     ///
     /// A body without its metadata (an interrupted write) counts as no save.
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
-        for version in [SAVE_VERSION, MIGRATED_VERSION] {
+        for version in [SAVE_VERSION, V117, MIGRATED_VERSION] {
             if let (Some(body), Some(meta)) = (
                 storage_get(&versioned_slot_key(version, slot))?,
                 storage_get(&versioned_meta_key(version, slot))?,
@@ -953,6 +970,8 @@ pub mod wasm_impl {
             meta_key(slot),
             versioned_slot_key(MIGRATED_VERSION, slot),
             versioned_meta_key(MIGRATED_VERSION, slot),
+            versioned_slot_key(V117, slot),
+            versioned_meta_key(V117, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -980,7 +999,7 @@ pub mod wasm_impl {
     }
 
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
-        for version in [SAVE_VERSION, MIGRATED_VERSION] {
+        for version in [SAVE_VERSION, V117, MIGRATED_VERSION] {
             storage_remove(&versioned_slot_key(version, slot))?;
             storage_remove(&versioned_meta_key(version, slot))?;
         }
@@ -1449,7 +1468,7 @@ mod tests {
         let path = slot_path(&saves_dir, 0);
         let original = std::fs::read(&path).unwrap();
 
-        // v116 loads through its migration (migrate_v116_body); the one
+        // v116 loads through its migration (migrate_body); the one
         // before it does not.
         for version in [MIGRATED_VERSION - 1, SAVE_VERSION + 1] {
             let mut bytes = original.clone();
@@ -1467,15 +1486,29 @@ mod tests {
     /// `state` written as a v116 file: no `object_views` field, and the
     /// fingerprint v116 wrote. Returns where the fingerprint sits.
     fn write_v116(saves_dir: &std::path::Path, state: &SaveState) -> usize {
-        let mut body = bincode::serialize(state).unwrap();
         let views = bincode::serialize(&state.object_views).unwrap();
-        body.truncate(body.len() - views.len());
-        // The v116 body alone is short of a v117 one.
+        write_old(saves_dir, state, MIGRATED_VERSION, views.len())
+    }
+
+    /// `state` written as a v117 file: no system views, and the fingerprint
+    /// v117 wrote. `state` holds no system views.
+    fn write_v117(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert!(state.object_views.alliance_systems.is_empty());
+        assert!(state.object_views.empire_systems.is_empty());
+        let tail = bincode::serialize(&SystemViewsTail::default()).unwrap();
+        write_old(saves_dir, state, V117, tail.len())
+    }
+
+    /// `state` written as a `version` file whose body is `cut` bytes short.
+    fn write_old(saves_dir: &std::path::Path, state: &SaveState, version: u32, cut: usize) -> usize {
+        let mut body = bincode::serialize(state).unwrap();
+        body.truncate(body.len() - cut);
+        // The old body alone is short of a current one.
         assert!(bincode::deserialize::<SaveState>(&body).is_err());
-        let fingerprint = fingerprint_as(state, MIGRATED_VERSION).unwrap();
+        let fingerprint = fingerprint_as(state, version).unwrap();
         let mut bytes = Vec::new();
         bytes.extend_from_slice(SAVE_MAGIC);
-        bytes.extend_from_slice(&MIGRATED_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&version.to_le_bytes());
         bytes.extend_from_slice(&3u32.to_le_bytes());
         bytes.extend_from_slice(b"Old");
         bytes.extend_from_slice(&0u64.to_le_bytes());
@@ -1529,6 +1562,54 @@ mod tests {
             loaded.world.object_views.alliance.len()
         );
         assert_eq!(meta.state_fingerprint, compute_state_fingerprint(&loaded).unwrap());
+    }
+
+    #[test]
+    fn a_v117_save_keeps_its_regiment_views_and_gains_system_views() {
+        // FUN_004f9a60: the Alliance's frozen copy keeps its old strength;
+        // the system it saw in its fog gets a frozen system copy.
+        let saves_dir = tmp_dir("v117_migration");
+        let (mut state, troop) = state_with_imperial_regiment();
+        let system = state.world.systems.keys().next().unwrap();
+        rebellion_core::object_views::seed_from_fog(
+            &mut state.world,
+            &state.troop_transport,
+            &state.movement,
+            [&state.fog_alliance, &state.fog_empire],
+        );
+        state.world.object_views.alliance_systems.clear();
+        state.world.object_views.empire_systems.clear();
+        state.object_views = state.world.object_views.clone();
+        state.world.troops[troop].regiment_strength = 1;
+        write_v117(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v117 save migrates");
+        let views = &loaded.world.object_views;
+        let id = views.regiment_id(troop).unwrap();
+        match views.view(Faction::Alliance, id).unwrap() {
+            rebellion_core::object_views::ObjectView::Regiment(view) => {
+                assert_eq!(view.strength, 4);
+            }
+        }
+        let dat_id = loaded.world.systems[system].dat_id;
+        let copy = views.system(Faction::Alliance, dat_id).expect("the fog's system copy");
+        assert!(!copy.live);
+        assert_eq!(meta.state_fingerprint, compute_state_fingerprint(&loaded).unwrap());
+    }
+
+    #[test]
+    fn the_v117_fingerprint_leaves_out_the_system_views() {
+        let (mut state, _) = state_with_imperial_regiment();
+        let old = fingerprint_as(&state, V117).unwrap();
+        rebellion_core::object_views::seed_systems_from_fog(
+            &mut state.world,
+            &state.movement,
+            [&state.fog_alliance, &state.fog_empire],
+        );
+        state.object_views = state.world.object_views.clone();
+        assert!(!state.object_views.alliance_systems.is_empty());
+        assert_eq!(fingerprint_as(&state, V117).unwrap(), old);
+        assert_ne!(fingerprint_as(&state, SAVE_VERSION).unwrap(), old);
     }
 
     #[test]
