@@ -6454,7 +6454,7 @@
         {
           "id": "OBJ-08-C007",
           "requirement": "available",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
@@ -6462,10 +6462,11 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-build-selection-memory-across-games-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-build-selection-memory-across-games-a0/",
+            ".artifacts/interface-parity/build-selection-2026-11-14T02-41-53-769Z-1426948"
           ],
-          "note": "Only researched classes are listed (FUN_0052e580) and Confirm is enabled when FUN_00538220 accepts the order; exercised by both Linux browser gates, the chrome gate passes since 2026-10-30 and was compared with A0 15-t01; no A0 capture of other classes exists. 2026-11-09: seven more classes (ships, fighters, facilities, defenses) show A0's values in build-selection.mjs; the class list now opens scrolled as A0 build-selection4/08 (the shown class last of two). Confirm's state per class is not asserted. 2026-11-10: A0 build-selection-empire2/13: a new game's first Build reopened on the class confirmed in the game before (DAT_006b289c is a global); the port now keeps the remembered classes across new games and loads (BuildSelectionState::for_next_game, unit test).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Only researched classes are listed (FUN_0052e580) and Confirm is enabled when FUN_00538220 accepts the order; exercised by both Linux browser gates, the chrome gate passes since 2026-10-30 and was compared with A0 15-t01; no A0 capture of other classes exists. 2026-11-09: seven more classes (ships, fighters, facilities, defenses) show A0's values in build-selection.mjs; the class list now opens scrolled as A0 build-selection4/08 (the shown class last of two). Confirm's state per class is not asserted. 2026-11-10: A0 build-selection-empire2/13: a new game's first Build reopened on the class confirmed in the game before (DAT_006b289c is a global); the port now keeps the remembered classes across new games and loads (BuildSelectionState::for_next_game, unit test). 2026-11-14 b211: FUN_00538220/FUN_005385f0 traced in full (ghidra/notes/manufacturing-build-selection.md, 'Confirm's state'). From the window Confirm greys for maintenance (FUN_0052e970; a Mine or Refinery costs none), a facility's energy slot or a mine's raw deposit (FUN_00507750, after FUN_00552210 gives back the band's own queued units' slots; the port counted them and is fixed in e7b2f57f), and a manager with no yard (Build already grey). build-selection.mjs (587014ad) asserts Confirm's state and art per class on both sides: every class at number 1 against its own A0 capture (A0 15-2's Death Star grey from A0's maintenance), every class over maintenance grey as A0 2026-11-13-build-confirm/04 (Mine and Refinery enabled), and fixture BuildSelectionFacilityRoom (facilities enabled at 1 except the Mine, all grey at 2 as A0 /21; ships and troops enabled). Confirm art is exactly 10594 or 11620 in every A0 capture checked.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-08-C008",
@@ -6867,7 +6868,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-fleet-window-left-scroll-bar/README.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-fleet-and-classes/README.md"
           ],
-          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture. 2026-11-10 b175: a ship's six squadrons scroll as in A0 (right list bar, 0 of 1640 pixels differ). 2026-11-11 b180: the left list's bar and kept scroll (see OBJ-06-C010). 2026-11-12: troops, squadrons and Veers aboard Coruscant's Fleet 1 pass against A0 fleet-aboard/00..12 (fleet-window.mjs a0-coruscant); special forces aboard a fleet have no A0.",
+          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture. 2026-11-10 b175: a ship's six squadrons scroll as in A0 (right list bar, 0 of 1640 pixels differ). 2026-11-11 b180: the left list's bar and kept scroll (see OBJ-06-C010). 2026-11-12: troops, squadrons and Veers aboard Coruscant's Fleet 1 pass against A0 fleet-aboard/00..12 (fleet-window.mjs a0-coruscant); special forces aboard a fleet have no A0. 2026-11-14: no special force is available in the A0 Alliance game (none buildable, missions-transfer/90); still no A0 aboard a fleet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6911,15 +6912,16 @@
         {
           "id": "OBJ-10-C010",
           "requirement": "transfer",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-player-troop-dispatch.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-14-missions-transfer/README.md"
           ],
-          "note": "Load/unload/carry of regiments through the Fleet window pass in fleet-window.mjs on Arch Chromium; the 2026-09-10 transfer runs used the older replacement panels. No A0 capture of a transfer.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Load/unload/carry of regiments through the Fleet window pass in fleet-window.mjs on Arch Chromium; the 2026-09-10 transfer runs used the older replacement panels. No A0 capture of a transfer. 2026-11-14 b211: A0 2026-11-14-missions-transfer/70..85 (Drall, Fleet 1): load by drag onto the fleet entry and by menu Move, unload by drag onto the Defenses window, all at once with no message; the fleet's left count goes 1, 2, 1; a full or en-route fleet refuses silently (23..26, 31..34, 51..67). fleet-window.mjs load, drag-load, unload and full pass on Linux; the en-route refusals are covered by troop_transport tests citing A0.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         }
       ]
     },
@@ -7124,7 +7126,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-reconnaissance/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Reconnaissance is a dialog kind (mission_dialog.rs kind_name). recon targeting browser run (headless Chromium 153, mission-flow.py 62). No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs recon (fixture 63) offers Reconnaissance alone, icons 3093/7189 at (70, 86), both sides on Linux; no A0 of the dialog for this kind (specforces/02 shows the kind only in a Missions window).",
+          "note": "Reconnaissance is a dialog kind (mission_dialog.rs kind_name). recon targeting browser run (headless Chromium 153, mission-flow.py 62). No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs recon (fixture 63) offers Reconnaissance alone, icons 3093/7189 at (70, 86), both sides on Linux; no A0 of the dialog for this kind (specforces/02 shows the kind only in a Missions window). 2026-11-14: Reconnaissance is not reachable in the A0 Alliance game: no recon special force exists or can be built (missions-transfer/90); still no A0 of the dialog for this kind.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7171,14 +7173,15 @@
         {
           "id": "OBJ-11-C015",
           "requirement": "Facility Research",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-research-missions/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-research-missions/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-14-missions-transfer/README.md"
           ],
-          "note": "Facility Research is a dialog kind (mission_dialog.rs kind_name). Research-targeting browser run (Chromium 153). No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Facility Research is a dialog kind (mission_dialog.rs kind_name). Research-targeting browser run (Chromium 153). No A0 capture of the dialog for this kind. 2026-11-14 b211: A0 2026-11-14-missions-transfer/12..14 (Tallon on his own Jerijador, a Construction Yard alone): Facility Design Research, Diplomacy, Espionage, GOKRES 3105 at (70,86) exact; mission-dialog.mjs facility-research (fixture 120) matches on both sides on Linux. Ship Design Research on Drall (shipyard alone) lists without the other trees (06..09).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-11-C016",
