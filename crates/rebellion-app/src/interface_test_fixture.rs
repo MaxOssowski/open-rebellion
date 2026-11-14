@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 123;
+const SCENARIO_COUNT: u8 = 126;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -468,6 +468,23 @@ pub enum Scenario {
     /// 171 (`FUN_004f9a60` froze it in hyperspace). The live regiment is
     /// gone from the player's sight.
     EnemyRegimentFrozen = 122,
+    /// OBJ-02-C010, as A0 2026-11-14-stale-views shows Kothlis (an
+    /// Alliance game; the Alliance saw the Empire's Kothlis on day 371 and
+    /// left): `Quadrants` with the second system, the other side's, frozen
+    /// in the player's copies as seen then (07-kothlis-def-d374-montage,
+    /// 07-kothlis-fac-d374-montage): two Stormtrooper and one Army
+    /// regiment, six TIE Fighter squadrons, one shipyard, five refineries
+    /// and five mines; and a fleet made there since, copied with its name
+    /// only (06-kothlis-fleet16-d374-montage). The live system has since
+    /// lost them all.
+    QuadrantsStale = 123,
+    /// `QuadrantsStale` with the debug "see everything" mode on: the
+    /// windows show the live system.
+    QuadrantsStaleSeeEverything = 124,
+    /// `EnemyRegimentFrozen` with the copy at rest on its planet: A0
+    /// 2026-11-14-stale-views/07-kothlis-reg1-status-d375 reads
+    /// "Attached Kothlis, Awaiting Orders" with no ETA.
+    EnemyRegimentAtRest = 125,
 }
 
 impl Scenario {
@@ -596,6 +613,9 @@ impl Scenario {
             120 => Self::FacilityResearchTargeting,
             121 => Self::OwnAssaultRepulsed,
             122 => Self::EnemyRegimentFrozen,
+            123 => Self::QuadrantsStale,
+            124 => Self::QuadrantsStaleSeeEverything,
+            125 => Self::EnemyRegimentAtRest,
             _ => return None,
         })
     }
@@ -1253,7 +1273,10 @@ pub fn apply(
         place_own_assault(world, movement, troop_transport);
     }
     if request.scenario == Scenario::EnemyRegimentFrozen {
-        place_frozen_enemy_regiment(request, world, defenses, cockpit, secondary);
+        place_frozen_enemy_regiment(request, world, defenses, cockpit, secondary, Some(FROZEN_ARRIVAL));
+    }
+    if request.scenario == Scenario::EnemyRegimentAtRest {
+        place_frozen_enemy_regiment(request, world, defenses, cockpit, secondary, None);
     }
     if request.scenario == Scenario::CoruscantSeized {
         place_coruscant_seized(request, world, movement, sectors);
@@ -1317,10 +1340,20 @@ pub fn apply(
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
             | Scenario::QuadrantsFacility
+            | Scenario::QuadrantsStale
+            | Scenario::QuadrantsStaleSeeEverything
     ) {
         place_quadrant_contents(
             request, world, movement, missions, uprisings, sectors, primary,
         );
+    }
+    if matches!(
+        request.scenario,
+        Scenario::QuadrantsStale | Scenario::QuadrantsStaleSeeEverything
+    ) {
+        if let Some(second) = loading_target(world, primary) {
+            place_stale_second(request, world, movement, missions, troop_transport, second);
+        }
     }
     if request.scenario == Scenario::FleetFinder {
         place_finder_fleets(request, world, movement, &system_keys);
@@ -1749,6 +1782,168 @@ fn place_regiment_enroute(
     );
 }
 
+/// The `QuadrantsStale` scenarios' second system: the other side's
+/// Kothlis-like contents (A0 2026-11-14-stale-views/07-kothlis-def-d374-
+/// montage, 07-kothlis-fac-d374-montage) copied frozen into the player's
+/// views (`FUN_004f9a60`), then taken from the live system; and a fleet of
+/// the other side's made there since, copied with its name only
+/// (06-kothlis-fleet16-d374-montage: four empty tabs). In
+/// `QuadrantsStaleSeeEverything` the debug mode is on.
+fn place_stale_second(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &MovementState,
+    missions: &MissionState,
+    troop_transport: &TroopTransportState,
+    second: SystemKey,
+) {
+    use rebellion_core::object_views::{
+        apply, FleetDetail, ObjectView, RegimentView, SystemDetails, SystemExtras, SystemView,
+        ViewPlace, ViewUpdate,
+    };
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let viewer = Faction::of_alliance(player_is_alliance);
+    let other = Faction::of_alliance(!player_is_alliance);
+    let value = &mut world.systems[second];
+    value.control = ControlKind::Controlled(other);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.raw_materials = 6;
+    value.total_energy = 11;
+    value.ground_units.clear();
+    value.fighters.clear();
+    value.special_forces.clear();
+    value.defense_facilities.clear();
+    value.manufacturing_facilities.clear();
+    value.production_facilities.clear();
+    // The other side's regiments: two Stormtrooper and one Imperial Army
+    // (two Alliance Army and one Fleet regiment for the Empire's view).
+    let classes: [u32; 3] = if player_is_alliance {
+        [0x1000_0006, 0x1000_0008, 0x1000_0006]
+    } else {
+        [0x1000_0002, 0x1000_0001, 0x1000_0002]
+    };
+    for class in classes {
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: rebellion_core::ids::DatId::new(class),
+            is_alliance: !player_is_alliance,
+            regiment_strength: 100,
+        });
+        world.systems[second].ground_units.push(troop);
+    }
+    if let Some(fighter) = world
+        .fighter_classes
+        .iter()
+        .find(|(_, class)| class.is_alliance != player_is_alliance)
+        .map(|(key, _)| key)
+    {
+        world.systems[second]
+            .fighters
+            .push(rebellion_core::world::FighterEntry {
+                class: fighter,
+                count: 6,
+                carrier: None,
+            });
+    }
+    let yard = world.manufacturing_facilities.insert(
+        rebellion_core::world::ManufacturingFacilityInstance {
+            class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+            side: other,
+            is_shipyard: true,
+        },
+    );
+    world.systems[second].manufacturing_facilities.push(yard);
+    for (class, is_mine) in [(0x2d00_0002, false), (0x2c00_0001, true)] {
+        for _ in 0..5 {
+            let key = world.production_facilities.insert(
+                rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(class),
+                    side: other,
+                    is_mine,
+                },
+            );
+            world.systems[second].production_facilities.push(key);
+        }
+    }
+    // The player's copies, taken while it saw the system, now frozen.
+    rebellion_core::object_views::number_regiments(world);
+    let id = world.systems[second].dat_id;
+    let copy = SystemView::of(world, &world.systems[second], false);
+    let extras = SystemExtras::of(world, movement, missions, second, false);
+    let details = SystemDetails::of(world, movement, missions, troop_transport, second);
+    let place = ViewPlace::Surface(id);
+    let regiments: Vec<ViewUpdate> = world.systems[second]
+        .ground_units
+        .iter()
+        .filter_map(|&key| {
+            let troop = &world.troops[key];
+            Some(ViewUpdate::Set {
+                side: viewer,
+                id: world.object_views.regiment_id(key)?,
+                view: ObjectView::Regiment(RegimentView {
+                    class: troop.class_dat_id,
+                    is_alliance: troop.is_alliance,
+                    strength: troop.regiment_strength,
+                    place: place.clone(),
+                    arrival: None,
+                    live: false,
+                }),
+            })
+        })
+        .collect();
+    apply(world, &regiments);
+    let views = &mut world.object_views;
+    let (systems, extras_map, details_map) = if player_is_alliance {
+        (&mut views.alliance_systems, &mut views.alliance_extras, &mut views.alliance_details)
+    } else {
+        (&mut views.empire_systems, &mut views.empire_extras, &mut views.empire_details)
+    };
+    systems.insert(id, copy);
+    extras_map.insert(id, extras);
+    details_map.insert(id, details);
+    // The live system has since lost them all.
+    let value = &mut world.systems[second];
+    for key in std::mem::take(&mut value.ground_units) {
+        world.troops.remove(key);
+    }
+    // One refinery stays, so the live system still shows its facility
+    // icon and the debug mode has a page to show.
+    let value = &mut world.systems[second];
+    value.fighters.clear();
+    value.manufacturing_facilities.clear();
+    value.production_facilities.truncate(1);
+    // A fleet made there since: copied with its name only.
+    let made = world.insert_fleet(rebellion_core::world::Fleet {
+        location: second,
+        capital_ships: Vec::new(),
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: !player_is_alliance,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.systems[second].fleets.push(made);
+    let serial = world.fleet_serial(made);
+    let name = world.fleet_name(made).unwrap_or_default().to_owned();
+    let views = &mut world.object_views;
+    let details_map = if player_is_alliance {
+        &mut views.alliance_details
+    } else {
+        &mut views.empire_details
+    };
+    if let Some(details) = details_map.get_mut(&id) {
+        details.fleets.push(FleetDetail {
+            serial,
+            name,
+            is_alliance: !player_is_alliance,
+            ships: Vec::new(),
+            fighters: Vec::new(),
+            troops: Vec::new(),
+            characters: Vec::new(),
+        });
+    }
+    world.object_views.see_everything = request.scenario == Scenario::QuadrantsStaleSeeEverything;
+}
+
 /// The arrival day of the frozen copy in `EnemyRegimentFrozen`: A0
 /// 2026-11-14-quadrants-status-known/18 reads "ETA Destination: Day 171".
 const FROZEN_ARRIVAL: u64 = 171;
@@ -1766,6 +1961,7 @@ fn place_frozen_enemy_regiment(
     defenses: &mut DefensesWindowState,
     cockpit: &CockpitState,
     secondary: SystemKey,
+    arrival: Option<u64>,
 ) {
     use rebellion_core::object_views::{apply, ObjectView, RegimentView, ViewPlace, ViewUpdate};
     let alliance = request.faction == CockpitFaction::Alliance;
@@ -1791,7 +1987,7 @@ fn place_frozen_enemy_regiment(
                 is_alliance: !alliance,
                 strength: 100,
                 place,
-                arrival: Some(FROZEN_ARRIVAL),
+                arrival,
                 live: false,
             }),
         }],
@@ -2288,7 +2484,9 @@ fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(Syste
         Scenario::Quadrants
         | Scenario::QuadrantsNeutralFleet
         | Scenario::QuadrantsFreeTeam
-        | Scenario::QuadrantsFacility => {
+        | Scenario::QuadrantsFacility
+        | Scenario::QuadrantsStale
+        | Scenario::QuadrantsStaleSeeEverything => {
             let primary = world.systems.keys().next()?;
             Some((primary, loading_target(world, primary)?))
         }
@@ -3234,7 +3432,7 @@ pub fn emit_status_rows(
         (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_)))
         | (Scenario::RegimentEnroute, Some(object @ StatusObject::Troop(_)))
         | (
-            Scenario::EnemyRegimentFrozen,
+            Scenario::EnemyRegimentFrozen | Scenario::EnemyRegimentAtRest,
             Some(object @ StatusObject::ViewedTroop { .. }),
         )
         | (
@@ -4998,6 +5196,8 @@ fn object_menu_report<'a>(
                 | Scenario::QuadrantsNeutralFleet
                 | Scenario::QuadrantsFreeTeam
                 | Scenario::QuadrantsFacility
+                | Scenario::QuadrantsStale
+                | Scenario::QuadrantsStaleSeeEverything
                 | Scenario::FleetWindowYavin
                 | Scenario::FleetWindowA0
                 | Scenario::BatteryStatus
@@ -6695,6 +6895,8 @@ fn quadrant_setup(
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
             | Scenario::QuadrantsFacility
+            | Scenario::QuadrantsStale
+            | Scenario::QuadrantsStaleSeeEverything
     ) {
         mark_systems(world, primary)
     } else {
@@ -6802,6 +7004,11 @@ struct QuadrantObservation {
     /// Each open System window's three bands' "Destination: ..." lines
     /// (`manufacturing_window::band`), Ship Construction first.
     system_destinations: Vec<(u32, Vec<String>)>,
+    /// Each open System window's facility pages as the player sees them
+    /// (`manufacturing_window::shown_page_cells`): the facilities listed on
+    /// the shipyard, training, construction, refinery and mine pages, empty
+    /// deposits left out.
+    system_pages: Vec<(u32, [usize; 5])>,
 }
 
 /// The windows and pages the quadrant observation reads.
@@ -6934,6 +7141,39 @@ impl QuadrantWatch {
                 .collect(),
             defenses_windows,
             missions_windows,
+            system_pages: windows
+                .systems
+                .open_windows()
+                .filter_map(|(system, _)| {
+                    use rebellion_render::manufacturing_window::{shown_page_cells, FacilityItem, FacilityPage};
+                    let player = Faction::of_alliance(request.faction == CockpitFaction::Alliance);
+                    let count = |page| {
+                        shown_page_cells(
+                            world,
+                            windows.fog,
+                            player,
+                            windows.production.manufacturing,
+                            windows.production.deliveries,
+                            system,
+                            page,
+                        )
+                        .iter()
+                        .filter(|cell| !matches!(cell.item, FacilityItem::Deposit(_)))
+                        .count()
+                    };
+                    Some((
+                        world.systems.get(system)?.dat_id.raw(),
+                        [
+                            FacilityPage::Shipyards,
+                            FacilityPage::TrainingFacilities,
+                            FacilityPage::ConstructionYards,
+                            FacilityPage::Refineries,
+                            FacilityPage::Mines,
+                        ]
+                        .map(count),
+                    ))
+                })
+                .collect(),
             system_destinations: windows
                 .systems
                 .open_windows()
@@ -12885,6 +13125,56 @@ mod tests {
         let recon =
             apply_to_fleet_world(request(Scenario::ReconTargeting, CockpitFaction::Alliance));
         assert!(recon.transport.transits().is_empty());
+    }
+
+    // A0 2026-11-14-stale-views (07-kothlis-def-d374-montage
+    // 66b9306bfc519f1a, 07-kothlis-fac-d374-montage 3cd77ca5110e162a,
+    // 06-kothlis-fleet16-d374-montage 955559b56955015b): the player's
+    // frozen copy of the other side's system keeps its regiments,
+    // squadrons and facilities after the live system lost them, and a
+    // fleet made since is copied with its name only (FUN_004f9a60,
+    // FUN_0053f760). The fixture's start does not refresh it.
+    #[test]
+    fn the_stale_scenario_freezes_the_second_systems_copy_as_seen() {
+        for (faction, alliance) in [(CockpitFaction::Alliance, true), (CockpitFaction::Empire, false)] {
+            let mut applied = apply_quadrants_as(Scenario::QuadrantsStale, faction);
+            let primary = applied.world.systems.keys().next().unwrap();
+            let second = loading_target(&applied.world, primary).unwrap();
+            let viewer = Faction::of_alliance(alliance);
+            // main.rs seeds from the player's fog after the fixture.
+            let mut fog_alliance = FogState::new(Faction::Alliance);
+            let mut fog_empire = FogState::new(Faction::Empire);
+            rebellion_core::fog::FogSystem::seed(&mut fog_alliance, &applied.world);
+            rebellion_core::fog::FogSystem::seed(&mut fog_empire, &applied.world);
+            assert!(!applied.world.systems[second]
+                .control
+                .is_controlled_by(viewer));
+            let movement = MovementState::new();
+            rebellion_core::object_views::seed_from_fog(
+                &mut applied.world,
+                &applied.transport,
+                &movement,
+                [&fog_alliance, &fog_empire],
+            );
+            let world = &applied.world;
+            let id = world.systems[second].dat_id;
+            let views = &world.object_views;
+            let copy = views.system(viewer, id).unwrap();
+            assert!(!copy.live);
+            assert_eq!(copy.manufacturing_facilities.len(), 1);
+            assert_eq!(copy.production_facilities.len(), 10);
+            assert_eq!(world.systems[second].production_facilities.len(), 1);
+            let regiments = rebellion_render::viewed_contents::viewed_surface_regiments(world, viewer, second);
+            assert_eq!(regiments.len(), 3);
+            assert!(world.systems[second].ground_units.is_empty());
+            let details = views.system_details(viewer, id).unwrap();
+            let last = details.fleets.last().unwrap();
+            assert_eq!(last.is_alliance, !alliance);
+            assert!(last.ships.is_empty() && last.fighters.is_empty());
+            assert!(!views.see_everything);
+            let seeing = apply_quadrants_as(Scenario::QuadrantsStaleSeeEverything, faction);
+            assert!(seeing.world.object_views.see_everything);
+        }
     }
 
     // A0 2026-11-14-quadrants-status-known/18 (6a1269a1765f7c9b): the

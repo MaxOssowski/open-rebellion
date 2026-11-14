@@ -43,6 +43,15 @@ const QUADRANTS_FREE_TEAM = 118;
 // QuadrantsFacility: as QUADRANTS with a shipyard of the player's at the
 // primary, so its facility icon has managers (Destination enabled).
 const QUADRANTS_FACILITY = 119;
+// QuadrantsStale (Scenario 123): as QUADRANTS with the second system, the
+// other side's, frozen in the player's copies as A0
+// 2026-11-14-stale-views shows Kothlis (OBJ-02-C010): two Stormtrooper and
+// one Army regiment, six squadrons, one shipyard, five refineries and five
+// mines, all but one refinery since gone from the live system.
+// QuadrantsStaleSeeEverything (124): the same with the debug "see
+// everything" mode on.
+const QUADRANTS_STALE = 124;
+const QUADRANTS_STALE_SEE_EVERYTHING = 125;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
@@ -724,6 +733,57 @@ function ownPlanet(setup) {
 }
 
 const cases = [
+  {
+    name: "stale-defenses",
+    scenario: QUADRANTS_STALE,
+    // The Defenses window reads the player's frozen copy (FUN_004f2d10,
+    // FUN_004f9a60): A0 2026-11-14-stale-views/07-kothlis-def-d374-montage
+    // (sha256 66b9306bfc519f1a) lists two Stormtrooper and one Army
+    // regiment and six TIE Fighter squadrons, no shield and no battery, on
+    // day 374, three days after the Alliance last saw Kothlis.
+    async run(page, faction, setup) {
+      const { window } = await openDefenses(page, setup, "second");
+      assert.equal(window.side, faction.other, JSON.stringify(window));
+      const [, regiments, squadrons, shields, batteries] = window.counts;
+      assert.deepEqual([regiments, shields, batteries], [3, 0, 0], JSON.stringify(window));
+      assert.ok(squadrons === 6 || squadrons === 0, JSON.stringify(window));
+      return { counts: window.counts };
+    },
+  },
+  {
+    name: "stale-facilities",
+    scenario: QUADRANTS_STALE,
+    // The System window's facility pages from the copy: A0
+    // 2026-11-14-stale-views/07-kothlis-fac-d374-montage (sha256
+    // 3cd77ca5110e162a): one shipyard, five refineries, five mines.
+    async run(page, faction, setup) {
+      const [left, top] = quadrant(setup, "second", "system");
+      await doubleClick(page, { x: Math.round(left) + 4, y: Math.round(top) + 9 });
+      const opened = await until(page, "the second system's icon opens its System window",
+        (o, dat) => (o.system_pages || []).some(([system]) => system === dat), setup.second_dat_id);
+      const [, pages] = opened.system_pages.find(([system]) => system === setup.second_dat_id);
+      assert.deepEqual(pages, [1, 0, 0, 5, 5], JSON.stringify(opened.system_pages));
+      return { pages };
+    },
+  },
+  {
+    name: "stale-see-everything",
+    scenario: QUADRANTS_STALE_SEE_EVERYTHING,
+    // port: the debug mode shows the live system, which has lost all but
+    // one refinery.
+    async run(page, faction, setup) {
+      const [left, top] = quadrant(setup, "second", "system");
+      await doubleClick(page, { x: Math.round(left) + 4, y: Math.round(top) + 9 });
+      const opened = await until(page, "the second system's icon opens its System window",
+        (o, dat) => (o.system_pages || []).some(([system]) => system === dat), setup.second_dat_id);
+      const [, pages] = opened.system_pages.find(([system]) => system === setup.second_dat_id);
+      assert.deepEqual(pages, [0, 0, 0, 1, 0], JSON.stringify(opened.system_pages));
+      const { window } = await openDefenses(page, setup, "second");
+      const [, regiments, squadrons, shields, batteries] = window.counts;
+      assert.deepEqual([regiments, squadrons, shields, batteries], [0, 0, 0, 0], JSON.stringify(window));
+      return { counts: window.counts, pages };
+    },
+  },
   {
     name: "icons",
     // FUN_0045d140 draws each enabled overlay with FUN_0045ca80's art for

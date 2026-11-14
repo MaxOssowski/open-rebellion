@@ -67,6 +67,8 @@ const REGIMENT_ENROUTE = 105;
 // Army Regiment, en route until day 171 (OBJ-02-C010).
 const ENEMY_REGIMENT_FROZEN = 123;
 const knownA0 = "../2026-11-14-quadrants-status-known";
+// 126 EnemyRegimentAtRest: the same copy at rest on its planet.
+const ENEMY_REGIMENT_AT_REST = 126;
 const regimentA0 = "../2026-11-11-regiment-en-route";
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
@@ -621,6 +623,22 @@ const cases = [
       ["Attack Strength:"], ["Defense Strength:"], ["Bombardment Value:"], ["Detection Value:"]],
     // The Imperial (Alliance) Army Regiment's own GOKRES en route mark.
     marks: { alliance: [["Strategy", 11514], ["Gokres", 5250]], empire: [["Strategy", 11514], ["Gokres", 5185]] },
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
+  // The other side's regiment frozen at rest (OBJ-02-C010): A0
+  // 2026-11-14-stale-views/07-kothlis-reg1-status-d375 (sha256 prefix
+  // 81dcfe9038dde195; an Alliance game, day 375): "Attached Kothlis,
+  // Awaiting Orders", no ETA row, the Empire's background. Rows and marks
+  // as data; the background against STRATEGY.
+  {
+    name: "enemy-regiment-at-rest",
+    code: ENEMY_REGIMENT_AT_REST,
+    family: "ViewedTroop",
+    otherSide: true,
+    rows: [["Attached: "], ["Status:", "Awaiting Orders"], ["Maintenance Cost:"], ["Attack Strength:"],
+      ["Defense Strength:"], ["Bombardment Value:"], ["Detection Value:"]],
+    marks: [["Strategy", 11514]],
     a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },

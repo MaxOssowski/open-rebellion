@@ -9469,4 +9469,50 @@ pub(crate) mod tests {
         )
         .is_empty());
     }
+
+    #[test]
+    fn a_fleet_copied_with_its_name_only_opens_four_empty_tabs() {
+        // A0 2026-11-14-stale-views/06-kothlis-fleet16-d374-montage (sha256
+        // prefix 955559b56955015b): Imperial Fleet 16, made in Kothlis after
+        // the Alliance last saw it, lists with all four tabs empty
+        // (FUN_0053f760's frozen copy; its ships never sync).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let id = world.systems[system].dat_id;
+        world.object_views.alliance_systems.insert(
+            id,
+            rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false),
+        );
+        world.object_views.alliance_extras.insert(id, Default::default());
+        world.object_views.alliance_details.insert(
+            id,
+            rebellion_core::object_views::SystemDetails {
+                fleets: vec![rebellion_core::object_views::FleetDetail {
+                    serial: 16,
+                    name: "Fleet 16".into(),
+                    is_alliance: false,
+                    ships: Vec::new(),
+                    fighters: Vec::new(),
+                    troops: Vec::new(),
+                    characters: Vec::new(),
+                }],
+                missions: Vec::new(),
+                last_serial: 15,
+            },
+        );
+        let unseen = FogState::new(Faction::Alliance);
+        let transport = TroopTransportState::default();
+        let [copied] = copy_entries(&world, &unseen, Faction::Alliance, system)[..] else {
+            panic!("one copy");
+        };
+        assert_eq!(copied.copy(&world).unwrap().name, "Fleet 16");
+        for tab in [
+            FleetWindowTab::CapitalShips,
+            FleetWindowTab::Fighters,
+            FleetWindowTab::Troops,
+            FleetWindowTab::Personnel,
+        ] {
+            assert!(right_items(&world, &transport, &[], Some(copied), tab).is_empty());
+            assert!(!tab_enabled(&world, &transport, &[], Some(copied), tab));
+        }
+    }
 }
