@@ -17,6 +17,13 @@
 // FUN_00609650 finds (FUN_00464c20, 0x408): "Q", which no row begins,
 // chooses the first row; "Y" and "Ya" keep it, and nothing scrolls.
 //
+// Last, for the Alliance, the PersonnelCopied fixture (code 127): the
+// Imperial tab lists the player's copies of two Imperial characters, one
+// aboard a ship of a fleet only its frozen copy of a system holds, "Name -
+// <ship> N", the other in no place, "Name - Location Unknown"
+// (FUN_00465bb0, 0x1895; A0 2026-11-14-stale-views second run,
+// 1x-personnelfinder-empire-d85 d57ed845 and d91 1b8818d8).
+//
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node personnel-states.mjs [--out=DIR] [--faction=alliance|empire]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
@@ -41,6 +48,8 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 const PERSONNEL_STATES = 93;
 // 113 SpecForcesYavin.
 const SPECFORCES_YAVIN = 114;
+// 126 PersonnelCopied.
+const PERSONNEL_COPIED = 127;
 const FACTIONS = [
   { name: "alliance", byte: 1, encyclopedia: [62, 52] },
   { name: "empire", byte: 2, encyclopedia: [125, 52] },
@@ -624,6 +633,54 @@ async function runSpecForces(browser, base) {
   }
 }
 
+async function runCopied(browser, base) {
+  const directory = path.join(OUT, "alliance-copied");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  const steps = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  try {
+    const code = PERSONNEL_COPIED | (1 << 8);
+    await page.goto(`${base}?fixture-code=${code}`);
+    const deadline = Date.now() + 30_000;
+    while ((await ready(page))?.status !== "ready") {
+      if (Date.now() > deadline) throw new Error("the PersonnelCopied fixture never reported");
+      await page.waitForTimeout(100);
+    }
+    await frames(page, 6);
+    await page.locator("#glcanvas").focus();
+    await page.keyboard.press("F5");
+    const own = await until(page, "F5 opens the Personnel Finder", (o) => o.tab === "alliance");
+    await click(page, own.tabs[1]);
+    await page.mouse.move(2, 2);
+    const imperial = await until(page, "the Imperial tab shows", (o) => o.tab === "imperial");
+    await frames(page, 3);
+    const bytes = await page.screenshot({ path: path.join(directory, "imperial-copies.png") });
+    steps.push({ label: "imperial-copies", rows: imperial.rows,
+      sha256: createHash("sha256").update(bytes).digest("hex") });
+    assert.equal(imperial.rows.length, 2, JSON.stringify(imperial.rows));
+    const lost = imperial.rows.filter((row) => / - Location Unknown$/.test(row));
+    const aboard = imperial.rows.filter((row) => !/ - Location Unknown$/.test(row));
+    assert.equal(lost.length, 1, JSON.stringify(imperial.rows));
+    // The copied ship's name, numbered by its class, with no state word
+    // and not the fleet's name.
+    assert.match(aboard[0], /^[A-Za-z][A-Za-z' -]* - [A-Za-z][A-Za-z -]* \d+$/, aboard[0]);
+    assert.ok(!/ - Fleet \d+$/.test(aboard[0]), aboard[0]);
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "alliance-copied", status: "pass", steps };
+  } catch (error) {
+    await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
+    return { faction: "alliance-copied", status: "fail", error: String(error.stack || error), steps, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -634,10 +691,13 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  if (args.only !== "specforces") {
+  if (args.only !== "specforces" && args.only !== "copied") {
     for (const faction of FACTIONS) results.push(await run(browser, base, faction));
   }
-  if (!args.faction || args.faction === "alliance") results.push(await runSpecForces(browser, base));
+  if (args.only !== "copied" && (!args.faction || args.faction === "alliance")) {
+    results.push(await runSpecForces(browser, base));
+  }
+  if (!args.faction || args.faction === "alliance") results.push(await runCopied(browser, base));
 } finally {
   await browser.close();
   server.close();

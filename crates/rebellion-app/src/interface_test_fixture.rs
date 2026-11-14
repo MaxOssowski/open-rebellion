@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 126;
+const SCENARIO_COUNT: u8 = 127;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -485,6 +485,15 @@ pub enum Scenario {
     /// 2026-11-14-stale-views/07-kothlis-reg1-status-d375 reads
     /// "Attached Kothlis, Awaiting Orders" with no ETA.
     EnemyRegimentAtRest = 125,
+    /// The Personnel Finder's copied characters, as A0
+    /// 2026-11-14-stale-views (second run) shows them on the Alliance's
+    /// Imperial tab: one of the other side's characters aboard a ship of a
+    /// fleet only the player's frozen copy of a system holds reads "Name -
+    /// <ship>" (1x-personnelfinder-empire-d85, sha256 d57ed845); another,
+    /// whose copy a live rebuild left in no place, "Name - Location
+    /// Unknown" (d91 1b8818d8). The live objects are out of the player's
+    /// sight.
+    PersonnelCopied = 126,
 }
 
 impl Scenario {
@@ -616,6 +625,7 @@ impl Scenario {
             123 => Self::QuadrantsStale,
             124 => Self::QuadrantsStaleSeeEverything,
             125 => Self::EnemyRegimentAtRest,
+            126 => Self::PersonnelCopied,
             _ => return None,
         })
     }
@@ -1511,6 +1521,9 @@ pub fn apply(
                 rebellion_core::character_command::CommandKind::General;
         }
     }
+    if request.scenario == Scenario::PersonnelCopied {
+        place_copied_characters(request, world, movement, missions, troop_transport, primary);
+    }
     if request.scenario == Scenario::BatteryStatus {
         let class_dat_id = rebellion_core::ids::DatId::new(0x2200_0001);
         let battery = world.defense_facilities.insert(rebellion_core::world::DefenseFacilityInstance {
@@ -1947,6 +1960,113 @@ fn place_stale_second(
         });
     }
     world.object_views.see_everything = request.scenario == Scenario::QuadrantsStaleSeeEverything;
+}
+
+/// The `PersonnelCopied` scenario: a system other than `primary` with no
+/// fleet of the player's becomes the other side's, with a new fleet of the
+/// other side's first capital ship class carrying its first recruited
+/// character. The player's side takes its copies of that system there
+/// (`SystemView`, `SystemExtras`, `SystemDetails`, `CharacterCopy`),
+/// frozen; its second recruited character takes a copy in no place
+/// ("Location Unknown"), standing on the same system.
+fn place_copied_characters(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &MovementState,
+    missions: &MissionState,
+    troop_transport: &TroopTransportState,
+    primary: SystemKey,
+) {
+    use rebellion_core::object_views::{
+        character_copies, CharacterCopy, SystemDetails, SystemExtras, SystemView,
+    };
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let viewer = Faction::of_alliance(alliance);
+    let other = Faction::of_alliance(!alliance);
+    let Some(at) = world.systems.keys().find(|&key| {
+        key != primary
+            && !world.systems[key].control.is_controlled_by(viewer)
+            && !world
+                .fleets
+                .values()
+                .any(|fleet| fleet.location == key && fleet.is_alliance == alliance)
+    }) else {
+        return;
+    };
+    let mut characters = world
+        .characters
+        .iter()
+        .filter(|(_, value)| value.is_alliance != alliance && value.recruited && !value.is_killed)
+        .map(|(key, _)| key);
+    let (Some(aboard), Some(lost)) = (characters.next(), characters.next()) else {
+        return;
+    };
+    let Some(class) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, value)| value.is_alliance != alliance && !value.is_death_star())
+        .map(|(key, value)| (key, i32::try_from(value.hull).unwrap_or(i32::MAX)))
+    else {
+        return;
+    };
+    world.systems[at].control = ControlKind::Controlled(other);
+    for key in [aboard, lost] {
+        let character = &mut world.characters[key];
+        character.current_system = None;
+        character.current_fleet = None;
+        character.current_abode = None;
+        character.ship = None;
+        character.on_mission = false;
+        character.is_captive = false;
+        character.injury = 0;
+        character.command = rebellion_core::character_command::CommandKind::None;
+        for fleet in world.fleets.values_mut() {
+            fleet.characters.retain(|&seated| seated != key);
+        }
+    }
+    let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+        location: at,
+        capital_ships: vec![rebellion_core::world::ShipInstance::new(
+            class.0, class.1, !alliance,
+        )],
+        fighters: Vec::new(),
+        characters: vec![aboard],
+        is_alliance: !alliance,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.systems[at].fleets.push(fleet);
+    world.characters[aboard].current_fleet = Some(fleet);
+    world.number_ships();
+    // The player's copies, taken while it saw the system, now frozen.
+    let id = world.systems[at].dat_id;
+    let copy = SystemView::of(world, &world.systems[at], false);
+    let extras = SystemExtras::of(world, movement, missions, at, false);
+    let details = SystemDetails::of(world, movement, missions, troop_transport, at);
+    let copied = character_copies(world, movement, viewer, at);
+    let lost_id = world.characters[lost].dat_id;
+    world.characters[lost].current_system = Some(at);
+    let views = &mut world.object_views;
+    let (systems, extras_map, details_map, characters_map) = if alliance {
+        (
+            &mut views.alliance_systems,
+            &mut views.alliance_extras,
+            &mut views.alliance_details,
+            &mut views.alliance_characters,
+        )
+    } else {
+        (
+            &mut views.empire_systems,
+            &mut views.empire_extras,
+            &mut views.empire_details,
+            &mut views.empire_characters,
+        )
+    };
+    systems.insert(id, copy);
+    extras_map.insert(id, extras);
+    details_map.insert(id, details);
+    characters_map.extend(copied);
+    characters_map.insert(lost_id, CharacterCopy::default());
 }
 
 /// The arrival day of the frozen copy in `EnemyRegimentFrozen`: A0
@@ -3342,7 +3462,10 @@ pub fn emit_personnel_finder(
         emit_finder_list(request, world, fog, finder);
         return;
     }
-    if request.scenario != Scenario::PersonnelStates {
+    if !matches!(
+        request.scenario,
+        Scenario::PersonnelStates | Scenario::PersonnelCopied
+    ) {
         return;
     }
     let Some(rows) = finder.shown_character_rows(world, fog) else {
@@ -13427,6 +13550,61 @@ mod tests {
         finder.open(CockpitFaction::Alliance);
         let texts = finder.shown_character_rows(world, &fog).unwrap();
         assert!(texts.iter().any(|text| text == "Six - Killed"), "{texts:?}");
+    }
+
+    // A0 2026-11-14-stale-views second run: the Alliance's Imperial tab
+    // reads "Darth Vader - Imperial Star Destroyer 3" while its copy of
+    // Yaga Minor is frozen (1x-personnelfinder-empire-d85, d57ed845), and
+    // "Darth Vader - Location Unknown" once the copy went live without him
+    // (d91, 1b8818d8); FUN_00465bb0 keeps 0x1895 for a copy in no ship or
+    // system.
+    #[test]
+    fn the_personnel_copied_scenario_lists_a_copied_ship_and_a_lost_copy() {
+        let applied = apply_to_loading_world_with(
+            request(Scenario::PersonnelCopied, CockpitFaction::Alliance),
+            |world| {
+                let here = world.systems.keys().next().unwrap();
+                for (id, name) in [(0x3000_0101, "Darth Vader"), (0x3000_0102, "Piett")] {
+                    world.characters.insert(rebellion_core::world::Character {
+                        dat_id: rebellion_core::ids::DatId::new(id),
+                        name: name.into(),
+                        is_empire: true,
+                        recruited: true,
+                        current_system: Some(here),
+                        ..Default::default()
+                    });
+                }
+                for class in world.capital_ship_classes.values_mut() {
+                    if !class.is_alliance {
+                        class.name = "Imperial Star Destroyer".into();
+                    }
+                }
+            },
+        );
+        let world = &applied.world;
+        let fog = rebellion_core::fog::FogState::new(Faction::Alliance);
+        let rows = rebellion_render::personnel_finder::character_rows(
+            world,
+            &fog,
+            Faction::Alliance,
+            rebellion_render::personnel_finder::PersonnelTab::Imperial,
+        );
+        let texts: Vec<_> = rows
+            .iter()
+            .map(|row| match row {
+                rebellion_render::personnel_finder::PersonnelFinderRow::Character {
+                    name, ..
+                } => name.as_str(),
+                rebellion_render::personnel_finder::PersonnelFinderRow::SpecForces { .. } => "",
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "Darth Vader - Imperial Star Destroyer 1",
+                "Piett - Location Unknown"
+            ]
+        );
     }
 
     #[test]
