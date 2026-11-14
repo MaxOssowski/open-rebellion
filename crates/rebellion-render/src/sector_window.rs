@@ -1239,8 +1239,17 @@ fn draw_sector_window(
             }
             // FUN_004593e0 case 0x202: the window holds the capture, so the
             // release ends the drag wherever it lands; it drops only past
-            // four pixels from the press in x or y.
-            if let (true, Some(from)) = (primary_released, window.drag_from) {
+            // four pixels from the press in x or y. A press whose release
+            // came in the same frame (both messages of a quick click
+            // between two slow frames) is ended by that release: no drag
+            // outlives the button (case 0x202's ReleaseCapture).
+            let held_from = window
+                .drag_from
+                .or(result.drag_from.filter(|_| !primary_down));
+            if let (true, Some(from)) = (primary_released, held_from) {
+                if !primary_down {
+                    result.drag_from = None;
+                }
                 result.drag_end = Some(pointer.and_then(|point| {
                     let to = screen_to_logical(layout, point);
                     ((to.0 - from.0).abs() > 4 || (to.1 - from.1).abs() > 4)
@@ -2939,6 +2948,34 @@ mod tests {
         drags: &[Drag],
         modifiers: egui::Modifiers,
     ) -> Vec<SectorWindowAction> {
+        let frames = drags.iter().flat_map(|&(from, to)| {
+            [
+                vec![Step::Move(from)],
+                vec![Step::Press(from)],
+                vec![Step::Move(to)],
+                vec![Step::Release(to)],
+                vec![],
+            ]
+        });
+        steps_at(world, system, frames, modifiers)
+    }
+
+    /// One pointer event of a frame, at a canvas point.
+    #[derive(Clone, Copy)]
+    enum Step {
+        Move((f32, f32)),
+        Press((f32, f32)),
+        Release((f32, f32)),
+    }
+
+    /// One frame per entry of `frames`, each with its steps in order, in
+    /// one window state.
+    fn steps_at(
+        world: &GameWorld,
+        system: SystemKey,
+        frames: impl IntoIterator<Item = Vec<Step>>,
+        modifiers: egui::Modifiers,
+    ) -> Vec<SectorWindowAction> {
         let layout = layout(1.0);
         let mut state = SectorWindowState::default();
         state.open_for_system(world, system, CockpitFaction::Alliance);
@@ -2956,14 +2993,15 @@ mod tests {
             pressed,
             modifiers,
         };
-        let frames = drags.iter().flat_map(|&(from, to)| {
-            [
-                vec![egui::Event::PointerMoved(at(from))],
-                vec![button(at(from), true)],
-                vec![egui::Event::PointerMoved(at(to))],
-                vec![button(at(to), false)],
-                vec![],
-            ]
+        let frames = frames.into_iter().map(|steps| {
+            steps
+                .into_iter()
+                .map(|step| match step {
+                    Step::Move(point) => egui::Event::PointerMoved(at(point)),
+                    Step::Press(point) => button(at(point), true),
+                    Step::Release(point) => button(at(point), false),
+                })
+                .collect::<Vec<_>>()
         });
         let mut actions = Vec::new();
         for (index, events) in frames.into_iter().enumerate() {
@@ -3213,6 +3251,34 @@ mod tests {
             painted.contains(&(HEADQUARTERS_MARK, rect.min)),
             "{painted:?}"
         );
+    }
+
+    #[test]
+    fn a_click_pressed_and_released_in_one_frame_leaves_no_drag_for_the_next_release() {
+        // FUN_004593e0: case 0x201 takes the capture and keeps the press;
+        // case 0x202 always ends the drag (ReleaseCapture, +0x148 = 0).
+        // Both messages of a quick click can reach the port in one slow
+        // frame (a double click on the fleet icon); the next press and
+        // release elsewhere is a click of its own, no drop of the icon.
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let icon = (115.0, 90.0);
+        let elsewhere = (200.0, 250.0);
+        let actions = steps_at(
+            &world,
+            system,
+            [
+                vec![Step::Move(icon)],
+                vec![Step::Press(icon), Step::Release(icon)],
+                vec![],
+                vec![Step::Move(elsewhere)],
+                vec![Step::Press(elsewhere)],
+                vec![Step::Release(elsewhere)],
+                vec![],
+            ],
+            egui::Modifiers::NONE,
+        );
+        assert!(drops(&actions).is_empty(), "{:?}", drops(&actions));
     }
 
     #[test]
