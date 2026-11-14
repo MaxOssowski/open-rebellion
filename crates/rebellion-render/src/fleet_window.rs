@@ -211,10 +211,7 @@ pub(crate) fn ship_cargo(
             }
         })
         .collect::<Vec<_>>();
-    let first = value
-        .capital_ships
-        .iter()
-        .position(|ship| ship.id != 0 && ship.alive);
+    let first = first_seat(world, fleet);
     for &key in &value.characters {
         let seat = world
             .characters
@@ -301,11 +298,7 @@ pub(crate) fn ship_load(
             cargo[index].incoming_squadrons.push(ordinal);
         }
     }
-    let first = value
-        .capital_ships
-        .iter()
-        .position(|ship| ship.id != 0 && ship.alive);
-    if let Some(each) = first.and_then(|index| cargo.get_mut(index)) {
+    if let Some(each) = first_seat(world, fleet).and_then(|index| cargo.get_mut(index)) {
         for member in bound_members(world, arrivals, fleet) {
             match member {
                 MissionMember::Character(key) => each.characters.push(key),
@@ -314,6 +307,45 @@ pub(crate) fn ship_load(
         }
     }
     cargo
+}
+
+/// The first living numbered capital ship of `fleet`, by index: where the
+/// port seats a character with no seat, a special force, and a member on
+/// its way in ([`ship_cargo`], [`ship_load`]).
+pub(crate) fn first_seat(world: &GameWorld, fleet: FleetKey) -> Option<usize> {
+    world
+        .fleets
+        .get(fleet)?
+        .capital_ships
+        .iter()
+        .position(|ship| ship.id != 0 && ship.alive)
+}
+
+/// A unit's container aboard `fleet` as a Status window names it: the
+/// ship at `seat`. `FUN_0044a2e0` writes the container's name
+/// (`FUN_004f62d0`), and a unit in a fleet is a capital ship's child, never
+/// the fleet's (A0 2026-11-14-missions-transfer/36 "Medium Transport 1",
+/// 2026-11-14-quadrants-status-known/21, 22, 32, 33 "Alliance Escort
+/// Carrier 1" and "3"). port: a unit the port seats on no ship (one past
+/// the room, or in a fleet whose ships are not yet numbered) names the
+/// fleet's first living ship, and a fleet with none its own name.
+pub(crate) fn aboard_label(
+    world: &GameWorld,
+    fleet: FleetKey,
+    seat: Option<usize>,
+) -> Option<String> {
+    let first_living = || {
+        world
+            .fleets
+            .get(fleet)?
+            .capital_ships
+            .iter()
+            .position(|ship| ship.alive)
+    };
+    seat.or_else(first_living)
+        .and_then(|index| world.ship_name(fleet, index))
+        .map(str::to_owned)
+        .or_else(|| fleet_label(world, fleet))
 }
 
 /// Paint `flags`' content indicators into `item` at height `y`.
@@ -4973,6 +5005,51 @@ pub(crate) mod tests {
             ship,
             FleetWindowTab::CapitalShips
         ));
+    }
+
+    #[test]
+    fn a_unit_seated_on_no_ship_names_the_first_living_ship_else_the_fleet() {
+        // port: aboard_label's fallback (FUN_0044a2e0 always names a ship,
+        // A0 2026-11-14-quadrants-status-known/21, 32).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let second = world.fleets[fleet].capital_ships[0].clone();
+        world.fleets[fleet].capital_ships.push(second);
+        world.fleets[fleet].capital_ships[0].alive = false;
+        world.fleets[fleet].capital_ships[1].name = Some("Second".into());
+        assert_eq!(aboard_label(&world, fleet, None).as_deref(), Some("Second"));
+        world.fleets[fleet].capital_ships[1].alive = false;
+        assert_eq!(aboard_label(&world, fleet, None), fleet_label(&world, fleet));
+    }
+
+    #[test]
+    fn the_fleets_left_count_follows_a_regiment_boarding_and_leaving() {
+        // FUN_004a5c00 prints the regiments aboard (+0x240) at the panel's
+        // left and the capacity (+0x270) at its right. A0
+        // 2026-11-14-missions-transfer/70, 74, 78 (Fleet 1 at Drall,
+        // capacity 2): 1 -> 2 as an Army Regiment boards, 2 -> 1 as it
+        // leaves; the right count stays 2.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 2);
+        let fleet_regiment = add_troop(&mut world, system);
+        let army = add_troop(&mut world, system);
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, fleet, &[fleet_regiment]).unwrap();
+        let counts = |world: &GameWorld, transport: &TroopTransportState| {
+            tab_counts(
+                world,
+                transport,
+                Some(FleetWindowEntry::Fleet(fleet)),
+                FleetWindowTab::Troops,
+            )
+        };
+        assert_eq!(counts(&world, &transport), Some((1, 2)));
+
+        transport.embark(&mut world, fleet, &[army]).unwrap();
+        assert_eq!(counts(&world, &transport), Some((2, 2)));
+
+        transport.disembark_selected(&mut world, fleet, system, &[army]).unwrap();
+        assert_eq!(counts(&world, &transport), Some((1, 2)));
     }
 
     #[test]

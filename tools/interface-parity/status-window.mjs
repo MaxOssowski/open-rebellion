@@ -319,6 +319,8 @@ const point = ([x, y]) => ({ x: Math.round(x), y: Math.round(y) });
 // from the Fleet window: the Fighters and Troops counters and the
 // Personnel list's characters, or all its members for the fleet.
 let fleetShipEmbarked = null;
+// fleet-character-en-route's fleet's first capital ship, from its list.
+let fleetFirstShip = null;
 
 // The fixture's special force on its way in (SPECFCSD class 2 or 7).
 const isSpecialForce = (item) => /Infiltrators|Commandos/.test(item);
@@ -706,20 +708,24 @@ const cases = [
   },
   // A character on its way into the fleet (the fixture's Move onto it,
   // FUN_00556390 into the target container +0x74): the Personnel tab lists
-  // it, and its Status (FUN_004486f0) names the fleet under Attached, then
-  // Enroute and the ETA (FUN_004fd2b0). No A0 capture.
+  // it, and its Status (FUN_004486f0) names the ship it boards under
+  // Attached, the fleet's first (FUN_00552300, FUN_0044a2e0), then Enroute
+  // and the ETA (FUN_004fd2b0). A0 2026-11-14-quadrants-status-known/32:
+  // Chewbacca on his way into Fleet 7 reads "Alliance Escort Carrier 1".
   {
     name: "fleet-character-en-route",
     code: FLEET_ARRIVALS,
     family: "Character",
-    rows: [["Commanding:"], ["Attached: ", "Fleet 1"], ["Status:", "Enroute"], ["ETA Destination:", "Day 99"],
+    rows: [["Commanding:"], ["Attached: ", () => fleetFirstShip], ["Status:", "Enroute"], ["ETA Destination:", "Day 99"],
       ["Force Ranking:"], ["Diplomacy Rating:"], ["Espionage Rating:"], ["Combat Rating:"], ["Leadership Rating:"],
       ["R&D Capabilities"], [" Ship Design"], [" Troop Training"], [" Facility Design"], ["Possible Command Ranks"],
       ["Admiral:"], ["General:"], ["Commander:"]],
     target: async (page) => {
       const opened = await openFleetWindow(page);
       await click(page, point(opened.fleet_entry));
-      const fleet = await fleetLoad(page, (o) => o.selected === "fleet" && o.troops_tab);
+      const fleet = await fleetLoad(page, (o) => o.selected === "fleet" && o.tab === "CapitalShips"
+        && o.items.length > 0 && o.troops_tab);
+      fleetFirstShip = fleet.items[0];
       await click(page, { x: Math.round(fleet.troops_tab[0] + 32), y: Math.round(fleet.troops_tab[1]) });
       const personnel = await fleetLoad(page, (o) => o.tab === "Personnel" && o.items.length > 0 && o.first_item);
       // The character, then the special force on the same Move.
@@ -1015,7 +1021,8 @@ async function inspect(server, source, faction, testCase, executable) {
       statusRows = (await page.evaluate(() => window.__openRebellionInterfaceStatusRows)).rows;
       assert.deepEqual(statusRows.map(([label]) => label), testCase.rows.map(([label]) => label), JSON.stringify(statusRows));
       testCase.rows.forEach(([, value], k) => {
-        if (value !== undefined) assert.equal(statusRows[k][1], value, JSON.stringify(statusRows));
+        const expected = typeof value === "function" ? value() : value;
+        if (expected !== undefined) assert.equal(statusRows[k][1], expected, JSON.stringify(statusRows));
       });
       if (testCase.marks) {
         const { marks } = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);

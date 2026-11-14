@@ -147,10 +147,18 @@ pub fn character_rows(
         .find(|transit| transit.member == MissionMember::Character(key));
     let attached = transit
         .and_then(|transit| transit_container(world, bound, transit))
+        // Aboard a fleet, the ship it is seated on, else the fleet's first
+        // (fleet_window::ship_cargo).
         .or_else(|| {
-            character
-                .current_fleet
-                .and_then(|fleet| fleet_label(world, fleet))
+            character.current_fleet.and_then(|fleet| {
+                let seat = character
+                    .ship
+                    .and_then(|id| {
+                        world.fleets.get(fleet)?.capital_ships.iter().position(|ship| ship.id == id)
+                    })
+                    .or_else(|| crate::fleet_window::first_seat(world, fleet));
+                crate::fleet_window::aboard_label(world, fleet, seat)
+            })
         })
         .or_else(|| {
             character
@@ -247,16 +255,21 @@ pub fn character_rows(
 }
 
 /// The name of the container a member in hyperspace is in: `FUN_00556390`
-/// reparents it into its Move's target container (`+0x74`) at once, a fleet
-/// when the Move targets one (`bound`, `quadrant_icons::fleet_arrivals`),
-/// else the transit's system.
+/// reparents it into its Move's target container (`+0x74`) at once: a ship
+/// of the fleet when the Move targets one (`bound`,
+/// `quadrant_icons::fleet_arrivals`), else the transit's system.
 pub(crate) fn transit_container(
     world: &GameWorld,
     bound: &[(MissionMember, FleetKey)],
     transit: &MemberTransit,
 ) -> Option<String> {
     match bound.iter().find(|(member, _)| *member == transit.member) {
-        Some(&(_, fleet)) => fleet_label(world, fleet),
+        // FUN_00552300 seats it on the fleet's first usable ship.
+        Some(&(_, fleet)) => crate::fleet_window::aboard_label(
+            world,
+            fleet,
+            crate::fleet_window::first_seat(world, fleet),
+        ),
         None => world.systems.get(transit.to).map(|system| system.name.clone()),
     }
 }

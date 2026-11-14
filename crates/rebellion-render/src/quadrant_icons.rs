@@ -1228,6 +1228,34 @@ mod tests {
     }
 
     #[test]
+    fn a_member_moving_away_counts_at_its_target_and_not_where_it_left() {
+        // FUN_00556390 reparents a moving member into the target at once.
+        // A0 2026-11-14-quadrants-status-known/02: Adar Tallon, Averam's
+        // only member, Moved to Yavin; Averam's Defenses icon goes at once.
+        // /04: Wedge Antilles Moved from Yavin lights Averam's icon again
+        // while he travels (/07 lists him "Averam ( Enroute )").
+        let (mut world, source) = alliance_world();
+        let target = world.systems.insert(world.systems[source].clone());
+        let walker = add_character(&mut world, source, true);
+        let player = Faction::Alliance;
+        let mut missions = MissionState::new();
+        assert_eq!(side(&world, &missions, player, source, Quadrant::Defenses), Some(1));
+        assert_eq!(side(&world, &missions, player, target, Quadrant::Defenses), None);
+
+        // Phase 4 (MissionState::depart) takes it off the map into a transit.
+        world.characters[walker].current_system = None;
+        missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::Character(walker),
+            mission_id: 0,
+            to: target,
+            arrival: 9,
+            abode: None,
+        });
+        assert_eq!(side(&world, &missions, player, source, Quadrant::Defenses), None);
+        assert_eq!(side(&world, &missions, player, target, Quadrant::Defenses), Some(1));
+    }
+
+    #[test]
     fn an_icons_abort_names_the_players_visible_missions_there() {
         // FUN_00512700 kind 0x40 and FUN_00553350: the player's members on
         // a visible mission; event 0x261 takes each one's mission.

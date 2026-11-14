@@ -20,6 +20,7 @@ use rebellion_core::troop_transport::{RegimentLeg, TroopTransportState};
 use rebellion_core::world::{CapitalShipClass, GameWorld, ShipInstance};
 
 use crate::bmp_cache::DllSource;
+use crate::fleet_window::{aboard_label, first_seat, ship_cargo, ship_load};
 use crate::mission_dialog::{kind_icon, kind_name};
 use crate::status_window::{character_rows, StatusRow};
 use crate::minis::{capital_ship_mini_id, fighter_mini_id};
@@ -907,9 +908,13 @@ pub fn fighter_rows(
     let fleet = world.fleets.get(fleet_key)?;
     let entry = fleet.fighters.get(index)?;
     let class = world.fighter_classes.get(entry.class)?;
+    // The ship it rides on (FighterEntry::carrier).
+    let seat = entry
+        .carrier
+        .and_then(|id| fleet.capital_ships.iter().position(|ship| ship.id == id));
     let mut rows = vec![row(
         "Attached: ",
-        fleet_label(world, fleet_key).unwrap_or_default(),
+        aboard_label(world, fleet_key, seat).unwrap_or_default(),
     )];
     eta(&mut rows, fleet_arrival(sources, fleet_key));
     squadron_class_rows(&mut rows, class);
@@ -946,7 +951,24 @@ pub fn travelling_fighter_rows(
     let world = sources.world;
     let attached = match to {
         SquadronPlace::Planet(system) => world.systems.get(system)?.name.clone(),
-        SquadronPlace::Fleet(fleet) => fleet_label(world, fleet)?,
+        // The ship the port seats it on among the squadrons coming in
+        // (ship_load: FUN_00552300's most room left).
+        SquadronPlace::Fleet(fleet) => {
+            let ordinal = sources
+                .transport
+                .squadrons
+                .transits()
+                .iter()
+                .filter(|transit| transit.to == to)
+                .take_while(|transit| !(transit.class == class && transit.arrival_tick == arrival))
+                .map(|transit| transit.count as usize)
+                .sum::<usize>();
+            let arrivals = crate::quadrant_icons::fleet_arrivals(sources.missions);
+            let seat = ship_load(world, sources.transport, &arrivals, fleet)
+                .iter()
+                .position(|cargo| cargo.incoming_squadrons.contains(&ordinal));
+            aboard_label(world, fleet, seat)?
+        }
     };
     let class = world.fighter_classes.get(class)?;
     let mut rows = vec![row("Attached: ", attached)];
@@ -988,9 +1010,16 @@ fn regiment_place(sources: StatusSources<'_>, key: TroopKey) -> (String, Option<
     {
         // An object in hyperspace is attached to its destination
         // (FUN_00556390).
+        // Into a fleet, the ship the port seats it on (ship_load).
         let place = match transit.leg {
             RegimentLeg::Surface(system) => system_name(world, system),
-            RegimentLeg::Fleet(fleet) => fleet_label(world, fleet).unwrap_or_default(),
+            RegimentLeg::Fleet(fleet) => {
+                let arrivals = crate::quadrant_icons::fleet_arrivals(sources.missions);
+                let seat = ship_load(world, sources.transport, &arrivals, fleet)
+                    .iter()
+                    .position(|cargo| cargo.regiments.contains(&key));
+                aboard_label(world, fleet, seat).unwrap_or_default()
+            }
         };
         return (place, Some(transit.arrival_tick));
     }
@@ -1000,7 +1029,11 @@ fn regiment_place(sources: StatusSources<'_>, key: TroopKey) -> (String, Option<
         .into_iter()
         .find(|&fleet| sources.transport.cargo(fleet).contains(&key))
     {
-        return (fleet_label(world, fleet).unwrap_or_default(), None);
+        // The ship that holds it (ship_cargo).
+        let seat = ship_cargo(world, sources.transport, fleet)
+            .iter()
+            .position(|cargo| cargo.regiments.contains(&key));
+        return (aboard_label(world, fleet, seat).unwrap_or_default(), None);
     }
     let system = world
         .systems
@@ -1080,15 +1113,16 @@ pub fn special_force_rows(
         .en_route()
         .iter()
         .find(|transit| transit.member == MissionMember::SpecialForce(key));
-    // Attached names the unit's container: a fleet it is aboard, else its
-    // system; in hyperspace the Move's target container (FUN_00556390).
+    // Attached names the unit's container: the ship it rides on aboard a
+    // fleet (the port seats it on the first, ship_cargo), else its system;
+    // in hyperspace the Move's target container (FUN_00556390).
     let attached = transit.map_or_else(
         || {
             world
                 .fleets
                 .iter()
                 .find(|(_, value)| value.special_forces.contains(&key))
-                .and_then(|(fleet, _)| fleet_label(world, fleet))
+                .and_then(|(fleet, _)| aboard_label(world, fleet, first_seat(world, fleet)))
                 .or_else(|| {
                     world
                         .systems
@@ -2485,7 +2519,9 @@ mod tests {
     #[test]
     fn a_squadron_has_no_status_row_and_scales_shields_by_its_craft() {
         // FUN_004444c0: Attached, then the ratings; shield strength is per
-        // craft times the squadron size.
+        // craft times the squadron size. Attached names a ship, not the
+        // fleet (A0 2026-11-14-quadrants-status-known/21); this squadron
+        // rides on no ship, so the first one, here unnumbered.
         let mut world = GameWorld::default();
         let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
         let fleet = carrier_fleet(&mut world, here);
@@ -2496,7 +2532,7 @@ mod tests {
         assert_eq!(
             super::tests::rows(&rows[..5]),
             vec![
-                ("Attached: ", "Fleet 1"),
+                ("Attached: ", "Small"),
                 ("Maintenance Cost:", "2"),
                 ("Squadron Size:", "12:12"),
                 ("Hyperdrive Rating:", "0"),
@@ -2627,9 +2663,12 @@ mod tests {
     }
 
     #[test]
-    fn a_special_force_aboard_a_fleet_is_attached_to_the_fleet() {
-        // FUN_00445780: Attached names the unit's container, a fleet it is
-        // aboard (FUN_00536da0(ship, 3)).
+    fn a_special_force_aboard_a_fleet_is_attached_to_its_ship() {
+        // FUN_00445780: Attached names the unit's container
+        // (FUN_0044a2e0, FUN_004f62d0), the capital ship it rides on
+        // (FUN_00536da0(ship, 3)); the port seats it on the fleet's first
+        // ship (fleet_window::ship_cargo). hyp: as a character's, A0
+        // 2026-11-14-quadrants-status-known/32.
         let mut world = GameWorld::default();
         let here = system(
             &mut world,
@@ -2644,14 +2683,110 @@ mod tests {
             on_mission: false,
         });
         world.fleets[fleet].special_forces.push(unit);
+        world.number_ships();
         let states = States::new();
 
         let rows = special_force_rows(states.sources(&world), unit).unwrap();
 
+        assert_eq!(super::tests::rows(&rows)[0], ("Attached: ", "Small 1"));
+    }
+
+    #[test]
+    fn a_squadron_aboard_a_fleet_is_attached_to_the_ship_that_carries_it() {
+        // FUN_004444c0 names the squadron's container (FUN_0044a2e0,
+        // FUN_004f62d0), the capital ship it rides on, not the fleet. A0
+        // 2026-11-14-quadrants-status-known/21, 22: Fleet 7's two Y-wings
+        // read "Alliance Escort Carrier 1" and "Alliance Escort Carrier 3";
+        // 2026-11-13-icon-drag-move/09: an X-wing, "Alliance Escort Carrier 1".
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, here);
+        world.number_ships();
+        let class = world.fleets[fleet].fighters[0].class;
+        let ids: Vec<u64> = world.fleets[fleet].capital_ships.iter().map(|ship| ship.id).collect();
+        world.fleets[fleet].fighters = vec![
+            FighterEntry { class, count: 1, carrier: Some(ids[1]) },
+            FighterEntry { class, count: 1, carrier: Some(ids[0]) },
+        ];
+        let states = States::new();
+        let attached =
+            |index| fighter_rows(states.sources(&world), fleet, index).unwrap()[0].value.clone();
+
+        assert_eq!(attached(0), "Large 2");
+        assert_eq!(attached(1), "Small 1");
+    }
+
+    #[test]
+    fn a_regiment_aboard_a_fleet_is_attached_to_the_ship_that_holds_it() {
+        // FUN_00445280 names the regiment's container (FUN_0044a2e0), the
+        // capital ship that holds it. A0 2026-11-14-missions-transfer/36:
+        // the Fleet Regiment aboard Fleet 1 reads "Attached: Medium
+        // Transport 1" (Corellian Corvette 1 has no troop room). The port
+        // seats regiments by troop room in fleet order (ship_cargo), and
+        // one on its way in on the ship with the most room left (ship_load,
+        // FUN_00552300).
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Hoth", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, here);
+        // Room for none on the first ship and two on the second.
+        let small = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[small].troop_capacity = 0;
+        let large = world.fleets[fleet].capital_ships[1].class;
+        world.capital_ship_classes[large].troop_capacity = 2;
+        world.number_ships();
+        let troop = |world: &mut GameWorld| {
+            world.troops.insert(TroopUnit {
+                class_dat_id: DatId::new(0x1000_0002),
+                is_alliance: true,
+                regiment_strength: 100,
+            })
+        };
+        let aboard = troop(&mut world);
+        world.systems[here].ground_units.push(aboard);
+        let mut states = States::new();
+        states.transport.embark(&mut world, fleet, &[aboard]).unwrap();
         assert_eq!(
-            super::tests::rows(&rows)[0],
-            ("Attached: ", fleet_label(&world, fleet).unwrap().as_str())
+            troop_rows(states.sources(&world), aboard).unwrap()[0].value,
+            "Large 2"
         );
+
+        let coming = troop(&mut world);
+        states.transport = with_entry(
+            &states.transport,
+            "transit",
+            rebellion_core::troop_transport::RegimentTransit {
+                troop: coming,
+                origin: here,
+                leg: RegimentLeg::Fleet(fleet),
+                arrival_tick: 20,
+            },
+        );
+        assert_eq!(
+            troop_rows(states.sources(&world), coming).unwrap()[0].value,
+            "Large 2"
+        );
+    }
+
+    #[test]
+    fn a_character_aboard_a_fleet_is_attached_to_the_ship_it_rides() {
+        // FUN_004486f0 names the character's container (FUN_0044a2e0), the
+        // ship it is seated on (Character::ship), else the fleet's first
+        // ship, where missions::seat_characters seats it. A0
+        // 2026-11-14-quadrants-status-known/32 (on its way in).
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Hoth", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, here);
+        world.number_ships();
+        let rider = world.characters.insert(rebellion_core::world::Character {
+            current_fleet: Some(fleet),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(rider);
+        let attached =
+            |world: &GameWorld| character_rows(world, &[], &[], rider).unwrap()[1].value.clone();
+        assert_eq!(attached(&world), "Small 1");
+        world.characters[rider].ship = Some(world.fleets[fleet].capital_ships[1].id);
+        assert_eq!(attached(&world), "Large 2");
     }
 
     #[test]
@@ -3343,6 +3478,50 @@ mod tests {
     }
 
     #[test]
+    fn a_squadron_on_its_way_into_a_fleet_is_attached_to_the_ship_it_boards() {
+        // FUN_00556390 seats a squadron Move onto a fleet on the ship with
+        // the most room left (FUN_00552300, fleet_window::ship_load), and
+        // FUN_004444c0 names that ship (FUN_0044a2e0), as A0
+        // 2026-11-14-quadrants-status-known/21 names a squadron's carrier.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Hoth", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, here);
+        // Room: Small 2, Large 3; the fleet's own four squadrons fill both.
+        world.fleets[fleet].fighters.clear();
+        world.number_ships();
+        let class = world.fighter_classes.keys().next().unwrap();
+        let mut states = States::new();
+        let mut value = serde_json::to_value(&states.transport).unwrap();
+        for arrival in [20, 21] {
+            value["squadrons"]["transits"].as_array_mut().unwrap().push(
+                serde_json::to_value(rebellion_core::squadrons::SquadronTransit {
+                    class,
+                    count: 1,
+                    origin: here,
+                    to: SquadronPlace::Fleet(fleet),
+                    arrival_tick: arrival,
+                })
+                .unwrap(),
+            );
+        }
+        states.transport = serde_json::from_value(value).unwrap();
+        let attached = |arrival| {
+            travelling_fighter_rows(
+                states.sources(&world),
+                SquadronPlace::Fleet(fleet),
+                class,
+                arrival,
+            )
+                .unwrap()[0]
+                .value
+                .clone()
+        };
+        // The first takes Large (3 left), the second Small (2 left against 2).
+        assert_eq!(attached(20), world.ship_name(fleet, 1).unwrap());
+        assert_eq!(attached(21), world.ship_name(fleet, 0).unwrap());
+    }
+
+    #[test]
     fn a_travelling_regiment_is_attached_to_its_destination() {
         // FUN_00445280 with FUN_00556390: an object in hyperspace is
         // attached to its destination; 34628 "Enroute" and the ETA.
@@ -3421,19 +3600,25 @@ mod tests {
     }
 
     #[test]
-    fn a_member_on_its_way_aboard_a_fleet_is_attached_to_the_fleet() {
+    fn a_member_on_its_way_aboard_a_fleet_is_attached_to_its_first_ship() {
         // FUN_00556390 reparents a member into its Move's target container
-        // (+0x74) at once; for a Move onto a fleet that is the fleet, so
-        // FUN_004486f0 and FUN_00445780 name it under Attached while the
-        // member travels, then "Enroute" and the ETA (FUN_004fd2b0).
+        // (+0x74) at once. For a Move onto a fleet, FUN_00552300 seats it on
+        // the fleet's first usable ship (characters and special forces have
+        // unlimited room), so FUN_004486f0 and FUN_00445780 name that ship
+        // under Attached (FUN_0044a2e0, FUN_004f62d0) while the member
+        // travels, then "Enroute" and the ETA (FUN_004fd2b0). A0
+        // 2026-11-14-quadrants-status-known/32: Chewbacca on his way into
+        // Fleet 7 reads "Attached: Alliance Escort Carrier 1".
         let mut world = GameWorld::default();
         let here = system(&mut world, "Hoth", ControlKind::Controlled(Faction::Alliance));
         let there = system(&mut world, "Bespin", ControlKind::Controlled(Faction::Alliance));
         let fleet = carrier_fleet(&mut world, there);
-        let name = fleet_label(&world, fleet).unwrap();
         // The special force boards another fleet there.
         let other = carrier_fleet(&mut world, there);
-        let other_name = fleet_label(&world, other).unwrap();
+        world.number_ships();
+        let name = world.ship_name(fleet, 0).unwrap().to_owned();
+        let other_name = world.ship_name(other, 0).unwrap().to_owned();
+        assert_eq!((name.as_str(), other_name.as_str()), ("Small 1", "Small 3"));
         let character = world
             .characters
             .insert(rebellion_core::world::Character::default());

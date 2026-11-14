@@ -147,6 +147,20 @@ FileVersion has zero in the fields after the first dot. The shipped
 TEXTSTRA.DLL reads "1.00.00", so the label is the literal, as Fig. 3.46 shows.
 This TEXTSTRA has no string 34736.
 
+The value is the container's name (`FUN_004f62d0`: its own `+0x34`, else
+its record's). A unit aboard a fleet is a child of one of its capital ships
+(`FUN_004fe160` lets a fleet hold capital ships alone), so the row names
+that ship, never the fleet. A0 (2026-11-14): a regiment aboard Fleet 1
+reads "Medium Transport 1" (missions-transfer/36); Fleet 7's two Y-wings
+"Alliance Escort Carrier 1" and "Alliance Escort Carrier 3"
+(quadrants-status-known/21, 22); Chewbacca, on his way into Fleet 7 and at
+rest there, "Alliance Escort Carrier 1" (/32, /33). A Move onto a fleet
+seats a member on the fleet's first usable ship, a regiment or squadron on
+the one with the most room left (`FUN_00552300`, `fleet-window.md`).
+port: the row names the ship the port seats the unit on
+(`fleet_window::ship_cargo`, `ship_load`); a squadron its
+`FighterEntry::carrier`.
+
 ### Manual cross-check (p. 101, Fig. 3.46; p. 100)
 
 | Claim | Status |
