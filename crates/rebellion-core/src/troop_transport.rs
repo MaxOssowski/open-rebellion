@@ -250,6 +250,20 @@ impl TroopTransportState {
         &self.transit
     }
 
+    /// Puts a regiment already off its planet on the road, as a Move would
+    /// (tests and fixtures).
+    #[doc(hidden)]
+    pub fn push_transit(&mut self, transit: RegimentTransit) {
+        self.transit.push(transit);
+    }
+
+    /// Puts a regiment already off its planet into `fleet`'s cargo (tests
+    /// and fixtures).
+    #[doc(hidden)]
+    pub fn push_cargo(&mut self, fleet: FleetKey, troop: TroopKey) {
+        self.cargo.entry(fleet).or_default().push(troop);
+    }
+
     /// Regiments travelling to board `fleet`. Each already holds its room,
     /// as the original's regiment sits in the ship's container while en
     /// route.

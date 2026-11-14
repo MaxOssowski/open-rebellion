@@ -1811,10 +1811,15 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
                 skill,
                 amount,
             } => raise_skill(world, *character, *skill, *amount),
-            MissionEffect::SystemIntelligenceGathered { system, .. } => {
+            MissionEffect::SystemIntelligenceGathered { system, faction } => {
                 if let Some(sys) = world.systems.get_mut(*system) {
                     sys.exploration_status = crate::dat::ExplorationStatus::Explored;
                 }
+                // Event319_Handle (FUN_0050d5a0): the side's copies of the
+                // system's objects take their state.
+                world
+                    .object_views
+                    .queue_push((*faction).into(), *system);
             }
             MissionEffect::EncounterBegan {
                 member,

@@ -810,6 +810,7 @@ impl LiveCampaign<'_> {
             troop_transport: self.troop_transport.clone(),
             deliveries: self.deliveries.clone(),
             player_agent: self.player_agent.clone(),
+            object_views: self.world.object_views.clone(),
         }
     }
 
@@ -851,6 +852,7 @@ impl LiveCampaign<'_> {
         *self.troop_transport = state.troop_transport;
         *self.deliveries = state.deliveries;
         *self.player_agent = state.player_agent;
+        self.world.object_views = state.object_views;
     }
 }
 
@@ -1885,6 +1887,15 @@ async fn main() {
             &world,
             &mut fog_alliance_state,
             &mut fog_empire_state,
+        );
+        // port: the fixture's sides hold views of the other side's objects
+        // in the systems their fog shows, as a v116 save's migration seeds
+        // them (object_views::seed_from_fog).
+        rebellion_core::object_views::seed_from_fog(
+            &mut world,
+            &troop_transport_state,
+            &movement_state,
+            [&fog_alliance_state, &fog_empire_state],
         );
         // Character Killed for the Alliance (FUN_0048fdf0, 0x7164 /
         // 0x7365): Jan Dodonna, filed first so it lists below the scenario's
@@ -4539,6 +4550,15 @@ async fn main() {
                 &mut |m| sim_rng.gen_range(0..m.max(1)),
             );
 
+            // ── Each side's views of the other side's objects ───────────────
+            // After movement, control and missions (FUN_004f9a60 per object;
+            // ghidra/notes/per-side-object-views.md).
+            rebellion_core::object_views::advance(
+                &mut world,
+                &troop_transport_state,
+                &movement_state,
+            );
+
             // ── Victory check ────────────────────────────────────────────────
             // The victory conditions word (FUN_005180e0): each change is
             // 0x128, Alliance Headquarters Destroyed (FUN_0048e5a0) with
@@ -5244,6 +5264,13 @@ async fn main() {
                                 fog_empire_state = FogState::new(Faction::Empire);
                                 FogSystem::seed(&mut fog_alliance_state, &world);
                                 FogSystem::seed(&mut fog_empire_state, &world);
+                                // Each side's first views (FUN_004f9a60).
+                                rebellion_core::object_views::seed_from_fog(
+                                    &mut world,
+                                    &troop_transport_state,
+                                    &movement_state,
+                                    [&fog_alliance_state, &fog_empire_state],
+                                );
                                 economy_state = EconomyState::default();
                                 // Setup stage 0x17: each system's
                                 // FUN_00508250, once.
@@ -13942,11 +13969,16 @@ fn apply_mission_result(
             MissionEffect::UprisingIncident(event) => {
                 rebellion_core::uprising::apply_uprising_event(world, event);
             }
-            MissionEffect::SystemIntelligenceGathered { system, .. } => {
+            MissionEffect::SystemIntelligenceGathered { system, faction } => {
                 // Reveal fog: mark system as explored (full implementation in fog task).
                 if let Some(sys) = world.systems.get_mut(*system) {
                     sys.exploration_status = rebellion_core::dat::ExplorationStatus::Explored;
                 }
+                // Event319_Handle (FUN_0050d5a0): the side's copies of the
+                // system's objects take their state.
+                world
+                    .object_views
+                    .queue_push((*faction).into(), *system);
             }
             MissionEffect::CharacterRecruited {
                 character,

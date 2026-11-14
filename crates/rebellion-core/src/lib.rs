@@ -52,6 +52,7 @@ mod mission_planning;
 pub mod missions;
 pub mod movement;
 pub mod net_protocol;
+pub mod object_views;
 pub mod production_cycle;
 pub mod pictures;
 pub mod repair;

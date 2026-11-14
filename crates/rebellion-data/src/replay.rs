@@ -761,7 +761,10 @@ impl ReplayRuntime {
             troop_transport,
             deliveries,
             player_agent,
+            object_views,
         } = state;
+        let mut world = world;
+        world.object_views = object_views;
         let (fog, inactive_fog) = if player_is_alliance {
             (fog_alliance, fog_empire)
         } else {
@@ -913,6 +916,7 @@ impl ReplayRuntime {
             troop_transport: self.states.troop_transport.clone(),
             deliveries: self.states.deliveries.clone(),
             player_agent: self.player_agent.clone(),
+            object_views: self.world.object_views.clone(),
         }
     }
 }
@@ -1250,6 +1254,7 @@ mod tests {
             troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
             deliveries: rebellion_core::delivery::DeliveryState::default(),
             player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
+            object_views: rebellion_core::object_views::ObjectViews::default(),
         }
     }
 

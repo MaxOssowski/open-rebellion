@@ -1817,6 +1817,12 @@ pub struct GameWorld {
     /// The abodes (ABODESD), children of the galaxy (`FUN_00519910`), in
     /// file order (save v72).
     pub abodes: slotmap::SlotMap<crate::ids::AbodeKey, Abode>,
+    /// Each side's views of the other side's objects
+    /// ([`crate::object_views`]). The save keeps them as its last field
+    /// (`SaveState::object_views`, v117), so the world's own encoding skips
+    /// them.
+    #[serde(skip)]
+    pub object_views: crate::object_views::ObjectViews,
 }
 
 /// An abode (ABODESD, family `0x98`, class vtable `0x00669260` built by

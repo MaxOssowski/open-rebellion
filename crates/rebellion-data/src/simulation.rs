@@ -827,6 +827,11 @@ pub fn run_simulation_tick(
     );
     integrator.record_loyalty_shifts(&shifts);
 
+    // ── 13f. Each side's views of the other side's objects ──────────────
+    // After movement, control and missions (FUN_004f9a60 per object;
+    // ghidra/notes/per-side-object-views.md).
+    rebellion_core::object_views::advance(world, &states.troop_transport, &states.movement);
+
     // ── 14. Victory check ────────────────────────────────────────────────
     // The victory conditions word (FUN_005180e0) and its 0x128.
     if let Some((old, new)) = rebellion_core::victory::advance_conditions_word(

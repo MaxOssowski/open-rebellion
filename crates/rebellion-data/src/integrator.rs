@@ -1997,10 +1997,15 @@ fn apply_mission_effects_inner(
             MissionEffect::UprisingIncident(event) => {
                 rebellion_core::uprising::apply_uprising_event(world, event);
             }
-            MissionEffect::SystemIntelligenceGathered { system, .. } => {
+            MissionEffect::SystemIntelligenceGathered { system, faction } => {
                 if let Some(sys) = world.systems.get_mut(*system) {
                     sys.exploration_status = rebellion_core::dat::ExplorationStatus::Explored;
                 }
+                // Event319_Handle (FUN_0050d5a0): the side's copies of the
+                // system's objects take their state.
+                world
+                    .object_views
+                    .queue_push((*faction).into(), *system);
             }
             MissionEffect::CharacterRecruited {
                 character,

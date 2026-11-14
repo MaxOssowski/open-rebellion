@@ -163,6 +163,7 @@ pub fn load_game_data_with_options(
         fleet_names: rebellion_core::world::FleetNames::default(),
         last_ship_id: 0,
         abodes: slotmap::SlotMap::with_key(),
+        object_views: rebellion_core::object_views::ObjectViews::default(),
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────

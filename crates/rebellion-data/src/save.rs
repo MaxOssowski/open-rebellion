@@ -76,7 +76,77 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 116;
+pub const SAVE_VERSION: u32 = 117;
+
+/// The one older version that still loads: v116, from before the object
+/// views. Its body lacks `SaveState::object_views` ([`migrate_v116_body`]).
+pub const MIGRATED_VERSION: u32 = 116;
+
+/// Whether a save of `version` loads (the current one, or v116 through its
+/// migration).
+#[must_use]
+pub fn version_loads(version: u32) -> bool {
+    version == SAVE_VERSION || version == MIGRATED_VERSION
+}
+
+/// A v116 body as a v117 one: `SaveState::object_views` is the last field,
+/// so an empty one's encoding is appended.
+///
+/// # Errors
+/// Returns an error if the empty views cannot be encoded.
+pub fn migrate_v116_body(mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+    body.extend(bincode::serialize(
+        &rebellion_core::object_views::ObjectViews::default(),
+    )?);
+    Ok(body)
+}
+
+/// Decodes a save body of `version`, checks it against the fingerprint the
+/// file holds, and readies it for play: the views go into the world, and a
+/// v116 save's views are seeded from each side's fog
+/// (`object_views::seed_from_fog`).
+///
+/// # Errors
+/// Returns an error for an unsupported version, an undecodable body or a
+/// fingerprint mismatch.
+pub fn decode_body(
+    version: u32,
+    body: Vec<u8>,
+    expected: StateFingerprint,
+) -> anyhow::Result<(SaveState, StateFingerprint)> {
+    anyhow::ensure!(
+        version_loads(version),
+        "save version {version} is not supported by this build (it reads only versions \
+         {MIGRATED_VERSION} and {SAVE_VERSION}). Please start a new game."
+    );
+    let body = if version == MIGRATED_VERSION {
+        migrate_v116_body(body)?
+    } else {
+        body
+    };
+    let mut state: SaveState =
+        anyhow::Context::context(bincode::deserialize(&body), "deserializing save state")?;
+    let found = fingerprint_as(&state, version)?;
+    anyhow::ensure!(
+        expected == found,
+        "save state fingerprint mismatch: expected {expected}, computed {found}"
+    );
+    if version == MIGRATED_VERSION {
+        let (world, transport, movement) =
+            (&mut state.world, &state.troop_transport, &state.movement);
+        rebellion_core::object_views::seed_from_fog(
+            world,
+            transport,
+            movement,
+            [&state.fog_alliance, &state.fog_empire],
+        );
+        state.object_views = state.world.object_views.clone();
+    } else {
+        state.world.object_views = state.object_views.clone();
+    }
+    let fingerprint = compute_state_fingerprint(&state)?;
+    Ok((state, fingerprint))
+}
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -171,7 +241,18 @@ fn canonicalize_fingerprint_value(
 /// # Errors
 /// Returns an error if the canonical save state cannot be serialized for hashing.
 pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFingerprint> {
+    fingerprint_as(state, SAVE_VERSION)
+}
+
+/// The fingerprint a save of `version` wrote for `state`: a v116 save had no
+/// `object_views` field.
+fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
+    if version == MIGRATED_VERSION {
+        if let serde_json::Value::Object(fields) = &mut canonical_state {
+            fields.remove("object_views");
+        }
+    }
     canonicalize_fingerprint_value(&mut canonical_state, None)?;
     let canonical_bytes = serde_json::to_vec(&canonical_state)?;
 
@@ -180,7 +261,7 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
         .iter()
         .copied()
         .chain(STATE_FINGERPRINT_VERSION.to_le_bytes())
-        .chain(SAVE_VERSION.to_le_bytes())
+        .chain(version.to_le_bytes())
         .chain(canonical_bytes)
     {
         hash ^= u64::from(byte);
@@ -266,6 +347,12 @@ pub struct SaveState {
     // ── v29: the player's agent (Manage Garrisons / Manage Production) ──
     /// Saved with the game as the original saves its agent (`FUN_004397a0`).
     pub player_agent: rebellion_core::agent_automation::PlayerAgent,
+    // ── v117: each side's views of the other side's objects ─────────────
+    /// `GameWorld::object_views` (`FUN_004f9a60`; `ghidra/notes/per-side-
+    /// object-views.md`). It stays the last field: a v116 body is read by
+    /// appending an empty one ([`migrate_v116_body`]). The loaders copy it
+    /// into `world.object_views`; the world's own encoding skips it.
+    pub object_views: rebellion_core::object_views::ObjectViews,
 }
 
 // ---------------------------------------------------------------------------
@@ -301,8 +388,9 @@ pub struct SaveMeta {
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
     use super::{
-        compute_mod_hash, compute_state_fingerprint, SaveMeta, SaveState, StateFingerprint,
-        MAX_SAVE_SLOTS, SAVE_MAGIC, SAVE_VERSION, STATE_FINGERPRINT_VERSION,
+        compute_mod_hash, compute_state_fingerprint, decode_body, version_loads, SaveMeta,
+        SaveState, StateFingerprint, MAX_SAVE_SLOTS, MIGRATED_VERSION, SAVE_MAGIC, SAVE_VERSION,
+        STATE_FINGERPRINT_VERSION,
     };
     use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
@@ -445,9 +533,9 @@ mod native {
             .context("reading version")?;
         let version = u32::from_le_bytes(version_buf);
         anyhow::ensure!(
-            version == SAVE_VERSION,
-            "save version {version} is not supported by this build (it reads only version \
-             {SAVE_VERSION}). Please start a new game."
+            version_loads(version),
+            "save version {version} is not supported by this build (it reads only versions \
+             {MIGRATED_VERSION} and {SAVE_VERSION}). Please start a new game."
         );
 
         let mut name_len_buf = [0u8; 4];
@@ -511,12 +599,7 @@ mod native {
         // ── Body ────────────────────────────────────────────────────────────
         let mut body = Vec::new();
         file.read_to_end(&mut body).context("reading save body")?;
-        let state: SaveState = bincode::deserialize(&body).context("deserializing save state")?;
-        let state_fingerprint = compute_state_fingerprint(&state)?;
-        anyhow::ensure!(
-            expected == state_fingerprint,
-            "save state fingerprint mismatch: expected {expected}, computed {state_fingerprint}"
-        );
+        let (state, state_fingerprint) = decode_body(version, body, expected)?;
 
         let meta = SaveMeta {
             slot,
@@ -752,22 +835,37 @@ pub mod wasm_impl {
     /// The prefix carries the save format version, so entries from older
     /// builds are ignored instead of failing a bincode deserialize.
     fn slot_key(slot: usize) -> String {
-        format!("rebellion_save_v{SAVE_VERSION}_{slot}")
+        versioned_slot_key(SAVE_VERSION, slot)
+    }
+
+    fn versioned_slot_key(version: u32, slot: usize) -> String {
+        format!("rebellion_save_v{version}_{slot}")
     }
 
     /// localStorage key for versioned JSON save metadata (see [`slot_key`]).
     fn meta_key(slot: usize) -> String {
-        format!("rebellion_meta_v{SAVE_VERSION}_{slot}")
+        versioned_meta_key(SAVE_VERSION, slot)
     }
 
-    /// The stored body and metadata of a slot, when both are present.
+    fn versioned_meta_key(version: u32, slot: usize) -> String {
+        format!("rebellion_meta_v{version}_{slot}")
+    }
+
+    /// The stored version, body and metadata of a slot, when both are
+    /// present: the current version's, else a v116 save's (migrated on
+    /// load).
     ///
     /// A body without its metadata (an interrupted write) counts as no save.
-    fn stored_save(slot: usize) -> anyhow::Result<Option<(String, String)>> {
-        Ok(match (storage_get(&slot_key(slot))?, storage_get(&meta_key(slot))?) {
-            (Some(body), Some(meta)) => Some((body, meta)),
-            _ => None,
-        })
+    fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
+        for version in [SAVE_VERSION, MIGRATED_VERSION] {
+            if let (Some(body), Some(meta)) = (
+                storage_get(&versioned_slot_key(version, slot))?,
+                storage_get(&versioned_meta_key(version, slot))?,
+            ) {
+                return Ok(Some((version, body, meta)));
+            }
+        }
+        Ok(None)
     }
 
     fn parse_meta(encoded: &str) -> anyhow::Result<BrowserSaveMeta> {
@@ -825,18 +923,13 @@ pub mod wasm_impl {
     }
 
     pub fn load_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<(SaveMeta, SaveState)> {
-        let Some((b64, meta_encoded)) = stored_save(slot)? else {
+        let Some((version, b64, meta_encoded)) = stored_save(slot)? else {
             anyhow::bail!("no save in slot {}", slot);
         };
         let bytes = b64_decode(&b64)?;
         let browser_meta = parse_meta(&meta_encoded)?;
         let expected = browser_meta.state_fingerprint.to_fingerprint()?;
-        let state: SaveState = bincode::deserialize(&bytes)?;
-        let state_fingerprint = compute_state_fingerprint(&state)?;
-        anyhow::ensure!(
-            expected == state_fingerprint,
-            "save state fingerprint mismatch: expected {expected}, computed {state_fingerprint}"
-        );
+        let (state, state_fingerprint) = decode_body(version, bytes, expected)?;
 
         let meta = SaveMeta {
             slot,
@@ -855,16 +948,21 @@ pub mod wasm_impl {
     /// Metadata and payload keys both count as occupied, including partially
     /// written saves. Storage access errors fail closed.
     pub fn slot_occupied(_saves_dir: &Path, slot: usize) -> bool {
-        [slot_key(slot), meta_key(slot)]
-            .iter()
-            .any(|key| !matches!(storage_get(key), Ok(None)))
+        [
+            slot_key(slot),
+            meta_key(slot),
+            versioned_slot_key(MIGRATED_VERSION, slot),
+            versioned_meta_key(MIGRATED_VERSION, slot),
+        ]
+        .iter()
+        .any(|key| !matches!(storage_get(key), Ok(None)))
     }
 
     pub fn list_saves(_saves_dir: &Path) -> Vec<anyhow::Result<SaveMeta>> {
         (0..MAX_SAVE_SLOTS)
             .filter_map(|slot| match stored_save(slot) {
                 Ok(None) => None,
-                Ok(Some((_, encoded))) => Some(parse_meta(&encoded).and_then(|meta| {
+                Ok(Some((_, _, encoded))) => Some(parse_meta(&encoded).and_then(|meta| {
                     Ok(SaveMeta {
                         slot,
                         name: meta.name,
@@ -882,8 +980,11 @@ pub mod wasm_impl {
     }
 
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
-        storage_remove(&slot_key(slot))?;
-        storage_remove(&meta_key(slot))
+        for version in [SAVE_VERSION, MIGRATED_VERSION] {
+            storage_remove(&versioned_slot_key(version, slot))?;
+            storage_remove(&versioned_meta_key(version, slot))?;
+        }
+        Ok(())
     }
 }
 
@@ -1022,6 +1123,7 @@ mod tests {
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
             player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
+            object_views: rebellion_core::object_views::ObjectViews::default(),
         }
     }
 
@@ -1347,7 +1449,9 @@ mod tests {
         let path = slot_path(&saves_dir, 0);
         let original = std::fs::read(&path).unwrap();
 
-        for version in [SAVE_VERSION - 1, SAVE_VERSION + 1] {
+        // v116 loads through its migration (migrate_v116_body); the one
+        // before it does not.
+        for version in [MIGRATED_VERSION - 1, SAVE_VERSION + 1] {
             let mut bytes = original.clone();
             bytes[SAVE_MAGIC.len()..SAVE_MAGIC.len() + 4].copy_from_slice(&version.to_le_bytes());
             std::fs::write(&path, bytes).unwrap();
@@ -1358,6 +1462,129 @@ mod tests {
                 "error should name the version and suggest a new game: {msg}"
             );
         }
+    }
+
+    /// `state` written as a v116 file: no `object_views` field, and the
+    /// fingerprint v116 wrote. Returns where the fingerprint sits.
+    fn write_v116(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        let mut body = bincode::serialize(state).unwrap();
+        let views = bincode::serialize(&state.object_views).unwrap();
+        body.truncate(body.len() - views.len());
+        // The v116 body alone is short of a v117 one.
+        assert!(bincode::deserialize::<SaveState>(&body).is_err());
+        let fingerprint = fingerprint_as(state, MIGRATED_VERSION).unwrap();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(SAVE_MAGIC);
+        bytes.extend_from_slice(&MIGRATED_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&3u32.to_le_bytes());
+        bytes.extend_from_slice(b"Old");
+        bytes.extend_from_slice(&0u64.to_le_bytes());
+        bytes.extend_from_slice(&0u32.to_le_bytes());
+        bytes.extend_from_slice(&compute_mod_hash(&[]).to_le_bytes());
+        bytes.extend_from_slice(&STATE_FINGERPRINT_VERSION.to_le_bytes());
+        let at = bytes.len();
+        bytes.extend_from_slice(&fingerprint.value.to_le_bytes());
+        bytes.extend_from_slice(&body);
+        std::fs::create_dir_all(saves_dir).unwrap();
+        std::fs::write(slot_path(saves_dir, 0), bytes).unwrap();
+        at
+    }
+
+    /// `minimal_save_state` with an Imperial regiment on its first system,
+    /// which the Alliance's fog shows.
+    fn state_with_imperial_regiment() -> (SaveState, rebellion_core::ids::TroopKey) {
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        state.world.systems[system].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        let troop = state.world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: rebellion_core::ids::DatId::new(0x1000_0002),
+            is_alliance: false,
+            regiment_strength: 4,
+        });
+        state.world.systems[system].ground_units.push(troop);
+        state.fog_alliance.reveal(system);
+        (state, troop)
+    }
+
+    #[test]
+    fn a_v116_save_loads_with_views_seeded_from_each_sides_fog() {
+        // FUN_004f9a60: the Alliance neither holds the system nor has a
+        // fleet there, so its seeded copy is frozen.
+        let saves_dir = tmp_dir("v116_migration");
+        let (state, troop) = state_with_imperial_regiment();
+        write_v116(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v116 save migrates");
+        let id = loaded.world.object_views.regiment_id(troop).unwrap();
+        let view = loaded
+            .world
+            .object_views
+            .view(Faction::Alliance, id)
+            .expect("the fog's system seeds the Alliance's view");
+        assert!(!view.live());
+        assert!(loaded.world.object_views.empire.is_empty());
+        assert_eq!(
+            loaded.object_views.alliance.len(),
+            loaded.world.object_views.alliance.len()
+        );
+        assert_eq!(meta.state_fingerprint, compute_state_fingerprint(&loaded).unwrap());
+    }
+
+    #[test]
+    fn the_v116_fingerprint_leaves_out_the_object_views() {
+        // A v116 save had no object_views field, so its fingerprint cannot
+        // depend on one; v117's does.
+        let (mut state, _) = state_with_imperial_regiment();
+        let old = fingerprint_as(&state, MIGRATED_VERSION).unwrap();
+        let new = compute_state_fingerprint(&state).unwrap();
+        rebellion_core::object_views::seed_from_fog(
+            &mut state.world,
+            &state.troop_transport,
+            &state.movement,
+            [&state.fog_alliance, &state.fog_empire],
+        );
+        state.object_views = state.world.object_views.clone();
+        assert_eq!(fingerprint_as(&state, MIGRATED_VERSION).unwrap(), old);
+        assert_ne!(compute_state_fingerprint(&state).unwrap(), new);
+    }
+
+    #[test]
+    fn a_v116_save_with_the_v117_fingerprint_is_rejected() {
+        let saves_dir = tmp_dir("v116_tampered");
+        let (state, _) = state_with_imperial_regiment();
+        let at = write_v116(&saves_dir, &state);
+        let path = slot_path(&saves_dir, 0);
+        let mut bytes = std::fs::read(&path).unwrap();
+        let wrong = compute_state_fingerprint(&state).unwrap();
+        bytes[at..at + 8].copy_from_slice(&wrong.value.to_le_bytes());
+        std::fs::write(&path, bytes).unwrap();
+        let error = load_slot(&saves_dir, 0).expect_err("fingerprint mismatch");
+        assert!(error.to_string().contains("fingerprint mismatch"), "{error}");
+    }
+
+    #[test]
+    fn a_v117_save_keeps_each_sides_views() {
+        let saves_dir = tmp_dir("v117_views");
+        let (mut state, troop) = state_with_imperial_regiment();
+        rebellion_core::object_views::seed_from_fog(
+            &mut state.world,
+            &state.troop_transport,
+            &state.movement,
+            [&state.fog_alliance, &state.fog_empire],
+        );
+        state.object_views = state.world.object_views.clone();
+        // A frozen copy keeps an old strength the save must not refresh.
+        state.world.troops[troop].regiment_strength = 1;
+        save_slot(&saves_dir, 0, "Views", &state, &[]).unwrap();
+        let (_, loaded) = load_slot(&saves_dir, 0).unwrap();
+        let id = loaded.world.object_views.regiment_id(troop).unwrap();
+        match loaded.world.object_views.view(Faction::Alliance, id).unwrap() {
+            rebellion_core::object_views::ObjectView::Regiment(view) => {
+                assert_eq!(view.strength, 4);
+            }
+        }
+        assert!(!loaded.world.object_views.see_everything);
     }
 
     /// A save state with one regiment embarked on a fleet in orbit, already

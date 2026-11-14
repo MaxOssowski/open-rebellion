@@ -217,6 +217,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
+        object_views: rebellion_core::object_views::ObjectViews::default(),
     })
 }
 
