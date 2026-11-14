@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 122;
+const SCENARIO_COUNT: u8 = 123;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -461,6 +461,13 @@ pub enum Scenario {
     /// at once (`FUN_00497530` kind 7) on "Imperial Troops have defended
     /// Commenor from an Alliance assault." (`0x7092`).
     OwnAssaultRepulsed = 121,
+    /// OBJ-02-C010, as A0 2026-11-14-quadrants-status-known/18 shows it
+    /// (an Alliance game, day 576): the second system, the other side's,
+    /// on its Defenses window's Trooper Regiments page, lists the player's
+    /// frozen copy of the other side's Army Regiment, en route with ETA day
+    /// 171 (`FUN_004f9a60` froze it in hyperspace). The live regiment is
+    /// gone from the player's sight.
+    EnemyRegimentFrozen = 122,
 }
 
 impl Scenario {
@@ -588,6 +595,7 @@ impl Scenario {
             119 => Self::BuildSelectionFacilityRoom,
             120 => Self::FacilityResearchTargeting,
             121 => Self::OwnAssaultRepulsed,
+            122 => Self::EnemyRegimentFrozen,
             _ => return None,
         })
     }
@@ -1244,6 +1252,9 @@ pub fn apply(
     if request.scenario == Scenario::OwnAssaultRepulsed {
         place_own_assault(world, movement, troop_transport);
     }
+    if request.scenario == Scenario::EnemyRegimentFrozen {
+        place_frozen_enemy_regiment(request, world, defenses, cockpit, secondary);
+    }
     if request.scenario == Scenario::CoruscantSeized {
         place_coruscant_seized(request, world, movement, sectors);
     }
@@ -1734,6 +1745,71 @@ fn place_regiment_enroute(
     );
     defenses.show_page(
         primary,
+        rebellion_render::defenses_window::DefensesPage::Regiments,
+    );
+}
+
+/// The arrival day of the frozen copy in `EnemyRegimentFrozen`: A0
+/// 2026-11-14-quadrants-status-known/18 reads "ETA Destination: Day 171".
+const FROZEN_ARRIVAL: u64 = 171;
+
+/// The `EnemyRegimentFrozen` scenario: `secondary` becomes the other
+/// side's, without its regiments, and the player's side holds a frozen
+/// copy of the other side's Army Regiment (TROOPSD 8 for the Empire, as A0
+/// 18's Imperial Army Regiment; TROOPSD 2 for the Alliance) on its surface,
+/// en route until day 171 (`FUN_004f9a60`, `object_views`). Its Defenses
+/// window opens at the galaxy view's right edge on the Trooper Regiments
+/// page.
+fn place_frozen_enemy_regiment(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    defenses: &mut DefensesWindowState,
+    cockpit: &CockpitState,
+    secondary: SystemKey,
+) {
+    use rebellion_core::object_views::{apply, ObjectView, RegimentView, ViewPlace, ViewUpdate};
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let viewer = rebellion_core::dat::Faction::of_alliance(alliance);
+    let other = rebellion_core::dat::Faction::of_alliance(!alliance);
+    world.systems[secondary].control = ControlKind::Controlled(other);
+    let troops = &world.troops;
+    world.systems[secondary]
+        .ground_units
+        .retain(|key| troops.get(*key).is_none_or(|troop| troop.is_alliance == alliance));
+    let class = rebellion_core::ids::DatId::new(if alliance { 0x1000_0008 } else { 0x1000_0002 });
+    let views = &mut world.object_views;
+    views.last_id += 1;
+    let id = rebellion_core::ids::DatId::new(0x1000_0000 | views.last_id);
+    let place = ViewPlace::Surface(world.systems[secondary].dat_id);
+    apply(
+        world,
+        &[ViewUpdate::Set {
+            side: viewer,
+            id,
+            view: ObjectView::Regiment(RegimentView {
+                class,
+                is_alliance: !alliance,
+                strength: 100,
+                place,
+                arrival: Some(FROZEN_ARRIVAL),
+                live: false,
+            }),
+        }],
+    );
+    let layout = cockpit.layout_for(640.0, 480.0);
+    let galaxy = layout.galaxy;
+    defenses.open(
+        world,
+        secondary,
+        (
+            (galaxy.x + galaxy.width - DEFENSES_WINDOW_WIDTH) as i16 - 5,
+            galaxy.y as i16 + 5,
+        ),
+        request.faction,
+        layout,
+    );
+    defenses.show_page(
+        secondary,
         rebellion_render::defenses_window::DefensesPage::Regiments,
     );
 }
@@ -3157,6 +3233,10 @@ pub fn emit_status_rows(
         }
         (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_)))
         | (Scenario::RegimentEnroute, Some(object @ StatusObject::Troop(_)))
+        | (
+            Scenario::EnemyRegimentFrozen,
+            Some(object @ StatusObject::ViewedTroop { .. }),
+        )
         | (
             Scenario::FleetArrivals,
             Some(object @ (StatusObject::Ship { .. } | StatusObject::Fleet(_))),
@@ -12803,6 +12883,62 @@ mod tests {
         let recon =
             apply_to_fleet_world(request(Scenario::ReconTargeting, CockpitFaction::Alliance));
         assert!(recon.transport.transits().is_empty());
+    }
+
+    // A0 2026-11-14-quadrants-status-known/18 (6a1269a1765f7c9b): the
+    // Alliance's frozen copy of an Imperial Army Regiment on Imperial
+    // Chandrila reads "Enroute", "ETA Destination: Day 171" on day 576
+    // (FUN_004f2d10 reads the side's copy; FUN_004f9a60 froze it).
+    #[test]
+    fn the_enemy_regiment_frozen_scenario_lists_the_players_frozen_copy() {
+        use rebellion_render::status_rows::{status_view, StatusObject};
+        use rebellion_render::viewed_contents::{viewed_surface_regiments, ViewedRegiment};
+        for (faction, class, alliance) in [
+            (CockpitFaction::Alliance, 0x1000_0008, true),
+            (CockpitFaction::Empire, 0x1000_0002, false),
+        ] {
+            let applied = apply_to_loading_world_with(
+                request(Scenario::EnemyRegimentFrozen, faction),
+                |_| {},
+            );
+            let world = &applied.world;
+            let secondary = world.systems.keys().nth(1).unwrap();
+            let viewer = rebellion_core::dat::Faction::of_alliance(alliance);
+            assert_eq!(
+                world.systems[secondary].control,
+                ControlKind::Controlled(rebellion_core::dat::Faction::of_alliance(!alliance))
+            );
+            assert!(applied.defenses.is_open(secondary));
+            let [ViewedRegiment::View(id)] = viewed_surface_regiments(world, viewer, secondary)[..]
+            else {
+                panic!("{:?}", viewed_surface_regiments(world, viewer, secondary));
+            };
+            let manufacturing = rebellion_core::manufacturing::ManufacturingState::default();
+            let missions = MissionState::new();
+            let movement = MovementState::new();
+            let sources = rebellion_render::status_rows::StatusSources {
+                world,
+                missions: &missions,
+                movement: &movement,
+                transport: &applied.transport,
+                manufacturing: &manufacturing,
+                today: 576,
+                objectives: rebellion_render::status_rows::ObjectiveSource::default(),
+            };
+            let view = status_view(sources, StatusObject::ViewedTroop { alliance, id }).unwrap();
+            assert_eq!(view.title, "Trooper Regiment Status");
+            assert_eq!(
+                view.rows[1..3]
+                    .iter()
+                    .map(|row| (row.label.as_str(), row.value.as_str()))
+                    .collect::<Vec<_>>(),
+                [("Status:", "Enroute"), ("ETA Destination:", "Day 171")]
+            );
+            let rebellion_core::object_views::ObjectView::Regiment(copy) =
+                world.object_views.view(viewer, id).unwrap();
+            assert_eq!(copy.class.raw(), class);
+            assert!(!copy.live);
+        }
     }
 
     // FUN_00556390 puts a squadron sent by Move in its destination at once.

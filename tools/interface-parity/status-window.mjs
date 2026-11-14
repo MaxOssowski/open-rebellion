@@ -34,9 +34,11 @@ const dimensions = { width: 379, height: 272 };
 // player's agent first on its personnel page; `galaxy` is the galaxy view's top-left and width at 640 by
 // 480. FUN_00443130: an own-side character's background is 0x2d22 + its side,
 // plus 3 for a player not of side 1.
+// `otherBackground`: the other side's object's (side 2 for the Alliance,
+// 11555; side 1 plus 3 for the Empire, 11557).
 const factions = [
-  { name: "alliance", byte: 1, galaxy: { x: 55, y: 40, width: 485 }, background: 11554 },
-  { name: "empire", byte: 2, galaxy: { x: 120, y: 40, width: 480 }, background: 11558 },
+  { name: "alliance", byte: 1, galaxy: { x: 55, y: 40, width: 485 }, background: 11554, otherBackground: 11555 },
+  { name: "empire", byte: 2, galaxy: { x: 120, y: 40, width: 480 }, background: 11558, otherBackground: 11557 },
 ];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs):
 // 45 MissionTargeting, 48 FleetLoad, 55 BuildSelection.
@@ -60,6 +62,11 @@ const FLEET_ARRIVALS = 111;
 // 105 RegimentEnroute: the primary system's Trooper Regiments page with an
 // Alliance (Imperial) Army Regiment travelling there, then one in training.
 const REGIMENT_ENROUTE = 105;
+// 123 EnemyRegimentFrozen: the second system, the other side's, on its
+// Trooper Regiments page with the player's frozen copy of the other side's
+// Army Regiment, en route until day 171 (OBJ-02-C010).
+const ENEMY_REGIMENT_FROZEN = 123;
+const knownA0 = "../2026-11-14-quadrants-status-known";
 const regimentA0 = "../2026-11-11-regiment-en-route";
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
@@ -184,8 +191,9 @@ function blitKeyed(destination, image, x, y) {
   }
 }
 
-function composeExpected(source, faction) {
-  const expected = resource(source, faction.background, dimensions.width, dimensions.height);
+function composeExpected(source, faction, otherSide = false) {
+  const background = otherSide ? faction.otherBackground : faction.background;
+  const expected = resource(source, background, dimensions.width, dimensions.height);
   for (const button of Object.values(buttons)) blitKeyed(expected, resource(source, button.id, 32, 31), button.x, button.y);
   return expected;
 }
@@ -590,6 +598,30 @@ const cases = [
     marks: { alliance: [["Strategy", 11514], ["Gokres", 5185]], empire: [["Strategy", 11514], ["Gokres", 5250]] },
     a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"],
       states: [false, false, true, true, false] },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
+  // The other side's regiment as the player's side last saw it (OBJ-02-C010):
+  // A0 2026-11-14-quadrants-status-known/18 (sha256 prefix 6a1269a1765f7c9b;
+  // an Alliance game, day 576): Imperial Chandrila's Imperial Army Regiment
+  // reads "Enroute", "ETA Destination: Day 171". The window reads the
+  // player's side's copy (FUN_004f2d10 -> FUN_0053efd0), frozen in
+  // hyperspace (FUN_004f9a60). Background by the object's side (11555 for
+  // the Alliance's view); title, labels, the Status and ETA values and the
+  // picture's interior against A0. The fixture's ETA is A0's day 171.
+  {
+    name: "enemy-regiment-frozen",
+    code: ENEMY_REGIMENT_FROZEN,
+    family: "ViewedTroop",
+    otherSide: true,
+    a0: { file: `${knownA0}/18-chandrila-army-regiment-status-enroute-eta-day171-on-day576-stale.png`,
+      x: 108, y: 79, labels: 8, values: { "status-value": 1, "eta-value": 2 }, side: "alliance" },
+    a0Picture: { file: `${knownA0}/18-chandrila-army-regiment-status-enroute-eta-day171-on-day576-stale.png`,
+      x: 108, y: 79, side: "alliance" },
+    rows: [["Attached: "], ["Status:", "Enroute"], ["ETA Destination:", "Day 171"], ["Maintenance Cost:"],
+      ["Attack Strength:"], ["Defense Strength:"], ["Bombardment Value:"], ["Detection Value:"]],
+    // The Imperial (Alliance) Army Regiment's own GOKRES en route mark.
+    marks: { alliance: [["Strategy", 11514], ["Gokres", 5250]], empire: [["Strategy", 11514], ["Gokres", 5185]] },
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
   // The en route squadron: FUN_00556390 puts a squadron sent by Move in its
@@ -1049,9 +1081,9 @@ async function inspect(server, source, faction, testCase, executable) {
     const second = await page.screenshot({ animations: "disabled" });
     fs.writeFileSync(path.join(directory, "status-screen.png"), second);
     assert.equal(sha256(PNG.sync.write(crop(first, rect))), sha256(PNG.sync.write(crop(second, rect))), "the window did not stabilize");
-    // FUN_00443130: every case's object is the player's, so its background
-    // is the player's own-side one.
-    const comparison = compare(crop(second, rect), composeExpected(source, faction), directory, "window");
+    // FUN_00443130: the background by the object's side bits; every case's
+    // object but the other side's frozen regiment is the player's.
+    const comparison = compare(crop(second, rect), composeExpected(source, faction, testCase.otherSide), directory, "window");
     assert.equal(comparison.different_pixels, 0, JSON.stringify(comparison));
     for (const name of Object.keys(masks)) assert.ok(comparison.changed_in_masks[name] > 0, `${name} shows nothing`);
     assert.equal(comparison.picture_blue_pixels, 0, "the picture's blue matte is not keyed");
