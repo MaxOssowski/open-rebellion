@@ -170,3 +170,10 @@ sees that system again.
 port: the copies of a system's fleets and missions (`SystemDetails`, v120)
 stay as seen until the side's copy of the system goes live again, when they
 are rebuilt from the live system.
+
+port: each side's copies of the other side's characters
+(`CharacterCopy`, v121) follow every rebuilt or live system copy: aboard a
+fleet in orbit with the ship's name, or on the planet. A character the
+rebuilt copy no longer holds is left in no place, and the Personnel Finder
+reads it as "Location Unknown" (`personnel-finder.md`, A0
+1x-personnelfinder-empire-d85/d91).

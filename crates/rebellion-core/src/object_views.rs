@@ -149,6 +149,19 @@ pub struct ObjectViews {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub empire_details: HashMap<DatId, SystemDetails>,
+    /// The Alliance's copies of Imperial characters, by the character's id
+    /// (v121): where the side last held each one ([`CharacterCopy`]).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub alliance_characters: HashMap<DatId, CharacterCopy>,
+    /// The Empire's copies of Alliance characters (v121).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub empire_characters: HashMap<DatId, CharacterCopy>,
     /// port: the debug "see everything" mode: the windows show every live
     /// object of both sides and ignore the views and the fog. Not saved.
     #[serde(skip)]
@@ -249,6 +262,24 @@ impl ObjectViews {
         match side {
             Faction::Alliance => Some(&mut self.alliance_details),
             Faction::Empire => Some(&mut self.empire_details),
+            Faction::Neutral => None,
+        }
+    }
+
+    /// `side`'s copy of the other side's character `id`.
+    #[must_use]
+    pub fn character(&self, side: Faction, id: DatId) -> Option<&CharacterCopy> {
+        match side {
+            Faction::Alliance => self.alliance_characters.get(&id),
+            Faction::Empire => self.empire_characters.get(&id),
+            Faction::Neutral => None,
+        }
+    }
+
+    fn characters_mut(&mut self, side: Faction) -> Option<&mut HashMap<DatId, CharacterCopy>> {
+        match side {
+            Faction::Alliance => Some(&mut self.alliance_characters),
+            Faction::Empire => Some(&mut self.empire_characters),
             Faction::Neutral => None,
         }
     }
@@ -656,6 +687,169 @@ pub struct MissionDetail {
     pub decoys: Vec<MemberCopy>,
 }
 
+/// A side's copy of an other-side character (v121): the system whose copy
+/// last held it and, aboard, the copied ship it rode.
+///
+/// `FUN_00465bb0` starts the row's place as `0x1895` "Location Unknown"
+/// (`0x465c21`) and replaces it with the name of the container of the
+/// side's copy of the character (vtable `+0xc`, then `FUN_004f62d0(+0x1c)`)
+/// only when that container is a system (family `0x90..0x97`) or a capital
+/// ship (`0x14..0x1b`), or an abode (`0x98..0x9f`). A0
+/// 2026-11-14-stale-views second run: the Alliance's Imperial tab read
+/// "Darth Vader - Imperial Star Destroyer 3" while its copy of Yaga Minor
+/// held Vader aboard a copied fleet (1x-personnelfinder-empire-d85, sha256
+/// d57ed845), then "Darth Vader - Location Unknown" from the day that copy
+/// went live without him (1x-personnelfinder-empire-d91 1b8818d8, d97
+/// 56d33542). hyp: the live rebuild (`FUN_004f8340`) takes the departed
+/// fleet's copy out of the system's copy, which leaves the character's copy
+/// in no system or ship; untraced.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterCopy {
+    /// The system whose copy holds it; none once that copy was rebuilt
+    /// live without it.
+    pub system: Option<DatId>,
+    /// The name of the ship it rode as copied, when aboard. port: a
+    /// character not seated on a ship names its fleet.
+    pub ship: Option<String>,
+}
+
+/// The other side's living characters at `system` as `side` copies them
+/// now: those aboard its fleets in orbit (with their ships' names) and
+/// those on the planet, in id order.
+#[must_use]
+pub fn character_copies(
+    world: &GameWorld,
+    movement: &MovementState,
+    side: Faction,
+    system: SystemKey,
+) -> Vec<(DatId, CharacterCopy)> {
+    let alliance = side == Faction::Alliance;
+    let Some(id) = world.systems.get(system).map(|value| value.dat_id) else {
+        return Vec::new();
+    };
+    let other = |character: &crate::world::Character| {
+        character.is_alliance != alliance && !character.is_killed
+    };
+    let mut copies: Vec<(DatId, CharacterCopy)> = Vec::new();
+    for (key, fleet) in &world.fleets {
+        if fleet.location != system || movement.is_in_transit(key) {
+            continue;
+        }
+        for character in fleet
+            .characters
+            .iter()
+            .filter_map(|character| world.characters.get(*character))
+            .filter(|character| other(character))
+        {
+            let ship = character
+                .ship
+                .and_then(|seat| {
+                    let index = fleet
+                        .capital_ships
+                        .iter()
+                        .position(|ship| ship.id == seat)?;
+                    world.ship_name(key, index)
+                })
+                .or_else(|| world.fleet_name(key))
+                .map(str::to_owned);
+            copies.push((
+                character.dat_id,
+                CharacterCopy {
+                    system: Some(id),
+                    ship,
+                },
+            ));
+        }
+    }
+    for character in world.characters.values().filter(|character| {
+        other(character)
+            && character.current_fleet.is_none()
+            && character.current_system == Some(system)
+    }) {
+        copies.push((
+            character.dat_id,
+            CharacterCopy {
+                system: Some(id),
+                ship: None,
+            },
+        ));
+    }
+    copies.sort_by_key(|(id, _)| id.raw());
+    copies
+}
+
+/// Takes `copies` into `side`'s character copies as each system's copy is
+/// rebuilt: a character the side's copy put in one of those systems that
+/// is not there now is left in no place ("Location Unknown").
+fn record_characters(
+    world: &mut GameWorld,
+    side: Faction,
+    copies: Vec<(DatId, Vec<(DatId, CharacterCopy)>)>,
+) {
+    let Some(map) = world.object_views.characters_mut(side) else {
+        return;
+    };
+    for (system, _) in &copies {
+        for copy in map.values_mut() {
+            if copy.system == Some(*system) {
+                *copy = CharacterCopy::default();
+            }
+        }
+    }
+    for (_, list) in copies {
+        map.extend(list);
+    }
+}
+
+/// Seeds each side's character copies from its system and fleet copies
+/// (the v116 to v120 migrations): each character a copy holds, in that
+/// system; one aboard a copied fleet is named by its fleet, as an older
+/// copy kept no seat.
+pub fn seed_characters_from_copies(world: &mut GameWorld) {
+    for side in [Faction::Alliance, Faction::Empire] {
+        let views = &world.object_views;
+        let mut copies: Vec<(DatId, CharacterCopy)> = Vec::new();
+        if let Some(systems) = views.systems(side) {
+            for (system, view) in systems {
+                for character in &view.characters {
+                    copies.push((
+                        *character,
+                        CharacterCopy {
+                            system: Some(*system),
+                            ship: None,
+                        },
+                    ));
+                }
+            }
+        }
+        if let Some(details) = views.system_details_map(side) {
+            for (system, copy) in details {
+                for fleet in copy
+                    .fleets
+                    .iter()
+                    .filter(|fleet| fleet.is_alliance != (side == Faction::Alliance))
+                {
+                    for character in &fleet.characters {
+                        copies.push((
+                            *character,
+                            CharacterCopy {
+                                system: Some(*system),
+                                ship: Some(fleet.name.clone()),
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        // port: a character two copies hold takes the one of the system
+        // with the highest id, so the seed does not hang on map order.
+        copies.sort_by_key(|(id, copy)| (id.raw(), copy.system.map(DatId::raw)));
+        if let Some(map) = world.object_views.characters_mut(side) {
+            map.extend(copies);
+        }
+    }
+}
+
 /// A side's full copy of a system's fleets and missions (v120), kept with
 /// its [`SystemExtras`]: what the side saw then, even after a fleet has
 /// moved or died. The original keeps a side's copy of an object until the
@@ -923,6 +1117,16 @@ pub fn advance_extras(
         // not (hyp: its container change does not reach a frozen copy).
         let refreshed: std::collections::HashSet<DatId> =
             details.iter().map(|(id, _)| *id).collect();
+        // The character copies follow every rebuilt or live system copy.
+        let characters: Vec<(DatId, Vec<(DatId, CharacterCopy)>)> = world
+            .systems
+            .iter()
+            .filter(|(key, value)| {
+                refreshed.contains(&value.dat_id) || system_seen(world, movement, side, *key)
+            })
+            .map(|(key, value)| (value.dat_id, character_copies(world, movement, side, key)))
+            .collect();
+        record_characters(world, side, characters);
         let mut made: Vec<(DatId, FleetDetail)> = Vec::new();
         if let Some(map) = world.object_views.details_mut(side) {
             map.extend(details);
@@ -1019,9 +1223,16 @@ pub fn seed_details_from_fog(
                 )
             })
             .collect();
+        let characters: Vec<(DatId, Vec<(DatId, CharacterCopy)>)> = world
+            .systems
+            .iter()
+            .filter(|(key, _)| system_seen(world, movement, side, *key) || fog.is_visible(*key))
+            .map(|(key, value)| (value.dat_id, character_copies(world, movement, side, key)))
+            .collect();
         if let Some(map) = world.object_views.details_mut(side) {
             map.extend(updates);
         }
+        record_characters(world, side, characters);
     }
 }
 

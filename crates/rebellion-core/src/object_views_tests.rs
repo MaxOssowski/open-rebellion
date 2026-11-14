@@ -1084,6 +1084,184 @@ fn a_frozen_copy_keeps_a_fleet_as_seen_after_it_has_moved_and_died() {
 }
 
 #[test]
+fn a_characters_copy_keeps_its_ship_until_its_system_copy_goes_live_without_it() {
+    // FUN_00465bb0 names the container of the side's copy of a character
+    // (a ship or a system), else 0x1895 "Location Unknown". A0
+    // 2026-11-14-stale-views second run: 1x-personnelfinder-empire-d85
+    // (d57ed845) "Darth Vader - Imperial Star Destroyer 3"; d91 (1b8818d8)
+    // "Darth Vader - Location Unknown".
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let missions = crate::missions::MissionState::new();
+    let class = setup
+        .world
+        .capital_ship_classes
+        .insert(crate::world::CapitalShipClass {
+            dat_id: DatId::new(0x1400_0001),
+            name: "Imperial Star Destroyer".into(),
+            ..Default::default()
+        });
+    let mut first = crate::world::ShipInstance::new(class, 40, true);
+    first.id = 2;
+    let mut ship = crate::world::ShipInstance::new(class, 40, true);
+    ship.id = 3;
+    ship.name = Some("Imperial Star Destroyer 3".into());
+    let imperial = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![first, ship],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    let vader_id = DatId::new(0x3000_0001);
+    let vader = setup.world.characters.insert(crate::world::Character {
+        dat_id: vader_id,
+        is_empire: true,
+        current_fleet: Some(imperial),
+        ship: Some(3),
+        ..Default::default()
+    });
+    setup.world.fleets[imperial].characters.push(vader);
+    let piett_id = DatId::new(0x3000_0002);
+    setup.world.characters.insert(crate::world::Character {
+        dat_id: piett_id,
+        is_empire: true,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
+    // The Alliance's own character there takes no copy.
+    let mon_id = DatId::new(0x3000_0003);
+    setup.world.characters.insert(crate::world::Character {
+        dat_id: mon_id,
+        is_alliance: true,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
+    let chandrila_id = setup.world.systems[chandrila].dat_id;
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let copy = |setup: &Setup, id| {
+        setup
+            .world
+            .object_views
+            .character(Faction::Alliance, id)
+            .cloned()
+    };
+    let aboard = CharacterCopy {
+        system: Some(chandrila_id),
+        ship: Some("Imperial Star Destroyer 3".into()),
+    };
+    assert_eq!(copy(&setup, vader_id), Some(aboard.clone()));
+    assert_eq!(
+        copy(&setup, piett_id),
+        Some(CharacterCopy {
+            system: Some(chandrila_id),
+            ship: None,
+        })
+    );
+    assert_eq!(copy(&setup, mon_id), None);
+    // A character landing on a live system with its fleets unchanged is
+    // copied the same day.
+    let needa_id = DatId::new(0x3000_0004);
+    setup.world.characters.insert(crate::world::Character {
+        dat_id: needa_id,
+        is_empire: true,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
+    day(&mut setup, &missions);
+    assert_eq!(
+        copy(&setup, needa_id).and_then(|copy| copy.system),
+        Some(chandrila_id)
+    );
+    // The Empire holds Chandrila, so it copies the Alliance's character.
+    assert_eq!(
+        setup.world.object_views.character(Faction::Empire, mon_id),
+        Some(&CharacterCopy {
+            system: Some(chandrila_id),
+            ship: None,
+        })
+    );
+    // The watcher leaves; the fleet moves on out of sight: the copy stays.
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    setup.world.fleets[imperial].location = coruscant;
+    day(&mut setup, &missions);
+    assert_eq!(copy(&setup, vader_id), Some(aboard));
+    // Seen again without the fleet: the copy is in no place.
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    assert_eq!(copy(&setup, vader_id), Some(CharacterCopy::default()));
+    assert!(copy(&setup, piett_id).unwrap().system.is_some());
+    // An unseated character aboard names its fleet; seen at Coruscant now.
+    setup.world.fleets[watcher].location = coruscant;
+    setup.world.characters[vader].ship = None;
+    day(&mut setup, &missions);
+    assert_eq!(
+        copy(&setup, vader_id),
+        Some(CharacterCopy {
+            system: Some(setup.world.systems[coruscant].dat_id),
+            ship: setup.world.fleet_name(imperial).map(str::to_owned),
+        })
+    );
+}
+
+#[test]
+fn seeding_character_copies_takes_the_characters_the_system_and_fleet_copies_hold() {
+    // The v120 migration: an older copy kept no seat, so a character aboard
+    // is named by its copied fleet.
+    let mut world = GameWorld::default();
+    let empire = ControlKind::Controlled(Faction::Empire);
+    let yaga = system(&mut world, 1, "Yaga Minor", empire);
+    let id = world.systems[yaga].dat_id;
+    let mut view = SystemView::of(&world, &world.systems[yaga], false);
+    view.characters = vec![DatId::new(0x3000_0002)];
+    world.object_views.alliance_systems.insert(id, view);
+    let fleet = |is_alliance: bool, name: &str, character: u32| FleetDetail {
+        serial: 1,
+        name: name.into(),
+        is_alliance,
+        ships: vec![],
+        fighters: vec![],
+        troops: vec![],
+        characters: vec![DatId::new(character)],
+    };
+    world.object_views.alliance_details.insert(
+        id,
+        SystemDetails {
+            fleets: vec![
+                fleet(false, "Fleet 2", 0x3000_0001),
+                fleet(true, "Fleet 3", 0x3000_0003),
+            ],
+            ..Default::default()
+        },
+    );
+    seed_characters_from_copies(&mut world);
+    let views = &world.object_views;
+    assert_eq!(
+        views.character(Faction::Alliance, DatId::new(0x3000_0001)),
+        Some(&CharacterCopy {
+            system: Some(id),
+            ship: Some("Fleet 2".into()),
+        })
+    );
+    assert_eq!(
+        views.character(Faction::Alliance, DatId::new(0x3000_0002)),
+        Some(&CharacterCopy {
+            system: Some(id),
+            ship: None,
+        })
+    );
+    assert_eq!(
+        views.character(Faction::Alliance, DatId::new(0x3000_0003)),
+        None
+    );
+    assert!(views.empire_characters.is_empty());
+}
+
+#[test]
 fn a_seen_systems_missions_are_copied_with_their_members() {
     let mut setup = setup();
     let chandrila = setup.chandrila;
@@ -1137,12 +1315,30 @@ fn seeding_details_copies_each_system_in_the_sides_fog() {
     fog_alliance.reveal(setup.chandrila);
     let fog_empire = FogState::new(Faction::Empire);
     let missions = crate::missions::MissionState::new();
+    // An Imperial character on Chandrila, which the Alliance's fog shows
+    // but it does not see.
+    let piett = DatId::new(0x3000_0002);
+    let chandrila = setup.chandrila;
+    setup.world.characters.insert(crate::world::Character {
+        dat_id: piett,
+        is_empire: true,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
     seed_details_from_fog(
         &mut setup.world,
         &setup.movement,
         &missions,
         &setup.transport,
         [&fog_alliance, &fog_empire],
+    );
+    assert_eq!(
+        setup
+            .world
+            .object_views
+            .character(Faction::Alliance, piett)
+            .and_then(|copy| copy.system),
+        Some(setup.world.systems[chandrila].dat_id)
     );
     assert!(alliance_details(&setup, setup.chandrila).is_some());
     assert!(alliance_details(&setup, setup.coruscant).is_none());
