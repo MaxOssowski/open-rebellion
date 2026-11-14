@@ -2298,17 +2298,19 @@
         {
           "id": "CMD-03-C019",
           "requirement": "quadrant icon drag",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "tools/interface-parity/fleet-move.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-move-gate-linux/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-reserved-and-drop/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-quadrant-icon-defenses-move/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-quadrant-icon-defenses-move/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-icon-drops-a0/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-facility-drop-a0/README.md"
           ],
-          "note": "The fleet icon's drag starts a move (fleet-move.mjs); other icon families' drags are open; no A0. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison. 2026-11-10 b177: the facility icon's drop sets the managers' Destination to the system +0x68 names (FUN_00422ce0, FUN_00537180 refuses an object); the defenses and missions icons' drops stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's drop moves its team (Ctrl: Confirmed Move); the missions icon's drop is refused (FUN_0054c110, FUN_00522b30; decompile only). Every icon's drop is now ported; no A0. 2026-11-13 b206: the fleet icon's drag compared with A0 icon-drag-move/21-22 (sector-quadrants fleet-icon-drag-image: pressed origin and drag image 0 differing px, the fleet at the drop at once) and a squadron's drop on a neutral planet refused as A0 04-09 (squadron-neutral-refused). Still no A0 for the defenses and missions icons' drops.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The fleet icon's drag starts a move (fleet-move.mjs); other icon families' drags are open; no A0. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison. 2026-11-10 b177: the facility icon's drop sets the managers' Destination to the system +0x68 names (FUN_00422ce0, FUN_00537180 refuses an object); the defenses and missions icons' drops stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's drop moves its team (Ctrl: Confirmed Move); the missions icon's drop is refused (FUN_0054c110, FUN_00522b30; decompile only). Every icon's drop is now ported; no A0. 2026-11-13 b206: the fleet icon's drag compared with A0 icon-drag-move/21-22 (sector-quadrants fleet-icon-drag-image: pressed origin and drag image 0 differing px, the fleet at the drop at once) and a squadron's drop on a neutral planet refused as A0 04-09 (squadron-neutral-refused). Still no A0 for the defenses and missions icons' drops. 2026-11-13 b209/b210: A0 2026-11-13-defenses-missions-drop (Alliance): the defenses icon's drop on an own system moves its team with no window or message, the icon stays for its facilities with Move/Confirmed Move grey and Scrap white; the missions icon's drop is refused silently with no Message Index entry (the port now routes refusals to the advisor, MessageLog::refuse, FUN_00487c90). A0 2026-11-13-facility-icon-drop: the facility icon's drop sets the Destination of all three managers, a drop on the HQ mark sets nothing (FUN_00537180), menu Destination at the same point does. sector-quadrants.mjs (icon-drops-a0, facility-icon-drop) passes both sides on Linux. Every icon family's drop now has A0 (fleet, squadron, defenses, missions, facility). The Empire side has no A0; the drops' rules are side-independent in the trace.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-03-C020",
@@ -4467,15 +4469,16 @@
         {
           "id": "CMD-11-C030",
           "requirement": "tactical battle panels",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
             "crates/rebellion-render/src/tactical_view.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-tactical-tips-a0/README.md"
           ],
-          "note": "All 51 §9 controls register their TEXTTACT tips with their runtime texts (hud_tooltip, command_tooltip); tooltip.mjs checks nine HUD controls in the production battle fixture (Linux); Wine A0 TAC-02-C009 shows 'Task Force 1' below the pointer. The side panels have no browser check and no Windows A0 capture. b197: production-capital-panel-missions-tip shows the capital-ship panel's 'Missions' tip at (562,276) 52x19 as A0 TAC-03-C012 (Alliance). Only one panel tip on one side has A0; other panels and the Empire side still open.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "All 51 §9 controls register their TEXTTACT tips with their runtime texts (hud_tooltip, command_tooltip); tooltip.mjs checks nine HUD controls in the production battle fixture (Linux); Wine A0 TAC-02-C009 shows 'Task Force 1' below the pointer. The side panels have no browser check and no Windows A0 capture. b197: production-capital-panel-missions-tip shows the capital-ship panel's 'Missions' tip at (562,276) 52x19 as A0 TAC-03-C012 (Alliance). Only one panel tip on one side has A0; other panels and the Empire side still open. 2026-11-13 b210: A0 2026-11-13-tactical-panel-tips (Alliance, 57 captures): every tip of the capital-ship panel, fighter panel, HUD, top bar and battle options panel; the port strips '&' as the prefix-style tooltip control does (win_tooltip::shown_text, 'Maneuvers  Tactics'), and run.mjs compares every tip's text and place with A0 on both sides (run 2026-11-13T22-40-15-726Z-777840). 18 boxes differ from A0's width by 3-8 px (at most 4.3%), within the accepted Liberation Sans text-width deviation; the anti-aliased glyphs are not compared. The tip texts are side-independent; the Empire side has no A0.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-11-C031",
@@ -9423,9 +9426,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-panels/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-13-fireball/README.md"
           ],
-          "note": "After destruction the panel returns to the emblem as in A0 TAC-03-C004; the explosion and TACTICAL 3368 destroyed presentation are not compared. 2026-11-11 b191: all five colours of A0's fireball appear in the port's TACTICAL 3368 frame (production-detail-escort-presentation, run 2026-11-11T16-51-41-850Z-1467492); the port's frame adds a sixth colour and A0's frame number is unknown, so shape and size are not compared. b197: A0's fireball best matches TACTICAL frame 3369; shape and timing not yet asserted.",
+          "note": "After destruction the panel returns to the emblem as in A0 TAC-03-C004; the explosion and TACTICAL 3368 destroyed presentation are not compared. 2026-11-11 b191: all five colours of A0's fireball appear in the port's TACTICAL 3368 frame (production-detail-escort-presentation, run 2026-11-11T16-51-41-850Z-1467492); the port's frame adds a sixth colour and A0's frame number is unknown, so shape and size are not compared. b197: A0's fireball best matches TACTICAL frame 3369; shape and timing not yet asserted. 2026-11-13 b209: the impact effect counts one frame per render (FUN_005d41a0 +0x140), swaps after 0.1 s, removes the hull's mesh at count 11 and the effect at 16; the original renders at most 50 fps (FUN_005c1cf0). The detail fixture holds A0's frame 3369 (526 of 712 fire pixels the same colour, outline within 18 px). Still open: the VM's render rate (needs a fast QMP capture series after a hull dies), effects running while paused, and the fireball's size against A0's camera.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9842,16 +9846,17 @@
         {
           "id": "TAC-04-C014",
           "requirement": "chase camera",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-camera-tracking/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-battle-keys/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-compare/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-coruscant-battle-fixture/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-coruscant-battle-fixture/README.md",
+            "ghidra/notes/tactical-chase-camera-distance.md"
           ],
-          "note": "F1-F12 follow (FUN_0059b730) implemented; A0 TAC-04-C014 (F1 chase from behind) is captured but not compared. 2026-11-12: A0 is the Battle at Coruscant (Escort Carrier + X/Y-wings) which no fixture rebuilds; needs that fixture or an F1 A0 capture of fixture 37's battle. Batch b200: fixture 43 (Battle at Coruscant) runs F1 after Red Group escorts the carrier, on both sides and both viewports (letterboxed click fixed in c4f02d3f). The ported chase camera matches every traced input (box, followed hull, second object); its distance is about 1.25x A0's — needs a runtime read in the VM.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "F1-F12 follow (FUN_0059b730) implemented; A0 TAC-04-C014 (F1 chase from behind) is captured but not compared. 2026-11-12: A0 is the Battle at Coruscant (Escort Carrier + X/Y-wings) which no fixture rebuilds; needs that fixture or an F1 A0 capture of fixture 37's battle. Batch b200: fixture 43 (Battle at Coruscant) runs F1 after Red Group escorts the carrier, on both sides and both viewports (letterboxed click fixed in c4f02d3f). The ported chase camera matches every traced input (box, followed hull, second object); its distance is about 1.25x A0's — needs a runtime read in the VM. 2026-11-13 b209/b210: the 1.25x distance was the battle's extent, not the camera: A0's battle counted 12 Imperial units (the Star Destroyer and Coruscant's 11 deployed TIE squadrons; FUN_005ab650 skips state-1 hangar squadrons), extent 136 against the fixture's 109. Fixture 43 now scrambles Coruscant's planet squadrons as the campaign does (FUN_0040b0e0), and the chase gate tightens from 40 px to 3 px with the red pyramids' size within 10%: worst 1.5 px against A0 TAC-04-C014. ghidra/notes/tactical-chase-camera-distance.md.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         }
       ]
     },
