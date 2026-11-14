@@ -12365,6 +12365,17 @@ mod tests {
         let mut fog_alliance = FogState::new(Faction::Alliance);
         let mut fog = FogState::new(Faction::Empire);
         reveal(request, world, &mut fog_alliance, &mut fog);
+        // main.rs seeds each side's views from the fixture's fog after
+        // reveal (object_views::seed_from_fog): the Empire's copy of the
+        // Alliance regiment it sees on Coruscant.
+        let mut seeded = world.clone();
+        rebellion_core::object_views::seed_from_fog(
+            &mut seeded,
+            &rebellion_core::troop_transport::TroopTransportState::default(),
+            &MovementState::new(),
+            [&fog_alliance, &fog],
+        );
+        let world = &seeded;
         let economy = EconomyState::default();
         let manufacturing = rebellion_core::manufacturing::ManufacturingState::default();
         let deliveries = rebellion_core::delivery::DeliveryState::default();

@@ -10514,6 +10514,7 @@ fn defenses_selection_team(
             DefensesItem::Squadron { class, .. } => team.squadrons.push(class),
             // A squadron in hyperspace takes no order (FUN_004f9860).
             DefensesItem::Defense(_)
+            | DefensesItem::ViewedTroop { .. }
             | DefensesItem::Pending { .. }
             | DefensesItem::TravellingSquadron { .. } => return None,
         }
@@ -13032,6 +13033,18 @@ fn apply_panel_action(
             for (sys_key, _) in &world.systems {
                 fog_state.reveal(sys_key);
             }
+        }
+        PanelAction::ToggleSeeEverything => {
+            let views = &mut world.object_views;
+            views.see_everything = !views.see_everything;
+            msg_log.push(GameMessage::new(
+                clock.tick,
+                format!(
+                    "See everything (debug): {}",
+                    if views.see_everything { "on" } else { "off" }
+                ),
+                MessageCategory::Event,
+            ));
         }
         PanelAction::ExportGameLog => {
             // Resolve system keys to names before export

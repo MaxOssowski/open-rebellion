@@ -17,7 +17,7 @@ use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::EconomyState;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{
-    CharacterKey, DefenseFacilityKey, FighterKey, SpecialForceKey, SystemKey, TroopKey,
+    CharacterKey, DatId, DefenseFacilityKey, FighterKey, SpecialForceKey, SystemKey, TroopKey,
 };
 use rebellion_core::manufacturing::{BuildableKind, ManufacturingState};
 use rebellion_core::missions::{
@@ -193,6 +193,9 @@ pub enum DefensesItem {
     Character(CharacterKey),
     SpecialForce(SpecialForceKey),
     Troop(TroopKey),
+    /// The viewing side's frozen copy of the other side's regiment `id`
+    /// (`FUN_004f9a60`; `viewed_contents`). `alliance` is the viewing side.
+    ViewedTroop { alliance: bool, id: DatId },
     /// The `nth` squadron of `class` on `system`'s planet. port: squadrons
     /// are counts per class.
     Squadron {
@@ -232,6 +235,7 @@ impl DefensesItem {
             Self::Character(key) => Some(MenuObject::Character(key)),
             Self::SpecialForce(key) => Some(MenuObject::SpecialForce(key)),
             Self::Troop(key) => Some(MenuObject::Troop(key)),
+            Self::ViewedTroop { alliance, id } => Some(MenuObject::ViewedTroop { alliance, id }),
             Self::Squadron { system, class, .. } => {
                 Some(MenuObject::PlanetFighter { system, class })
             }
@@ -337,6 +341,10 @@ fn row_marks(
     let travelling = |member: MissionMember| members.iter().any(|transit| transit.member == member);
     let en_route = match row.item {
         DefensesItem::Troop(key) => regiments.iter().any(|transit| transit.troop == key),
+        DefensesItem::ViewedTroop { alliance, id } => {
+            crate::viewed_contents::regiment_view(world, viewer(alliance), id)
+                .is_some_and(|view| view.arrival.is_some())
+        }
         DefensesItem::Character(key) => travelling(MissionMember::Character(key)),
         DefensesItem::SpecialForce(key) => travelling(MissionMember::SpecialForce(key)),
         _ => false,
@@ -351,6 +359,10 @@ fn row_marks(
             .troops
             .get(key)
             .map_or(MiniObject::Craft, |troop| MiniObject::Regiment(troop.class_dat_id)),
+        DefensesItem::ViewedTroop { alliance, id } => {
+            crate::viewed_contents::regiment_view(world, viewer(alliance), id)
+                .map_or(MiniObject::Craft, |view| MiniObject::Regiment(view.class))
+        }
         DefensesItem::Squadron { .. }
         | DefensesItem::TravellingSquadron { .. }
         | DefensesItem::Defense(_)
@@ -658,6 +670,15 @@ impl DefensesWindowState {
                 pick.object = Some(MissionTarget::SpecialForce(key));
             }
             Some(DefensesItem::Troop(key)) => pick.object = Some(MissionTarget::Troop(key)),
+            // hyp: a mission's order names the object by id (the copy's
+            // id is the true object's, FUN_005844e0's group), so a copy
+            // targets its regiment while that still exists.
+            Some(DefensesItem::ViewedTroop { id, .. }) => {
+                pick.object = world
+                    .object_views
+                    .regiment_key(world, id)
+                    .map(MissionTarget::Troop);
+            }
             Some(DefensesItem::Defense(key)) => {
                 pick.object = Some(MissionTarget::DefenseFacility(key));
             }
@@ -908,12 +929,77 @@ fn page_rows(
         return Vec::new();
     }
     let side = shown_side(world, system);
-    if side != faction_side(player) && !opposing_contents_visible(world, fog, player, system) {
+    let other = side != faction_side(player);
+    let visible = opposing_contents_visible(world, fog, player, system);
+    // The other side's regiments are the player's side's copies of them
+    // (FUN_004f2d10 -> FUN_0053efd0; FUN_004f9a60 freezes a copy out of
+    // sight), unless the debug mode shows everything.
+    if other && page == DefensesPage::Regiments && !crate::viewed_contents::sees_everything(world)
+    {
+        let mut rows = viewed_regiment_rows(world, player, side, system);
+        if visible {
+            rows.extend(pending_rows(world, production, side, system, page));
+        }
+        return rows;
+    }
+    if other && !visible {
         return Vec::new();
     }
     let mut rows = built_rows(world, missions, production, side, system, page);
     rows.extend(pending_rows(world, production, side, system, page));
     rows
+}
+
+/// The faction a `ViewedTroop`'s `alliance` names.
+const fn viewer(alliance: bool) -> Faction {
+    if alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    }
+}
+
+/// The Regiments page's rows of the other side (`side`) for `player`: its
+/// copies of the regiments on `system`'s planet, live or frozen
+/// (`viewed_contents::viewed_surface_regiments`).
+fn viewed_regiment_rows(
+    world: &GameWorld,
+    player: Faction,
+    side: u8,
+    system: SystemKey,
+) -> Vec<DefensesRow> {
+    use crate::viewed_contents::{regiment_view, viewed_surface_regiments, ViewedRegiment};
+    viewed_surface_regiments(world, player, system)
+        .into_iter()
+        .filter_map(|regiment| {
+            let (item, class, is_alliance) = match regiment {
+                ViewedRegiment::Live(key) => {
+                    let troop = world.troops.get(key)?;
+                    (DefensesItem::Troop(key), troop.class_dat_id, troop.is_alliance)
+                }
+                ViewedRegiment::View(id) => {
+                    let view = regiment_view(world, player, id)?;
+                    (
+                        DefensesItem::ViewedTroop {
+                            alliance: player == Faction::Alliance,
+                            id,
+                        },
+                        view.class,
+                        view.is_alliance,
+                    )
+                }
+            };
+            if fleet_side(is_alliance) != side {
+                return None;
+            }
+            let (mini, label) = troop_mini(class)?;
+            Some(DefensesRow {
+                item,
+                mini,
+                label: label.into(),
+            })
+        })
+        .collect()
 }
 
 /// The units queued for `system` (being built), then those travelling there
@@ -2687,6 +2773,9 @@ mod tests {
         let (mut world, system, missions) = stocked();
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
         let unseen = FogState::new(Faction::Alliance);
+        // The fog's system gives the Alliance its copies of the regiments
+        // there (object_views::seed_from_fog; FUN_004f9a60).
+        seed_views(&mut world, &seen(system));
 
         assert!(labels(&world, &unseen, &missions, system, DefensesPage::Batteries).is_empty());
         assert_eq!(
@@ -2719,6 +2808,182 @@ mod tests {
             ),
             ["Enemy"]
         );
+    }
+
+    /// Each side's copies of the other side's regiments in the systems
+    /// `fog` shows (the v116 migration's rule).
+    fn seed_views(world: &mut GameWorld, fog: &FogState) {
+        rebellion_core::object_views::seed_from_fog(
+            world,
+            &rebellion_core::troop_transport::TroopTransportState::new(),
+            &rebellion_core::movement::MovementState::new(),
+            [fog, &FogState::new(Faction::Empire)],
+        );
+    }
+
+    #[test]
+    fn the_enemys_regiments_are_the_players_copies_not_the_live_ones() {
+        // FUN_004f2d10 -> FUN_0053efd0: the window reads the player's side's
+        // copy; FUN_004f9a60 keeps one only where the side has seen it. A
+        // fog that shows the system without a copy lists no regiment.
+        let (mut world, system, missions) = stocked();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let fog = seen(system);
+        assert!(labels(&world, &fog, &missions, system, DefensesPage::Regiments).is_empty());
+
+        // A copy taken out of sight stays when the regiment leaves.
+        seed_views(&mut world, &fog);
+        let key = world.systems[system]
+            .ground_units
+            .iter()
+            .copied()
+            .find(|key| !world.troops[*key].is_alliance)
+            .unwrap();
+        world.systems[system].ground_units.retain(|unit| *unit != key);
+        let rows = page_rows(
+            &world,
+            &fog,
+            &missions,
+            idle(),
+            Faction::Alliance,
+            system,
+            DefensesPage::Regiments,
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.label.as_str()).collect::<Vec<_>>(),
+            ["Stormtrooper Regiment"]
+        );
+        let id = world.object_views.regiment_id(key).unwrap();
+        assert_eq!(rows[0].item, DefensesItem::ViewedTroop { alliance: true, id });
+        assert_eq!(
+            rows[0].item.menu_object(),
+            Some(MenuObject::ViewedTroop { alliance: true, id })
+        );
+        // The Empire's own page lists its live regiments only.
+        assert!(page_rows(
+            &world,
+            &fog,
+            &missions,
+            idle(),
+            Faction::Empire,
+            system,
+            DefensesPage::Regiments,
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn a_live_copy_lists_the_live_regiment() {
+        // FUN_004f9a60: an Alliance fleet in the system keeps the copy live.
+        let (mut world, system, missions) = stocked();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        world.fleets.insert(rebellion_core::world::Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        rebellion_core::object_views::advance(
+            &mut world,
+            &rebellion_core::troop_transport::TroopTransportState::new(),
+            &rebellion_core::movement::MovementState::new(),
+        );
+        let rows = page_rows(
+            &world,
+            &FogState::new(Faction::Alliance),
+            &missions,
+            idle(),
+            Faction::Alliance,
+            system,
+            DefensesPage::Regiments,
+        );
+        assert_eq!(rows.len(), 1);
+        assert!(matches!(rows[0].item, DefensesItem::Troop(_)));
+    }
+
+    #[test]
+    fn a_frozen_copy_en_route_takes_the_en_route_mark() {
+        // A0 OBJ-02-C010 (18-chandrila-army-regiment-status-enroute-eta-
+        // day171-on-day576-stale, 6a1269a1765f7c9b): the copy is en route
+        // (+0x50 bit 4) long after; FUN_0042c3b0 draws the regiment's
+        // en route mark.
+        use rebellion_core::object_views::{apply, ObjectView, RegimentView, ViewPlace, ViewUpdate};
+        let (mut world, system, missions) = stocked();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let id = DatId::new(0x1000_0042);
+        let place = ViewPlace::Surface(world.systems[system].dat_id);
+        apply(
+            &mut world,
+            &[ViewUpdate::Set {
+                side: Faction::Alliance,
+                id,
+                view: ObjectView::Regiment(RegimentView {
+                    class: DatId::new(STORMTROOPERS),
+                    is_alliance: false,
+                    strength: 100,
+                    place,
+                    arrival: Some(171),
+                    live: false,
+                }),
+            }],
+        );
+        let rows = page_rows(
+            &world,
+            &FogState::new(Faction::Alliance),
+            &missions,
+            idle(),
+            Faction::Alliance,
+            system,
+            DefensesPage::Regiments,
+        );
+        assert_eq!(rows.len(), 1);
+        let marks = row_marks(&world, &[], &[], &rows[0]);
+        let still = DefensesRow {
+            item: DefensesItem::Troop(world.systems[system].ground_units[0]),
+            ..rows[0].clone()
+        };
+        assert_ne!(marks, row_marks(&world, &[], &[], &still));
+        assert_eq!(
+            marks,
+            crate::fleet_window::mini_marks(
+                crate::fleet_window::MiniObject::Regiment(DatId::new(STORMTROOPERS)),
+                rows[0].mini,
+                true,
+                false,
+            )
+        );
+    }
+
+    #[test]
+    fn see_everything_lists_the_enemys_live_objects_past_the_fog_and_the_views() {
+        // port: the debug "see everything" mode (ObjectViews::see_everything).
+        let (mut world, system, missions) = stocked();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let unseen = FogState::new(Faction::Alliance);
+        assert!(labels(&world, &unseen, &missions, system, DefensesPage::Regiments).is_empty());
+        assert!(labels(&world, &unseen, &missions, system, DefensesPage::Batteries).is_empty());
+        world.object_views.see_everything = true;
+        assert_eq!(
+            labels(&world, &unseen, &missions, system, DefensesPage::Regiments),
+            ["Stormtrooper Regiment"]
+        );
+        assert!(!labels(&world, &unseen, &missions, system, DefensesPage::Batteries).is_empty());
+        assert!(matches!(
+            page_rows(
+                &world,
+                &unseen,
+                &missions,
+                idle(),
+                Faction::Alliance,
+                system,
+                DefensesPage::Regiments,
+            )[0]
+            .item,
+            DefensesItem::Troop(_)
+        ));
     }
 
     #[test]
@@ -2835,6 +3100,9 @@ mod tests {
             .collect();
         let missions = MissionState::new();
         let fog = seen(system);
+        // The Alliance's copy of the regiment, from its fog (the v116
+        // migration's rule): a frozen copy targets its regiment by id.
+        seed_views(&mut world, &fog);
         let mut state = opened(&world, system);
         let layer = egui::LayerId::new(egui::Order::Foreground, area_id(system));
         let cell = |state: &DefensesWindowState, index| {

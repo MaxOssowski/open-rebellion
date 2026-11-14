@@ -1786,17 +1786,19 @@ pub(crate) fn canvas_point(layout: CockpitLayout, point: egui::Pos2) -> (i16, i1
 }
 
 /// Whether the player sees the other side's objects at `system`: it holds
-/// the system, or its fog shows the system now.
+/// the system, or its fog shows the system now, or the debug "see
+/// everything" mode is on (`viewed_contents::sees_everything`).
 pub(crate) fn opposing_contents_visible(
     world: &GameWorld,
     fog: &FogState,
     player: Faction,
     system: SystemKey,
 ) -> bool {
-    world
-        .systems
-        .get(system)
-        .is_some_and(|value| value.control.is_controlled_by(player))
+    crate::viewed_contents::sees_everything(world)
+        || world
+            .systems
+            .get(system)
+            .is_some_and(|value| value.control.is_controlled_by(player))
         || (fog.faction == player && fog.is_visible(system))
 }
 

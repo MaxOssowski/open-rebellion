@@ -214,6 +214,10 @@ pub enum PanelAction {
     ForceVictoryCheck,
     /// Remove fog of war from all systems.
     RevealAllFog,
+    /// port: the debug "see everything" mode: every window shows both
+    /// sides' live objects, past the fog and the side's views
+    /// (`ObjectViews::see_everything`). Not saved.
+    ToggleSeeEverything,
     /// Export message log to file.
     ExportGameLog,
     /// Display current game statistics overlay.

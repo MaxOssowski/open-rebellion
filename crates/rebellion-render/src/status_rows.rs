@@ -77,6 +77,13 @@ pub enum StatusObject {
     },
     /// `0x10..0x13`, `FUN_00445280`.
     Troop(TroopKey),
+    /// `0x10..0x13`, `FUN_00445280`, filled from the viewing side's copy
+    /// of the other side's regiment `id` (`FUN_004f2d10` reads the side's
+    /// copy; `FUN_004f9a60` freezes it). `alliance` is the viewing side.
+    ViewedTroop {
+        alliance: bool,
+        id: DatId,
+    },
     /// `0x20..0x27`, `FUN_00444e20`.
     DefenseFacility(DefenseFacilityKey),
     /// `0x28..0x2a`, `FUN_00446c50`.
@@ -1058,6 +1065,22 @@ pub fn troop_rows(sources: StatusSources<'_>, key: TroopKey) -> Option<Vec<Statu
     ))
 }
 
+/// The Trooper Regiment Status rows (`FUN_00445280`) of a side's copy of a
+/// regiment: its place, status and ETA as the copy holds them.
+#[must_use]
+pub fn viewed_troop_rows(
+    world: &GameWorld,
+    copy: &rebellion_core::object_views::RegimentView,
+) -> Vec<StatusRow> {
+    regiment_rows(
+        world,
+        copy.class,
+        crate::viewed_contents::view_attached(world, copy),
+        moving_status(copy.arrival.is_some()),
+        copy.arrival,
+    )
+}
+
 /// `FUN_00445280`'s rows for a regiment of `class`: its place, its Status
 /// word (`+0x50` bit 4 34628 "Enroute", else bit 2 34632 "Awaiting
 /// Orders", else 34673 "Training") and, en route, its ETA.
@@ -1613,6 +1636,26 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                     portrait,
                     class_name(world, troop.class_dat_id),
                     troop_rows(sources, key)?,
+                )
+            }
+        }
+        StatusObject::ViewedTroop { alliance, id } => {
+            let viewer = if alliance {
+                rebellion_core::dat::Faction::Alliance
+            } else {
+                rebellion_core::dat::Faction::Empire
+            };
+            let copy = crate::viewed_contents::regiment_view(world, viewer, id)?;
+            let portrait = picture(troop_mini(copy.class).map(|(mini, _)| mini));
+            let marks = regiment_marks(portrait, copy.class, copy.arrival.is_some());
+            StatusView {
+                marks,
+                ..view(
+                    "Trooper Regiment Status",
+                    side_index(copy.is_alliance),
+                    portrait,
+                    class_name(world, copy.class),
+                    viewed_troop_rows(world, copy),
                 )
             }
         }
@@ -2630,6 +2673,84 @@ mod tests {
         // FUN_0042c3b0: a regiment's picture stands on STRATEGY 11514.
         let view = status_view(states.sources(&world), StatusObject::Troop(troop)).unwrap();
         assert_eq!(view.marks, [(DllSource::Strategy, 11_514)]);
+    }
+
+    #[test]
+    fn a_frozen_copy_of_an_enemy_regiment_reads_enroute_with_its_old_eta() {
+        // A0 OBJ-02-C010 (18-chandrila-army-regiment-status-enroute-eta-
+        // day171-on-day576-stale, 6a1269a1765f7c9b): on day 576 the
+        // Alliance's Status window of an Imperial regiment on Chandrila
+        // reads "Enroute", "ETA Destination: Day 171". The window reads the
+        // side's copy (FUN_004f2d10 -> FUN_0053efd0), frozen while en route
+        // (FUN_004f9a60).
+        use rebellion_core::object_views::{apply, ObjectView, RegimentView, ViewPlace, ViewUpdate};
+        let mut world = GameWorld::default();
+        let chandrila = system(&mut world, "Chandrila", ControlKind::Controlled(Faction::Empire));
+        let coruscant = system(&mut world, "Coruscant", ControlKind::Controlled(Faction::Empire));
+        world.systems[coruscant].dat_id = DatId::new(0x9000_0002);
+        let class = catalog(
+            &mut world,
+            0x1000_0001,
+            "Imperial Army Regiment",
+            BuildableClass::default(),
+        );
+        // The live regiment has long since landed on Coruscant.
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: class,
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[coruscant].ground_units.push(troop);
+        let id = DatId::new(0x1000_0007);
+        let place = ViewPlace::Surface(world.systems[chandrila].dat_id);
+        apply(
+            &mut world,
+            &[ViewUpdate::Set {
+                side: Faction::Alliance,
+                id,
+                view: ObjectView::Regiment(RegimentView {
+                    class,
+                    is_alliance: false,
+                    strength: 100,
+                    place,
+                    arrival: Some(171),
+                    live: false,
+                }),
+            }],
+        );
+        let states = States::new();
+
+        let view = status_view(
+            states.sources(&world),
+            StatusObject::ViewedTroop { alliance: true, id },
+        )
+        .unwrap();
+        assert_eq!(view.title, "Trooper Regiment Status");
+        assert_eq!(view.name, "Imperial Army Regiment");
+        assert_eq!(
+            super::tests::rows(&view.rows[..3]),
+            vec![
+                ("Attached: ", "Chandrila"),
+                ("Status:", "Enroute"),
+                ("ETA Destination:", "Day 171"),
+            ]
+        );
+        // FUN_0042c3b0: the en route mark over the backdrop.
+        assert_eq!(
+            view.marks,
+            [(DllSource::Strategy, 11_514), (DllSource::Strategy, 11_516)]
+        );
+        // The Empire holds no such copy, and the live regiment reads true.
+        assert!(status_view(
+            states.sources(&world),
+            StatusObject::ViewedTroop { alliance: false, id },
+        )
+        .is_none());
+        let live = troop_rows(states.sources(&world), troop).unwrap();
+        assert_eq!(
+            super::tests::rows(&live[..2]),
+            vec![("Attached: ", "Coruscant"), ("Status:", "Awaiting Orders")]
+        );
     }
 
     #[test]

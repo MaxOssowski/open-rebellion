@@ -70,6 +70,13 @@ pub enum MenuObject {
     Fleet(FleetKey),
     /// A regiment (`0x10..0x13`).
     Troop(TroopKey),
+    /// The viewing side's frozen copy of the other side's regiment `id`
+    /// (`FUN_004f9a60`; `viewed_contents`): its menu offers what an enemy
+    /// regiment's does, all grey.
+    ViewedTroop {
+        alliance: bool,
+        id: rebellion_core::ids::DatId,
+    },
     /// A capital ship (`0x14..0x1b`): the fleet that holds it, its index
     /// in [`Fleet::capital_ships`](rebellion_core::world::Fleet), and the
     /// fleet's roster when it was chosen (`fleet_join::roster`).
@@ -157,6 +164,7 @@ impl MenuObject {
             Self::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
             Self::Fleet(_)
             | Self::Troop(_)
+            | Self::ViewedTroop { .. }
             | Self::Ship { .. }
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
@@ -196,6 +204,7 @@ impl MenuObject {
             Self::Fleet(fleet) => Some(ScrapTarget::Fleet(fleet)),
             Self::Character(_)
             | Self::SpecialForce(_)
+            | Self::ViewedTroop { .. }
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
             | Self::Fighter { .. }
@@ -251,6 +260,7 @@ impl MenuObject {
             Self::SpecialForce(key) => Some(StatusObject::SpecialForce(key)),
             Self::Fleet(key) => Some(StatusObject::Fleet(key)),
             Self::Troop(key) => Some(StatusObject::Troop(key)),
+            Self::ViewedTroop { alliance, id } => Some(StatusObject::ViewedTroop { alliance, id }),
             Self::Ship { fleet, index, .. } => Some(StatusObject::Ship { fleet, index }),
             Self::Producer { system, area } => Some(StatusObject::Producer { system, area }),
             Self::Fighter { fleet, index } => Some(StatusObject::Fighter { fleet, index }),
@@ -656,9 +666,11 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         Some(MenuObject::Fleet(_)) => &[MOVE, CONFIRMED_MOVE, BOMBARDMENT, ASSAULT, RENAME, SCRAP],
         // A regiment in training keeps them, its Scrap grey for want of a
         // target. port: its Move rows are grey too (a queue entry).
-        Some(MenuObject::Troop(_) | MenuObject::PendingTroop { .. }) => {
-            &[MOVE, CONFIRMED_MOVE, SCRAP]
-        }
+        Some(
+            MenuObject::Troop(_)
+            | MenuObject::PendingTroop { .. }
+            | MenuObject::ViewedTroop { .. },
+        ) => &[MOVE, CONFIRMED_MOVE, SCRAP],
         Some(MenuObject::Ship { .. }) => &[MOVE, CONFIRMED_MOVE, SCRAP, RENAME, CREATE_FLEET],
         Some(MenuObject::SystemIcon { quadrant, .. }) => match quadrant {
             Quadrant::System => &[SCRAP, DESTINATION, RESERVED],

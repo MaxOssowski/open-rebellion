@@ -57,6 +57,7 @@ pub mod tactical_view;
 pub mod targeting;
 pub mod theme;
 pub mod troop_finder;
+pub mod viewed_contents;
 pub mod video_player;
 pub mod win_tooltip;
 pub mod window_focus;

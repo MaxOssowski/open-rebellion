@@ -122,6 +122,12 @@ pub fn all_commands() -> Vec<CommandDef> {
             category: "Control",
         },
         CommandDef {
+            id: "see_everything",
+            label: "See Everything (debug)",
+            description: "Toggle: windows show both sides' live objects, past fog and views",
+            category: "Control",
+        },
+        CommandDef {
             id: "export_game_log",
             label: "Export Game Log",
             description: "Write message log to file",

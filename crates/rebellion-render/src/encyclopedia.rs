@@ -1149,6 +1149,14 @@ pub fn original_encyclopedia_object(
         MenuObject::Character(key) => world.characters.get(key)?.dat_id,
         MenuObject::SpecialForce(key) => world.special_forces.get(key)?.class_dat_id,
         MenuObject::Troop(key) => world.troops.get(key)?.class_dat_id,
+        MenuObject::ViewedTroop { alliance, id } => {
+            let viewer = if alliance {
+                rebellion_core::dat::Faction::Alliance
+            } else {
+                rebellion_core::dat::Faction::Empire
+            };
+            crate::viewed_contents::regiment_view(world, viewer, id)?.class
+        }
         MenuObject::Ship { fleet, index, .. } => {
             let ship = world.fleets.get(fleet)?.capital_ships.get(index)?;
             return Some(class_entry(

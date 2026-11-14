@@ -165,6 +165,7 @@ fn command_id_to_action(id: &str) -> Option<super::PanelAction> {
         "toggle_dual_ai" => Some(super::PanelAction::ToggleDualAI),
         "force_victory_check" => Some(super::PanelAction::ForceVictoryCheck),
         "reveal_all_systems" => Some(super::PanelAction::RevealAllFog),
+        "see_everything" => Some(super::PanelAction::ToggleSeeEverything),
         "export_game_log" => Some(super::PanelAction::ExportGameLog),
         _ => None,
     }
@@ -504,5 +505,19 @@ mod tests {
         labels.sort_unstable();
         labels.dedup();
         assert_eq!(labels.len(), total, "Duplicate command labels found");
+    }
+
+    #[test]
+    fn see_everything_is_a_palette_command_beside_reveal_all_systems() {
+        // port: the debug mode that shows both sides' live objects.
+        assert!(matches!(
+            command_id_to_action("see_everything"),
+            Some(super::super::PanelAction::ToggleSeeEverything)
+        ));
+        let state = CommandPaletteState::new();
+        assert!(state
+            .commands
+            .iter()
+            .any(|command| command.label == "See Everything (debug)"));
     }
 }
