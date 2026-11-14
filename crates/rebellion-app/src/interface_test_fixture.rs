@@ -692,6 +692,10 @@ impl Scenario {
             || self.uses_the_fleet_window()
             || self == Self::FleetWindowYavin
             || self == Self::FleetWindowA0
+            || self == Self::EnemyRegimentFrozen
+            || self == Self::EnemyRegimentAtRest
+            || self == Self::QuadrantsStale
+            || self == Self::QuadrantsStaleSeeEverything
     }
 
     /// The scenarios whose Mission targets an object in a window.
@@ -8941,6 +8945,8 @@ mod tests {
             egui_macroquad::egui::vec2(10.0, 10.0),
         );
         for scenario in [Scenario::EnemyRegimentFrozen, Scenario::EnemyRegimentAtRest] {
+            // b215: the scenario was not among those that report a menu.
+            assert!(scenario.reports_object_menu());
             let menu = ObjectMenuState::new(
                 Some(MenuObject::ViewedTroop {
                     alliance: true,
