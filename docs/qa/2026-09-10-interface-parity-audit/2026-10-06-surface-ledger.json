@@ -2223,17 +2223,18 @@
         {
           "id": "CMD-03-C014",
           "requirement": "quadrant icon visibility predicate",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/sector-quadrants.md",
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "tools/interface-parity/sector-quadrants.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-overlay/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-overlay/",
+            ".artifacts/a0-vm/2026-11-14-quadrants-status-known"
           ],
-          "note": "The show rules are traced (sector-quadrants.md) and sector-quadrants.mjs passes 12/12 on Linux; A0 only shows that unexplored planets carry no icons. 2026-11-04: members in hyperspace to a system count there (FUN_00556390 to the target container +0x74): the mission icon, its Abort team and the Defenses icon's personnel (quadrant_icons members_with_arrivals). 2026-11-04: the HQ object (family 0x20) lights no icon (FUN_0053b6e0 0x28..0x30, FUN_00526fd0 0x22..0x28); the port counted it for the facilities icon.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The show rules are traced (sector-quadrants.md) and sector-quadrants.mjs passes 12/12 on Linux; A0 only shows that unexplored planets carry no icons. 2026-11-04: members in hyperspace to a system count there (FUN_00556390 to the target container +0x74): the mission icon, its Abort team and the Defenses icon's personnel (quadrant_icons members_with_arrivals). 2026-11-04: the HQ object (family 0x20) lights no icon (FUN_0053b6e0 0x28..0x30, FUN_00526fd0 0x22..0x28); the port counted it for the facilities icon. Batch b212 (2026-11-14): A0 2026-11-14-quadrants-status-known/02, 04, 05: a member counts at its target and no longer at its source from the order on (FUN_00556390); unit test a_member_moving_away_counts_at_its_target_and_not_where_it_left; sector-quadrants.mjs 12/12.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-03-C015",
@@ -4299,7 +4300,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
             "crates/rebellion-render/src/tactical_view.rs"
           ],
-          "note": "FUN_0044c630's rail and category tips show in fleet-window.mjs's assault case on both sides (Linux); the port's invented unit-name tooltips are removed; no A0 capture.",
+          "note": "FUN_0044c630's rail and category tips show in fleet-window.mjs's assault case on both sides (Linux); the port's invented unit-name tooltips are removed; no A0 capture. 2026-11-14: A0 2026-11-14-quadrants-status-known/41-46: the bombardment tips match FUN_0044c630's ids word for word; Close has no tip. Not pixel-compared, so the cell stays partial.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4888,7 +4889,7 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
           ],
-          "note": "Coarse current-intelligence gating (opposing_contents_visible) is unit-tested; A0 settles the sector window's explored states (CMD-03), not the System window's known variant.",
+          "note": "Coarse current-intelligence gating (opposing_contents_visible) is unit-tested; A0 settles the sector window's explored states (CMD-03), not the System window's known variant. 2026-11-14: A0 shows an enemy system's window from a stale per-side snapshot (FUN_005844e0 / FUN_00539fd0); the port shows live contents. Porting the snapshot is an architecture change awaiting the user's decision.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
