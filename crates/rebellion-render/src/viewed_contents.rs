@@ -10,8 +10,8 @@
 //! instead.
 
 use rebellion_core::dat::Faction;
-use rebellion_core::ids::{DatId, SystemKey, TroopKey};
 use rebellion_core::fog::FogState;
+use rebellion_core::ids::{DatId, SystemKey, TroopKey};
 use rebellion_core::object_views::{ObjectView, RegimentView, SystemView, ViewPlace};
 use rebellion_core::world::GameWorld;
 
@@ -68,6 +68,37 @@ pub fn system_sight<'a>(
         None if fog.faction == player && fog.is_visible(system) => SystemSight::Live,
         None => SystemSight::Hidden,
     }
+}
+
+/// The player's frozen copy of `system`'s fleets, missions and
+/// travellers, when it sees the system through a frozen copy.
+#[must_use]
+pub fn frozen_extras<'a>(
+    world: &'a GameWorld,
+    fog: &FogState,
+    player: Faction,
+    system: SystemKey,
+) -> Option<&'a rebellion_core::object_views::SystemExtras> {
+    let SystemSight::Frozen(_) = system_sight(world, fog, player, system) else {
+        return None;
+    };
+    let id = world.systems.get(system)?.dat_id;
+    world.object_views.system_extras(player, id)
+}
+
+/// The live fleet a copy names by its creation serial. port: the copy's
+/// fleet is shown through the live fleet while it exists (the port keeps
+/// no copies of a fleet's ships); a serial of 0 names none.
+#[must_use]
+pub fn fleet_by_serial(world: &GameWorld, serial: u64) -> Option<rebellion_core::ids::FleetKey> {
+    (serial != 0)
+        .then(|| {
+            world
+                .fleets
+                .keys()
+                .find(|key| world.fleet_serial(*key) == serial)
+        })
+        .flatten()
 }
 
 /// The live character a copy names by its id.

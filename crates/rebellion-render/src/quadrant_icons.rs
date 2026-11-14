@@ -311,6 +311,8 @@ struct SystemContents<'a> {
     /// the icons count instead of the live ones (`FUN_004f2d10` reads the
     /// side's copy; `FUN_004f9a60`).
     frozen: Option<&'a rebellion_core::object_views::SystemView>,
+    /// The player's frozen copy of the system's missions.
+    frozen_extras: Option<&'a rebellion_core::object_views::SystemExtras>,
 }
 
 impl<'a> SystemContents<'a> {
@@ -335,6 +337,7 @@ impl<'a> SystemContents<'a> {
             player_side: faction_side(player),
             opposing_visible: opposing_contents_visible(world, fog, player, system),
             frozen,
+            frozen_extras: crate::viewed_contents::frozen_extras(world, fog, player, system),
         })
     }
 
@@ -670,6 +673,18 @@ fn mission_side(contents: &SystemContents<'_>, missions: &MissionState) -> u8 {
         } else if side == other {
             other_missions.insert(key);
         }
+    }
+    // The other side's missions of the player's frozen copy.
+    if let Some(extras) = contents.frozen_extras {
+        other_missions.extend(
+            extras
+                .missions
+                .iter()
+                .filter(|(id, side)| {
+                    *side == other && missions.missions().iter().any(|mission| mission.id == *id)
+                })
+                .map(|(id, _)| *id),
+        );
     }
     if !other_missions.is_empty() {
         other
@@ -1053,6 +1068,37 @@ mod tests {
             }],
         );
         assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(2));
+    }
+
+    #[test]
+    fn a_frozen_copys_other_side_mission_lights_the_missions_icon_while_it_runs() {
+        // FUN_004a1f60 over the player's copy (FUN_004f2d10, FUN_004f9a60):
+        // the Empire's mission aimed at the system wins the icon while the
+        // mission runs, its agent long gone from the player's sight.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let agent = add_character(&mut world, system, false);
+        let mut missions = MissionState::new();
+        missions.dispatch(rebellion_core::missions::MissionRequest::single(
+            rebellion_core::missions::MissionKind::Diplomacy,
+            rebellion_core::missions::MissionFaction::Empire,
+            agent,
+            system,
+            None,
+            0,
+        ));
+        let movement = rebellion_core::movement::MovementState::default();
+        let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        let extras =
+            rebellion_core::object_views::SystemExtras::of(&world, &movement, &missions, system, false);
+        let id = world.systems[system].dat_id;
+        world.object_views.alliance_systems.insert(id, copy);
+        world.object_views.alliance_extras.insert(id, extras);
+        world.characters[agent].current_system = None;
+        let side = |world: &GameWorld, missions: &MissionState| {
+            missions_side(world, &FogState::new(Faction::Alliance), missions, Faction::Alliance, system)
+        };
+        assert_eq!(side(&world, &missions), 2);
+        assert_eq!(side(&world, &MissionState::new()), 3);
     }
 
     #[test]

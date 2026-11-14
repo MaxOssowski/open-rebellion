@@ -630,6 +630,17 @@ fn mission_rows(
             sides.entry(key).or_insert(side);
         }
     }
+    // The other side's missions of the player's frozen copy (FUN_004f2d10,
+    // FUN_004f9a60) that still run. port: a copied mission shows through the
+    // live one; its members are not copied.
+    if let Some(extras) = crate::viewed_contents::frozen_extras(world, fog, player, system) {
+        let own = crate::fleet_window::faction_side(player);
+        for (id, side) in &extras.missions {
+            if *side != own {
+                sides.entry(*id).or_insert(*side);
+            }
+        }
+    }
     sides
         .into_iter()
         .filter_map(|(id, side)| {
@@ -2635,5 +2646,31 @@ mod tests {
                 "{x} in {pixels:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_frozen_copy_lists_the_other_sides_missions_that_still_run() {
+        // FUN_004a1590 over the player's copy (FUN_004f2d10, FUN_004f9a60):
+        // the Empire's Diplomacy aimed at the system stays listed while it
+        // runs, its agent out of the player's sight.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let agent = character(&mut world, system, "Agent", false);
+        let mut missions = MissionState::new();
+        let id = send(&mut missions, MissionKind::Diplomacy, false, &[agent], &[], system, None);
+        let movement = rebellion_core::movement::MovementState::default();
+        let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        let extras =
+            rebellion_core::object_views::SystemExtras::of(&world, &movement, &missions, system, false);
+        let dat_id = world.systems[system].dat_id;
+        world.object_views.alliance_systems.insert(dat_id, copy);
+        world.object_views.alliance_extras.insert(dat_id, extras);
+        world.characters[agent].current_system = None;
+        let unseen = FogState::new(Faction::Alliance);
+        let rows = mission_rows(&world, &unseen, &missions, Faction::Alliance, system);
+        assert_eq!(rows.iter().map(|row| (row.mission, row.side)).collect::<Vec<_>>(), [(id, 2)]);
+        // The Empire's own view holds no copy of its own mission.
+        assert!(mission_rows(&world, &FogState::new(Faction::Empire), &missions, Faction::Empire, system)
+            .is_empty());
+        assert!(mission_rows(&world, &unseen, &MissionState::new(), Faction::Alliance, system).is_empty());
     }
 }

@@ -830,6 +830,14 @@ pub fn run_simulation_tick(
     // ── 13f. Each side's views of the other side's objects ──────────────
     // After movement, control and missions (FUN_004f9a60 per object;
     // ghidra/notes/per-side-object-views.md).
+    // The fleet, mission and traveller copies first: they read the day
+    // before's system copies for who was seen leaving.
+    rebellion_core::object_views::advance_extras(
+        world,
+        &states.movement,
+        &states.missions,
+        &states.troop_transport.squadrons,
+    );
     rebellion_core::object_views::advance(world, &states.troop_transport, &states.movement);
 
     // ── 14. Victory check ────────────────────────────────────────────────

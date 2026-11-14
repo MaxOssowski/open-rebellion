@@ -620,3 +620,308 @@ fn seeding_copies_each_system_in_the_sides_fog() {
     assert_eq!(empire.len(), 2);
     assert!(empire.values().all(|view| view.live));
 }
+
+fn day(setup: &mut Setup, missions: &crate::missions::MissionState) {
+    advance_extras(
+        &mut setup.world,
+        &setup.movement,
+        missions,
+        &setup.transport.squadrons,
+    );
+    step(setup);
+}
+
+fn alliance_extras(setup: &Setup, at: SystemKey) -> Option<SystemExtras> {
+    let id = setup.world.systems[at].dat_id;
+    setup
+        .world
+        .object_views
+        .system_extras(Faction::Alliance, id)
+        .cloned()
+}
+
+#[test]
+fn a_seen_systems_fleets_are_copied_and_stay_when_the_side_looks_away() {
+    // FUN_004f9a60: an Imperial fleet in Chandrila copied while the
+    // Alliance's fleet there sets the seen bit (FUN_0050ac80), then frozen:
+    // it stays listed after it leaves.
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let missions = crate::missions::MissionState::new();
+    let imperial = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    let watcher = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    day(&mut setup, &missions);
+    let extras = alliance_extras(&setup, chandrila).unwrap();
+    assert!(extras.live);
+    let serials: Vec<u64> = extras.fleets.iter().map(|fleet| fleet.serial).collect();
+    assert_eq!(
+        serials,
+        [
+            setup.world.fleet_serial(imperial),
+            setup.world.fleet_serial(watcher)
+        ]
+    );
+    assert!(!extras.fleets[0].is_alliance);
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    setup.world.fleets.remove(imperial);
+    day(&mut setup, &missions);
+    let extras = alliance_extras(&setup, chandrila).unwrap();
+    assert!(!extras.live);
+    assert_eq!(extras.fleets.len(), 1);
+    assert!(!extras.fleets[0].is_alliance);
+}
+
+#[test]
+fn a_seen_systems_missions_are_copied_by_id_and_side() {
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let mut missions = crate::missions::MissionState::new();
+    let agent = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0009),
+        is_empire: true,
+        current_system: Some(setup.coruscant),
+        ..Default::default()
+    });
+    missions.dispatch(crate::missions::MissionRequest::single(
+        crate::missions::MissionKind::Diplomacy,
+        crate::missions::MissionFaction::Empire,
+        agent,
+        chandrila,
+        None,
+        0,
+    ));
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let extras = alliance_extras(&setup, chandrila).unwrap();
+    assert_eq!(extras.missions.len(), 1);
+    assert_eq!(extras.missions[0].1, 2);
+}
+
+#[test]
+fn a_squadron_seen_leaving_for_an_unseen_system_is_copied_there_en_route() {
+    // FUN_00556390 puts it in its destination at once, in hyperspace;
+    // FUN_004f9a60 freezes the copy there (+0x50 bit 4), as A0 OBJ-02-C010's
+    // regiment.
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let missions = crate::missions::MissionState::new();
+    let tie = setup
+        .world
+        .fighter_classes
+        .insert(crate::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            is_alliance: false,
+            ..Default::default()
+        });
+    fleet(&mut setup.world, chandrila, true);
+    setup
+        .transport
+        .squadrons
+        .push_transit_for_test(crate::squadrons::SquadronTransit {
+            class: tie,
+            count: 2,
+            origin: chandrila,
+            to: crate::squadrons::SquadronPlace::Planet(coruscant),
+            arrival_tick: 171,
+        });
+    day(&mut setup, &missions);
+    let extras = alliance_extras(&setup, coruscant).unwrap();
+    assert!(!extras.live);
+    assert_eq!(
+        extras.travellers,
+        [TravellerCopy::Squadron {
+            class: DatId::new(0x1c00_0005),
+            is_alliance: false,
+            count: 2,
+            arrival: 171,
+        }]
+    );
+    assert_eq!(extras.travellers[0].arrival(), 171);
+    // Seen live, the destination's copy is rebuilt without it.
+    fleet(&mut setup.world, coruscant, true);
+    day(&mut setup, &missions);
+    assert!(alliance_extras(&setup, coruscant)
+        .unwrap()
+        .travellers
+        .is_empty());
+}
+
+#[test]
+fn a_character_seen_the_day_before_and_now_on_its_way_is_copied_en_route() {
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let mut missions = crate::missions::MissionState::new();
+    let vader = DatId::new(0x3000_0001);
+    let key = setup.world.characters.insert(crate::world::Character {
+        dat_id: vader,
+        is_empire: true,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    // He leaves for unseen Coruscant.
+    setup.world.characters[key].current_system = None;
+    missions.push_transit(crate::missions::MemberTransit {
+        member: crate::missions::MissionMember::Character(key),
+        mission_id: 0,
+        to: coruscant,
+        arrival: 40,
+        abode: None,
+    });
+    day(&mut setup, &missions);
+    assert_eq!(
+        alliance_extras(&setup, coruscant).unwrap().travellers,
+        [TravellerCopy::Character {
+            id: vader,
+            arrival: 40
+        }]
+    );
+    // An Alliance character is the Alliance's own.
+    assert!(setup
+        .world
+        .object_views
+        .empire_extras
+        .values()
+        .all(|e| e.travellers.is_empty()));
+}
+
+#[test]
+fn seeding_extras_copies_each_system_in_the_sides_fog() {
+    let mut setup = setup();
+    let mut fog_alliance = FogState::new(Faction::Alliance);
+    fog_alliance.reveal(setup.chandrila);
+    let fog_empire = FogState::new(Faction::Empire);
+    let missions = crate::missions::MissionState::new();
+    seed_extras_from_fog(
+        &mut setup.world,
+        &setup.movement,
+        &missions,
+        [&fog_alliance, &fog_empire],
+    );
+    assert!(!alliance_extras(&setup, setup.chandrila).unwrap().live);
+    assert!(alliance_extras(&setup, setup.coruscant).is_none());
+    assert_eq!(setup.world.object_views.empire_extras.len(), 2);
+}
+
+#[test]
+fn a_fleet_in_hyperspace_is_not_in_its_systems_copy() {
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let missions = crate::missions::MissionState::new();
+    let moving = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    assert!(setup.movement.order(moving, chandrila, coruscant, 10));
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let extras = alliance_extras(&setup, chandrila).unwrap();
+    assert!(extras.fleets.iter().all(|copy| copy.is_alliance));
+}
+
+#[test]
+fn only_a_unit_seen_the_day_before_is_copied_leaving_and_only_for_an_unseen_place() {
+    // port: a member's transit names no origin, so the side must have held
+    // it in a live copy the day before; an abode or a seen destination
+    // takes no traveller copy.
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let mut missions = crate::missions::MissionState::new();
+    let seen = setup
+        .world
+        .special_forces
+        .insert(crate::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0007),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: false,
+        });
+    setup.world.systems[chandrila].special_forces.push(seen);
+    let unseen = setup
+        .world
+        .special_forces
+        .insert(crate::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0006),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: false,
+        });
+    let stranger = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0005),
+        is_empire: true,
+        ..Default::default()
+    });
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    setup.world.systems[chandrila].special_forces.clear();
+    for member in [
+        crate::missions::MissionMember::SpecialForce(seen),
+        crate::missions::MissionMember::SpecialForce(unseen),
+        crate::missions::MissionMember::Character(stranger),
+    ] {
+        missions.push_transit(crate::missions::MemberTransit {
+            member,
+            mission_id: 0,
+            to: coruscant,
+            arrival: 50,
+            abode: None,
+        });
+    }
+    day(&mut setup, &missions);
+    assert_eq!(
+        alliance_extras(&setup, coruscant).unwrap().travellers,
+        [TravellerCopy::SpecialForce {
+            class: DatId::new(0x3c00_0007),
+            is_alliance: false,
+            arrival: 50,
+        }]
+    );
+    // To a seen destination: no copy (the live system shows it).
+    let mut setup = self::setup();
+    let chandrila = setup.chandrila;
+    let vader = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0001),
+        is_empire: true,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
+    let mut missions = crate::missions::MissionState::new();
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    setup.world.characters[vader].current_system = None;
+    missions.push_transit(crate::missions::MemberTransit {
+        member: crate::missions::MissionMember::Character(vader),
+        mission_id: 0,
+        to: chandrila,
+        arrival: 50,
+        abode: None,
+    });
+    day(&mut setup, &missions);
+    assert!(alliance_extras(&setup, chandrila)
+        .unwrap()
+        .travellers
+        .is_empty());
+}

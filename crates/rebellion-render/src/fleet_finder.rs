@@ -201,6 +201,16 @@ pub fn rows(
     tab: FinderTab,
 ) -> Vec<FinderRow> {
     let player_is_alliance = player == Faction::Alliance;
+    // The other side's fleets the player's frozen copies hold, by serial
+    // (FUN_004f9a60).
+    let copied: std::collections::HashSet<u64> = world
+        .systems
+        .iter()
+        .filter_map(|(system, _)| crate::viewed_contents::frozen_extras(world, fog, player, system))
+        .flat_map(|extras| extras.fleets.iter())
+        .filter(|copy| copy.is_alliance != player_is_alliance)
+        .map(|copy| copy.serial)
+        .collect();
     let mut rows = Vec::new();
     for (fleet, value) in &world.fleets {
         if !tab.lists(value.is_alliance) {
@@ -211,6 +221,7 @@ pub fn rows(
         };
         if value.is_alliance != player_is_alliance
             && !opposing_contents_visible(world, fog, player, location)
+            && !copied.contains(&world.fleet_serial(fleet))
         {
             continue;
         }

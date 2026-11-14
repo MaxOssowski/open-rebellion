@@ -1843,14 +1843,26 @@ fn visible_fleets(
     let opposing_visible = opposing_contents_visible(world, fog, player, system);
     let player_is_alliance = player == Faction::Alliance;
     // In listed_fleets' creation order (A0 fleet3/07: Fleet 7 after Fleet 6).
-    rebellion_core::movement::listed_fleets(movement, world, system)
+    let mut fleets: Vec<FleetKey> = rebellion_core::movement::listed_fleets(movement, world, system)
         .into_iter()
         .filter(|&fleet| {
             world.fleets.get(fleet).is_some_and(|value| {
                 opposing_visible || value.is_alliance == player_is_alliance
             })
         })
-        .collect()
+        .collect();
+    // The other side's fleets of the player's frozen copy (FUN_004f2d10,
+    // FUN_004f9a60), in their creation order after the player's own.
+    if let Some(extras) = crate::viewed_contents::frozen_extras(world, fog, player, system) {
+        for copy in extras.fleets.iter().filter(|copy| copy.is_alliance != player_is_alliance) {
+            if let Some(fleet) = crate::viewed_contents::fleet_by_serial(world, copy.serial) {
+                if !fleets.contains(&fleet) {
+                    fleets.push(fleet);
+                }
+            }
+        }
+    }
+    fleets
 }
 
 fn left_entries(
@@ -9157,5 +9169,53 @@ pub(crate) mod tests {
             "{pixels:?}"
         );
         assert_eq!(CLOSE_KEY, egui::Color32::from_rgb(0, 255, 0));
+    }
+
+    #[test]
+    fn a_frozen_copy_lists_the_other_sides_fleets_it_saw() {
+        // FUN_004f2d10 reads the player's copy; FUN_004f9a60 froze it with
+        // an Imperial fleet in orbit: the Fleet window and its icon keep it
+        // after it has left for another system.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let imperial = add_fleet(&mut world, system, false, 0);
+        let missions = rebellion_core::missions::MissionState::new();
+        let movement = MovementState::default();
+        let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        let extras = rebellion_core::object_views::SystemExtras::of(&world, &movement, &missions, system, false);
+        let id = world.systems[system].dat_id;
+        world.object_views.alliance_systems.insert(id, copy);
+        world.object_views.alliance_extras.insert(id, extras);
+        let elsewhere = world.systems.insert(world.systems[system].clone());
+        world.systems[elsewhere].dat_id = DatId::new(101);
+        world.fleets[imperial].location = elsewhere;
+        world.systems[system].fleets.clear();
+        let unseen = FogState::new(Faction::Alliance);
+        assert_eq!(
+            visible_fleets(&world, &movement, &unseen, Faction::Alliance, system),
+            [imperial]
+        );
+        assert_eq!(icon_side(&world, &movement, &unseen, Faction::Alliance, system), (2, 1));
+        // The Fleet Finder's Imperial tab lists it too.
+        let rows = crate::fleet_finder::rows(
+            &world,
+            &movement,
+            &unseen,
+            Faction::Alliance,
+            crate::fleet_finder::FinderMode::Fleets,
+            crate::fleet_finder::FinderTab::Imperial,
+        );
+        assert_eq!(rows.len(), 1);
+        // Without the copy, nothing of the Empire's.
+        world.object_views.alliance_extras.clear();
+        assert!(visible_fleets(&world, &movement, &unseen, Faction::Alliance, system).is_empty());
+        assert!(crate::fleet_finder::rows(
+            &world,
+            &movement,
+            &unseen,
+            Faction::Alliance,
+            crate::fleet_finder::FinderMode::Fleets,
+            crate::fleet_finder::FinderTab::Imperial,
+        )
+        .is_empty());
     }
 }

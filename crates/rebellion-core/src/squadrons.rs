@@ -411,6 +411,13 @@ impl SquadronTransits {
         &self.transits
     }
 
+    /// Puts squadrons already off their place on the road (tests and
+    /// fixtures).
+    #[doc(hidden)]
+    pub fn push_transit_for_test(&mut self, transit: SquadronTransit) {
+        self.transits.push(transit);
+    }
+
     /// The squadrons on their way to `fleet`.
     fn incoming(&self, fleet: FleetKey) -> u32 {
         self.transits

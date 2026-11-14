@@ -1897,6 +1897,12 @@ async fn main() {
             &movement_state,
             [&fog_alliance_state, &fog_empire_state],
         );
+        rebellion_core::object_views::seed_extras_from_fog(
+            &mut world,
+            &movement_state,
+            &mission_state,
+            [&fog_alliance_state, &fog_empire_state],
+        );
         // port: a fixture's fog stands for what its side sees now, so its
         // copies of those systems start live, as before the copies; the
         // day's step freezes them once the clock runs and the side does not
@@ -1920,6 +1926,14 @@ async fn main() {
             };
             if let Some(view) = systems.get_mut(&id) {
                 view.live = true;
+            }
+            let extras = if side == Faction::Alliance {
+                &mut views.alliance_extras
+            } else {
+                &mut views.empire_extras
+            };
+            if let Some(value) = extras.get_mut(&id) {
+                value.live = true;
             }
         }
         // Character Killed for the Alliance (FUN_0048fdf0, 0x7164 /
@@ -4578,6 +4592,14 @@ async fn main() {
             // ── Each side's views of the other side's objects ───────────────
             // After movement, control and missions (FUN_004f9a60 per object;
             // ghidra/notes/per-side-object-views.md).
+            // The fleet, mission and traveller copies first: they read the
+            // day before's system copies for who was seen leaving.
+            rebellion_core::object_views::advance_extras(
+                &mut world,
+                &movement_state,
+                &mission_state,
+                &troop_transport_state.squadrons,
+            );
             rebellion_core::object_views::advance(
                 &mut world,
                 &troop_transport_state,
@@ -5294,6 +5316,12 @@ async fn main() {
                                     &mut world,
                                     &troop_transport_state,
                                     &movement_state,
+                                    [&fog_alliance_state, &fog_empire_state],
+                                );
+                                rebellion_core::object_views::seed_extras_from_fog(
+                                    &mut world,
+                                    &movement_state,
+                                    &mission_state,
                                     [&fog_alliance_state, &fog_empire_state],
                                 );
                                 economy_state = EconomyState::default();

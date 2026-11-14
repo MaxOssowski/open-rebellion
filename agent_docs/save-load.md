@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v118, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, each side's object views, and the v116 and v117 migrations"
+description: "Native and browser save v119, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, each side's object views, and the v116 to v118 migrations"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-29
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v118. v116 and v117 still load
+serializable snapshot. The current format is v119. v116 to v118 still load
 through their migrations (below); no other version does.
 
-## Native format (v118)
+## Native format (v119)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -74,7 +74,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `troop_transport` | `TroopTransportState`; it keeps the squadrons travelling on their own (v47); v59 drops the fleets' hold; v112 adds the headquarters' trip (`headquarters_move::HeadquartersTransit`) |
 | `deliveries` | `DeliveryState`; v100 adds each delivery's side, for its autoroute when its destination is destroyed; v116 adds the name its order gave it |
 | `player_agent` | `PlayerAgent`; v108 adds Translate Counterpart (`DAT_006b28b0` bit `0x1000`), the advisor's update flag (`DAT_006b28bc`) and its schedule's last days (the advisor class `+0x168`), as `FUN_004397a0` saves them; the next free days (`+0x16c`) load as 0 (`FUN_00439550`); v109 adds the agent's advice: `+0x148` (the last advice's sub-tick), `+0x150` (the windows seen and the list built) and `+0x154` (the advice not yet posted) (`ghidra/notes/agent-advice-list.md`) |
-| `object_views` | `ObjectViews` (v117, the last field): each side's views of the other side's regiments, keyed by the regiment's object id (`DatId`, its class family and a running number; `regiment_ids` maps the live regiments), live or frozen by `FUN_004f9a60` (`ghidra/notes/per-side-object-views.md`). The loaders copy it into `GameWorld::object_views`, which the world's own encoding skips. v118 adds each side's system views (`alliance_systems`, `empire_systems`, by the system's id: its control, support, energy and raw material, and its facilities, planet squadrons, special forces and characters). The debug `see_everything` flag is not saved |
+| `object_views` | `ObjectViews` (v117, the last field): each side's views of the other side's regiments, keyed by the regiment's object id (`DatId`, its class family and a running number; `regiment_ids` maps the live regiments), live or frozen by `FUN_004f9a60` (`ghidra/notes/per-side-object-views.md`). The loaders copy it into `GameWorld::object_views`, which the world's own encoding skips. v118 adds each side's system views (`alliance_systems`, `empire_systems`, by the system's id: its control, support, energy and raw material, and its facilities, planet squadrons, special forces and characters). v119 adds each side's extras (`alliance_extras`, `empire_extras`, by the system's id: the fleets in orbit by creation serial, the missions aimed there by id and side, and the squadrons, special forces and characters it saw leave for the system while it does not see it). The debug `see_everything` flag is not saved |
 
 Loading restores the RNG, dual-AI state, repair episodes, and combat memory
 instead of reseeding or clearing them. `campaign_config` keeps the selected
@@ -102,20 +102,22 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## The v116 and v117 migrations
+## The v116 to v118 migrations
 
-The loader reads `SAVE_VERSION` (118), `V117` and `MIGRATED_VERSION` (116).
-Any other version is rejected with a message to start a new game.
+The loader reads `SAVE_VERSION` (119), `V118`, `V117` and `MIGRATED_VERSION`
+(116). Any other version is rejected with a message to start a new game.
 
-A v116 body lacks only the trailing `object_views` field, and a v117 body
-only that field's two trailing system view maps, so `migrate_body` appends
-the empty encoding before decoding. The fingerprint is checked as the old
+A v116 body lacks only the trailing `object_views` field, a v117 body only
+that field's four trailing maps (system views and extras), and a v118 body
+its two extras maps, so `migrate_body` appends the empty encoding before
+decoding. The fingerprint is checked as the old
 version wrote it (`fingerprint_as`: its version in the hash, without the
 missing keys). Then a v116 save takes `object_views::seed_from_fog` (each
 side's views of the other side's regiments and of the systems its fog
 shows, live or frozen by today's state) and a v117 save
-`seed_systems_from_fog` (its regiment views stay). The browser reads a
-slot's v117, then v116 keys when it has no v118 ones; Delete removes all.
+`seed_systems_from_fog` (its regiment views stay); each of the three then
+takes `seed_extras_from_fog`. The browser reads a slot's v118, v117, then
+v116 keys when it has no v119 ones; Delete removes all.
 
 Changing `SaveState`, or any type it holds, including `GameWorld`, changes the
 bincode layout. Bincode is positional, so `#[serde(default)]` does not keep old
