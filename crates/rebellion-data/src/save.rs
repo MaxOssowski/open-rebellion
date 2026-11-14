@@ -461,7 +461,7 @@ mod native {
     use super::{
         compute_mod_hash, compute_state_fingerprint, decode_body, version_loads, SaveMeta,
         SaveState, StateFingerprint, MAX_SAVE_SLOTS, MIGRATED_VERSION, SAVE_MAGIC, SAVE_VERSION,
-        STATE_FINGERPRINT_VERSION, V117, V118, V119,
+        STATE_FINGERPRINT_VERSION,
     };
     use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
