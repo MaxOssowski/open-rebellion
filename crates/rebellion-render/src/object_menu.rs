@@ -77,6 +77,13 @@ pub enum MenuObject {
         alliance: bool,
         id: rebellion_core::ids::DatId,
     },
+    /// An object of the player's frozen copy of `system` with no live key
+    /// (`viewed_contents::ViewedUnit`): its menu holds Encyclopedia and
+    /// Status (`FUN_0051d990`).
+    ViewedUnit {
+        system: SystemKey,
+        unit: crate::viewed_contents::ViewedUnit,
+    },
     /// A capital ship (`0x14..0x1b`): the fleet that holds it, its index
     /// in [`Fleet::capital_ships`](rebellion_core::world::Fleet), and the
     /// fleet's roster when it was chosen (`fleet_join::roster`).
@@ -165,6 +172,7 @@ impl MenuObject {
             Self::Fleet(_)
             | Self::Troop(_)
             | Self::ViewedTroop { .. }
+            | Self::ViewedUnit { .. }
             | Self::Ship { .. }
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
@@ -205,6 +213,7 @@ impl MenuObject {
             Self::Character(_)
             | Self::SpecialForce(_)
             | Self::ViewedTroop { .. }
+            | Self::ViewedUnit { .. }
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
             | Self::Fighter { .. }
@@ -261,6 +270,7 @@ impl MenuObject {
             Self::Fleet(key) => Some(StatusObject::Fleet(key)),
             Self::Troop(key) => Some(StatusObject::Troop(key)),
             Self::ViewedTroop { alliance, id } => Some(StatusObject::ViewedTroop { alliance, id }),
+            Self::ViewedUnit { system, unit } => Some(StatusObject::ViewedUnit { system, unit }),
             Self::Ship { fleet, index, .. } => Some(StatusObject::Ship { fleet, index }),
             Self::Producer { system, area } => Some(StatusObject::Producer { system, area }),
             Self::Fighter { fleet, index } => Some(StatusObject::Fighter { fleet, index }),
@@ -716,7 +726,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         // 0x201, 0x202 and 0x204 (no STRATEGY record) after FUN_004f2a10's
         // empty object list; no Scrap.
         Some(MenuObject::Headquarters(_)) => &[MOVE, CONFIRMED_MOVE],
-        None => &[],
+        Some(MenuObject::ViewedUnit { .. }) | None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
         .iter()
@@ -1516,6 +1526,22 @@ mod tests {
         let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
         assert!(enabled(&object_menu_rows(unit, gates)).contains(&"Retire"));
         let troop = Some(MenuObject::Troop(TroopKey::default()));
+        // A frozen copy's unit offers only Encyclopedia and Status
+        // (FUN_0051d990).
+        let viewed = object_menu_rows(
+            Some(MenuObject::ViewedUnit {
+                system: SystemKey::default(),
+                unit: crate::viewed_contents::ViewedUnit::Facility {
+                    class: rebellion_core::ids::DatId::new(0x2200_0001),
+                    owner: 2,
+                },
+            }),
+            MISSION_GATE,
+        );
+        assert_eq!(
+            viewed.iter().map(|row| row.item).collect::<Vec<_>>(),
+            [ENCYCLOPEDIA, STATUS]
+        );
         assert!(!object_menu_rows(troop, gates)
             .iter()
             .any(|row| row.item.label == "Retire"));

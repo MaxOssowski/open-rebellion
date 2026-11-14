@@ -334,8 +334,12 @@ pub enum FacilityItem {
     /// The mines page's `index`th empty deposit.
     Deposit(usize),
     /// The `index`th facility of the player's frozen copy of the system
-    /// (`SystemView`, `FUN_004f9a60`). port: it opens no menu.
-    Viewed(usize),
+    /// (`SystemView`, `FUN_004f9a60`); its menu offers its Encyclopedia
+    /// and Status.
+    Viewed {
+        index: usize,
+        unit: crate::viewed_contents::ViewedUnit,
+    },
 }
 
 impl FacilityItem {
@@ -361,7 +365,10 @@ impl FacilityItem {
                 owner,
                 arrival,
             }),
-            Self::Deposit(_) | Self::Viewed(_) => None,
+            Self::Viewed { unit, .. } => {
+                Some(crate::object_menu::MenuObject::ViewedUnit { system, unit })
+            }
+            Self::Deposit(_) => None,
         }
     }
 }
@@ -549,7 +556,7 @@ pub fn yard_count(cells: &[FacilityCell]) -> String {
                 cell.item,
                 FacilityItem::Manufacturing(_)
                     | FacilityItem::Production(_)
-                    | FacilityItem::Viewed(_)
+                    | FacilityItem::Viewed { .. }
             )
         })
         .count();
@@ -576,11 +583,18 @@ pub fn frozen_page_cells(
             if facility.class.family() != family || owner != side {
                 return None;
             }
-            facility_picture(facility.class, owner, FacilityState::Built)
+            let picture = facility_picture(facility.class, owner, FacilityState::Built)?;
+            Some((
+                crate::viewed_contents::ViewedUnit::Facility {
+                    class: facility.class,
+                    owner,
+                },
+                picture,
+            ))
         })
         .enumerate()
-        .map(|(index, picture)| FacilityCell {
-            item: FacilityItem::Viewed(index),
+        .map(|(index, (unit, picture))| FacilityCell {
+            item: FacilityItem::Viewed { index, unit },
             picture,
         })
         .collect();
@@ -1185,12 +1199,30 @@ mod tests {
                 .map(|cell| cell.item)
                 .collect::<Vec<_>>()
         };
+        let mine = crate::viewed_contents::ViewedUnit::Facility {
+            class: DatId::new(0x2c00_0001),
+            owner: 1,
+        };
+        let refinery = crate::viewed_contents::ViewedUnit::Facility {
+            class: DatId::new(0x2d00_0002),
+            owner: 1,
+        };
         assert_eq!(
             shown(&world, FacilityPage::Mines),
-            [FacilityItem::Viewed(0), FacilityItem::Deposit(1), FacilityItem::Deposit(2)]
+            [
+                FacilityItem::Viewed { index: 0, unit: mine },
+                FacilityItem::Deposit(1),
+                FacilityItem::Deposit(2)
+            ]
         );
-        assert_eq!(shown(&world, FacilityPage::Refineries), [FacilityItem::Viewed(0)]);
-        assert_eq!(FacilityItem::Viewed(0).menu_object(system), None);
+        assert_eq!(
+            shown(&world, FacilityPage::Refineries),
+            [FacilityItem::Viewed { index: 0, unit: refinery }]
+        );
+        assert_eq!(
+            FacilityItem::Viewed { index: 0, unit: mine }.menu_object(system),
+            Some(crate::object_menu::MenuObject::ViewedUnit { system, unit: mine })
+        );
         let cells = shown_page_cells(
             &world,
             &fog,

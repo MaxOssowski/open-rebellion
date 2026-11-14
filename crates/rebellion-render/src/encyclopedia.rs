@@ -1149,6 +1149,13 @@ pub fn original_encyclopedia_object(
         MenuObject::Character(key) => world.characters.get(key)?.dat_id,
         MenuObject::SpecialForce(key) => world.special_forces.get(key)?.class_dat_id,
         MenuObject::Troop(key) => world.troops.get(key)?.class_dat_id,
+        MenuObject::ViewedUnit { unit, .. } => match unit {
+            crate::viewed_contents::ViewedUnit::Squadron { class, .. } => {
+                return Some(class_entry(class, FIGHTER_FAMILY));
+            }
+            crate::viewed_contents::ViewedUnit::SpecialForce { class, .. }
+            | crate::viewed_contents::ViewedUnit::Facility { class, .. } => class,
+        },
         MenuObject::ViewedTroop { alliance, id } => {
             let viewer = if alliance {
                 rebellion_core::dat::Faction::Alliance

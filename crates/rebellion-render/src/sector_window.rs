@@ -1070,7 +1070,7 @@ fn draw_sector_window(
                 if shows_alliance_headquarters(world, fog, player, *system_key) {
                     headquarters.push((*system_key, planet_rect));
                 }
-                let track_values = StatusTrackValues::of(world, system, player);
+                let track_values = StatusTrackValues::shown(world, fog, system, *system_key, player);
                 for (row, (x, y, width, height), text) in track_tooltips(&track_values) {
                     if track_shown(system, row) {
                         crate::win_tooltip::window_tool_text(
@@ -1651,6 +1651,49 @@ struct StatusTrackValues {
 }
 
 impl StatusTrackValues {
+    /// The tracks the player sees: the live system's, or its frozen copy's
+    /// (`FUN_0045b770` reads the galaxy view's system, the player's side's
+    /// copy: `FUN_004f2d10`, `FUN_004f9a60`).
+    fn shown(
+        world: &GameWorld,
+        fog: &FogState,
+        system: &rebellion_core::world::System,
+        key: SystemKey,
+        player: Faction,
+    ) -> Self {
+        match crate::viewed_contents::system_sight(world, fog, player, key) {
+            crate::viewed_contents::SystemSight::Frozen(view) => Self::of_copy(view, player),
+            _ => Self::of(world, system, player),
+        }
+    }
+
+    /// [`Self::of`] from a side's copy of the system.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "Support is a clamped fraction of 100 and facility counts are small."
+    )]
+    fn of_copy(view: &rebellion_core::object_views::SystemView, player: Faction) -> Self {
+        let mines = view
+            .production_facilities
+            .iter()
+            .filter(|facility| facility.is_mine)
+            .count() as u32;
+        let facilities = view.defense_facilities.len()
+            + view.manufacturing_facilities.len()
+            + view.production_facilities.len();
+        let support = if player == Faction::Alliance {
+            view.popularity_alliance
+        } else {
+            view.popularity_empire
+        };
+        Self {
+            energy: (u32::from(view.total_energy), facilities as u32),
+            raw_materials: (u32::from(view.raw_materials), mines),
+            support: (support.clamp(0.0, 1.0) * 100.0).round() as u32,
+        }
+    }
+
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -2270,6 +2313,27 @@ mod tests {
         world.systems[system].popularity_empire = 0.25;
 
         let of = |player| StatusTrackValues::of(&world, &world.systems[system], player);
+        // A frozen copy keeps the values it was seen with (FUN_004f9a60).
+        let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        assert_eq!(StatusTrackValues::of_copy(&copy, Faction::Alliance), of(Faction::Alliance));
+        assert_eq!(StatusTrackValues::of_copy(&copy, Faction::Empire), of(Faction::Empire));
+        let mut frozen = world.clone();
+        frozen
+            .object_views
+            .empire_systems
+            .insert(frozen.systems[system].dat_id, copy);
+        frozen.systems[system].popularity_empire = 0.9;
+        frozen.systems[system].production_facilities.clear();
+        assert_eq!(
+            StatusTrackValues::shown(
+                &frozen,
+                &FogState::new(Faction::Empire),
+                &frozen.systems[system],
+                system,
+                Faction::Empire
+            ),
+            of(Faction::Empire)
+        );
         assert_eq!(
             of(Faction::Alliance),
             StatusTrackValues {

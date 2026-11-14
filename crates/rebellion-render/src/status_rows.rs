@@ -84,6 +84,13 @@ pub enum StatusObject {
         alliance: bool,
         id: DatId,
     },
+    /// `FUN_00445780`, `FUN_004444c0`, `FUN_00444e20` or `FUN_00446c50` by
+    /// family, filled from the player's frozen copy of `system`'s object
+    /// (`viewed_contents::ViewedUnit`).
+    ViewedUnit {
+        system: SystemKey,
+        unit: crate::viewed_contents::ViewedUnit,
+    },
     /// `0x20..0x27`, `FUN_00444e20`.
     DefenseFacility(DefenseFacilityKey),
     /// `0x28..0x2a`, `FUN_00446c50`.
@@ -1081,6 +1088,119 @@ pub fn viewed_troop_rows(
     )
 }
 
+/// A Status window with no marks, list of pictures or locked Encyclopedia.
+fn plain_view(
+    title: &'static str,
+    side: usize,
+    picture: Option<(DllSource, u32)>,
+    name: String,
+    rows: Vec<StatusRow>,
+) -> StatusView {
+    StatusView {
+        title,
+        manager_title: false,
+        side,
+        picture,
+        marks: Vec::new(),
+        name,
+        rows,
+        icon_rows: Vec::new(),
+        icon_layout: IconRowLayout::Objectives,
+        encyclopedia: true,
+    }
+}
+
+/// The Status window of an object of the player's frozen copy of `system`
+/// (`FUN_004f2d10` reads the side's copy; `FUN_004f9a60`): a special
+/// force's (`FUN_00445780`), squadron's (`FUN_004444c0`) or facility's
+/// (`FUN_00444e20`, `FUN_00446c50`) rows from its class, with its ETA
+/// while it was seen en route. port: a copied special force's ratings are
+/// its class's base skills.
+fn viewed_unit_view(
+    world: &GameWorld,
+    system: SystemKey,
+    unit: crate::viewed_contents::ViewedUnit,
+) -> Option<StatusView> {
+    use crate::viewed_contents::ViewedUnit;
+    match unit {
+        ViewedUnit::SpecialForce {
+            class,
+            is_alliance,
+            arrival,
+        } => {
+            let base = world.special_force_classes.get(&class);
+            let skill = |index: usize| base.map_or(0, |value| value.skills[index].base);
+            let mut rows = vec![
+                row("Attached: ", system_name(world, system)),
+                row("Status:", moving_status(arrival.is_some())),
+            ];
+            eta(&mut rows, arrival);
+            rows.extend([
+                row("Maintenance Cost:", maintenance(world, class)),
+                row("Diplomacy Rating:", skill(0).to_string()),
+                row("Espionage Rating:", skill(1).to_string()),
+                row("Combat Rating:", skill(5).to_string()),
+                row("Leadership Rating:", skill(6).to_string()),
+            ]);
+            let portrait = picture(special_force_mini(class).map(|(mini, _)| mini));
+            Some(StatusView {
+                marks: special_force_marks(portrait, class, arrival.is_some()),
+                ..plain_view(
+                    "Spec Forces Status",
+                    side_index(is_alliance),
+                    portrait,
+                    class_name(world, class),
+                    rows,
+                )
+            })
+        }
+        ViewedUnit::Squadron {
+            class,
+            is_alliance,
+            arrival,
+        } => {
+            let fighter = world.fighter_classes.values().find(|value| value.dat_id == class)?;
+            let mut rows = vec![row("Attached: ", system_name(world, system))];
+            eta(&mut rows, arrival);
+            squadron_class_rows(&mut rows, fighter);
+            let portrait = picture(fighter_mini_id(class));
+            Some(StatusView {
+                marks: craft_marks(portrait, arrival.is_some(), false),
+                ..plain_view(
+                    "Fighter Squadron Status",
+                    side_index(is_alliance),
+                    portrait,
+                    fighter.name.clone(),
+                    rows,
+                )
+            })
+        }
+        ViewedUnit::Facility { class, owner } => {
+            let side = if owner == 1 {
+                rebellion_core::dat::Faction::Alliance
+            } else {
+                rebellion_core::dat::Faction::Empire
+            };
+            let (title, rows, mini) = if (0x20..=0x27).contains(&class.family()) {
+                (
+                    "Defense Facility Status",
+                    defense_rows(world, system, class, None),
+                    defense_facility_mini(class).map(|(mini, _)| mini),
+                )
+            } else {
+                (
+                    "Manufacturing Status",
+                    manufacturing_rows(world, system, class, None),
+                    manufacturing_facility_mini(class)
+                        .or_else(|| production_facility_mini(class))
+                        .map(|(mini, _)| mini),
+                )
+            };
+            Some(plain_view(title, faction_index(side), picture(mini), class_name(world, class), rows))
+        }
+    }
+}
+
 /// `FUN_00445280`'s rows for a regiment of `class`: its place, its Status
 /// word (`+0x50` bit 4 34628 "Enroute", else bit 2 34632 "Awaiting
 /// Orders", else 34673 "Training") and, en route, its ETA.
@@ -1659,6 +1779,7 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                 )
             }
         }
+        StatusObject::ViewedUnit { system, unit } => viewed_unit_view(world, system, unit)?,
         StatusObject::DefenseFacility(key) => {
             let facility = world.defense_facilities.get(key)?;
             view(
@@ -2673,6 +2794,140 @@ mod tests {
         // FUN_0042c3b0: a regiment's picture stands on STRATEGY 11514.
         let view = status_view(states.sources(&world), StatusObject::Troop(troop)).unwrap();
         assert_eq!(view.marks, [(DllSource::Strategy, 11_514)]);
+    }
+
+    #[test]
+    fn a_frozen_copys_special_force_squadron_and_facility_read_their_status() {
+        // FUN_004f2d10 reads the player's copy (FUN_004f9a60): a special
+        // force (FUN_00445780) en route until day 50, a squadron
+        // (FUN_004444c0) and a battery (FUN_00444e20) and a mine
+        // (FUN_00446c50), each attached to the copied system.
+        use crate::viewed_contents::ViewedUnit;
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Chandrila", ControlKind::Controlled(Faction::Empire));
+        let force = catalog(&mut world, 0x3c00_0007, "Imperial Commandos", BuildableClass::default());
+        let mut skills = [rebellion_core::world::SkillPair { base: 0, variance: 0 }; 8];
+        skills[0].base = 11;
+        skills[1].base = 12;
+        skills[5].base = 13;
+        skills[6].base = 14;
+        world.special_force_classes.insert(
+            force,
+            rebellion_core::world::SpecialForceClassDef {
+                skills,
+                mission_mask: 0,
+            },
+        );
+        let states = States::new();
+        let view = |object| status_view(states.sources(&world), object).unwrap();
+        let commandos = view(StatusObject::ViewedUnit {
+            system: here,
+            unit: ViewedUnit::SpecialForce {
+                class: force,
+                is_alliance: false,
+                arrival: Some(50),
+            },
+        });
+        assert_eq!(commandos.title, "Spec Forces Status");
+        assert_eq!(commandos.name, "Imperial Commandos");
+        assert_eq!(commandos.side, 1);
+        assert_eq!(
+            super::tests::rows(&commandos.rows),
+            vec![
+                ("Attached: ", "Chandrila"),
+                ("Status:", "Enroute"),
+                ("ETA Destination:", "Day 50"),
+                ("Maintenance Cost:", "0"),
+                ("Diplomacy Rating:", "11"),
+                ("Espionage Rating:", "12"),
+                ("Combat Rating:", "13"),
+                ("Leadership Rating:", "14"),
+            ]
+        );
+        assert!(!commandos.marks.is_empty());
+
+        let battery = view(StatusObject::ViewedUnit {
+            system: here,
+            unit: ViewedUnit::Facility {
+                class: DatId::new(0x2200_0001),
+                owner: 2,
+            },
+        });
+        assert_eq!(battery.title, "Defense Facility Status");
+        assert_eq!(battery.side, 1);
+        assert_eq!(super::tests::rows(&battery.rows[..2]), vec![("Location:", "Chandrila"), ("Status:", "Active")]);
+        let mine = view(StatusObject::ViewedUnit {
+            system: here,
+            unit: ViewedUnit::Facility {
+                class: DatId::new(0x2c00_0001),
+                owner: 1,
+            },
+        });
+        assert_eq!(mine.title, "Manufacturing Status");
+        assert_eq!(mine.side, 0);
+        assert_eq!(super::tests::rows(&mine.rows[..1]), vec![("Location:", "Chandrila")]);
+
+        world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            name: "TIE Fighter".into(),
+            is_alliance: false,
+            ..Default::default()
+        });
+        let states = States::new();
+        let tie = status_view(
+            states.sources(&world),
+            StatusObject::ViewedUnit {
+                system: here,
+                unit: ViewedUnit::Squadron {
+                    class: DatId::new(0x1c00_0005),
+                    is_alliance: false,
+                    arrival: None,
+                },
+            },
+        )
+        .unwrap();
+        assert_eq!(tie.title, "Fighter Squadron Status");
+        assert_eq!(tie.name, "TIE Fighter");
+        // Seen en route: its ETA and its craft's en route mark.
+        let travelling = status_view(
+            states.sources(&world),
+            StatusObject::ViewedUnit {
+                system: here,
+                unit: ViewedUnit::Squadron {
+                    class: DatId::new(0x1c00_0005),
+                    is_alliance: false,
+                    arrival: Some(70),
+                },
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            super::tests::rows(&travelling.rows[..2]),
+            vec![("Attached: ", "Chandrila"), ("ETA Destination:", "Day 70")]
+        );
+        assert!(!travelling.marks.is_empty());
+        assert_eq!(
+            ViewedUnit::Facility {
+                class: DatId::new(0x2200_0001),
+                owner: 2
+            }
+            .arrival(),
+            None
+        );
+        assert_eq!(super::tests::rows(&tie.rows[..2]), vec![("Attached: ", "Chandrila"), ("Maintenance Cost:", "0")]);
+        assert!(tie.marks.is_empty());
+        assert!(status_view(
+            states.sources(&world),
+            StatusObject::ViewedUnit {
+                system: here,
+                unit: ViewedUnit::Squadron {
+                    class: DatId::new(0x1c00_0099),
+                    is_alliance: false,
+                    arrival: None,
+                },
+            },
+        )
+        .is_none());
     }
 
     #[test]

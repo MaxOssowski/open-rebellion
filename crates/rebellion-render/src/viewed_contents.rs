@@ -15,6 +15,38 @@ use rebellion_core::ids::{DatId, SystemKey, TroopKey};
 use rebellion_core::object_views::{ObjectView, RegimentView, SystemView, ViewPlace};
 use rebellion_core::world::GameWorld;
 
+/// An object of the player's frozen copy of a system that the port keeps no
+/// live key for: a special force, a squadron or a facility, with its class
+/// and side, and while it was seen in hyperspace its arrival day
+/// (`FUN_004f9a60`, `+0x50` bit 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ViewedUnit {
+    SpecialForce {
+        class: DatId,
+        is_alliance: bool,
+        arrival: Option<u64>,
+    },
+    Squadron {
+        class: DatId,
+        is_alliance: bool,
+        arrival: Option<u64>,
+    },
+    /// A defense, manufacturing or production facility; `owner` is its
+    /// side, 1 or 2.
+    Facility { class: DatId, owner: u8 },
+}
+
+impl ViewedUnit {
+    /// Its arrival day while it was seen en route.
+    #[must_use]
+    pub const fn arrival(self) -> Option<u64> {
+        match self {
+            Self::SpecialForce { arrival, .. } | Self::Squadron { arrival, .. } => arrival,
+            Self::Facility { .. } => None,
+        }
+    }
+}
+
 /// A regiment a window lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewedRegiment {

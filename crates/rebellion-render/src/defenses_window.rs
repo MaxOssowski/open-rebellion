@@ -197,9 +197,14 @@ pub enum DefensesItem {
     /// (`FUN_004f9a60`; `viewed_contents`). `alliance` is the viewing side.
     ViewedTroop { alliance: bool, id: DatId },
     /// The `index`th row of a page drawn from the player's frozen copy of
-    /// the system (`SystemView`): a special force, squadron or facility.
-    /// port: it opens no menu.
-    Viewed { index: usize },
+    /// `system` (`SystemView`, `SystemExtras::travellers`): a special
+    /// force, squadron or facility, whose menu offers its Encyclopedia and
+    /// Status.
+    Viewed {
+        system: SystemKey,
+        index: usize,
+        unit: crate::viewed_contents::ViewedUnit,
+    },
     /// The `nth` squadron of `class` on `system`'s planet. port: squadrons
     /// are counts per class.
     Squadron {
@@ -240,7 +245,7 @@ impl DefensesItem {
             Self::SpecialForce(key) => Some(MenuObject::SpecialForce(key)),
             Self::Troop(key) => Some(MenuObject::Troop(key)),
             Self::ViewedTroop { alliance, id } => Some(MenuObject::ViewedTroop { alliance, id }),
-            Self::Viewed { .. } => None,
+            Self::Viewed { system, unit, .. } => Some(MenuObject::ViewedUnit { system, unit }),
             Self::Squadron { system, class, .. } => {
                 Some(MenuObject::PlanetFighter { system, class })
             }
@@ -350,6 +355,7 @@ fn row_marks(
             crate::viewed_contents::regiment_view(world, viewer(alliance), id)
                 .is_some_and(|view| view.arrival.is_some())
         }
+        DefensesItem::Viewed { unit, .. } => unit.arrival().is_some(),
         DefensesItem::Character(key) => travelling(MissionMember::Character(key)),
         DefensesItem::SpecialForce(key) => travelling(MissionMember::SpecialForce(key)),
         _ => false,
@@ -368,6 +374,10 @@ fn row_marks(
             crate::viewed_contents::regiment_view(world, viewer(alliance), id)
                 .map_or(MiniObject::Craft, |view| MiniObject::Regiment(view.class))
         }
+        DefensesItem::Viewed {
+            unit: crate::viewed_contents::ViewedUnit::SpecialForce { class, .. },
+            ..
+        } => MiniObject::SpecialForce(class),
         DefensesItem::Squadron { .. }
         | DefensesItem::TravellingSquadron { .. }
         | DefensesItem::Defense(_)
@@ -958,7 +968,9 @@ fn page_rows(
         match sight {
             crate::viewed_contents::SystemSight::Live => {}
             crate::viewed_contents::SystemSight::Frozen(view) => {
-                return frozen_rows(world, view, side, page);
+                let travellers = crate::viewed_contents::frozen_extras(world, fog, player, system)
+                    .map_or(&[][..], |extras| extras.travellers.as_slice());
+                return frozen_rows(world, view, travellers, side, system, page);
             }
             crate::viewed_contents::SystemSight::Hidden => return Vec::new(),
         }
@@ -977,14 +989,46 @@ fn page_rows(
 fn frozen_rows(
     world: &GameWorld,
     view: &rebellion_core::object_views::SystemView,
+    travellers: &[rebellion_core::object_views::TravellerCopy],
     side: u8,
+    system: SystemKey,
     page: DefensesPage,
 ) -> Vec<DefensesRow> {
+    use crate::viewed_contents::ViewedUnit;
+    use rebellion_core::object_views::TravellerCopy;
     let mut rows = Vec::new();
+    let viewed = |rows: &Vec<DefensesRow>, unit| DefensesItem::Viewed {
+        system,
+        index: rows.len(),
+        unit,
+    };
+    // The units it saw leave for the system, en route there
+    // (FUN_00556390; FUN_004f9a60 froze them in hyperspace).
+    let travelling_characters = travellers.iter().filter_map(|traveller| match traveller {
+        TravellerCopy::Character { id, .. } => Some(*id),
+        _ => None,
+    });
+    let travelling_forces = travellers.iter().filter_map(|traveller| match traveller {
+        TravellerCopy::SpecialForce {
+            class,
+            is_alliance,
+            arrival,
+        } => Some((*class, *is_alliance, Some(*arrival))),
+        _ => None,
+    });
+    let travelling_squadrons = travellers.iter().filter_map(|traveller| match traveller {
+        TravellerCopy::Squadron {
+            class,
+            is_alliance,
+            count,
+            arrival,
+        } => Some((*class, *is_alliance, *count, Some(*arrival))),
+        _ => None,
+    });
     match page {
         DefensesPage::Personnel => {
-            for id in &view.characters {
-                let Some(key) = crate::viewed_contents::character_key(world, *id) else {
+            for id in view.characters.iter().copied().chain(travelling_characters) {
+                let Some(key) = crate::viewed_contents::character_key(world, id) else {
                     continue;
                 };
                 let character = &world.characters[key];
@@ -1005,13 +1049,23 @@ fn frozen_rows(
                     label: character.name.clone(),
                 });
             }
-            for (class, is_alliance) in &view.special_forces {
-                let Some((mini, label)) = special_force_mini(*class) else {
+            let forces = view
+                .special_forces
+                .iter()
+                .map(|(class, is_alliance)| (*class, *is_alliance, None))
+                .chain(travelling_forces);
+            for (class, is_alliance, arrival) in forces {
+                let Some((mini, label)) = special_force_mini(class) else {
                     continue;
                 };
-                if fleet_side(*is_alliance) == side {
+                if fleet_side(is_alliance) == side {
+                    let unit = ViewedUnit::SpecialForce {
+                        class,
+                        is_alliance,
+                        arrival,
+                    };
                     rows.push(DefensesRow {
-                        item: DefensesItem::Viewed { index: rows.len() },
+                        item: viewed(&rows, unit),
                         mini,
                         label: label.into(),
                     });
@@ -1020,20 +1074,33 @@ fn frozen_rows(
         }
         DefensesPage::Regiments => {}
         DefensesPage::Squadrons => {
-            for (class, count) in &view.fighters {
-                let Some(fighter) = world.fighter_classes.values().find(|value| value.dat_id == *class)
+            let squadrons = view
+                .fighters
+                .iter()
+                .map(|(class, count)| (*class, None, *count, None))
+                .chain(
+                    travelling_squadrons
+                        .map(|(class, is_alliance, count, arrival)| (class, Some(is_alliance), count, arrival)),
+                );
+            for (class, _, count, arrival) in squadrons {
+                let Some(fighter) = world.fighter_classes.values().find(|value| value.dat_id == class)
                 else {
                     continue;
                 };
-                let Some(mini) = fighter_mini_id(*class) else {
+                let Some(mini) = fighter_mini_id(class) else {
                     continue;
                 };
                 if fleet_side(fighter.is_alliance) != side {
                     continue;
                 }
-                for _ in 0..*count {
+                let unit = ViewedUnit::Squadron {
+                    class,
+                    is_alliance: fighter.is_alliance,
+                    arrival,
+                };
+                for _ in 0..count {
                     rows.push(DefensesRow {
-                        item: DefensesItem::Viewed { index: rows.len() },
+                        item: viewed(&rows, unit),
                         mini,
                         label: fighter.name.clone(),
                     });
@@ -1050,8 +1117,12 @@ fn frozen_rows(
                 let Some((mini, label)) = defense_facility_mini(facility.class) else {
                     continue;
                 };
+                let unit = ViewedUnit::Facility {
+                    class: facility.class,
+                    owner: crate::fleet_window::faction_side(facility.side),
+                };
                 rows.push(DefensesRow {
-                    item: DefensesItem::Viewed { index: rows.len() },
+                    item: viewed(&rows, unit),
                     mini,
                     label: label.into(),
                 });
@@ -3114,8 +3185,13 @@ mod tests {
             ["TIE Fighter"]
         );
         let rows = page_rows(&world, &fog, &missions, idle(), Faction::Alliance, system, DefensesPage::Squadrons);
-        assert_eq!(rows[0].item, DefensesItem::Viewed { index: 0 });
-        assert_eq!(rows[0].item.menu_object(), None);
+        let DefensesItem::Viewed { index: 0, unit, .. } = rows[0].item else {
+            panic!("{:?}", rows[0].item);
+        };
+        assert_eq!(
+            rows[0].item.menu_object(),
+            Some(MenuObject::ViewedUnit { system, unit })
+        );
         // The copy keeps the side the system had: neutral now, the window
         // still shows the Empire's objects.
         world.systems[system].control = ControlKind::Uncontrolled;
@@ -3183,6 +3259,127 @@ mod tests {
             empire(&world, DefensesPage::Shields)
         );
         assert!(empire(&world, DefensesPage::Personnel).contains(&"Idle".to_owned()));
+    }
+
+    #[test]
+    fn units_seen_leaving_for_a_frozen_system_list_there_en_route() {
+        // FUN_00556390 puts a unit in its destination at once, in
+        // hyperspace; FUN_004f9a60 froze the player's copy of it (A0
+        // OBJ-02-C010's regiment, for a special force and a squadron).
+        use crate::viewed_contents::ViewedUnit;
+        use rebellion_core::object_views::{SystemExtras, TravellerCopy};
+        let (mut world, system, missions) = stocked();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        world.systems[system].fighters.clear();
+        world.systems[system].special_forces.clear();
+        freeze(&mut world, system);
+        let tie = world
+            .fighter_classes
+            .values()
+            .find(|class| !class.is_alliance)
+            .unwrap()
+            .dat_id;
+        let id = world.systems[system].dat_id;
+        world.object_views.alliance_extras.insert(
+            id,
+            SystemExtras {
+                live: false,
+                fleets: Vec::new(),
+                missions: Vec::new(),
+                travellers: vec![
+                    TravellerCopy::Squadron {
+                        class: tie,
+                        is_alliance: false,
+                        count: 2,
+                        arrival: 60,
+                    },
+                    TravellerCopy::SpecialForce {
+                        class: DatId::new(0x3c00_0007),
+                        is_alliance: false,
+                        arrival: 61,
+                    },
+                    TravellerCopy::Character {
+                        id: DatId::new(832),
+                        arrival: 62,
+                    },
+                ],
+            },
+        );
+        let rows = |page| {
+            page_rows(
+                &world,
+                &FogState::new(Faction::Alliance),
+                &missions,
+                idle(),
+                Faction::Alliance,
+                system,
+                page,
+            )
+        };
+        let squadrons = rows(DefensesPage::Squadrons);
+        assert_eq!(squadrons.len(), 2);
+        let DefensesItem::Viewed { unit, .. } = squadrons[1].item else {
+            panic!("{:?}", squadrons[1].item);
+        };
+        assert_eq!(
+            unit,
+            ViewedUnit::Squadron {
+                class: tie,
+                is_alliance: false,
+                arrival: Some(60)
+            }
+        );
+        let marks = row_marks(&world, &[], &[], &squadrons[0]);
+        assert_eq!(
+            marks,
+            crate::fleet_window::mini_marks(
+                crate::fleet_window::MiniObject::Craft,
+                squadrons[0].mini,
+                true,
+                false
+            )
+        );
+        // An Imperial character seen leaving, not in the copy's own list.
+        // (It keeps the test characters' portrait id; the others take ids
+        // of their own, as the copy names characters by id.)
+        for (n, character) in world.characters.values_mut().enumerate() {
+            character.dat_id = DatId::new(0x3000_0100 + u32::try_from(n).unwrap_or_default());
+        }
+        let traveller = add_character(&mut world, system, "Traveller", false);
+        world.characters[traveller].current_system = None;
+        world
+            .object_views
+            .alliance_systems
+            .get_mut(&id)
+            .unwrap()
+            .characters
+            .clear();
+        let rows = |page| {
+            page_rows(
+                &world,
+                &FogState::new(Faction::Alliance),
+                &missions,
+                idle(),
+                Faction::Alliance,
+                system,
+                page,
+            )
+        };
+        let personnel = rows(DefensesPage::Personnel);
+        assert!(personnel.iter().any(|row| row.label == "Traveller"));
+        let force = personnel
+            .iter()
+            .find(|row| matches!(row.item, DefensesItem::Viewed { .. }))
+            .unwrap();
+        assert_eq!(
+            row_marks(&world, &[], &[], force),
+            crate::fleet_window::mini_marks(
+                crate::fleet_window::MiniObject::SpecialForce(DatId::new(0x3c00_0007)),
+                force.mini,
+                true,
+                false
+            )
+        );
     }
 
     #[test]

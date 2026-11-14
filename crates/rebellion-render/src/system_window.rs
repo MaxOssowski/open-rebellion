@@ -580,7 +580,7 @@ impl SystemWindowState {
             }
             Some(FacilityItem::Production(key)) => Some(MissionTarget::ProductionFacility(key)),
             Some(
-                FacilityItem::Pending { .. } | FacilityItem::Deposit(_) | FacilityItem::Viewed(_),
+                FacilityItem::Pending { .. } | FacilityItem::Deposit(_) | FacilityItem::Viewed { .. },
             ) => return Some(None),
             None => None,
         };
