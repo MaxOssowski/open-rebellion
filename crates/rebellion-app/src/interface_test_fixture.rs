@@ -13494,6 +13494,10 @@ mod tests {
                 Scenario::QuadrantsFacility,
                 Scenario::BuildSelectionFacilityRoom,
                 Scenario::FacilityResearchTargeting,
+                Scenario::EnemyRegimentFrozen,
+                Scenario::QuadrantsStale,
+                Scenario::QuadrantsStaleSeeEverything,
+                Scenario::EnemyRegimentAtRest,
             ]
         );
     }
