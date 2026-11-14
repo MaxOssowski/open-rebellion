@@ -50,6 +50,18 @@ const GNPRTB_SHIELD_SCALE: u16 = 0x800;
 /// GNPRTB `0x1e19` (`DAT_006bb47c`, -20): the attacker's support change
 /// after civilian damage (`FUN_0058e320`).
 const GNPRTB_CIVILIAN_SUPPORT: u16 = 0x1e19;
+/// SDPRTB `0x1408` (`Sdprtb_5128`; Alliance -2, Empire -1): the sector
+/// event's support change at a system of family `0x92..0x94`
+/// (`FUN_0055d900` with 0).
+const SDPRTB_SECTOR_RIM: u16 = 0x1408;
+/// SDPRTB `0x1409` (`Sdprtb_5129`, 101): the attacker's support below
+/// which a `0x92..0x94` system takes it (`FUN_00518be0`).
+const SDPRTB_SECTOR_RIM_LIMIT: u16 = 0x1409;
+/// SDPRTB `0x140a` (`Sdprtb_5130`; Alliance -4, Empire -3): the change at
+/// a system of family `0x90..0x92` (`FUN_0055d900` with 1).
+const SDPRTB_SECTOR_CORE: u16 = 0x140a;
+/// SDPRTB `0x140b` (`Sdprtb_5131`, 101): its limit.
+const SDPRTB_SECTOR_CORE_LIMIT: u16 = 0x140b;
 /// GNPRTB `0x606` (`DAT_006bb76c`, 50): a minor character's chance to be
 /// hit when a Death Star destroys its system (`FUN_0058d990`).
 const GNPRTB_DESTRUCTION_HIT: u16 = 0x606;
@@ -850,6 +862,64 @@ pub fn apply(world: &mut GameWorld, req: &BombardRequest, outcome: &BombardmentO
     if outcome.civilian_damage && !outcome.system_destroyed {
         let delta = gnprtb(world, GNPRTB_CIVILIAN_SUPPORT);
         crate::uprising::apply_support_change(world, req.system, req.side, delta);
+        sector_support_event(world, req.system, req.side);
+    }
+}
+
+/// `FUN_0058e320` after civilian damage on a system not destroyed:
+/// `FUN_0055d900` builds two filters for the attacker `side`, and
+/// `FUN_00518ac0` -> `FUN_00518b20` hands each system of the bombarded
+/// system's sector to `FUN_00518be0`. A system of the filter's family range
+/// (`0x90..0x92` with SDPRTB `0x140a`, `0x92..0x94` with `0x1408`), of any
+/// holder, populated, with the attacker's support below the limit
+/// (`0x140b`, `0x1409`), gets an event `0x373` whose amount is the
+/// Alliance's: the attacker's value, negated for the Empire
+/// (`FUN_00518be0`). `Event373_Fire` (`FUN_00562fb0`) applies it through
+/// `FUN_0050c9f0` with side 1.
+///
+/// port: the event is applied at once, not queued (`FUN_0053fcd0`). The
+/// port keeps the SYSTEMSD family as the exploration status (`0x90`
+/// Explored, `0x92` Unexplored, `rebellion-data`). hyp: `+0x88` bit 3,
+/// which `FUN_00518be0` excludes, is a destroyed planet.
+fn sector_support_event(world: &mut GameWorld, system: SystemKey, side: Faction) {
+    let Some(sector) = world.systems.get(system).map(|s| s.sector) else {
+        return;
+    };
+    let sdprtb = |world: &GameWorld, id: u16, shipped: [i32; 2]| {
+        if world.sdprtb.contains(id) {
+            world.sdprtb.value(id, world.difficulty_index, side)
+        } else if side == Faction::Alliance {
+            shipped[0]
+        } else {
+            shipped[1]
+        }
+    };
+    let core = (
+        sdprtb(world, SDPRTB_SECTOR_CORE, [-4, -3]),
+        sdprtb(world, SDPRTB_SECTOR_CORE_LIMIT, [101, 101]),
+    );
+    let rim = (
+        sdprtb(world, SDPRTB_SECTOR_RIM, [-2, -1]),
+        sdprtb(world, SDPRTB_SECTOR_RIM_LIMIT, [101, 101]),
+    );
+    let targets: Vec<(SystemKey, i32)> = world
+        .systems
+        .iter()
+        .filter(|(_, s)| s.sector == sector && s.is_populated && !s.is_destroyed)
+        .filter_map(|(key, s)| {
+            let explored = s.exploration_status == crate::dat::ExplorationStatus::Explored;
+            let (amount, limit) = if explored { core } else { rim };
+            let below = crate::uprising::support_points(s, side) < limit;
+            let alliance = if side == Faction::Alliance {
+                amount
+            } else {
+                -amount
+            };
+            (below && amount != 0).then_some((key, alliance))
+        })
+        .collect();
+    for (key, delta) in targets {
+        crate::uprising::apply_support_change(world, key, Faction::Alliance, delta);
     }
 }
 
@@ -1002,7 +1072,7 @@ impl BombardEnv {
 mod tests {
     use super::*;
     use crate::dat::{ExplorationStatus, SectorGroup};
-    use crate::ids::CapitalShipKey;
+    use crate::ids::{CapitalShipKey, SectorKey};
     use crate::world::{
         BuildableClass, CapitalShipClass, ClassStats, ControlKind, DefenseFacilityInstance,
         FighterClass, FighterEntry, Fleet, GnprtbParams, ManufacturingFacilityInstance,
@@ -1709,8 +1779,11 @@ mod tests {
             fx.world.systems[fx.system].manufacturing_facilities,
             [second]
         );
-        assert!((fx.world.systems[fx.system].popularity_empire - 0.3).abs() < 1e-6);
-        assert!((fx.world.systems[fx.system].popularity_alliance - 0.7).abs() < 1e-6);
+        // -20 for the Empire, then the sector event (FUN_0058e320 ->
+        // FUN_00518be0) gives the Alliance 3 at this core system: the
+        // earlier 30 / 70 left the sector event out.
+        assert!((fx.world.systems[fx.system].popularity_empire - 0.27).abs() < 1e-6);
+        assert!((fx.world.systems[fx.system].popularity_alliance - 0.73).abs() < 1e-6);
         // Collateral draw 1: none.
         let out = resolve(
             &fx.world,
@@ -1745,6 +1818,143 @@ mod tests {
             &mut script(&[0, 9, 0, 0, 0], 0),
         );
         assert_eq!(out.destroyed, []);
+    }
+
+    /// Add a populated system of `status` to `sector` at Alliance support
+    /// `alliance`.
+    fn neighbour(
+        world: &mut GameWorld,
+        sector: SectorKey,
+        status: ExplorationStatus,
+        alliance: f32,
+    ) -> SystemKey {
+        let mut sys = world.systems.values().next().unwrap().clone();
+        sys.sector = sector;
+        sys.exploration_status = status;
+        sys.popularity_alliance = alliance;
+        sys.popularity_empire = 1.0 - alliance;
+        sys.fleets.clear();
+        sys.control = ControlKind::Uncontrolled;
+        world.systems.insert(sys)
+    }
+
+    fn support(world: &GameWorld, system: SystemKey) -> (i32, i32) {
+        let sys = &world.systems[system];
+        (
+            (sys.popularity_alliance * 100.0).round() as i32,
+            (sys.popularity_empire * 100.0).round() as i32,
+        )
+    }
+
+    #[test]
+    fn civilian_damage_moves_the_support_of_every_system_in_the_sector() {
+        // FUN_0058e320: with civilian damage (+0x28) and the system not
+        // destroyed, FUN_0055d900(side, 1) and (side, 0) build the sector
+        // events FUN_00518ac0 -> FUN_00518b20 -> FUN_00518be0 hands every
+        // populated system of the bombarded system's sector: families
+        // 0x90..0x92 move by SDPRTB 0x140a (Alliance -4, Empire -3),
+        // 0x92..0x94 by SDPRTB 0x1408 (-2, -1), below the limit 0x140b /
+        // 0x1409 (101). The amount is the Alliance's (Event373_Fire ->
+        // FUN_0050c9f0 side 1), negated for an Imperial attacker.
+        // A0 2026-11-14-bombard-assault/15, /40: after the Alliance's
+        // Target Civilian Facilities on Commenor destroyed a refinery, the
+        // neutral Corellian systems joined the Empire.
+        let mut fx = fixture(1);
+        fx.world.capital_ship_classes[fx.ship_class].bombardment_modifier = 1;
+        fx.world.systems[fx.system].total_energy = 1;
+        let sector = fx.world.systems[fx.system].sector;
+        let core = neighbour(&mut fx.world, sector, ExplorationStatus::Explored, 0.5);
+        let rim = neighbour(&mut fx.world, sector, ExplorationStatus::Unexplored, 0.5);
+        let empty = neighbour(&mut fx.world, sector, ExplorationStatus::Explored, 0.5);
+        fx.world.systems[empty].is_populated = false;
+        let other_sector = fx.world.sectors.insert(fx.world.sectors[sector].clone());
+        let away = neighbour(
+            &mut fx.world,
+            other_sector,
+            ExplorationStatus::Explored,
+            0.5,
+        );
+        let out = resolve(&fx.world, &request(&fx, GENERAL), &mut script(&[0, 9], 9));
+        assert_eq!(out.destroyed, [Target::Energy]);
+        let mut world = fx.world.clone();
+        apply(&mut world, &request(&fx, GENERAL), &out);
+        // The Empire attacked: the Alliance gains 3 (core) or 1 (rim).
+        assert_eq!(support(&world, core), (53, 47));
+        assert_eq!(support(&world, rim), (51, 49));
+        assert_eq!(support(&world, empty), (50, 50));
+        assert_eq!(support(&world, away), (50, 50));
+        // The bombarded core system: -20 for the Empire, then +3.
+        assert_eq!(support(&world, fx.system), (73, 27));
+        // An Alliance attacker loses 4 and 2.
+        let mut world = fx.world.clone();
+        let mut req = request(&fx, GENERAL);
+        req.side = Faction::Alliance;
+        apply(&mut world, &req, &out);
+        assert_eq!(support(&world, core), (46, 54));
+        assert_eq!(support(&world, rim), (48, 52));
+        // No civilian damage, no sector event.
+        let mut world = fx.world.clone();
+        let quiet = BombardmentOutcome {
+            civilian_damage: false,
+            ..out.clone()
+        };
+        apply(&mut world, &request(&fx, GENERAL), &quiet);
+        assert_eq!(support(&world, core), (50, 50));
+        // A destroyed system takes the galaxy's events instead (not ported).
+        let mut world = fx.world.clone();
+        let destroyed = BombardmentOutcome {
+            system_destroyed: true,
+            ..out
+        };
+        apply(&mut world, &request(&fx, GENERAL), &destroyed);
+        assert_eq!(support(&world, core), (50, 50));
+    }
+
+    #[test]
+    fn the_sector_event_skips_a_system_where_the_attacker_holds_the_limit() {
+        // FUN_00518be0: the event only when FUN_00507270(attacker) is below
+        // the limit (SDPRTB 0x140b / 0x1409); the table's own values win
+        // over the shipped ones (FUN_0055cb60 loads them).
+        let entry = |id: u32, value: i32| crate::world::SdprtbEntry {
+            parameter_id: id,
+            dev_alliance: value,
+            dev_empire: value,
+            alliance_sp_easy_alliance: value,
+            alliance_sp_easy_empire: value,
+            alliance_sp_medium_alliance: value,
+            alliance_sp_medium_empire: value,
+            alliance_sp_hard_alliance: value,
+            alliance_sp_hard_empire: value,
+            empire_sp_easy_alliance: value,
+            empire_sp_easy_empire: value,
+            empire_sp_medium_alliance: value,
+            empire_sp_medium_empire: value,
+            empire_sp_hard_alliance: value,
+            empire_sp_hard_empire: value,
+            multiplayer_alliance: value,
+            multiplayer_empire: value,
+        };
+        let mut fx = fixture(1);
+        fx.world.sdprtb = crate::world::SdprtbParams::new(vec![
+            entry(0x140a, -5),
+            entry(0x140b, 60),
+            entry(0x1408, -7),
+            entry(0x1409, 101),
+        ]);
+        fx.world.capital_ship_classes[fx.ship_class].bombardment_modifier = 1;
+        fx.world.systems[fx.system].total_energy = 1;
+        let sector = fx.world.systems[fx.system].sector;
+        // The Empire attacks; its support is 60 at the core system, 61 below.
+        let core = neighbour(&mut fx.world, sector, ExplorationStatus::Explored, 0.4);
+        let below = neighbour(&mut fx.world, sector, ExplorationStatus::Explored, 0.41);
+        let rim = neighbour(&mut fx.world, sector, ExplorationStatus::Unexplored, 0.4);
+        let out = resolve(&fx.world, &request(&fx, GENERAL), &mut script(&[0, 9], 9));
+        assert!(out.civilian_damage);
+        let req = request(&fx, GENERAL);
+        apply(&mut fx.world, &req, &out);
+        assert_eq!(support(&fx.world, core), (40, 60));
+        assert_eq!(support(&fx.world, below), (46, 54));
+        assert_eq!(support(&fx.world, rim), (47, 53));
     }
 
     #[test]

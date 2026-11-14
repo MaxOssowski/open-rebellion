@@ -135,8 +135,7 @@ attacker's support on the system moves by G `0x1e19` (-20,
 `DAT_006bb400` with `+0x88` bit 11, `FUN_00559be0`). With `+0x2c` (a
 destroyed system) both sides' galaxy-wide support events
 (`FUN_0055da90` -> `FUN_00518a70`); else with `+0x28` the sector's
-(`FUN_0055d900` -> `FUN_00518ac0`), GNPRTB `DAT_006bb5f4..6d0` (not yet
-read: `FUN_00518b20`, `FUN_00518be0`). The system's bombarded bit is
+(`FUN_0055d900` -> `FUN_00518ac0`; see "The sector event" below). The system's bombarded bit is
 cleared (`FUN_0050a660(0)`), and every fleet of the side loses
 `+0x58` bit `0x40` (`FUN_004fe460(0)`).
 
@@ -188,8 +187,49 @@ port:
   production ones; a ship's `+0x24 & 0x30` is 0; the port's unset packed
   word (0) reads as a shield nibble of 0; a Death Star's destruction
   leaves no battery to fire and nothing to bombard.
-- Not ported: the sector's and the galaxy's support events
-  (`FUN_00518b20`), the system's bombarded bit (`+0x88` bit `0x40`).
+- Not ported: the galaxy's support events after a destroyed system
+  (`FUN_0055da90` -> `FUN_00518a70`), the system's bombarded bit (`+0x88`
+  bit `0x40`). The sector's event is ported (2026-11-14, below).
+
+## The sector event (ported 2026-11-14)
+
+With civilian damage and the system not destroyed, `FUN_0058e320` calls
+`FUN_0055d900(side, 1, filter)` and `FUN_0055d900(side, 0, filter)`, each
+followed by `FUN_00518ac0(system, filter)`:
+
+- `FUN_0055d900` (side 1 or 2; 3 refuses): the filter's holder `[0]` is 0
+  (any), its family range is `0x90..0x92` with 1 and `0x92..0x94` with 0
+  (`FUN_00520580`), `[3]` = `[5]` = the attacker, `[6]` the amount and
+  `[4]` the limit: SDPRTB `0x140a` / `0x140b` with 1, `0x1408` / `0x1409`
+  with 0, the attacker's column (`FUN_0055cb60` loads them). Shipped:
+  `0x1408` Alliance -2, Empire -1; `0x140a` -4, -3; both limits 101.
+- `FUN_00518ac0` takes the system's sector (`FUN_004f6b50`);
+  `FUN_00518b20` walks its systems when the amount is not 0 and hands
+  each to `FUN_00518be0`.
+- `FUN_00518be0`: a system of the family range, of the filter's holder
+  (0 = any), populated (`+0x88` bit 0), without `+0x88` bit 3, and with
+  the attacker's support (`FUN_00507270`) below the limit, gets an event
+  `0x373` (`Event373_Init`) whose `+0x40` is the amount, negated unless
+  the attacker is side 1; it is queued (`FUN_0053fcd0`).
+- `Event373_Fire` (`FUN_00562fb0`) dispatches kind `0x12` to the system
+  and calls `FUN_0050c9f0(+0x40, side 1)`: the Alliance's support moves
+  by the amount (the Empire's by its opposite).
+
+SYSTEMSD keeps 60 systems of family `0x90` and 140 of `0x92`.
+
+A0 (`.artifacts/a0-vm/2026-11-14-bombard-assault/15`, `/24`..`/40`): the
+Alliance's second Target Civilian Facilities on Imperial Commenor
+destroyed a refinery (picture 0x2b9b); within twelve days Talus, Tralus,
+Drall, Corfai, Xyquine, Selonia and Corellia, all of the Corellian
+sector, joined the Empire ("Joins Enemy"), and Commenor's smugglers
+left. The first strike, with no losses, changed nothing.
+
+Ported in `bombardment::sector_support_event`. port: the event is applied
+at once; the port's exploration status stands for the family (`0x90`
+Explored). hyp: `+0x88` bit 3 is a destroyed planet.
+
+Decompiles: `FUN_0055d900.c`, `FUN_00518be0.c`, `FUN_00562fb0.c` in this
+folder.
 
 ## Port notes
 
