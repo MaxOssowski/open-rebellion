@@ -3630,6 +3630,13 @@ async fn main() {
                     .missions()
                     .iter()
                     .any(|mission| mission.id == result.mission_id && mission.end_code == 0);
+                // FUN_00592c80: a mission's end gives its side level 6 of
+                // its target system (Event319_Handle).
+                if !continuing {
+                    world
+                        .object_views
+                        .queue_push(result.faction.into(), result.target_system);
+                }
                 apply_mission_result(
                     result,
                     continuing,
@@ -4377,6 +4384,11 @@ async fn main() {
                 &informant_rolls,
             ) {
                 let recipient_is_alliance = report.recipient == Faction::Alliance;
+                // FUN_0050d510: the incident's side gets its push
+                // (Event319_Handle).
+                world
+                    .object_views
+                    .queue_push(report.recipient, report.system);
                 if recipient_is_alliance {
                     fog_alliance_state.reveal(report.system);
                 } else {

@@ -925,3 +925,49 @@ fn only_a_unit_seen_the_day_before_is_copied_leaving_and_only_for_an_unseen_plac
         .travellers
         .is_empty());
 }
+
+#[test]
+fn a_bombardment_pushes_the_system_into_both_sides_copies() {
+    // Event319_Fire (FUN_005650f0): Event319_Handle level 11 for sides 1
+    // and 2 after a bombardment.
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    crate::bombardment::apply(
+        &mut setup.world,
+        &crate::bombardment::BombardRequest {
+            system: chandrila,
+            side: Faction::Alliance,
+            kind: 0,
+            fleets: Vec::new(),
+            alliance_hq: None,
+        },
+        &crate::bombardment::BombardmentOutcome::default(),
+    );
+    assert_eq!(
+        setup.world.object_views.pushes,
+        [(Faction::Alliance, chandrila), (Faction::Empire, chandrila)]
+    );
+}
+
+#[test]
+fn a_push_copies_the_systems_fleets_and_missions_frozen() {
+    // Event319_Handle copies the system's children (fleets 0x08..0x0f).
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let missions = crate::missions::MissionState::new();
+    setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    setup.world.object_views.queue_push(Faction::Alliance, chandrila);
+    day(&mut setup, &missions);
+    let extras = alliance_extras(&setup, chandrila).unwrap();
+    assert!(!extras.live);
+    assert_eq!(extras.fleets.len(), 1);
+    assert!(setup.world.object_views.empire_extras.values().all(|value| value.live));
+}

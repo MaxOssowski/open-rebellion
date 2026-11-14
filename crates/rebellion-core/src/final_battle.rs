@@ -388,6 +388,10 @@ fn fight(battle: &FinalBattle, missions: &mut MissionState, world: &mut GameWorl
         if let Some(system) = battle.system.and_then(|key| world.systems.get_mut(key)) {
             system.exploration_status = crate::dat::ExplorationStatus::Explored;
         }
+        // FUN_0050d5a0(6, 1) and (6, 2): both sides' copies take the system.
+        if let Some(system) = battle.system {
+            crate::object_views::queue_push_both(world, system);
+        }
     }
     let winner = match battle.outcome {
         Outcome::EmpireWins { injury } => {
@@ -734,6 +738,14 @@ mod tests {
             assert_eq!(
                 cast.world.systems[cast.court].exploration_status,
                 crate::dat::ExplorationStatus::Explored
+            );
+            // FUN_0050d5a0(6, 1) and (6, 2): both sides' copies.
+            assert_eq!(
+                cast.world.object_views.pushes,
+                [
+                    (crate::dat::Faction::Alliance, cast.court),
+                    (crate::dat::Faction::Empire, cast.court)
+                ]
             );
         }
     }

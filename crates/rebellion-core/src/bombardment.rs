@@ -800,6 +800,9 @@ pub fn order_enabled(
 /// port: the sector's and the galaxy's support events (`FUN_00518b20`) are
 /// not ported.
 pub fn apply(world: &mut GameWorld, req: &BombardRequest, outcome: &BombardmentOutcome) {
+    // Event319_Fire (FUN_005650f0): both sides' copies of the system take
+    // its state (Event319_Handle level 11; ghidra/notes/bombardment-order.md).
+    crate::object_views::queue_push_both(world, req.system);
     let mut lost: Vec<(FleetKey, usize)> = Vec::new();
     for loss in &outcome.ship_losses {
         let Some(ship) = world

@@ -446,6 +446,18 @@ pub fn run_simulation_tick(
     }
     for result in &mission_advance.results {
         integrator.apply_mission_result(world, result, &mut states.uprising, &mut states.research);
+        // FUN_00592c80: a mission's end gives its side level 6 of its
+        // target system (Event319_Handle).
+        let continuing = states
+            .missions
+            .missions()
+            .iter()
+            .any(|mission| mission.id == result.mission_id && mission.end_code == 0);
+        if !continuing {
+            world
+                .object_views
+                .queue_push(result.faction.into(), result.target_system);
+        }
         // Knesset Shamash-Bet #R11: emit `EVT_CHARACTER_KILLED` telemetry for
         // mission-side assassinations. The integrator's `MissionEffect::CharacterKilled`
         // arm marks `is_killed = true` via `mark_killed()` instead of deleting
@@ -679,6 +691,12 @@ pub fn run_simulation_tick(
         &informant_rolls,
     );
     integrator.apply_informant_reports(world, &mut states.fog, &informant_reports);
+    // FUN_0050d510: the incident's side gets its push (Event319_Handle).
+    for report in &informant_reports {
+        world
+            .object_views
+            .queue_push(report.recipient, report.system);
+    }
 
     // ── 9c. Injury recovery: each healing character's timer 0x388 ────────
     let healed =

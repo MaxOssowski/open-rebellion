@@ -134,3 +134,21 @@ The port has one object per id. `opposing_contents_visible` (render
 or its fog has ever revealed it; the fog never forgets. Untraced here:
 vtable `+0x4c` of `FUN_004f7bf0`, `+0x50` bit `0x20`, and the triggers of
 the level 1..12 pushes.
+
+## The pushes' triggers (traced 2026-11-14, stage 4)
+
+| Caller | Level, side | Trigger | Port |
+|---|---|---|---|
+| `FUN_00573610`, `FUN_00573890` | 10, mission's side | Espionage success | ported (`queue_push`) |
+| `FUN_0056bee0` | 8, mission's side | Reconnaissance success | ported |
+| `FUN_0055ff60` | 6, both | an encounter set at a system (`encounter.md`) | ported (its `SystemIntelligenceGathered`) |
+| `FUN_0054b040` | 6, both | the Final Battle at a system (`final-battle.md`) | ported (`final_battle::fight`) |
+| `FUN_00592c80` | 6, mission's side | a mission's end (slot `+0x284`) at a system target (`0x90..0x97`, `FUN_00521070`); the gate `FUN_00520af0` (last phase ≥ 5 or target changed) is not ported | ported for every mission result that ends the mission |
+| `FUN_005650f0` (`Event319_Fire`) | 11, both | an orbital bombardment (`bombardment-order.md`) | ported (`bombardment::apply`) |
+| `FUN_0050d510` via `FUN_00511860` | `FUN_00559db0`'s level, the side other than the owner | an informant incident's rising edge (`informant-incident.md`) | ported for each informant report's recipient |
+| `FUN_0051b990` | 10, Empire | untraced | not ported |
+| `FUN_00556c70` | 5, a computed side | untraced | not ported |
+| `CoreSystem_vtd8` `FUN_00566eb0` | 12 and 4, both | a core-system notification, untraced | not ported |
+
+port: every ported level copies the whole system and its contents (the
+regiment, system and extras copies), not the level's own type ranges.

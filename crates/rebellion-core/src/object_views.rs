@@ -148,9 +148,14 @@ pub struct ObjectViews {
 }
 
 impl ObjectViews {
-    /// Queues an intelligence push into `side`'s copies at `system`: an
-    /// Espionage (level 10, `FUN_00573610`) or Reconnaissance (level 8,
-    /// `FUN_0056bee0`) success.
+    /// Queues an intelligence push into `side`'s copies at `system`
+    /// (`Event319_Handle` `FUN_0050d5a0`): an Espionage (level 10,
+    /// `FUN_00573610`) or Reconnaissance (level 8, `FUN_0056bee0`) success,
+    /// an encounter or the Final Battle at a system (level 6,
+    /// `FUN_0055ff60`, `FUN_0054b040`), a mission's end at its target
+    /// (level 6 for its side, `FUN_00592c80`), a bombardment (level 11,
+    /// `FUN_005650f0`) or an informant incident (`FUN_0050d510`). port:
+    /// every level copies the whole system and its contents.
     pub fn queue_push(&mut self, side: Faction, system: SystemKey) {
         self.pushes.push((side, system));
     }
@@ -559,6 +564,14 @@ impl SystemExtras {
     }
 }
 
+/// Queues the push both sides take of `system` (`Event319_Fire`
+/// `FUN_005650f0`: level 11 for sides 1 and 2, after a bombardment).
+pub fn queue_push_both(world: &mut GameWorld, system: SystemKey) {
+    for side in [Faction::Alliance, Faction::Empire] {
+        world.object_views.queue_push(side, system);
+    }
+}
+
 /// The day's fleet, mission and traveller copies (`FUN_004f9a60`): each
 /// system's extras follow its seen bit as [`compute_systems`] does; then
 /// each other-side unit in hyperspace that left a system the side sees for
@@ -588,6 +601,18 @@ pub fn advance_extras(
                 let extras = SystemExtras::of(world, movement, missions, key, live);
                 if previous != Some(&extras) {
                     updates.push((system.dat_id, extras));
+                }
+            }
+        }
+        // The day's pushes copy the system's extras too (Event319_Handle).
+        for (pushed, system) in &world.object_views.pushes {
+            if *pushed == side {
+                if let Some(value) = world.systems.get(*system) {
+                    let live = system_seen(world, movement, side, *system);
+                    updates.push((
+                        value.dat_id,
+                        SystemExtras::of(world, movement, missions, *system, live),
+                    ));
                 }
             }
         }
