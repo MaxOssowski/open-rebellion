@@ -371,6 +371,29 @@ async function click(page, point, button = "left") {
   await frames(page);
 }
 
+// One frame of the port: macroquad's frame callback was queued before this
+// one, so it has run once with every event sent before the call.
+async function nextFrame(page) {
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+}
+
+// A double click on a list that counts its own (win32_double_click): the
+// second click must end within egui's double-click delay (0.3 s) of the
+// first by the port's frame clock, so each press and release goes one
+// frame apart. Two click()s take six or more frames, which slow frames
+// under load stretch past the delay into two single clicks.
+async function listDoubleClick(page, at) {
+  await page.mouse.move(at.x, at.y);
+  await frames(page);
+  for (let index = 0; index < 2; index += 1) {
+    await page.mouse.down();
+    await nextFrame(page);
+    await page.mouse.up();
+    await nextFrame(page);
+  }
+  await frames(page);
+}
+
 async function press(page, name) {
   await page.keyboard.down(name);
   await frames(page);
@@ -2610,12 +2633,10 @@ const cases = [
       const created = await until(page, "the ship forms the spare",
         (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1,1]");
       await shot(page, directory, "spare-created");
-      // Select the new fleet and expand it (A0 22's left list).
-      // Two clicks a few frames apart: the list counts its own double
-      // click (win32_double_click).
+      // Select the new fleet and expand it (A0 22's left list) with the
+      // list's own double click (win32_double_click).
       await page.waitForTimeout(300);
-      await click(page, point(created.fleets[2].entry));
-      await click(page, point(created.fleets[2].entry));
+      await listDoubleClick(page, point(created.fleets[2].entry));
       const expanded = await until(page, "the spare is selected and expanded",
         (o) => o.selected === "fleet" && o.entries === 4 && o.items.length === 1);
       await page.waitForTimeout(300);
