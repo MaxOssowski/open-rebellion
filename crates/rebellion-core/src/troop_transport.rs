@@ -1758,7 +1758,10 @@ mod tests {
         assert_eq!(moved, Err(TroopTransportError::RegimentEnRoute));
     }
 
-    // FUN_004f8240: a regiment is en route while its container is.
+    // FUN_004f8240: a regiment is en route while its container is. A0
+    // 2026-11-14-missions-transfer/23..26 and 31..34: a regiment dragged out
+    // of an en-route Fleet 1's Troops tab onto the Defenses window stays
+    // aboard, with no window or message on screen.
     #[test]
     fn a_regiment_aboard_a_fleet_in_hyperspace_cannot_move() {
         let (mut world, origin, destination, fleet, troops) = alliance_world(1);
@@ -1779,7 +1782,10 @@ mod tests {
         assert_eq!(moved, Err(TroopTransportError::RegimentEnRoute));
     }
 
-    // FUN_00500ac0 → FUN_00553410: 1/0x21 for an en-route ship.
+    // FUN_00500ac0 → FUN_00553410: 1/0x21 for an en-route ship. A0
+    // 2026-11-14-missions-transfer/51..67: regiments dragged or moved by
+    // menu onto Fleet 1, en route to Drall, stay on the planet with nothing
+    // on screen; 70..74, after its arrival, the same drag boards.
     #[test]
     fn a_fleet_in_hyperspace_refuses_a_regiment() {
         let (mut world, origin, destination, fleet, troops) = alliance_world(1);

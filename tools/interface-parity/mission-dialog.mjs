@@ -90,6 +90,15 @@ const scenarios = [
   { name: "research-diplomacy", code: 116, page: "mission",
     kinds: ["ShipDesignResearch", "Diplomacy", "Espionage"],
     icon: { alliance: 3104, empire: 7200 } },
+  // Scenario::FacilityResearchTargeting (120): a facility designer on its
+  // own system whose only yard is a construction yard, support below full.
+  // A0 2026-11-14-missions-transfer/12..14 (Adar Tallon on his own
+  // Jerijador, one Construction Yard): Facility Design Research, Diplomacy,
+  // Espionage, keys 5, 7, 9 (FUN_0046cab0), shown on the first; GOKRES 3105
+  // (TEXTSTRA 11297).
+  { name: "facility-research", code: 121, page: "mission",
+    kinds: ["FacilityDesignResearch", "Diplomacy", "Espionage"],
+    icon: { alliance: 3105, empire: 7201 } },
 ];
 // REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
 // at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
@@ -543,7 +552,7 @@ async function inspect(server, source, faction, scenario, executable) {
     const { origin } = faction;
     const comparisons = [];
     let targeting = null;
-    if (["targeting", "sabotage", "enemy-character", "uprising", "rescue", "death-star", "recon", "research", "troop-research", "research-diplomacy"].includes(scenario.name)) targeting = await target(page, faction, directory);
+    if (["targeting", "sabotage", "enemy-character", "uprising", "rescue", "death-star", "recon", "research", "troop-research", "research-diplomacy", "facility-research"].includes(scenario.name)) targeting = await target(page, faction, directory);
     const opened = await stableDialog(page, origin, directory, "opened");
     comparisons.push(compare(opened, composeExpected(source, faction, scenario.page), scenario.page, "opened", directory));
     if (scenario.name === "mission") {

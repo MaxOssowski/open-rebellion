@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 120;
+const SCENARIO_COUNT: u8 = 121;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -446,6 +446,13 @@ pub enum Scenario {
     /// (`FUN_00507750`, `{0x90, 1}`); a mine finds no deposit (`{0x90, 2}`),
     /// as A0 2026-11-13-build-confirm/21, 23 grey Confirm at Jerijador.
     BuildSelectionFacilityRoom = 119,
+    /// As `ResearchTargeting` with a facility designer for the agent, one
+    /// construction yard the target's only yard, and the target below full
+    /// support: Facility Design Research, Diplomacy and Espionage list, in
+    /// `FUN_0046cab0`'s key order (A0 2026-11-14-missions-transfer/11..14:
+    /// Adar Tallon on his own Jerijador, a construction yard alone, shows
+    /// Facility Design Research first of three kinds).
+    FacilityResearchTargeting = 120,
 }
 
 impl Scenario {
@@ -571,6 +578,7 @@ impl Scenario {
             117 => Self::QuadrantsFreeTeam,
             118 => Self::QuadrantsFacility,
             119 => Self::BuildSelectionFacilityRoom,
+            120 => Self::FacilityResearchTargeting,
             _ => return None,
         })
     }
@@ -632,6 +640,7 @@ impl Scenario {
             || self == Self::SquadronEnroute
             || self == Self::ResearchTargeting
             || self == Self::TroopResearchTargeting
+            || self == Self::FacilityResearchTargeting
             || self == Self::ResearchDiplomacyTargeting
             || self == Self::UprisingTargeting
             || self == Self::BatteryStatus
@@ -884,6 +893,7 @@ pub fn apply(
                 | Scenario::ForceStatus
                 | Scenario::ResearchTargeting
                 | Scenario::TroopResearchTargeting
+                | Scenario::FacilityResearchTargeting
                 | Scenario::ResearchDiplomacyTargeting
                 | Scenario::UprisingTargeting
                 | Scenario::CharacterCommand
@@ -1484,6 +1494,7 @@ pub fn apply(
         request.scenario,
         Scenario::ResearchTargeting
             | Scenario::TroopResearchTargeting
+            | Scenario::FacilityResearchTargeting
             | Scenario::ResearchDiplomacyTargeting
     ) {
         // FUN_0056c510: an own-side target with a working yard of the tree's
@@ -1491,7 +1502,10 @@ pub fn apply(
         // Diplomacy (FUN_00573ee0) and the empty pool Recruitment
         // (FUN_0056b370), so the dialog lists research alone; the Diplomacy
         // case keeps the side's support below full.
-        let full = if request.scenario == Scenario::ResearchDiplomacyTargeting {
+        let full = if matches!(
+            request.scenario,
+            Scenario::ResearchDiplomacyTargeting | Scenario::FacilityResearchTargeting
+        ) {
             0.72
         } else {
             1.0
@@ -1502,25 +1516,30 @@ pub fn apply(
         target.popularity_empire = 1.0 - target.popularity_alliance;
         // The troop case holds one training facility (MANFACSD family 0x29,
         // area_family) as A0's Averam does, and no shipyard.
+        // The facility case holds one construction yard (family 0x2a) as
+        // A0's Jerijador does.
         let troop = request.scenario == Scenario::TroopResearchTargeting;
+        let facility = request.scenario == Scenario::FacilityResearchTargeting;
         let yard = world.manufacturing_facilities.insert(
             rebellion_core::world::ManufacturingFacilityInstance {
                 class_dat_id: rebellion_core::ids::DatId::new(if troop {
                     0x2900_0001
+                } else if facility {
+                    0x2a00_0001
                 } else {
                     0x2800_0001
                 }),
                 side: player_control,
-                is_shipyard: !troop,
+                is_shipyard: !troop && !facility,
             },
         );
         world.systems[secondary].manufacturing_facilities = vec![yard];
         world.set_recruit_pool_empty(player_control);
         if let Some(agent) = world.characters.values_mut().next() {
             let skill = |base| rebellion_core::world::SkillPair { base, variance: 0 };
-            agent.ship_design = skill(if troop { 0 } else { 40 });
+            agent.ship_design = skill(if troop || facility { 0 } else { 40 });
             agent.troop_training = skill(if troop { 40 } else { 0 });
-            agent.facility_design = skill(0);
+            agent.facility_design = skill(if facility { 40 } else { 0 });
         }
     }
     if matches!(
@@ -1533,6 +1552,7 @@ pub fn apply(
             | Scenario::SquadronEnroute
             | Scenario::ResearchTargeting
             | Scenario::TroopResearchTargeting
+            | Scenario::FacilityResearchTargeting
             | Scenario::ResearchDiplomacyTargeting
             | Scenario::UprisingTargeting
             | Scenario::CharacterCommand
@@ -3235,6 +3255,7 @@ pub fn emit_mission_flow(
                 | Scenario::ReconTargeting
                 | Scenario::ResearchTargeting
                 | Scenario::TroopResearchTargeting
+                | Scenario::FacilityResearchTargeting
                 | Scenario::ResearchDiplomacyTargeting
                 | Scenario::UprisingTargeting
         )
@@ -8682,6 +8703,14 @@ mod tests {
             assert_eq!((own, other), (1.0, 0.0));
             assert!(world.recruit_pool_empty(side));
             assert_eq!(kinds, vec![tree], "{scenario:?} {side:?}");
+            // The target's one yard: a shipyard for the ship tree only.
+            let yards = &world.systems[target].manufacturing_facilities;
+            assert_eq!(yards.len(), 1);
+            assert_eq!(
+                world.manufacturing_facilities[yards[0]].is_shipyard,
+                tree == MissionKind::ShipDesignResearch,
+                "{scenario:?}"
+            );
         }
     }
 
@@ -8756,6 +8785,98 @@ mod tests {
                     MissionKind::Espionage
                 ],
                 "{side:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_facility_research_scenario_boxes_facility_research_then_diplomacy_then_espionage() {
+        // A0 2026-11-14-missions-transfer/11..14: Adar Tallon on his own
+        // Jerijador (a construction yard alone, support below full) lists
+        // Facility Design Research, Diplomacy, Espionage: FUN_0046cab0's
+        // keys 5, 7, 9; FUN_0056c510 takes the yard of the facility tree
+        // (MISSNSD 0x53000021).
+        for (cockpit_side, side, faction) in [
+            (
+                CockpitFaction::Alliance,
+                Faction::Alliance,
+                MissionFaction::Alliance,
+            ),
+            (
+                CockpitFaction::Empire,
+                Faction::Empire,
+                MissionFaction::Empire,
+            ),
+        ] {
+            let mut world = diplomacy_world(side);
+            let here = world.systems.keys().next().unwrap();
+            let mut second = world.systems[here].clone();
+            second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+            let target = world.systems.insert(second);
+            let template = world.mission_records[0];
+            world.mission_records = [0x5100_0010, 0x5200_0013, 0x5300_0020, 0x5300_0021, 0x5300_0022]
+                .into_iter()
+                .map(|id| rebellion_core::world::MissionRecord {
+                    dat_id: rebellion_core::ids::DatId::new(id),
+                    ..template
+                })
+                .collect();
+            let mut missions = MissionState::default();
+            apply(
+                request(Scenario::FacilityResearchTargeting, cockpit_side),
+                &mut world,
+                &mut GameMode::MainMenu,
+                &mut MissionFaction::Alliance,
+                &mut CockpitState::new(cockpit_side),
+                &mut GalaxyMapState::default(),
+                &mut MovementState::default(),
+                &mut ManufacturingState::default(),
+                &mut EconomyState::default(),
+                &mut missions,
+                &mut BlockadeState::default(),
+                &mut SectorWindowState::default(),
+                &mut SystemWindowState::default(),
+                &mut FleetWindowState::default(),
+                &mut DefensesWindowState::default(),
+                &mut TroopTransportState::default(),
+                &mut rebellion_core::uprising::UprisingState::new(),
+            );
+            let agent = MissionMember::Character(world.characters.keys().next().unwrap());
+
+            let kinds = available_kinds(
+                &world,
+                &UprisingState::default(),
+                &ResearchState::default(),
+                faction,
+                &[agent],
+                &[],
+                target,
+            );
+
+            assert_eq!(
+                rebellion_render::mission_dialog::box_order(kinds),
+                [
+                    MissionKind::FacilityDesignResearch,
+                    MissionKind::Diplomacy,
+                    MissionKind::Espionage
+                ],
+                "{side:?}"
+            );
+            // A0's Jerijador holds one Construction Yard (family 0x2a), no
+            // shipyard; the agent designs facilities alone.
+            let yards = &world.systems[target].manufacturing_facilities;
+            assert_eq!(yards.len(), 1);
+            let yard = &world.manufacturing_facilities[yards[0]];
+            assert_eq!(yard.class_dat_id, rebellion_core::ids::DatId::new(0x2a00_0001));
+            assert!(!yard.is_shipyard);
+            let designer = world.characters.values().next().unwrap();
+            assert_eq!(
+                (
+                    designer.ship_design.base,
+                    designer.troop_training.base,
+                    designer.facility_design.base
+                ),
+                (0, 0, 40)
             );
         }
     }
@@ -12702,6 +12823,7 @@ mod tests {
                 Scenario::QuadrantsFreeTeam,
                 Scenario::QuadrantsFacility,
                 Scenario::BuildSelectionFacilityRoom,
+                Scenario::FacilityResearchTargeting,
             ]
         );
     }

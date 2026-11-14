@@ -944,6 +944,29 @@ const cases = [
     },
   },
   {
+    name: "drag-load",
+    code: FLEET_LOAD,
+    // A regiment dragged out of the Defenses window's Trooper Regiments page
+    // and released on the Fleet window's fleet entry issues 0x201 against
+    // that fleet (window type 4, +0x70; FUN_00422ce0) and boards at once.
+    // A0 2026-11-14-missions-transfer/71..74 (Drall, Fleet 1 at rest): the
+    // regiment leaves the Defenses page and the Troops tab lists it under
+    // the one already aboard, with no window or message.
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup);
+      await selectFleet(page, opened);
+      await dragItem(page, point(setup.troop_item), point(opened.fleet_entry));
+      const loaded = await until(page, "the dragged regiment boards the fleet", (o) => o.aboard);
+      assert.equal(loaded.cargo, 1);
+      assert.equal(loaded.troop_system_dat_id, null, "the regiment left the planet");
+      assert.deepEqual(loaded.enabled, [true, false, true, false], "the Troops tab lights with a regiment aboard");
+      const troops = await openTroopsTab(page, loaded);
+      assert.deepEqual(troops.counts, [1, setup.capacity]);
+      await shot(page, directory, "drag-loaded");
+      return { opened, loaded, troops };
+    },
+  },
+  {
     name: "move-and-carry",
     code: FLEET_LOAD,
     // The fleet's Move to the target; on arrival the hold ends
