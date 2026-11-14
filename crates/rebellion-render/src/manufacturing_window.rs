@@ -333,6 +333,9 @@ pub enum FacilityItem {
     },
     /// The mines page's `index`th empty deposit.
     Deposit(usize),
+    /// The `index`th facility of the player's frozen copy of the system
+    /// (`SystemView`, `FUN_004f9a60`). port: it opens no menu.
+    Viewed(usize),
 }
 
 impl FacilityItem {
@@ -358,7 +361,7 @@ impl FacilityItem {
                 owner,
                 arrival,
             }),
-            Self::Deposit(_) => None,
+            Self::Deposit(_) | Self::Viewed(_) => None,
         }
     }
 }
@@ -544,11 +547,84 @@ pub fn yard_count(cells: &[FacilityCell]) -> String {
         .filter(|cell| {
             matches!(
                 cell.item,
-                FacilityItem::Manufacturing(_) | FacilityItem::Production(_)
+                FacilityItem::Manufacturing(_)
+                    | FacilityItem::Production(_)
+                    | FacilityItem::Viewed(_)
             )
         })
         .count();
     format!("{built}:{}", cells.len())
+}
+
+/// The cells of `page` from the player's frozen copy of a system
+/// (`FUN_004f2d10` reads the side's copy; `FUN_004f9a60` froze it): its
+/// built facilities of the copy's side and the page's family, and on the
+/// mines page one empty deposit per copied deposit beyond its mines.
+#[must_use]
+pub fn frozen_page_cells(
+    view: &rebellion_core::object_views::SystemView,
+    page: FacilityPage,
+) -> Vec<FacilityCell> {
+    let side = control_side(view.control);
+    let family = page_family(page);
+    let mut cells: Vec<FacilityCell> = view
+        .manufacturing_facilities
+        .iter()
+        .chain(&view.production_facilities)
+        .filter_map(|facility| {
+            let owner = crate::fleet_window::faction_side(facility.side);
+            if facility.class.family() != family || owner != side {
+                return None;
+            }
+            facility_picture(facility.class, owner, FacilityState::Built)
+        })
+        .enumerate()
+        .map(|(index, picture)| FacilityCell {
+            item: FacilityItem::Viewed(index),
+            picture,
+        })
+        .collect();
+    if page == FacilityPage::Mines {
+        let mines = cells.len();
+        cells.extend(
+            (mines..usize::from(view.raw_materials)).map(|index| FacilityCell {
+                item: FacilityItem::Deposit(index),
+                picture: DEPOSIT_PICTURE,
+            }),
+        );
+    }
+    cells
+}
+
+/// The cells `player`'s window shows on `page`: [`page_cells`] where the
+/// player sees the system's contents live, else [`frozen_page_cells`] from
+/// its frozen copy (`viewed_contents::system_sight`).
+#[must_use]
+pub fn shown_page_cells(
+    world: &GameWorld,
+    fog: &FogState,
+    player: rebellion_core::dat::Faction,
+    manufacturing: &ManufacturingState,
+    deliveries: &DeliveryState,
+    system: SystemKey,
+    page: FacilityPage,
+) -> Vec<FacilityCell> {
+    let explored = world.systems.get(system).is_some_and(|value| {
+        value.exploration_status != rebellion_core::dat::ExplorationStatus::Unexplored
+    });
+    match crate::viewed_contents::system_sight(world, fog, player, system) {
+        crate::viewed_contents::SystemSight::Frozen(view) if explored => {
+            frozen_page_cells(view, page)
+        }
+        _ => page_cells(
+            world,
+            manufacturing,
+            deliveries,
+            contents_visible(world, fog, player, system),
+            system,
+            page,
+        ),
+    }
 }
 
 /// Whether the player sees what `system`'s window lists: an explored system
@@ -1083,5 +1159,67 @@ mod tests {
             unexplored
         ));
         assert!(contents_visible(&world, &fog, Faction::Empire, enemy));
+    }
+
+    #[test]
+    fn a_frozen_copy_lists_the_facilities_and_deposits_it_holds() {
+        // FUN_004f2d10 reads the Empire's copy of the Alliance's Bortras;
+        // FUN_004f9a60 froze it with a mine, a refinery and three deposits
+        // (A0 2026-11-14-quadrants-status-known/19-chandrila-tab-277: a
+        // stale Mines page on day 710).
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Bortras", ALLIANCE);
+        world.systems[system].raw_materials = 3;
+        production(&mut world, system, 0x2c00_0001);
+        production(&mut world, system, 0x2d00_0002);
+        let id = world.systems[system].dat_id;
+        let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        world.object_views.empire_systems.insert(id, copy);
+        world.systems[system].production_facilities.clear();
+        let manufacturing = ManufacturingState::new();
+        let deliveries = DeliveryState::new();
+        let fog = FogState::new(Faction::Empire);
+        let shown = |world: &GameWorld, page| {
+            shown_page_cells(world, &fog, Faction::Empire, &manufacturing, &deliveries, system, page)
+                .into_iter()
+                .map(|cell| cell.item)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            shown(&world, FacilityPage::Mines),
+            [FacilityItem::Viewed(0), FacilityItem::Deposit(1), FacilityItem::Deposit(2)]
+        );
+        assert_eq!(shown(&world, FacilityPage::Refineries), [FacilityItem::Viewed(0)]);
+        assert_eq!(FacilityItem::Viewed(0).menu_object(system), None);
+        let cells = shown_page_cells(
+            &world,
+            &fog,
+            Faction::Empire,
+            &manufacturing,
+            &deliveries,
+            system,
+            FacilityPage::Refineries,
+        );
+        assert_eq!(cells[0].picture, 9_030);
+        assert_eq!(yard_count(&cells), "1:1");
+        // A live copy shows the live system, now without them.
+        world.object_views.empire_systems.get_mut(&id).unwrap().live = true;
+        assert!(page_is_empty(&shown_page_cells(
+            &world,
+            &fog,
+            Faction::Empire,
+            &manufacturing,
+            &deliveries,
+            system,
+            FacilityPage::Mines,
+        )));
+        // An unexplored system lists nothing, copy or not.
+        world.object_views.empire_systems.get_mut(&id).unwrap().live = false;
+        world.systems[system].exploration_status = ExplorationStatus::Unexplored;
+        assert!(shown(&world, FacilityPage::Mines).is_empty());
+        world.systems[system].exploration_status = ExplorationStatus::Explored;
+        // No copy and no fog: nothing.
+        world.object_views.empire_systems.clear();
+        assert!(shown(&world, FacilityPage::Mines).is_empty());
     }
 }

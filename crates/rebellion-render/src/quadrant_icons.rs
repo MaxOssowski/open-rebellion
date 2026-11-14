@@ -304,8 +304,13 @@ pub fn quadrant_icon(
 struct SystemContents<'a> {
     world: &'a GameWorld,
     system: SystemKey,
+    player: Faction,
     player_side: u8,
     opposing_visible: bool,
+    /// The player's frozen copy of the system, whose other-side objects
+    /// the icons count instead of the live ones (`FUN_004f2d10` reads the
+    /// side's copy; `FUN_004f9a60`).
+    frozen: Option<&'a rebellion_core::object_views::SystemView>,
 }
 
 impl<'a> SystemContents<'a> {
@@ -319,20 +324,96 @@ impl<'a> SystemContents<'a> {
         if value.exploration_status == ExplorationStatus::Unexplored {
             return None;
         }
+        let frozen = match crate::viewed_contents::system_sight(world, fog, player, system) {
+            crate::viewed_contents::SystemSight::Frozen(view) => Some(view),
+            _ => None,
+        };
         Some(Self {
             world,
             system,
+            player,
             player_side: faction_side(player),
             opposing_visible: opposing_contents_visible(world, fog, player, system),
+            frozen,
         })
     }
 
-    /// The system's side bits `(+0x24 >> 6) & 3`.
+    /// The system's side bits `(+0x24 >> 6) & 3`, as the player's frozen
+    /// copy holds them when it has one.
     fn side(&self) -> u8 {
+        if let Some(view) = self.frozen {
+            return control_side(view.control);
+        }
         self.world
             .systems
             .get(self.system)
             .map_or(0, |value| control_side(value.control))
+    }
+
+    /// The other side's yards, mines and refineries in the frozen copy.
+    fn frozen_facilities(&self) -> usize {
+        let Some(view) = self.frozen else {
+            return 0;
+        };
+        let other = |facility: &&rebellion_core::object_views::FacilityView| {
+            crate::fleet_window::faction_side(facility.side) != self.player_side
+        };
+        view.manufacturing_facilities
+            .iter()
+            .filter(other)
+            .filter(|facility| (0x28..0x30).contains(&facility.class.family()))
+            .count()
+            + view.production_facilities.iter().filter(other).count()
+    }
+
+    /// The other side's defenses in the frozen copy: its defense
+    /// facilities, squadrons, special forces and characters, and the
+    /// player's copies of its regiments on the planet.
+    fn frozen_defenses(&self) -> usize {
+        let Some(view) = self.frozen else {
+            return 0;
+        };
+        let other = |side: u8| side != self.player_side;
+        let facilities = view
+            .defense_facilities
+            .iter()
+            .filter(|facility| other(crate::fleet_window::faction_side(facility.side)))
+            .count();
+        let squadrons: usize = view
+            .fighters
+            .iter()
+            .filter(|(class, _)| {
+                self.world
+                    .fighter_classes
+                    .values()
+                    .find(|value| value.dat_id == *class)
+                    .is_some_and(|value| other(fleet_side(value.is_alliance)))
+            })
+            .map(|(_, count)| *count as usize)
+            .sum();
+        let forces = view
+            .special_forces
+            .iter()
+            .filter(|(_, is_alliance)| other(fleet_side(*is_alliance)))
+            .count();
+        let characters = view
+            .characters
+            .iter()
+            .filter_map(|id| crate::viewed_contents::character_key(self.world, *id))
+            .filter(|key| {
+                let side = match rebellion_core::missions::character_side(&self.world.characters[*key])
+                {
+                    Some(Faction::Alliance) => 1,
+                    Some(Faction::Empire) => 2,
+                    _ => 0,
+                };
+                other(side)
+            })
+            .count();
+        let regiments =
+            crate::viewed_contents::viewed_surface_regiments(self.world, self.player, self.system)
+                .len();
+        facilities + squadrons + forces + characters + regiments
     }
 
     fn seen(&self, side: u8) -> bool {
@@ -360,7 +441,7 @@ impl<'a> SystemContents<'a> {
                 .get(**key)
                 .is_some_and(|facility| self.seen(crate::fleet_window::faction_side(facility.side)))
         });
-        manufacturing.count() + production.count()
+        manufacturing.count() + production.count() + self.frozen_facilities()
     }
 
     /// `FUN_0045ce80`'s sum: defense facilities (`FUN_00526fd0`), regiments
@@ -417,7 +498,7 @@ impl<'a> SystemContents<'a> {
         let idle = self
             .members_with_arrivals(missions)
             .filter(|(member, _, hidden)| *hidden || !keys.contains_key(member));
-        defense.count() + regiments.count() + squadrons + idle.count()
+        defense.count() + regiments.count() + squadrons + idle.count() + self.frozen_defenses()
     }
 
     /// The system's characters and special forces the player sees, each with
@@ -864,6 +945,140 @@ mod tests {
                 Some(expected)
             );
         }
+    }
+
+    #[test]
+    fn each_kind_in_a_frozen_copy_lights_the_defenses_icon_alone() {
+        // FUN_0045ce80's sum over the copy (FUN_004f2d10, FUN_004f9a60):
+        // squadrons, special forces, characters and regiment copies each
+        // light the icon on their own; the Alliance's own do not count as
+        // the other side's.
+        use rebellion_core::object_views::{apply, ObjectView, RegimentView, ViewPlace, ViewUpdate};
+        let frozen = |world: &mut GameWorld, system: SystemKey| {
+            let copy =
+                rebellion_core::object_views::SystemView::of(world, &world.systems[system], false);
+            let id = world.systems[system].dat_id;
+            world.object_views.alliance_systems.insert(id, copy);
+        };
+        let empty = |world: &mut GameWorld, system: SystemKey| {
+            world.systems[system].fighters.clear();
+            world.systems[system].special_forces.clear();
+            for character in world.characters.values_mut() {
+                character.current_system = None;
+            }
+        };
+        let imperial = || world(ControlKind::Controlled(Faction::Empire));
+
+        let (mut world, system) = imperial();
+        let tie = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            is_alliance: false,
+            ..Default::default()
+        });
+        world.systems[system].fighters.push(rebellion_core::world::FighterEntry {
+            class: tie,
+            count: 1,
+            carrier: None,
+        });
+        frozen(&mut world, system);
+        empty(&mut world, system);
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(2));
+        world.fighter_classes[tie].is_alliance = true;
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), None);
+
+        let (mut world, system) = imperial();
+        let force = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.systems[system].special_forces.push(force);
+        frozen(&mut world, system);
+        empty(&mut world, system);
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(2));
+
+        for is_alliance in [false, true] {
+            let (mut world, system) = imperial();
+            let key = add_character(&mut world, system, is_alliance);
+            frozen(&mut world, system);
+            empty(&mut world, system);
+            assert_eq!(
+                alliance_side(&world, system, Quadrant::Defenses),
+                (!is_alliance).then_some(2),
+                "{is_alliance}"
+            );
+            world.characters[key].current_system = Some(system);
+        }
+        // The Empire's own character in its copy of an Alliance system is
+        // not the other side's.
+        let (mut world, system) = self::world(ControlKind::Controlled(Faction::Alliance));
+        add_character(&mut world, system, false);
+        let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        let id = world.systems[system].dat_id;
+        world.object_views.empire_systems.insert(id, copy);
+        empty(&mut world, system);
+        let mut fog = FogState::new(Faction::Empire);
+        fog.reveal(system);
+        let empire = |world: &GameWorld| {
+            quadrant_side(
+                world,
+                &fog,
+                &MissionState::new(),
+                &rebellion_core::movement::MovementState::default(),
+                Travellers::default(),
+                Faction::Empire,
+                system,
+                Quadrant::Defenses,
+            )
+        };
+        assert_eq!(empire(&world), None);
+
+        let (mut world, system) = imperial();
+        let id = world.systems[system].dat_id;
+        frozen(&mut world, system);
+        apply(
+            &mut world,
+            &[ViewUpdate::Set {
+                side: Faction::Alliance,
+                id: DatId::new(0x1000_0003),
+                view: ObjectView::Regiment(RegimentView {
+                    class: DatId::new(0x1000_0001),
+                    is_alliance: false,
+                    strength: 1,
+                    place: ViewPlace::Surface(id),
+                    arrival: None,
+                    live: false,
+                }),
+            }],
+        );
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(2));
+    }
+
+    #[test]
+    fn a_frozen_copy_lights_the_icons_as_it_was_seen() {
+        // The galaxy view reads the player's side's copy (FUN_004f2d10);
+        // FUN_004f9a60 froze it with an Imperial mine and shield, so both
+        // icons keep the Empire's art after the live ones are gone, and its
+        // side bits stay the Empire's.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        add_mine(&mut world, system, false);
+        let shield = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2400_0003),
+            side: rebellion_core::dat::Faction::Empire,
+        });
+        world.systems[system].defense_facilities.push(shield);
+        let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        world.object_views.alliance_systems.insert(world.systems[system].dat_id, copy);
+        world.systems[system].production_facilities.clear();
+        world.systems[system].defense_facilities.clear();
+        world.systems[system].control = ControlKind::Uncontrolled;
+        assert_eq!(alliance_side(&world, system, Quadrant::System), Some(2));
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(2));
+        // Without the copy, the fog shows the live system: nothing.
+        world.object_views.alliance_systems.clear();
+        assert_eq!(alliance_side(&world, system, Quadrant::System), None);
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), None);
     }
 
     #[test]

@@ -1897,6 +1897,31 @@ async fn main() {
             &movement_state,
             [&fog_alliance_state, &fog_empire_state],
         );
+        // port: a fixture's fog stands for what its side sees now, so its
+        // copies of those systems start live, as before the copies; the
+        // day's step freezes them once the clock runs and the side does not
+        // see them (FUN_004f9a60).
+        let revealed: Vec<(Faction, rebellion_core::ids::DatId)> = world
+            .systems
+            .iter()
+            .flat_map(|(key, value)| {
+                [&fog_alliance_state, &fog_empire_state]
+                    .into_iter()
+                    .filter(move |fog| fog.is_visible(key))
+                    .map(move |fog| (fog.faction, value.dat_id))
+            })
+            .collect();
+        for (side, id) in revealed {
+            let views = &mut world.object_views;
+            let systems = if side == Faction::Alliance {
+                &mut views.alliance_systems
+            } else {
+                &mut views.empire_systems
+            };
+            if let Some(view) = systems.get_mut(&id) {
+                view.live = true;
+            }
+        }
         // Character Killed for the Alliance (FUN_0048fdf0, 0x7164 /
         // 0x7365): Jan Dodonna, filed first so it lists below the scenario's
         // other Mission messages. He stays alive in the world, as the
@@ -10515,6 +10540,7 @@ fn defenses_selection_team(
             // A squadron in hyperspace takes no order (FUN_004f9860).
             DefensesItem::Defense(_)
             | DefensesItem::ViewedTroop { .. }
+            | DefensesItem::Viewed { .. }
             | DefensesItem::Pending { .. }
             | DefensesItem::TravellingSquadron { .. } => return None,
         }

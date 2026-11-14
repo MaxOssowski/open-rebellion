@@ -231,10 +231,12 @@ fn count_troops(world: &GameWorld, troops: &[TroopKey], tab: TroopTab) -> [Troop
 /// mode 3, existing, over the player's side's views of the systems.
 ///
 /// A0 troop-other-side/test-day220-imperial-tab-empty (an unedited
-/// Alliance game, day 220) lists no Imperial regiment. hyp: the port has no
-/// per-side views, so the other side's tab lists a system's or a fleet's
-/// regiments where the player sees the other side's objects
-/// (`opposing_contents_visible`), as the Fleet Finder does.
+/// Alliance game, day 220) lists no Imperial regiment. The other side's
+/// tab walks the player's side's copies (`FUN_004f2d10`, `FUN_004f9a60`):
+/// each system with copies of that side's regiments on its planet
+/// ([`viewed_rows`]). port: copies aboard a fleet are not listed (the port
+/// keeps no copies of fleets); the debug "see everything" mode lists the
+/// live regiments.
 #[must_use]
 pub fn rows(
     world: &GameWorld,
@@ -243,6 +245,9 @@ pub fn rows(
     tab: TroopTab,
     transport: &TroopTransportState,
 ) -> Vec<TroopFinderRow> {
+    if !tab.lists(player == Faction::Alliance) && !crate::viewed_contents::sees_everything(world) {
+        return viewed_rows(world, player, tab);
+    }
     let mut rows = Vec::new();
 
     for (system_key, system) in &world.systems {
@@ -301,6 +306,55 @@ pub fn rows(
         }
     }
 
+    rows.sort_by_cached_key(|row| row.name.to_ascii_lowercase());
+    rows
+}
+
+/// The other side's tab from `player`'s copies: each system with copies of
+/// the tab side's regiments on its planet, counted by class, in name order.
+fn viewed_rows(world: &GameWorld, player: Faction, tab: TroopTab) -> Vec<TroopFinderRow> {
+    let classes = troop_classes(tab);
+    let mut rows = Vec::new();
+    for (system_key, system) in &world.systems {
+        let mut counts = [TroopCount {
+            count: 0,
+            all_usable: true,
+        }; 5];
+        let mut any = false;
+        for regiment in
+            crate::viewed_contents::viewed_surface_regiments(world, player, system_key)
+        {
+            let (class, is_alliance) = match regiment {
+                crate::viewed_contents::ViewedRegiment::Live(key) => {
+                    let Some(troop) = world.troops.get(key) else {
+                        continue;
+                    };
+                    (troop.class_dat_id, troop.is_alliance)
+                }
+                crate::viewed_contents::ViewedRegiment::View(id) => {
+                    let Some(view) = crate::viewed_contents::regiment_view(world, player, id) else {
+                        continue;
+                    };
+                    (view.class, view.is_alliance)
+                }
+            };
+            if !tab.lists(is_alliance) {
+                continue;
+            }
+            any = true;
+            if let Some(i) = classes.iter().position(|raw| *raw == class.raw()) {
+                counts[i].count += 1;
+            }
+        }
+        if any {
+            rows.push(TroopFinderRow {
+                name: system.name.clone(),
+                system: system_key,
+                fleet: None,
+                counts,
+            });
+        }
+    }
     rows.sort_by_cached_key(|row| row.name.to_ascii_lowercase());
     rows
 }
@@ -972,9 +1026,12 @@ mod tests {
             y: 248,
             systems: Vec::new(),
         });
+        // Each system its own id, as SYSTEMSD's are: the player's copies
+        // name their system by it.
+        let id = 100 + u32::try_from(world.systems.len()).unwrap_or_default();
         world.systems.insert(System {
             last_arrival: None,
-            dat_id: DatId::new(100),
+            dat_id: DatId::new(id),
             name: name.into(),
             sector,
             x: 320,
@@ -1105,8 +1162,19 @@ mod tests {
             .map(|(key, _)| key)
             .unwrap();
         fog.reveal(coruscant);
+        // The fog alone holds no copy: the tab lists the player's copies
+        // (FUN_004f2d10, FUN_004f9a60).
+        assert!(rows(&galaxy.world, &fog, Faction::Alliance, TroopTab::Imperial, &transport)
+            .is_empty());
+        let mut world = galaxy.world.clone();
+        rebellion_core::object_views::seed_from_fog(
+            &mut world,
+            &transport,
+            &rebellion_core::movement::MovementState::new(),
+            [&fog, &FogState::new(Faction::Empire)],
+        );
         let imperial = rows(
-            &galaxy.world,
+            &world,
             &fog,
             Faction::Alliance,
             TroopTab::Imperial,
@@ -1465,6 +1533,12 @@ mod tests {
             ControlKind::Controlled(Faction::Alliance),
         );
         add_troop(&mut world, coruscant, 0x1000_0008, false);
+        // The day's step gives the Alliance its live copy (FUN_004f9a60).
+        rebellion_core::object_views::advance(
+            &mut world,
+            &TroopTransportState::default(),
+            &rebellion_core::movement::MovementState::new(),
+        );
         let mut state = TroopFinderState::default();
         state.open(CockpitFaction::Alliance);
         assert_eq!(state.window.as_ref().unwrap().chosen, None);

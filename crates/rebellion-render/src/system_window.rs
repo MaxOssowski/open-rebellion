@@ -25,7 +25,7 @@ use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::{control_side, paint_native};
 use crate::manufacturing_window::{
-    band, band_strip, contents_visible, item_frame, page_cells, yard_count, yard_page,
+    band, band_strip, contents_visible, item_frame, yard_count, yard_page,
     FacilityItem, FacilityPage, BAND_AREAS, BAND_DESTINATION, BAND_FRAME, BAND_PORTRAIT,
     BAND_RECTS, BAND_STATUS, BAND_TITLE, BAND_UNITS, CELL, COLUMNS, COUNT_ORIGINS, LIST,
     PROGRESS_RECTS, YARD_COLUMN,
@@ -561,12 +561,12 @@ impl SystemWindowState {
             return Some(Some(pick));
         }
         let player = cockpit_faction(self.faction);
-        let visible = contents_visible(world, fog, player, window.system);
-        let item = page_cells(
+        let item = crate::manufacturing_window::shown_page_cells(
             world,
+            fog,
+            player,
             manufacturing,
             deliveries,
-            visible,
             window.system,
             page,
         )
@@ -579,7 +579,9 @@ impl SystemWindowState {
                 Some(MissionTarget::ManufacturingFacility(key))
             }
             Some(FacilityItem::Production(key)) => Some(MissionTarget::ProductionFacility(key)),
-            Some(FacilityItem::Pending { .. } | FacilityItem::Deposit(_)) => return Some(None),
+            Some(
+                FacilityItem::Pending { .. } | FacilityItem::Deposit(_) | FacilityItem::Viewed(_),
+            ) => return Some(None),
             None => None,
         };
         Some(Some(pick))
@@ -1295,15 +1297,19 @@ fn draw_system_window(
         return result;
     };
     let player = cockpit_faction(faction);
-    let side = control_side(system.control);
-    let visible = contents_visible(world, sources.fog, player, window.system);
+    // A frozen copy keeps the side the system had when seen (FUN_004f9a60).
+    let side = match crate::viewed_contents::system_sight(world, sources.fog, player, window.system) {
+        crate::viewed_contents::SystemSight::Frozen(view) => control_side(view.control),
+        _ => control_side(system.control),
+    };
     let pages = SystemWindowTab::ALL.map(|tab| {
         tab.page().map(|page| {
-            page_cells(
+            crate::manufacturing_window::shown_page_cells(
                 world,
+                sources.fog,
+                player,
                 sources.manufacturing,
                 sources.deliveries,
-                visible,
                 window.system,
                 page,
             )
@@ -1785,21 +1791,21 @@ pub(crate) fn canvas_point(layout: CockpitLayout, point: egui::Pos2) -> (i16, i1
     )
 }
 
-/// Whether the player sees the other side's objects at `system`: it holds
-/// the system, or its fog shows the system now, or the debug "see
-/// everything" mode is on (`viewed_contents::sees_everything`).
+/// Whether the player sees the other side's live objects at `system`
+/// (`viewed_contents::system_sight`): it holds the system, its copy of the
+/// system is live (`FUN_004f9a60`), the port's fog shows a system it holds
+/// no copy of, or the debug "see everything" mode is on. A frozen copy is
+/// not live: the windows that read copies show it instead.
 pub(crate) fn opposing_contents_visible(
     world: &GameWorld,
     fog: &FogState,
     player: Faction,
     system: SystemKey,
 ) -> bool {
-    crate::viewed_contents::sees_everything(world)
-        || world
-            .systems
-            .get(system)
-            .is_some_and(|value| value.control.is_controlled_by(player))
-        || (fog.faction == player && fog.is_visible(system))
+    matches!(
+        crate::viewed_contents::system_sight(world, fog, player, system),
+        crate::viewed_contents::SystemSight::Live
+    )
 }
 
 /// A fleet's name, as its windows list it (`FUN_004f6270`): "Fleet N"

@@ -437,10 +437,11 @@ pub fn character_rows(
 ///
 /// The list holds the player's side's views (`FUN_004f3d50`, `+0x50` bit
 /// 1). A0 personnel-other-side/test-day8-imperial-tab-empty (an unedited
-/// Alliance game, day 8) lists no Imperial character. hyp: the port has no
-/// per-side views, so it lists the other side's character where the
-/// player sees the other side's objects (`opposing_contents_visible`, as
-/// the Fleet Finder does) and drops it when the view is lost.
+/// Alliance game, day 8) lists no Imperial character. The port lists the
+/// other side's character where the player sees the other side's objects
+/// live (`opposing_contents_visible`), else where the player's frozen copy
+/// of a system holds it (`SystemView::characters`, `FUN_004f9a60`), at that
+/// system.
 pub fn character_rows_travelling(
     world: &GameWorld,
     fog: &FogState,
@@ -449,6 +450,17 @@ pub fn character_rows_travelling(
     destinations: &[(rebellion_core::ids::CharacterKey, rebellion_core::ids::SystemKey)],
 ) -> Vec<PersonnelFinderRow> {
     let player_is_alliance = player == Faction::Alliance;
+    // The characters the player's frozen system copies hold, with the
+    // copied system.
+    let copied: std::collections::HashMap<rebellion_core::ids::DatId, SystemKey> = world
+        .systems
+        .iter()
+        .filter_map(|(system, value)| {
+            let view = world.object_views.system(player, value.dat_id)?;
+            (!view.live).then_some((system, view))
+        })
+        .flat_map(|(system, view)| view.characters.iter().map(move |id| (*id, system)))
+        .collect();
     let mut rows = Vec::new();
     for (key, character) in &world.characters {
         if !character.recruited {
@@ -457,6 +469,7 @@ pub fn character_rows_travelling(
         if !tab.lists(character.is_alliance) {
             continue;
         }
+        let mut at = character.current_system;
         if character.is_alliance != player_is_alliance
             && !character
                 .current_system
@@ -468,10 +481,12 @@ pub fn character_rows_travelling(
                 })
                 .is_some_and(|system| opposing_contents_visible(world, fog, player, system))
         {
-            continue;
+            let Some(system) = copied.get(&character.dat_id) else {
+                continue;
+            };
+            at = Some(*system);
         }
-        let location = character
-            .current_system
+        let location = at
             .and_then(|sys| world.systems.get(sys))
             .map_or_else(String::new, |sys| sys.name.clone());
         let state = character_state(character).unwrap_or_default().to_owned();
@@ -485,7 +500,7 @@ pub fn character_rows_travelling(
             name: display,
             location,
             state,
-            system: character.current_system,
+            system: at,
         });
     }
     rows.sort_by_cached_key(|row| row.display_name().to_ascii_lowercase());
@@ -497,9 +512,10 @@ pub fn character_rows_travelling(
 ///
 /// The list holds the player's side's views, as the Characters view's
 /// (`FUN_004f3d50`). A0 2026-11-13-gid/E2 (an Alliance game, day 244)
-/// lists no Imperial special force. hyp: as for the characters, the port
-/// lists the other side's units only where the player sees the other
-/// side's objects (`opposing_contents_visible`).
+/// lists no Imperial special force. As for the characters, the port lists
+/// the other side's units where the player sees the other side's objects
+/// live (`opposing_contents_visible`), else from its frozen copy of the
+/// system (`SystemView::special_forces`).
 #[must_use]
 pub fn specforces_rows(
     world: &GameWorld,
@@ -512,6 +528,33 @@ pub fn specforces_rows(
 
     for (system_key, system) in &world.systems {
         if others && !opposing_contents_visible(world, fog, player, system_key) {
+            if let crate::viewed_contents::SystemSight::Frozen(view) =
+                crate::viewed_contents::system_sight(world, fog, player, system_key)
+            {
+                let classes = sf_classes(tab);
+                let mut counts = [SfCount {
+                    count: 0,
+                    all_usable: true,
+                }; 4];
+                let mut any = false;
+                for (class, is_alliance) in &view.special_forces {
+                    if !tab.lists(*is_alliance) {
+                        continue;
+                    }
+                    any = true;
+                    if let Some(i) = classes.iter().position(|raw| *raw == class.raw()) {
+                        counts[i].count += 1;
+                    }
+                }
+                if any {
+                    rows.push(PersonnelFinderRow::SpecForces {
+                        name: system.name.clone(),
+                        system: system_key,
+                        fleet: None,
+                        counts,
+                    });
+                }
+            }
             continue;
         }
         // Direct SF units at this system.
@@ -1554,6 +1597,63 @@ mod tests {
             specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).len(),
             1
         );
+    }
+
+    #[test]
+    fn a_frozen_copy_lists_the_other_sides_units_where_it_saw_them() {
+        // FUN_004f3d50: the list holds the player's side's views; the
+        // Alliance's copy of Imperial Coruscant (FUN_004f9a60, frozen) keeps
+        // its special force and its character there after both have gone.
+        let mut world = GameWorld::default();
+        let coruscant = add_system(&mut world, "Coruscant");
+        world.systems[coruscant].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        let elsewhere = add_system(&mut world, "Kuat");
+        world.systems[elsewhere].dat_id = DatId::new(101);
+        world.systems[elsewhere].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        add_sf(&mut world, coruscant, 0x3c00_0007, false);
+        // The Alliance's own unit there is not on the Imperial tab.
+        add_sf(&mut world, coruscant, 0x3c00_0002, true);
+        let vader = world.characters.insert(Character {
+            name: "Vader".into(),
+            is_alliance: false,
+            is_empire: true,
+            current_system: Some(coruscant),
+            recruited: true,
+            ..default_character()
+        });
+        let copy = rebellion_core::object_views::SystemView::of(
+            &world,
+            &world.systems[coruscant],
+            false,
+        );
+        let id = world.systems[coruscant].dat_id;
+        world.object_views.alliance_systems.insert(id, copy);
+        world.systems[coruscant].special_forces.clear();
+        world.characters[vader].current_system = Some(elsewhere);
+        let fog = FogState::new(Faction::Alliance);
+
+        let forces = specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial);
+        let [PersonnelFinderRow::SpecForces { name, system, counts, .. }] = &forces[..] else {
+            panic!("{forces:?}");
+        };
+        assert_eq!((name.as_str(), *system), ("Coruscant", coruscant));
+        assert_eq!(counts.iter().map(|count| count.count).sum::<u32>(), 1);
+        let column = sf_classes(PersonnelTab::Imperial)
+            .iter()
+            .position(|raw| *raw == 0x3c00_0007)
+            .unwrap();
+        assert_eq!(counts[column].count, 1);
+        let characters = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial);
+        let [PersonnelFinderRow::Character { key, location, system, .. }] = &characters[..] else {
+            panic!("{characters:?}");
+        };
+        assert_eq!((*key, location.as_str(), *system), (vader, "Coruscant", Some(coruscant)));
+        // Without the copy: neither.
+        world.object_views.alliance_systems.clear();
+        assert!(specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).is_empty());
+        assert!(character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).is_empty());
     }
 
     #[test]

@@ -11,7 +11,8 @@
 
 use rebellion_core::dat::Faction;
 use rebellion_core::ids::{DatId, SystemKey, TroopKey};
-use rebellion_core::object_views::{ObjectView, RegimentView, ViewPlace};
+use rebellion_core::fog::FogState;
+use rebellion_core::object_views::{ObjectView, RegimentView, SystemView, ViewPlace};
 use rebellion_core::world::GameWorld;
 
 /// A regiment a window lists.
@@ -28,6 +29,55 @@ pub enum ViewedRegiment {
 #[must_use]
 pub fn sees_everything(world: &GameWorld) -> bool {
     world.object_views.see_everything
+}
+
+/// How the player sees the other side's objects at a system.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SystemSight<'a> {
+    /// The live objects: the player holds the system, its copy is live
+    /// (`FUN_004f9a60`), or the debug mode shows everything.
+    Live,
+    /// The player's frozen copy of the system (`FUN_005404d0`).
+    Frozen(&'a SystemView),
+    /// Nothing of the other side's.
+    Hidden,
+}
+
+/// How `player` sees `system`'s other-side objects (`FUN_004f2d10` reads
+/// the side's copy). port: a system the port's fog reveals without a copy
+/// (its sensor reach, informants) is seen live, as before the copies.
+#[must_use]
+pub fn system_sight<'a>(
+    world: &'a GameWorld,
+    fog: &FogState,
+    player: Faction,
+    system: SystemKey,
+) -> SystemSight<'a> {
+    if sees_everything(world) {
+        return SystemSight::Live;
+    }
+    let Some(value) = world.systems.get(system) else {
+        return SystemSight::Hidden;
+    };
+    if value.control.is_controlled_by(player) {
+        return SystemSight::Live;
+    }
+    match world.object_views.system(player, value.dat_id) {
+        Some(view) if view.live => SystemSight::Live,
+        Some(view) => SystemSight::Frozen(view),
+        None if fog.faction == player && fog.is_visible(system) => SystemSight::Live,
+        None => SystemSight::Hidden,
+    }
+}
+
+/// The live character a copy names by its id.
+#[must_use]
+pub fn character_key(world: &GameWorld, id: DatId) -> Option<rebellion_core::ids::CharacterKey> {
+    world
+        .characters
+        .iter()
+        .find(|(_, character)| character.dat_id == id)
+        .map(|(key, _)| key)
 }
 
 /// `viewer`'s copy of the regiment `id`.

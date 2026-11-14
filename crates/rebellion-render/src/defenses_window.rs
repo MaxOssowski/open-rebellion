@@ -196,6 +196,10 @@ pub enum DefensesItem {
     /// The viewing side's frozen copy of the other side's regiment `id`
     /// (`FUN_004f9a60`; `viewed_contents`). `alliance` is the viewing side.
     ViewedTroop { alliance: bool, id: DatId },
+    /// The `index`th row of a page drawn from the player's frozen copy of
+    /// the system (`SystemView`): a special force, squadron or facility.
+    /// port: it opens no menu.
+    Viewed { index: usize },
     /// The `nth` squadron of `class` on `system`'s planet. port: squadrons
     /// are counts per class.
     Squadron {
@@ -236,6 +240,7 @@ impl DefensesItem {
             Self::SpecialForce(key) => Some(MenuObject::SpecialForce(key)),
             Self::Troop(key) => Some(MenuObject::Troop(key)),
             Self::ViewedTroop { alliance, id } => Some(MenuObject::ViewedTroop { alliance, id }),
+            Self::Viewed { .. } => None,
             Self::Squadron { system, class, .. } => {
                 Some(MenuObject::PlanetFighter { system, class })
             }
@@ -366,6 +371,7 @@ fn row_marks(
         DefensesItem::Squadron { .. }
         | DefensesItem::TravellingSquadron { .. }
         | DefensesItem::Defense(_)
+        | DefensesItem::Viewed { .. }
         | DefensesItem::Pending { .. } => MiniObject::Craft,
     };
     let en_route = en_route || matches!(row.item, DefensesItem::TravellingSquadron { .. });
@@ -688,6 +694,7 @@ impl DefensesWindowState {
             Some(
                 DefensesItem::Squadron { .. }
                 | DefensesItem::TravellingSquadron { .. }
+                | DefensesItem::Viewed { .. }
                 | DefensesItem::Pending { .. },
             )
             | None => {}
@@ -928,7 +935,12 @@ fn page_rows(
     if value.exploration_status == ExplorationStatus::Unexplored {
         return Vec::new();
     }
-    let side = shown_side(world, system);
+    let sight = crate::viewed_contents::system_sight(world, fog, player, system);
+    // A frozen copy keeps the system's side as it was seen.
+    let side = match sight {
+        crate::viewed_contents::SystemSight::Frozen(view) => control_side(view.control),
+        _ => shown_side(world, system),
+    };
     let other = side != faction_side(player);
     let visible = opposing_contents_visible(world, fog, player, system);
     // The other side's regiments are the player's side's copies of them
@@ -942,11 +954,110 @@ fn page_rows(
         }
         return rows;
     }
-    if other && !visible {
-        return Vec::new();
+    if other {
+        match sight {
+            crate::viewed_contents::SystemSight::Live => {}
+            crate::viewed_contents::SystemSight::Frozen(view) => {
+                return frozen_rows(world, view, side, page);
+            }
+            crate::viewed_contents::SystemSight::Hidden => return Vec::new(),
+        }
     }
     let mut rows = built_rows(world, missions, production, side, system, page);
     rows.extend(pending_rows(world, production, side, system, page));
+    rows
+}
+
+/// `page`'s rows of the other side (`side`) from the player's frozen copy
+/// of the system (`FUN_004f2d10` reads the side's copy; `FUN_004f9a60`
+/// froze it): its characters, then special forces; its planet squadrons;
+/// its shields or batteries. The regiments are copied one by one
+/// ([`viewed_regiment_rows`]). port: a character's row is the live
+/// character the copy names; the others open no menu.
+fn frozen_rows(
+    world: &GameWorld,
+    view: &rebellion_core::object_views::SystemView,
+    side: u8,
+    page: DefensesPage,
+) -> Vec<DefensesRow> {
+    let mut rows = Vec::new();
+    match page {
+        DefensesPage::Personnel => {
+            for id in &view.characters {
+                let Some(key) = crate::viewed_contents::character_key(world, *id) else {
+                    continue;
+                };
+                let character = &world.characters[key];
+                let character_side = match rebellion_core::missions::character_side(character) {
+                    Some(Faction::Alliance) => 1,
+                    Some(Faction::Empire) => 2,
+                    _ => 0,
+                };
+                if character_side != side {
+                    continue;
+                }
+                let Some(mini) = character_picture(character) else {
+                    continue;
+                };
+                rows.push(DefensesRow {
+                    item: DefensesItem::Character(key),
+                    mini,
+                    label: character.name.clone(),
+                });
+            }
+            for (class, is_alliance) in &view.special_forces {
+                let Some((mini, label)) = special_force_mini(*class) else {
+                    continue;
+                };
+                if fleet_side(*is_alliance) == side {
+                    rows.push(DefensesRow {
+                        item: DefensesItem::Viewed { index: rows.len() },
+                        mini,
+                        label: label.into(),
+                    });
+                }
+            }
+        }
+        DefensesPage::Regiments => {}
+        DefensesPage::Squadrons => {
+            for (class, count) in &view.fighters {
+                let Some(fighter) = world.fighter_classes.values().find(|value| value.dat_id == *class)
+                else {
+                    continue;
+                };
+                let Some(mini) = fighter_mini_id(*class) else {
+                    continue;
+                };
+                if fleet_side(fighter.is_alliance) != side {
+                    continue;
+                }
+                for _ in 0..*count {
+                    rows.push(DefensesRow {
+                        item: DefensesItem::Viewed { index: rows.len() },
+                        mini,
+                        label: fighter.name.clone(),
+                    });
+                }
+            }
+        }
+        DefensesPage::Shields | DefensesPage::Batteries => {
+            for facility in &view.defense_facilities {
+                if !defense_page_family(page, facility.class.family())
+                    || crate::fleet_window::faction_side(facility.side) != side
+                {
+                    continue;
+                }
+                let Some((mini, label)) = defense_facility_mini(facility.class) else {
+                    continue;
+                };
+                rows.push(DefensesRow {
+                    item: DefensesItem::Viewed { index: rows.len() },
+                    mini,
+                    label: label.into(),
+                });
+            }
+        }
+    }
     rows
 }
 
@@ -2811,7 +2922,8 @@ mod tests {
     }
 
     /// Each side's copies of the other side's regiments in the systems
-    /// `fog` shows (the v116 migration's rule).
+    /// `fog` shows (the v116 migration's rule), without copies of the
+    /// systems, so the fog keeps showing the rest live.
     fn seed_views(world: &mut GameWorld, fog: &FogState) {
         rebellion_core::object_views::seed_from_fog(
             world,
@@ -2819,6 +2931,8 @@ mod tests {
             &rebellion_core::movement::MovementState::new(),
             [fog, &FogState::new(Faction::Empire)],
         );
+        world.object_views.alliance_systems.clear();
+        world.object_views.empire_systems.clear();
     }
 
     #[test]
@@ -2955,6 +3069,120 @@ mod tests {
                 false,
             )
         );
+    }
+
+    /// The Alliance's frozen copy of `system` as it stands now
+    /// (`SystemView`, `FUN_004f9a60`).
+    fn freeze(world: &mut GameWorld, system: SystemKey) {
+        let view = rebellion_core::object_views::SystemView::of(world, &world.systems[system], false);
+        let id = world.systems[system].dat_id;
+        world.object_views.alliance_systems.insert(id, view);
+    }
+
+    #[test]
+    fn a_frozen_system_lists_the_enemys_objects_as_the_copy_holds_them() {
+        // FUN_004f2d10 reads the player's copy; FUN_004f9a60 froze it: the
+        // facilities and squadrons the copy holds stay listed after the
+        // live ones are gone, and a battery built since is not.
+        let (mut world, system, missions) = stocked();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        // The copy names its characters by id (the test characters share
+        // one): the others take ids of their own.
+        for (n, character) in world.characters.values_mut().enumerate() {
+            if character.name != "Enemy" {
+                character.dat_id = DatId::new(0x3000_0100 + u32::try_from(n).unwrap_or_default());
+            }
+        }
+        freeze(&mut world, system);
+        let batteries = labels(&world, &FogState::new(Faction::Alliance), &missions, system, DefensesPage::Batteries);
+        let squadrons = labels(&world, &FogState::new(Faction::Alliance), &missions, system, DefensesPage::Squadrons);
+        let personnel = labels(&world, &FogState::new(Faction::Alliance), &missions, system, DefensesPage::Personnel);
+        assert!(!batteries.is_empty());
+        assert_eq!(squadrons, ["TIE Fighter"]);
+        assert_eq!(personnel, ["Enemy"]);
+        world.systems[system].defense_facilities.clear();
+        world.systems[system].fighters.clear();
+        // The fog shows the system now, but the copy is frozen: the live
+        // objects stay hidden.
+        let fog = seen(system);
+        assert_eq!(
+            labels(&world, &fog, &missions, system, DefensesPage::Batteries),
+            batteries
+        );
+        assert_eq!(
+            labels(&world, &fog, &missions, system, DefensesPage::Squadrons),
+            ["TIE Fighter"]
+        );
+        let rows = page_rows(&world, &fog, &missions, idle(), Faction::Alliance, system, DefensesPage::Squadrons);
+        assert_eq!(rows[0].item, DefensesItem::Viewed { index: 0 });
+        assert_eq!(rows[0].item.menu_object(), None);
+        // The copy keeps the side the system had: neutral now, the window
+        // still shows the Empire's objects.
+        world.systems[system].control = ControlKind::Uncontrolled;
+        assert_eq!(
+            labels(&world, &fog, &missions, system, DefensesPage::Squadrons),
+            ["TIE Fighter"]
+        );
+        // With no copy and no fog, nothing.
+        world.object_views.alliance_systems.clear();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        assert!(labels(
+            &world,
+            &FogState::new(Faction::Alliance),
+            &missions,
+            system,
+            DefensesPage::Batteries
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn a_frozen_copy_lists_only_the_shown_sides_objects_of_each_page() {
+        // FUN_004a90d0 filters each page to the shown side and its families,
+        // over the copy too: the Alliance's own facilities and characters in
+        // the Empire's frozen copy of an Alliance system are the Empire's
+        // other side's; shields and batteries keep their families.
+        let (mut world, system, missions) = stocked();
+        for (n, character) in world.characters.values_mut().enumerate() {
+            if character.name != "Idle" {
+                character.dat_id = DatId::new(0x3000_0100 + u32::try_from(n).unwrap_or_default());
+            }
+        }
+        // One Imperial battery fewer than the Alliance's, so the sides'
+        // lists differ.
+        let imperial = world.systems[system]
+            .defense_facilities
+            .iter()
+            .position(|key| {
+                let facility = &world.defense_facilities[*key];
+                facility.side == Faction::Empire && defense_page_family(DefensesPage::Batteries, facility.class_dat_id.family())
+            })
+            .unwrap();
+        world.systems[system].defense_facilities.remove(imperial);
+        let view = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        let id = world.systems[system].dat_id;
+        world.object_views.empire_systems.insert(id, view);
+        let empire = |world: &GameWorld, page| {
+            page_rows(world, &FogState::new(Faction::Empire), &missions, idle(), Faction::Empire, system, page)
+                .into_iter()
+                .map(|row| row.label)
+                .collect::<Vec<_>>()
+        };
+        let live = |page| {
+            let mut fog = FogState::new(Faction::Alliance);
+            fog.reveal(system);
+            page_rows(&world, &fog, &missions, idle(), Faction::Alliance, system, page)
+                .into_iter()
+                .map(|row| row.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(empire(&world, DefensesPage::Batteries), live(DefensesPage::Batteries));
+        assert_eq!(empire(&world, DefensesPage::Shields), live(DefensesPage::Shields));
+        assert_ne!(
+            empire(&world, DefensesPage::Batteries),
+            empire(&world, DefensesPage::Shields)
+        );
+        assert!(empire(&world, DefensesPage::Personnel).contains(&"Idle".to_owned()));
     }
 
     #[test]
