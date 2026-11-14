@@ -633,6 +633,76 @@ function regionDiffering(port, [px, py], a0, [ax, ay], [x0, y0, x1, y1]) {
   return { checked, differing };
 }
 
+// Confirm (73, 224), 66 by 33, in A0 2026-11-13-build-confirm (an Alliance
+// game, the window at (192, 84)): enabled, 10594, on 02 (an Alliance Army
+// Regiment at number 1); disabled, 11620 (FUN_00438620's states 2 and 4),
+// on 04 (number 99, over the side's maintenance) and 21 (a Construction
+// Yard at Jerijador, no room). The art is the same on both sides: A0
+// build-selection-empire2/15-1 and manufacturing/11 (the Empire's) match
+// them pixel for pixel.
+const A0_CONFIRM = {
+  enabled: { file: ".artifacts/a0-vm/2026-11-13-build-confirm/02-troops-build-selection-army-regiment-confirm-enabled.png", at: [192, 84] },
+  maintenance: { file: ".artifacts/a0-vm/2026-11-13-build-confirm/04-number-99-values-na-confirm-disabled.png", at: [192, 84] },
+  room: { file: ".artifacts/a0-vm/2026-11-13-build-confirm/21-facility-build-selection-construction-yard-na-confirm-disabled.png", at: [192, 84] },
+};
+const CONFIRM_RECT = [73, 224, 139, 257];
+
+// The port's Confirm against an A0 Confirm: `wanted` names A0_CONFIRM's
+// entry, or is { file, at } for a class's own capture.
+function confirmDiffering(port, origin, wanted) {
+  const reference = typeof wanted === "string" ? A0_CONFIRM[wanted] : wanted;
+  const a0 = PNG.sync.read(fs.readFileSync(path.join(root, reference.file)));
+  return regionDiffering(port, [origin.x, origin.y], a0, reference.at, CONFIRM_RECT).differing;
+}
+
+// FUN_00439160: Confirm is enabled exactly when FUN_00538220 accepts the
+// order, and the four values then are numbers, not 14358 "n/a".
+function assertConfirmState(report, enabled, label) {
+  assert.equal(report.build_selection_confirm_enabled, enabled, `${label}: ${JSON.stringify(report)}`);
+  assert.equal(report.build_selection_values.every((value) => value !== "n/a"), enabled,
+    `${label}: ${JSON.stringify(report.build_selection_values)}`);
+}
+
+// Open a band's Build Selection and visit every class it lists, checking
+// each one's Confirm with `check(report, screenshot, origin)`. The walk
+// ends where a step shows no new class. Cancel closes the window.
+async function walkClasses(page, directory, area, label, check) {
+  const read = async () => {
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await page.waitForTimeout(150);
+    await frames(page);
+    return production(page);
+  };
+  const band = (await production(page)).bands.find((entry) => entry.area === area);
+  await bandOrder(page, band, "build_row", directory, `${label}-${area}-build`);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
+    null, { timeout: 10_000 });
+  let report = await read();
+  const origin = { x: Math.round(report.build_selection_left), y: Math.round(report.build_selection_top) };
+  const visited = [];
+  for (let step = 0; step < 16; step += 1) {
+    if (visited.some(({ class: name }) => name === report.build_selection_class)) break;
+    const bytes = await page.screenshot({ animations: "disabled" });
+    const name = report.build_selection_class;
+    fs.writeFileSync(path.join(directory,
+      `${label}-${area}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`), bytes);
+    visited.push({ class: name, ...(await check(report, PNG.sync.read(bytes), origin)) });
+    await stepClass(page, origin);
+    report = await read();
+  }
+  await click(page, { x: origin.x + 141 + 33, y: origin.y + 224 + 16 });
+  await page.waitForTimeout(300);
+  report = await read();
+  if (report.build_selection_open) {
+    await click(page, { x: origin.x + 141 + 33, y: origin.y + 224 + 16 });
+    await page.waitForTimeout(300);
+    report = await read();
+  }
+  assert.equal(report.build_selection_open, false, "Cancel closes Build Selection");
+  return { origin, visited };
+}
+
 async function classValuesCase(page, directory, area, classes = A0_CLASSES[area]) {
   const read = async () => {
     await page.mouse.move(2, 2);
@@ -667,7 +737,20 @@ async function classValuesCase(page, directory, area, classes = A0_CLASSES[area]
     const a0 = PNG.sync.read(fs.readFileSync(path.join(root, expected.file)));
     const picture = regionDiffering(PNG.sync.read(bytes), [origin.x, origin.y], a0, expected.at, [6, 22, 201, 48]);
     assert.equal(picture.differing, 0, `${expected.name}'s picture differs from A0 in ${picture.differing} pixels`);
-    results.push({ class: expected.name, values: chosen.build_selection_values, picture });
+    // Confirm's state and art as the class's own A0 capture shows them:
+    // enabled for every class there but A0's Death Star, whose 600
+    // maintenance A0's side lacked (its values are not compared either).
+    const a0At = { x: expected.at[0], y: expected.at[1] };
+    const a0Enabled = confirmDiffering(a0, a0At, "enabled") === 0;
+    const a0Disabled = confirmDiffering(a0, a0At, "maintenance") === 0;
+    assert.ok(a0Enabled !== a0Disabled, `${expected.file}: Confirm is neither A0 art`);
+    const enabled = expected.skipValues ? chosen.build_selection_confirm_enabled : a0Enabled;
+    assertConfirmState(chosen, enabled, expected.name);
+    const confirm = confirmDiffering(PNG.sync.read(bytes), origin,
+      expected.skipValues ? (enabled ? "enabled" : "maintenance") : expected);
+    assert.equal(confirm, 0, `${expected.name}'s Confirm differs from A0 in ${confirm} pixels`);
+    results.push({ class: expected.name, values: chosen.build_selection_values, picture,
+      confirm: { a0_enabled: a0Enabled, port_enabled: chosen.build_selection_confirm_enabled, differing: confirm } });
     if (expected.name === "LNR Series I") {
       // The list opened on the shown LNR Series I: the two items' pictures
       // (rows 87..131 and 157..201, left of the bar) as A0 08.
@@ -1320,6 +1403,88 @@ async function overMaintenanceCase(page, faction, directory) {
   const after = await production(page);
   assert.equal(after.build_selection_open, true, "the disabled Confirm closes nothing");
   assert.equal(after.bands.find(({ area }) => area === "troops").queued, 0, "the disabled Confirm builds nothing");
+  await click(page, { x: origin.x + 141 + 33, y: origin.y + 224 + 16 });
+  await page.waitForTimeout(300);
+  // Every class of the three bands: FUN_0052e970 refuses each order with
+  // a maintenance cost (A0 2026-11-13-build-confirm/07: a regiment, 13: an
+  // Alliance Dreadnaught, over the side's maintenance; Confirm grey) and
+  // passes a Mine and a Refinery, which cost none (A0 build-selection4/13,
+  // 15: maintenance 0). The fixture's primary keeps a free slot and raw
+  // deposit (FUN_00507750), so those two stay enabled.
+  result.classes = {};
+  for (const area of ["troops", "ships", "facilities"]) {
+    result.classes[area] = await walkClasses(page, directory, area, "over-maintenance", (report, png, at) => {
+      const enabled = ["Mine", "Refinery"].includes(report.build_selection_class);
+      assertConfirmState(report, enabled, `over maintenance, ${report.build_selection_class}`);
+      const differing = confirmDiffering(png, at, enabled ? "enabled" : "maintenance");
+      assert.equal(differing, 0, `${report.build_selection_class}'s Confirm differs from A0 in ${differing} pixels`);
+      return { enabled, values: report.build_selection_values, differing };
+    });
+  }
+  const walked = Object.values(result.classes).flatMap(({ visited }) => visited.map(({ class: name }) => name));
+  for (const name of ["Mine", "Refinery"]) assert.ok(walked.includes(name), JSON.stringify(walked));
+  assert.ok(walked.length >= 12, JSON.stringify(walked));
+  return result;
+}
+
+// BuildSelectionFacilityRoom (fixture 119): the primary's facilities and
+// one Construction Yard queued on its own facilities band fill its
+// energy, its mines its raw deposits. FUN_005385f0 first gives the queued
+// unit's slot back (FUN_00552210 -> FUN_00552000 -> FUN_00552dd0, mode 0),
+// as Confirm replaces it, then asks one slot per unit (FUN_00551a20,
+// FUN_00507750): every facility but the Mine fits at number 1 (the Mine
+// lacks a deposit, {0x90, 2}); at number 2 none does ({0x90, 1}), as A0
+// 2026-11-13-build-confirm/21, 23 show a Construction Yard and a GenCore
+// Level I refused at Jerijador. Ships and troops take no slot.
+const facilityRoomCode = 120;
+
+async function facilityRoomCase(page, faction, directory) {
+  const fixtureCode = facilityRoomCode | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const result = {};
+  const facilities = (await production(page)).bands.find(({ area }) => area === "facilities");
+  assert.equal(facilities.queued, 1, JSON.stringify(facilities));
+  result.one = await walkClasses(page, directory, "facilities", "room", (report, png, at) => {
+    const enabled = report.build_selection_class !== "Mine";
+    assertConfirmState(report, enabled, `room, ${report.build_selection_class}`);
+    const differing = confirmDiffering(png, at, enabled ? "enabled" : "room");
+    assert.equal(differing, 0, `${report.build_selection_class}'s Confirm differs from A0 in ${differing} pixels`);
+    return { enabled, values: report.build_selection_values, differing };
+  });
+  // Number 2 (Quantity up, (189, 196)) on each class: two slots asked,
+  // one free.
+  result.two = await walkClasses(page, directory, "facilities", "room-two", async (report, png, at) => {
+    if (report.build_selection_quantity !== 2) {
+      await click(page, { x: at.x + 189 + 6, y: at.y + 196 + 4 });
+      await page.waitForTimeout(300);
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await page.waitForTimeout(150);
+      report = await production(page);
+      png = PNG.sync.read(await page.screenshot({ animations: "disabled" }));
+    }
+    assert.equal(report.build_selection_quantity, 2, JSON.stringify(report));
+    assertConfirmState(report, false, `room at 2, ${report.build_selection_class}`);
+    const differing = confirmDiffering(png, at, "room");
+    assert.equal(differing, 0, `${report.build_selection_class}'s Confirm at 2 differs from A0 in ${differing} pixels`);
+    return { enabled: false, values: report.build_selection_values, differing };
+  });
+  assert.ok(result.one.visited.some(({ class: name }) => name === "Construction Yard"), JSON.stringify(result.one));
+  assert.equal(result.two.visited.length, result.one.visited.length, JSON.stringify(result.two));
+  for (const area of ["ships", "troops"]) {
+    result[area] = await walkClasses(page, directory, area, "room", (report, png, at) => {
+      assertConfirmState(report, true, `room, ${report.build_selection_class}`);
+      const differing = confirmDiffering(png, at, "enabled");
+      assert.equal(differing, 0, `${report.build_selection_class}'s Confirm differs from A0 in ${differing} pixels`);
+      return { enabled: true, values: report.build_selection_values, differing };
+    });
+  }
+  assert.equal((await production(page)).bands.find(({ area }) => area === "facilities").queued, 1,
+    "Cancel keeps the band's unit");
   return result;
 }
 
@@ -1816,6 +1981,7 @@ async function inspect(server, source, faction, executable) {
     // and does nothing. A0 manufacturing/11 (the Empire at -402, window at
     // (255, 87)) is the reference.
     const overMaintenance = await overMaintenanceCase(page, faction, directory);
+    const facilityRoom = await facilityRoomCase(page, faction, directory);
     // A band's Destination (0x214) released on another system's planet
     // sets that band's area alone (A0 build-selection2/21: the ships band's
     // Destination on Chandrila; the others keep Coruscant).
@@ -1846,6 +2012,7 @@ async function inspect(server, source, faction, executable) {
       reserved_menu: reservedMenu,
       facility_menu: facilityMenu,
       over_maintenance: overMaintenance,
+      facility_room: facilityRoom,
       stepping,
       destination,
       defensesDestination,

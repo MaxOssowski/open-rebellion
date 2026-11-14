@@ -470,7 +470,9 @@ Manufacturing side panel (M) is gone.
   wheel; its scroll bar (`0x299a`) is not drawn.
 - port: the close box sits 17 pixels in from the right, as the mission
   dialog's; the source chrome's placement is untraced.
-- port: a disabled Confirm keeps its rest art.
+- A disabled Confirm shows STRATEGY 11620 (`FUN_00438620`'s states 2
+  and 4), as A0 2026-11-13-build-confirm/04, 07, 13, 21, 23 and
+  manufacturing/11 show; the enabled one 10594 (02, 05, 06, 11, 12, 15).
 - port: every yard counts toward the times; the busy bit (`+0x60` bit 0)
   is not modelled. A unit's days are fixed when queued, so yards built
   or lost later do not change them.
@@ -488,10 +490,95 @@ Manufacturing side panel (M) is gone.
 - Where 14356 "Day " is used (not by Build Selection's fields).
 - Trace the complete scroll and selection behavior of the drop-down list.
 - Name every producer-manager field used by availability and time calculation.
-- Recover the exact disabled reasons and any user-facing rejection message.
+- Any user-facing rejection message: none seen; the window only greys
+  Confirm and writes "n/a" (see "Confirm's state" below).
 - Capture every Manufacturing and Build Selection state from an owned English
   640 by 480 installation for A0 comparison.
 
+
+## Confirm's state (read 2026-11-14)
+
+`FUN_00439160` writes the order's quantity (`FUN_00438d30`) into the
+pending order, calls `FUN_00538220` with a status `{1, -1}` and enables
+Confirm (`0x65`, vtable `+0x10`) only when the status is still `-1`;
+otherwise vtable `+0xc` disables it and `FUN_00438dd0`, `FUN_00438f30`
+write 14358 "n/a" in all four values. Every check that can set the status:
+
+`FUN_00538220` (the order is `this`):
+1. The class key's family is `0x10..0x3f` and its record exists
+   (`FUN_0051cab0`); then the two costs are multiplied by the quantity.
+   Not reachable from the window: its list holds only existing classes.
+2. The order's own check, vtable `+0x1c` (`FUN_0051ff30`, below).
+3. The game object `DAT_006b2bb0 +0xbc` exists (`FUN_00506e60`).
+4. Per manager of the order (`+0x40` list): completion `FUN_00555f00` ->
+   `FUN_00529090` -> `FUN_00528d30`, which fails with no yard to count;
+   deployment `FUN_00555f90` -> `FUN_00555d90` -> `FUN_00555b30`, which
+   fails only when a system key does not resolve (`FUN_0053efd0`). A
+   failure sets `{1, 1}`. A band with no yard is not reached: its menu
+   greys Build (`FUN_00527d00`; A0 2026-11-13-build-confirm/08, menus3/30,
+   31).
+
+`FUN_0051ff30` (the build orders' `vt+0x1c`): the order's `+0x1c` must be
+set (`Class_0065ed28_vt50`, `{1, 1}` otherwise; always set for a Build
+Selection order), then `vt+0x50` = `FUN_005385f0`, then `FUN_00553960`
+runs each producer node's own `vt+0x1c`.
+
+`FUN_005385f0`:
+1. The producer's side (`FUN_00553b80`: the first manager resolves and
+   its `+0x24` bits 6..7 are 1..3). A manager is always one side's.
+2. Per manager: it resolves (`FUN_00504e60`, kind `{1, 0x22}`); a manager
+   of another side than the first refuses a class outside ships
+   `0x14..0x1b` with `{1, 0x28}`. Build Selection's order has one manager.
+3. The route context (`FUN_00551190`, mode 3: existing objects).
+4. Maintenance (`FUN_0052e970`): the class's maintenance times the
+   quantity above the side's unallocated (side `+0x58` less `+0x5c`) sets
+   `{0xf3, 1}`. A class with no maintenance (Mine, Refinery: A0
+   build-selection4/13, 15 read 0) always passes. A0
+   2026-11-13-build-confirm/06, 07: 68 regiments (maintenance 204) pass,
+   69 (207) do not; 12, 13: 6 Dreadnaughts (198) pass, 7 (231) do not. The
+   manager's own queued products keep their maintenance here: nothing
+   gives it back before the check.
+5. Per manager: its yards (`FUN_00528040(1)`, busy ones included) and the
+   destination's route node (`FUN_005513a0`).
+6. Per manager, `FUN_00552210`: unless the manager's `+0x24` bits `0x30`
+   are set (`FUN_005287f0`; untraced, hyp: clear in a campaign), its
+   products (`+0x54 -> +0x18`) each go through `FUN_00552000`: the product
+   resolves (`FUN_00552f40`, `{1, 0x12}` if not), lies in one of the nine
+   ranges (`FUN_00550200`, `{1, 0x19}`), is not destroyed (`+0x50` bit 3,
+   `{1, 0x12}`) and is created (bit 1, `{1, 0x1a}`). Then `FUN_00552dd0`
+   applies its need to its node in mode 0. Disassembly: `FUN_00552dd0`
+   passes its second argument (the mode) through `FUN_00550eb0` and
+   `FUN_00550bd0` to `FUN_0054fd90`/`FUN_0054fca0`'s fourth, which negates
+   the need when non-zero. So mode 1 (a new unit, `FUN_00551a20`)
+   subtracts a slot and mode 0 adds one: the products the order replaces
+   (Confirm scraps them, `FUN_0052a2c0`) give their slots back first. Mode
+   0 checks no floor (`FUN_0054fd90`'s `param_4 == 0` branch).
+7. The units are spread over the managers by yard count; per unit,
+   `FUN_00551a20` asks one slot in each range holding its type
+   (`FUN_00507750`: facilities `0x20..0x2f` by energy, `{0x90, 1}`; a
+   mine also by raw materials, `{0x90, 2}`), then `FUN_0053e020` builds
+   the product's record.
+
+So, from the window, Confirm greys for exactly: (a) an order whose
+maintenance exceeds the side's unallocated maintenance, any class kind
+with a maintenance cost; (b) a facility order (defenses, yards, mines,
+refineries) whose units exceed the destination's free energy slots, both
+sides' facilities, queued and travelling ones counting, the band's own
+queue excepted; (c) a mine order beyond the free raw deposits, same
+counting; (d) a manager left with no yard (completion fails). Ships,
+fighters, regiments and special forces take no room.
+
+Port (`build_selection::estimate`, `exceeds_maintenance`,
+`lacks_facility_room`): (a), (b), (c), (d). Until 2026-11-14 the port
+counted the band's own queued units against the room; they now give their
+slots back (unit test `a_facility_order_takes_back_the_slots_of_the_units_it_replaces`).
+`build-selection.mjs` asserts the state per class: every listed class of
+both sides at number 1 against its own A0 capture (Confirm enabled, art
+10594 exact); every class of all three bands over maintenance (grey,
+11620 as A0 2026-11-13-build-confirm/04, but Mine and Refinery enabled);
+and fixture `BuildSelectionFacilityRoom` (every facility enabled at 1 by
+the band's own unit's slot but the Mine, every facility grey at 2, ships
+and troops enabled), 11620 as A0 2026-11-13-build-confirm/21.
 
 ## Band and count text (read 2026-10-28)
 

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 119;
+const SCENARIO_COUNT: u8 = 120;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -438,6 +438,14 @@ pub enum Scenario {
     /// 2026-11-13-facility-icon-drop drops Jerijador's facility icon on
     /// its own planet, on Yavin's HQ mark and on Yavin's planet edge.
     QuadrantsFacility = 118,
+    /// `BuildSelection`'s yards with the primary system's energy taken:
+    /// its facilities and one Construction Yard queued on its own
+    /// facilities band fill every slot, and its mines every raw deposit.
+    /// An order on that band gets the queued unit's slot back
+    /// (`FUN_00552210`), so one non-mine facility fits and two do not
+    /// (`FUN_00507750`, `{0x90, 1}`); a mine finds no deposit (`{0x90, 2}`),
+    /// as A0 2026-11-13-build-confirm/21, 23 grey Confirm at Jerijador.
+    BuildSelectionFacilityRoom = 119,
 }
 
 impl Scenario {
@@ -562,6 +570,7 @@ impl Scenario {
             116 => Self::QuadrantsNeutralFleet,
             117 => Self::QuadrantsFreeTeam,
             118 => Self::QuadrantsFacility,
+            119 => Self::BuildSelectionFacilityRoom,
             _ => return None,
         })
     }
@@ -605,6 +614,7 @@ impl Scenario {
                 | Self::BuildSelectionDestination
                 | Self::BuildSelectionDefensesDestination
                 | Self::BuildSelectionFleetDestination
+                | Self::BuildSelectionFacilityRoom
         )
     }
 
@@ -1052,6 +1062,12 @@ pub fn apply(
     if request.scenario == Scenario::BuildSelectionOverMaintenance {
         remove_production_facilities(world, rebellion_core::dat::Faction::of_alliance(player_is_alliance));
     }
+    if matches!(
+        request.scenario,
+        Scenario::BuildSelectionOverMaintenance | Scenario::BuildSelectionFacilityRoom
+    ) {
+        place_facility_room(request, world, manufacturing, primary);
+    }
     if request.scenario == Scenario::BuildSelection {
         // A built mine and refinery for the Mines and Refineries pages'
         // pictures (FUN_00458fe0: 9001, 9030).
@@ -1114,6 +1130,7 @@ pub fn apply(
             | Scenario::BuildSelection
             | Scenario::BuildSelectionTraining
             | Scenario::BuildSelectionOverMaintenance
+            | Scenario::BuildSelectionFacilityRoom
             | Scenario::BuildSelectionDestination
             | Scenario::BuildSelectionDefensesDestination
             | Scenario::BuildSelectionFleetDestination
@@ -3499,6 +3516,51 @@ fn place_delivery(
 /// The `BuildSelectionTraining` scenario: the side's army regiments in the
 /// primary's training queue, as a confirmed order makes them
 /// (`order_items`, `FUN_0052a8f0`), part made.
+/// The primary system's room (`FUN_00507750`: energy less its facilities,
+/// raw materials less its mines) for the Build Selection gates.
+/// `BuildSelectionOverMaintenance` keeps one free slot and deposit, so its
+/// mine and refinery, which cost no maintenance (`FUN_0052e970`), stay
+/// buildable. `BuildSelectionFacilityRoom` queues one Construction Yard
+/// on the primary's own facilities band and leaves no slot or deposit
+/// past it.
+fn place_facility_room(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    manufacturing: &mut ManufacturingState,
+    primary: SystemKey,
+) {
+    use rebellion_core::manufacturing::{BuildableKind, FacilityBuild, QueueItem};
+    let full = request.scenario == Scenario::BuildSelectionFacilityRoom;
+    if full {
+        let build = FacilityBuild {
+            class: rebellion_core::ids::DatId::new(0x2a00_0001),
+            is_alliance: request.faction == CockpitFaction::Alliance,
+        };
+        manufacturing.enqueue(
+            primary,
+            QueueItem::new(BuildableKind::ManufacturingFacility(build), 10),
+        );
+    }
+    let system = &mut world.systems[primary];
+    let mines = system
+        .production_facilities
+        .iter()
+        .filter(|key| {
+            world
+                .production_facilities
+                .get(**key)
+                .is_some_and(|value| value.is_mine)
+        })
+        .count();
+    let facilities = system.defense_facilities.len()
+        + system.manufacturing_facilities.len()
+        + system.production_facilities.len()
+        + usize::from(full);
+    let free = usize::from(!full);
+    system.total_energy = u8::try_from(facilities + free).unwrap_or(u8::MAX);
+    system.raw_materials = u8::try_from(mines + free).unwrap_or(u8::MAX);
+}
+
 fn place_training(
     request: FixtureRequest,
     world: &GameWorld,
@@ -4740,6 +4802,7 @@ fn object_menu_report<'a>(
             Scenario::BuildSelection
                 | Scenario::BuildSelectionTraining
                 | Scenario::BuildSelectionOverMaintenance
+                | Scenario::BuildSelectionFacilityRoom
                 | Scenario::Quadrants
                 | Scenario::QuadrantsNeutralFleet
                 | Scenario::QuadrantsFreeTeam
@@ -4886,6 +4949,9 @@ struct FixtureProduction {
     /// (refined material, maintenance, completion, deployment).
     build_selection_quantity: Option<u32>,
     build_selection_values: Option<[String; 4]>,
+    /// Whether Confirm is enabled: `FUN_00439160` disables it when
+    /// `FUN_00538220` refuses the order, the four values then "n/a".
+    build_selection_confirm_enabled: Option<bool>,
     build_selection_index: Option<usize>,
     /// The shown class's name (`FUN_00437880`).
     build_selection_class: Option<String>,
@@ -4955,6 +5021,27 @@ fn production_report(
         .collect();
     let window = rebellion_render::build_selection::window_rect(layout);
     let ltwh = |rect: egui_macroquad::egui::Rect| [rect.min.x, rect.min.y, rect.width(), rect.height()];
+    // The gate opens it on the primary system's band, for the player.
+    let build_selection_estimate = build_selection.dialog().map(|dialog| {
+        let is_alliance = request.faction == CockpitFaction::Alliance;
+        let side = rebellion_core::dat::Faction::of_alliance(is_alliance);
+        let unallocated =
+            rebellion_core::side_resources::maintenance_totals(world, manufacturing, side, |_| {
+                false
+            })
+            .unallocated();
+        rebellion_core::build_selection::estimate(
+            world,
+            manufacturing,
+            en_route,
+            primary,
+            dialog.area(),
+            dialog.kind(),
+            dialog.quantity(),
+            is_alliance,
+            unallocated,
+        )
+    });
     Some(FixtureProduction {
         status: "production",
         code: request.code,
@@ -4965,29 +5052,9 @@ fn production_report(
         build_selection_class: build_selection
             .dialog()
             .map(|dialog| rebellion_render::manufacturing_window::product(world, dialog.kind()).0),
-        build_selection_values: build_selection.dialog().map(|dialog| {
+        build_selection_confirm_enabled: build_selection_estimate.map(|e| e.completion.is_some()),
+        build_selection_values: build_selection_estimate.map(|estimate| {
             use rebellion_render::build_selection::{cost_text, days_text};
-            // The gate opens it on the primary system's band, for the player.
-            let is_alliance = request.faction == CockpitFaction::Alliance;
-            let side = rebellion_core::dat::Faction::of_alliance(is_alliance);
-            let unallocated = rebellion_core::side_resources::maintenance_totals(
-                world,
-                manufacturing,
-                side,
-                |_| false,
-            )
-            .unallocated();
-            let estimate = rebellion_core::build_selection::estimate(
-                world,
-                manufacturing,
-                en_route,
-                primary,
-                dialog.area(),
-                dialog.kind(),
-                dialog.quantity(),
-                is_alliance,
-                unallocated,
-            );
             let valid = estimate.completion.is_some();
             [
                 cost_text(estimate.refined_material, valid),
@@ -9500,6 +9567,116 @@ mod tests {
         );
     }
 
+    // The primary's room in the two refusing Build Selection scenarios
+    // (FUN_005385f0 -> FUN_00551a20 -> FUN_00507750): over maintenance it
+    // keeps a free energy slot and raw deposit, so a mine and a refinery,
+    // which FUN_0052e970 passes for costing no maintenance, stay
+    // buildable. In BuildSelectionFacilityRoom only the slot of the unit
+    // queued on its own facilities band is left, which FUN_00552210 gives
+    // back to an order on that band: one facility fits ({0x90, 1} at
+    // two), a mine finds no raw deposit ({0x90, 2}).
+    #[test]
+    fn the_refusing_build_selection_scenarios_leave_the_primary_its_traced_room() {
+        use rebellion_core::manufacturing::{BuildableKind, FacilityBuild, ProductionArea};
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let is_alliance = faction == CockpitFaction::Alliance;
+            let facility = |raw: u32| {
+                let build = FacilityBuild {
+                    class: rebellion_core::ids::DatId::new(raw),
+                    is_alliance,
+                };
+                match raw >> 24 {
+                    0x2c | 0x2d => BuildableKind::ProductionFacility(build),
+                    0x22..=0x27 => BuildableKind::DefenseFacility(build),
+                    _ => BuildableKind::ManufacturingFacility(build),
+                }
+            };
+            let (yard, mine, refinery, shield) = (
+                facility(0x2a00_0001),
+                facility(0x2c00_0001),
+                facility(0x2d00_0002),
+                facility(0x2500_0004),
+            );
+            for (scenario, queued, cases) in [
+                (
+                    Scenario::BuildSelectionOverMaintenance,
+                    0,
+                    [
+                        (yard, 1, true),
+                        (shield, 1, true),
+                        (mine, 1, true),
+                        (refinery, 1, true),
+                        (yard, 2, false),
+                    ],
+                ),
+                (
+                    Scenario::BuildSelectionFacilityRoom,
+                    1,
+                    [
+                        (yard, 1, true),
+                        (shield, 1, true),
+                        (refinery, 1, true),
+                        (mine, 1, false),
+                        (yard, 2, false),
+                    ],
+                ),
+            ] {
+                // The other side's mine and refinery at the primary take
+                // an energy slot each, the mine a raw deposit.
+                let other = rebellion_core::dat::Faction::of_alliance(!is_alliance);
+                let applied = apply_to_loading_world_with(request(scenario, faction), |world| {
+                    let here = world.systems.keys().next().unwrap();
+                    for (raw, is_mine) in [(0x2c00_0001, true), (0x2d00_0002, false)] {
+                        let key = world.production_facilities.insert(
+                            rebellion_core::world::ProductionFacilityInstance {
+                                class_dat_id: rebellion_core::ids::DatId::new(raw),
+                                side: other,
+                                is_mine,
+                            },
+                        );
+                        world.systems[here].production_facilities.push(key);
+                    }
+                });
+                let world = &applied.world;
+                let primary = world.systems.keys().next().unwrap();
+                let band = (primary, ProductionArea::ConstructionYard);
+                let kinds: Vec<_> = applied
+                    .manufacturing
+                    .queue(band.0, band.1)
+                    .map(|queue| queue.items().iter().map(|item| item.kind).collect())
+                    .unwrap_or_default();
+                assert_eq!(kinds, vec![yard; queued]);
+                for (kind, count, fits) in cases {
+                    assert_eq!(
+                        !rebellion_core::build_selection::lacks_facility_room(
+                            world,
+                            &applied.manufacturing,
+                            &[],
+                            band,
+                            primary,
+                            kind,
+                            count,
+                        ),
+                        fits,
+                        "{scenario:?} {faction:?} {kind:?} x{count}"
+                    );
+                }
+                // Another band's order gets no slot back.
+                if queued == 1 {
+                    assert!(rebellion_core::build_selection::lacks_facility_room(
+                        world,
+                        &applied.manufacturing,
+                        &[],
+                        (primary, ProductionArea::Shipyard),
+                        primary,
+                        yard,
+                        1,
+                    ));
+                }
+            }
+        }
+    }
+
     // A0 manufacturing/11: the Empire at -402 sees "n/a" and a grey
     // Confirm; FUN_0052e970 refuses what the side's unallocated
     // maintenance cannot take.
@@ -12524,6 +12701,7 @@ mod tests {
                 Scenario::QuadrantsNeutralFleet,
                 Scenario::QuadrantsFreeTeam,
                 Scenario::QuadrantsFacility,
+                Scenario::BuildSelectionFacilityRoom,
             ]
         );
     }
