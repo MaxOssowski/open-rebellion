@@ -1217,6 +1217,84 @@ const cases = [
     },
   },
   {
+    name: "bombardment-civilian",
+    code: FLEET_BOMBARDMENT,
+    factions: ["alliance"],
+    // Target Civilian Facilities (0x221) from the same submenu, carried
+    // out at once (FUN_00487740), against A0 2026-11-14-bombard-assault/17
+    // (no loss, picture 0x2b9a) and /24 (a refinery lost, 0x2b9b): the
+    // Alliance's own strike on an Imperial system, its summary at once
+    // (kind 7) at (62, 49); FUN_00496770's 0x7098 / 0x7099 texts in the
+    // attacker's red. Art every pixel A0's; the texts' ink at A0's place.
+    async run(page, faction, setup, directory) {
+      await until(page, "two enemy regiments wait on the planet",
+        (o) => o.enemy_regiments === 2 && o.last_bombardment_message === null);
+      const menu = await openMenu(page, point(setup.icon), directory, "civilian");
+      const height = (menu.height - 2) / menu.rows;
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.bombardment_row + 0.5) });
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.submenu,
+        null, { timeout: 5_000 });
+      await frames(page, 3);
+      const sub = (await page.evaluate(() => window.__openRebellionInterfaceObjectMenu)).submenu;
+      assert.equal(sub.civilian_row, 1, JSON.stringify(sub));
+      const rowHeight = (sub.height - 2) / sub.rows;
+      await click(page, { x: sub.left + sub.width / 2, y: sub.top + 2 + rowHeight * (sub.civilian_row + 0.5) });
+      const after = await until(page, "Target Civilian Facilities is carried out and its summary opens",
+        (o) => o.last_bombardment_message?.startsWith("Orbital bombardment at ")
+          && o.assault_summary?.page === "Summary");
+      const summary = after.assault_summary;
+      assert.match(summary.title, /^Orbital bombardment of /, JSON.stringify(summary));
+      assert.match(summary.body, /^Alliance ships have conducted an orbital strike on the Imperial system of /,
+        JSON.stringify(summary));
+      assert.ok([0x2b9a, 0x2b9b].includes(summary.picture), JSON.stringify(summary));
+      await page.mouse.move(2, 2);
+      await frames(page, 3);
+      const port = PNG.sync.read((await shot(page, directory, "civilian-summary")).bytes);
+      const file = summary.picture === 0x2b9a
+        ? "17-civilian-bombardment-summary-commenor-day183.png"
+        : "24-second-civilian-summary-losses-picture-day206.png";
+      const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/2026-11-14-bombard-assault", file)));
+      const [ox, oy] = summary.origin.map(Math.round);
+      const differ = ([xa, ya, xb, yb]) => {
+        let count = 0;
+        for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+          const i = ((49 + y) * a0.width + 62 + x) * 4;
+          const j = ((oy + y) * port.width + ox + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[j + c])) count += 1;
+        }
+        return count;
+      };
+      const red = (data, k) => data[k] > 180 && data[k + 1] < 100 && data[k + 2] < 100;
+      const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+        let box = null;
+        for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+          if (!red(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+        return box;
+      };
+      // The picture between the title's rows and the body's, the rail, the
+      // frame's top corners; the title and the body's first line start
+      // where A0's do (the system's name differs).
+      const checks = {
+        a0: file,
+        picture: differ([12, 13 + 25, 412, 13 + 205]),
+        rail: differ([414, 11, 468, 296]),
+        corners: differ([0, 0, 30, 22]) + differ([384, 0, 414, 22]),
+        title: { a0: ink(a0, [62, 49], [12, 10, 412, 40]), port: ink(port, [ox, oy], [12, 10, 412, 40]) },
+        body: { a0: ink(a0, [62, 49], [20, 220, 400, 245]), port: ink(port, [ox, oy], [20, 220, 400, 245]) },
+      };
+      assert.ok(checks.picture === 0 && checks.rail === 0 && checks.corners === 0, JSON.stringify(checks));
+      const t = checks.title;
+      assert.ok(t.a0 && t.port && Math.abs(t.a0[1] - t.port[1]) <= 2 && Math.abs(t.a0[3] - t.port[3]) <= 2,
+        JSON.stringify(checks));
+      const b = checks.body;
+      assert.ok(b.a0 && b.port && Math.abs(b.a0[0] - b.port[0]) <= 2 && Math.abs(b.a0[1] - b.port[1]) <= 2,
+        JSON.stringify(checks));
+      return { summary, checks };
+    },
+  },
+  {
     name: "destroy-system",
     code: FLEET_DESTROY_SYSTEM,
     // Destroy System (0x223) needs a Death Star in the fleet (FUN_00582440):
