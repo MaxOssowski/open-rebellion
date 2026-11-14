@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 121;
+const SCENARIO_COUNT: u8 = 122;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -453,6 +453,14 @@ pub enum Scenario {
     /// Adar Tallon on his own Jerijador, a construction yard alone, shows
     /// Facility Design Research first of three kinds).
     FacilityResearchTargeting = 120,
+    /// The Alliance's own failed Planetary Assault, as A0
+    /// 2026-11-14-bombard-assault/09..12 shows it (a new Alliance game,
+    /// day 148): Fleet 1 with one Alliance Fleet Regiment aboard lands on
+    /// Imperial Commenor, held by five Imperial Army Regiments; the
+    /// regiment is destroyed, none of the defenders, and the summary opens
+    /// at once (`FUN_00497530` kind 7) on "Imperial Troops have defended
+    /// Commenor from an Alliance assault." (`0x7092`).
+    OwnAssaultRepulsed = 121,
 }
 
 impl Scenario {
@@ -579,6 +587,7 @@ impl Scenario {
             118 => Self::QuadrantsFacility,
             119 => Self::BuildSelectionFacilityRoom,
             120 => Self::FacilityResearchTargeting,
+            121 => Self::OwnAssaultRepulsed,
             _ => return None,
         })
     }
@@ -1231,6 +1240,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::EnemyAssaultTaken {
         place_enemy_assault(world, movement, troop_transport);
+    }
+    if request.scenario == Scenario::OwnAssaultRepulsed {
+        place_own_assault(world, movement, troop_transport);
     }
     if request.scenario == Scenario::CoruscantSeized {
         place_coruscant_seized(request, world, movement, sectors);
@@ -2642,6 +2654,77 @@ fn place_enemy_assault(
     world.systems[yavin].ground_units = vec![defender];
 }
 
+/// The regiments on Commenor in the `OwnAssaultRepulsed` scenario: A0
+/// 2026-11-14-bombard-assault/05 lists five Imperial Army Regiments.
+const OWN_ASSAULT_DEFENDERS: usize = 5;
+
+/// The `OwnAssaultRepulsed` scenario: Commenor the Empire's with
+/// [`OWN_ASSAULT_DEFENDERS`] Imperial Army Regiments and no defense
+/// facility (A0 05..07), and the Alliance's Fleet 1, a Medium Transport
+/// carrying one Alliance Fleet Regiment, in orbit (A0 00, 08).
+fn place_own_assault(
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+) {
+    let troop_class = |world: &GameWorld, name: &str| {
+        world
+            .buildable_classes
+            .iter()
+            .find(|(class, value)| class.family() == 0x10 && value.name == name)
+            .map(|(class, _)| *class)
+    };
+    let transport = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, value)| value.is_alliance && value.name == "Medium Transport")
+        .map(|(key, _)| key);
+    let (Some(fleet_regiment), Some(army), Some(transport)) = (
+        troop_class(world, "Alliance Fleet Regiment"),
+        troop_class(world, "Imperial Army Regiment"),
+        transport,
+    ) else {
+        return;
+    };
+    let Some(commenor) = clear_for_a0(world, "Commenor") else {
+        return;
+    };
+    let value = &mut world.systems[commenor];
+    value.control = ControlKind::Controlled(Faction::Empire);
+    value.is_populated = true;
+    value.defense_facilities.clear();
+    let hull = world.capital_ship_classes[transport].hull as i32;
+    let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+        location: commenor,
+        capital_ships: vec![ShipInstance::new(transport, hull, false)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.rename_fleet(fleet, "Fleet 1");
+    world.number_ships();
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let attacker = world.troops.insert(TroopUnit {
+        class_dat_id: fleet_regiment,
+        is_alliance: true,
+        regiment_strength: 100,
+    });
+    world.systems[commenor].ground_units = vec![attacker];
+    let _ = troop_transport.embark(world, fleet, &[attacker]);
+    let defenders: Vec<_> = (0..OWN_ASSAULT_DEFENDERS)
+        .map(|_| {
+            world.troops.insert(TroopUnit {
+                class_dat_id: army,
+                is_alliance: false,
+                regiment_strength: 100,
+            })
+        })
+        .collect();
+    world.systems[commenor].ground_units = defenders;
+}
+
 /// The `EnemyAssaultTaken` scenario's assault: the Empire's fleets at
 /// Yavin assault it (`FUN_0058c120`) with the first seed whose draws give
 /// A0 assault-clean's outcome: the defending regiment destroyed, no
@@ -2652,21 +2735,28 @@ pub fn enemy_assault(
     world: &mut GameWorld,
     troop_transport: &mut TroopTransportState,
 ) -> Vec<rebellion_core::assault_report::AssaultReport> {
-    if request.scenario != Scenario::EnemyAssaultTaken {
-        return Vec::new();
-    }
+    // OwnAssaultRepulsed: the Alliance's assault on Commenor with the first
+    // seed whose draws give A0 2026-11-14-bombard-assault/09..11's outcome:
+    // the attacking regiment destroyed, no defender lost, the system kept
+    // (TEXTSTRA 0x7092).
+    let (name, side) = match request.scenario {
+        Scenario::EnemyAssaultTaken => ("Yavin", Faction::Empire),
+        Scenario::OwnAssaultRepulsed => ("Commenor", Faction::Alliance),
+        _ => return Vec::new(),
+    };
     let Some(yavin) = world
         .systems
         .iter()
-        .find(|(_, value)| value.name == "Yavin")
+        .find(|(_, value)| value.name == name)
         .map(|(key, _)| key)
     else {
         return Vec::new();
     };
+    let alliance = side == Faction::Alliance;
     let fleets: Vec<FleetKey> = world
         .fleets
         .iter()
-        .filter(|(_, fleet)| fleet.location == yavin && !fleet.is_alliance)
+        .filter(|(_, fleet)| fleet.location == yavin && fleet.is_alliance == alliance)
         .map(|(key, _)| key)
         .collect();
     for seed in 0..256 {
@@ -2674,17 +2764,17 @@ pub fn enemy_assault(
         let mut trial_transport = troop_transport.clone();
         let mut env = rebellion_core::bombardment::BombardEnv::new(seed, None);
         let outcome = env
-            .assault(
-                &mut trial_world,
-                &mut trial_transport,
-                Faction::Empire,
-                &fleets,
-                yavin,
-            )
+            .assault(&mut trial_world, &mut trial_transport, side, &fleets, yavin)
             .clone();
-        let as_a0 = outcome.lost_attackers.is_empty()
-            && outcome.lost_defenders.len() == 1
-            && env.reports.iter().all(|report| report.taken);
+        let as_a0 = if alliance {
+            outcome.lost_attackers.len() == 1
+                && outcome.lost_defenders.is_empty()
+                && env.reports.iter().all(|report| !report.taken)
+        } else {
+            outcome.lost_attackers.is_empty()
+                && outcome.lost_defenders.len() == 1
+                && env.reports.iter().all(|report| report.taken)
+        };
         if as_a0 && !env.reports.is_empty() {
             *world = trial_world;
             *troop_transport = trial_transport;
@@ -7051,6 +7141,8 @@ struct EnemyAssaultObservation {
     assault_summary: Option<FixtureAssaultSummary>,
     /// Yavin's holder after the assault (`economy::system_holder`).
     yavin_holder: Option<String>,
+    /// Commenor's holder (`OwnAssaultRepulsed`).
+    commenor_holder: Option<String>,
 }
 
 impl EnemyAssaultWatch {
@@ -7062,23 +7154,28 @@ impl EnemyAssaultWatch {
     ) {
         if !matches!(
             request.scenario,
-            Scenario::EnemyAssaultTaken | Scenario::FleetWindowA0
+            Scenario::EnemyAssaultTaken | Scenario::FleetWindowA0 | Scenario::OwnAssaultRepulsed
         ) || self.last.as_ref() == Some(&assault_summary)
         {
             return;
         }
         self.last = Some(assault_summary.clone());
-        let yavin_holder = world
-            .systems
-            .values()
-            .find(|value| value.name == "Yavin")
-            .map(|value| format!("{:?}", rebellion_core::economy::system_holder(world, value)));
+        let holder = |name: &str| {
+            world
+                .systems
+                .values()
+                .find(|value| value.name == name)
+                .map(|value| format!("{:?}", rebellion_core::economy::system_holder(world, value)))
+        };
+        let yavin_holder = holder("Yavin");
+        let commenor_holder = holder("Commenor");
         let report = EnemyAssaultObservation {
             status: "fleet-load",
             code: request.code,
             window_open: false,
             assault_summary,
             yavin_holder,
+            commenor_holder,
         };
         let bytes = serde_json::to_vec(&report).expect("serialize the enemy assault observation");
         unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
@@ -7233,10 +7330,11 @@ fn fleet_load_observation(
             .rev()
             .find(|message| message.text.contains("bombardment"))
             .map(|message| message.text.clone()),
+        // The port's log line, not the filed report (kind 7 files it too).
         last_assault_message: messages
             .iter()
             .rev()
-            .find(|message| message.text.contains("assault"))
+            .find(|message| message.text.contains("assault") && message.assault_report.is_none())
             .map(|message| message.text.clone()),
         primary_destroyed: world.systems[primary].is_destroyed,
         fleet_present: world.fleets.contains_key(fleet),
@@ -9270,6 +9368,91 @@ mod tests {
         // Any other scenario assaults nothing.
         let other = request(Scenario::FleetAssaultTaken, CockpitFaction::Alliance);
         assert!(enemy_assault(other, &mut applied.world, &mut applied.transport).is_empty());
+    }
+
+    #[test]
+    fn the_own_assault_scenario_is_repulsed_from_commenor_as_a0_shows() {
+        // A0 2026-11-14-bombard-assault/09..11 (a new Alliance game, day
+        // 148): the Alliance's Fleet 1 landed one Alliance Fleet Regiment
+        // on Imperial Commenor; Alliance Forces lost it, System Forces
+        // keep five Imperial Army Regiments, "No Casualties"; the summary
+        // opens at once (FUN_00497530 kind 7).
+        use rebellion_core::assault_report::ReportCategory;
+        let own = request(Scenario::OwnAssaultRepulsed, CockpitFaction::Alliance);
+        let mut applied = apply_to_loading_world_with(own, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Commenor".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            let entry = |id: u32, value: i32| rebellion_core::world::GnprtbEntry {
+                parameter_id: id,
+                development: value,
+                alliance_sp_easy: value,
+                alliance_sp_medium: value,
+                alliance_sp_hard: value,
+                empire_sp_easy: value,
+                empire_sp_medium: value,
+                empire_sp_hard: value,
+                multiplayer: value,
+            };
+            world.gnprtb = rebellion_core::world::GnprtbParams::new(vec![
+                entry(0x200, 5),
+                entry(0x201, 30),
+                entry(0x202, 10),
+                entry(0x203, 4),
+                entry(0x204, 6),
+                entry(0x205, 8),
+                entry(0x1e51, 60),
+                entry(0x1e52, -10),
+            ]);
+            world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    name: "Medium Transport".into(),
+                    is_alliance: true,
+                    hull: 100,
+                    hyperdrive: 80,
+                    troop_capacity: 2,
+                    ..Default::default()
+                });
+            for (id, name, alliance) in [
+                (0x1000_0003, "Alliance Fleet Regiment", true),
+                (0x1000_0005, "Imperial Army Regiment", false),
+            ] {
+                world.buildable_classes.insert(
+                    rebellion_core::ids::DatId::new(id),
+                    rebellion_core::world::BuildableClass {
+                        name: name.into(),
+                        is_alliance: alliance,
+                        is_empire: !alliance,
+                        ..Default::default()
+                    },
+                );
+            }
+        });
+        let reports = enemy_assault(own, &mut applied.world, &mut applied.transport);
+        let [report] = &reports[..] else {
+            panic!("one report: {reports:?}");
+        };
+        assert_eq!(report.attacker, Faction::Alliance);
+        assert_eq!(report.defender, Some(Faction::Empire));
+        assert!(!report.taken);
+        assert!(report.opens_at_once(Faction::Alliance));
+        let name = |units: &[&rebellion_core::assault_report::ReportUnit]| {
+            units
+                .iter()
+                .map(|unit| unit.name.clone())
+                .collect::<Vec<_>>()
+        };
+        let [operational, _, destroyed] = report.attackers.columns(ReportCategory::Troops);
+        assert!(operational.is_empty());
+        assert_eq!(name(&destroyed), vec!["Alliance Fleet Regiment".to_string()]);
+        let [operational, _, destroyed] = report.system_forces.columns(ReportCategory::Troops);
+        assert_eq!(
+            name(&operational),
+            vec!["Imperial Army Regiment".to_string(); OWN_ASSAULT_DEFENDERS]
+        );
+        assert!(destroyed.is_empty());
     }
 
     #[test]
