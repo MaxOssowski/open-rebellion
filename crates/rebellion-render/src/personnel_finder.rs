@@ -441,7 +441,9 @@ pub fn character_rows(
 /// other side's character where the player sees the other side's objects
 /// live (`opposing_contents_visible`), else where the player's frozen copy
 /// of a system holds it (`SystemView::characters`, `FUN_004f9a60`), at that
-/// system.
+/// system. Where the player holds a copy of the character
+/// (`object_views::CharacterCopy`), that copy names its place instead: the
+/// copied ship or system, or "Location Unknown".
 pub fn character_rows_travelling(
     world: &GameWorld,
     fog: &FogState,
@@ -470,6 +472,8 @@ pub fn character_rows_travelling(
             continue;
         }
         let mut at = character.current_system;
+        // The text of the player's copy of the character, when it shows one.
+        let mut copy_text = None;
         if character.is_alliance != player_is_alliance
             && !character
                 .current_system
@@ -481,20 +485,45 @@ pub fn character_rows_travelling(
                 })
                 .is_some_and(|system| opposing_contents_visible(world, fog, player, system))
         {
-            let Some(system) = copied.get(&character.dat_id) else {
-                continue;
-            };
-            at = Some(*system);
+            if let Some(copy) = world.object_views.character(player, character.dat_id) {
+                // FUN_00465bb0 on the side's copy: its container's name, a
+                // copied ship or a system, else 0x1895 "Location Unknown"
+                // (A0 2026-11-14-stale-views 1x-personnelfinder-empire-d85
+                // d57ed845, d91 1b8818d8).
+                at = copy.system.and_then(|id| {
+                    world
+                        .systems
+                        .iter()
+                        .find(|(_, value)| value.dat_id == id)
+                        .map(|(system, _)| system)
+                });
+                let place = copy
+                    .ship
+                    .clone()
+                    .or_else(|| at.map(|system| world.systems[system].name.clone()))
+                    .unwrap_or_else(|| "Location Unknown".to_owned());
+                // port: a copy keeps no state or command word.
+                copy_text = Some(format!("{} - {place}", character.name));
+            } else {
+                let Some(system) = copied.get(&character.dat_id) else {
+                    continue;
+                };
+                at = Some(*system);
+            }
         }
         let location = at
             .and_then(|sys| world.systems.get(sys))
             .map_or_else(String::new, |sys| sys.name.clone());
-        let state = character_state(character).unwrap_or_default().to_owned();
+        let state = if copy_text.is_some() {
+            String::new()
+        } else {
+            character_state(character).unwrap_or_default().to_owned()
+        };
         let destination = destinations
             .iter()
             .find(|(traveller, _)| *traveller == key)
             .map(|&(_, system)| system);
-        let display = character_text(world, character, destination);
+        let display = copy_text.unwrap_or_else(|| character_text(world, character, destination));
         rows.push(PersonnelFinderRow::Character {
             key,
             name: display,
@@ -1654,6 +1683,206 @@ mod tests {
         world.object_views.alliance_systems.clear();
         assert!(specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).is_empty());
         assert!(character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).is_empty());
+    }
+
+    /// Yaga Minor (Imperial) with Imperial Fleet 2 (one ship, "Imperial
+    /// Star Destroyer 3", Darth Vader aboard) and Alliance Fleet 3 in
+    /// orbit, Ghorman (Alliance) next to it. port: test data after A0
+    /// 2026-11-14-stale-views, second run.
+    struct Yaga {
+        world: GameWorld,
+        movement: rebellion_core::movement::MovementState,
+        missions: rebellion_core::missions::MissionState,
+        transport: rebellion_core::troop_transport::TroopTransportState,
+        yaga: SystemKey,
+        ghorman: SystemKey,
+        imperial: FleetKey,
+        alliance: FleetKey,
+        vader: CharacterKey,
+    }
+
+    fn yaga() -> Yaga {
+        let mut world = GameWorld::default();
+        let yaga = add_system(&mut world, "Yaga Minor");
+        world.systems[yaga].control = ControlKind::Controlled(Faction::Empire);
+        let ghorman = add_system(&mut world, "Ghorman");
+        world.systems[ghorman].dat_id = DatId::new(101);
+        let class = world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass {
+                dat_id: DatId::new(0x1400_0001),
+                name: "Imperial Star Destroyer".into(),
+                ..rebellion_core::world::CapitalShipClass::default()
+            });
+        let mut ship = rebellion_core::world::ShipInstance::new(class, 10, false);
+        ship.id = 3;
+        ship.name = Some("Imperial Star Destroyer 3".into());
+        let imperial = world.insert_fleet(rebellion_core::world::Fleet {
+            location: yaga,
+            capital_ships: vec![ship],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let vader = world.characters.insert(Character {
+            dat_id: DatId::new(0x3000_0010),
+            name: "Darth Vader".into(),
+            is_alliance: false,
+            is_empire: true,
+            current_fleet: Some(imperial),
+            ship: Some(3),
+            ..default_character()
+        });
+        world.fleets[imperial].characters.push(vader);
+        let alliance = world.insert_fleet(rebellion_core::world::Fleet {
+            location: yaga,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        Yaga {
+            world,
+            movement: rebellion_core::movement::MovementState::new(),
+            missions: rebellion_core::missions::MissionState::new(),
+            transport: rebellion_core::troop_transport::TroopTransportState::new(),
+            yaga,
+            ghorman,
+            imperial,
+            alliance,
+            vader,
+        }
+    }
+
+    /// The day's view step (simulation 13f).
+    fn view_day(galaxy: &mut Yaga) {
+        rebellion_core::object_views::advance_extras(
+            &mut galaxy.world,
+            &galaxy.movement,
+            &galaxy.missions,
+            &galaxy.transport,
+        );
+        rebellion_core::object_views::advance(
+            &mut galaxy.world,
+            &galaxy.transport,
+            &galaxy.movement,
+        );
+    }
+
+    fn imperial_names(galaxy: &Yaga) -> Vec<String> {
+        character_rows(
+            &galaxy.world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Imperial,
+        )
+        .iter()
+        .map(|row| row.display_name().to_owned())
+        .collect()
+    }
+
+    #[test]
+    fn an_other_side_character_aboard_a_copied_fleet_names_the_copied_ship_then_location_unknown() {
+        // FUN_00465bb0 names the container of the side's copy of the
+        // character when it is a system or a capital ship, else keeps
+        // 0x1895 "Location Unknown" (0x465c21). A0
+        // 2026-11-14-stale-views second run: 1x-personnelfinder-empire-d85
+        // (d57ed845) "Darth Vader - Imperial Star Destroyer 3" while the
+        // Alliance's copy of Yaga Minor was frozen; d91 (1b8818d8) and d97
+        // (56d33542) "Darth Vader - Location Unknown" once it went live
+        // with Fleet 2 gone.
+        let mut galaxy = yaga();
+        view_day(&mut galaxy);
+        // Fleet 3 withdraws to Ghorman; then Fleet 2 leaves Yaga Minor for
+        // a system the Alliance does not see.
+        galaxy.world.fleets[galaxy.alliance].location = galaxy.ghorman;
+        view_day(&mut galaxy);
+        let elsewhere = add_system(&mut galaxy.world, "Kuat");
+        galaxy.world.systems[elsewhere].dat_id = DatId::new(102);
+        galaxy.world.systems[elsewhere].control = ControlKind::Controlled(Faction::Empire);
+        galaxy.world.fleets[galaxy.imperial].location = elsewhere;
+        view_day(&mut galaxy);
+        assert_eq!(
+            imperial_names(&galaxy),
+            ["Darth Vader - Imperial Star Destroyer 3"]
+        );
+        let rows = character_rows(
+            &galaxy.world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Imperial,
+        );
+        let [PersonnelFinderRow::Character {
+            key,
+            system,
+            location,
+            ..
+        }] = &rows[..]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            (*key, *system, location.as_str()),
+            (galaxy.vader, Some(galaxy.yaga), "Yaga Minor")
+        );
+        // port: the copy keeps no state word; an injury out of sight does
+        // not show.
+        galaxy.world.characters[galaxy.vader].injury = 1;
+        let rows = character_rows(
+            &galaxy.world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Imperial,
+        );
+        let [PersonnelFinderRow::Character { name, state, .. }] = &rows[..] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            (name.as_str(), state.as_str()),
+            ("Darth Vader - Imperial Star Destroyer 3", "")
+        );
+        galaxy.world.characters[galaxy.vader].injury = 0;
+        // Fleet 3 is ordered back and is en route: the copy stays frozen.
+        assert!(galaxy
+            .movement
+            .order(galaxy.alliance, galaxy.ghorman, galaxy.yaga, 6));
+        galaxy.world.fleets[galaxy.alliance].location = galaxy.yaga;
+        view_day(&mut galaxy);
+        assert_eq!(
+            imperial_names(&galaxy),
+            ["Darth Vader - Imperial Star Destroyer 3"]
+        );
+        // The arrival day: the copy goes live without Fleet 2.
+        galaxy.movement.cancel(galaxy.alliance);
+        view_day(&mut galaxy);
+        assert_eq!(imperial_names(&galaxy), ["Darth Vader - Location Unknown"]);
+        let rows = character_rows(
+            &galaxy.world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Imperial,
+        );
+        let [PersonnelFinderRow::Character {
+            system, location, ..
+        }] = &rows[..]
+        else {
+            panic!("{rows:?}");
+        };
+        assert_eq!((*system, location.as_str()), (None, ""));
+        // And stays so the next days.
+        view_day(&mut galaxy);
+        assert_eq!(imperial_names(&galaxy), ["Darth Vader - Location Unknown"]);
+        // Seen live again, it names its ship.
+        galaxy.world.fleets[galaxy.imperial].location = galaxy.yaga;
+        view_day(&mut galaxy);
+        assert_eq!(
+            imperial_names(&galaxy),
+            ["Darth Vader - Imperial Star Destroyer 3"]
+        );
     }
 
     #[test]

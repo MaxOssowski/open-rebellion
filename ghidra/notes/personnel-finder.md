@@ -351,6 +351,36 @@ messages are built for the Empire while its cockpit is the Alliance's (see
 this capture does not settle which characters the other side's tab lists.
 It needs an unedited game.
 
+## The place of a copied character (traced 2026-11-14)
+
+`FUN_00465bb0` reads the side's copy of the character (the list takes the
+player's side's views, `FUN_004f3d50`). It sets the place to `0x1895`
+"Location Unknown" first (`0x465c21`), then, unless the copy is destroyed,
+calls vtable `+0xc` for the container id. A null id (`FUN_004ece60`) keeps
+"Location Unknown" with no state or command word (`je 0x46606f`). A system
+(`0x90..0x97`) or capital ship (`0x14..0x1b`) container replaces it with the
+container's name (`FUN_004f62d0(+0x1c)`) and adds the state and command
+words; an abode (`0x98..0x9f`) its name alone; anything else (a fleet, say)
+keeps "Location Unknown" alone.
+
+A0 2026-11-14-stale-views, second run (an Alliance game): with the Alliance's
+copy of Yaga Minor frozen and Vader aboard the copied Imperial Fleet 2, the
+Imperial tab read "Darth Vader - Imperial Star Destroyer 3"
+(1x-personnelfinder-empire-d85, sha256 d57ed845). From the day Fleet 3
+arrived and the copy went live with Fleet 2 gone, it read "Darth Vader -
+Location Unknown" (d91 1b8818d8, d92, d97 56d33542).
+
+hyp: the live rebuild (`FUN_004f8340` -> `FUN_004f7e30`) takes the departed
+fleet's copy out of the system's copy, which leaves the character's copy in
+no system or ship; untraced.
+
+port: `object_views::CharacterCopy` (save v121) keeps each side's copy of an
+other-side character: the system whose copy holds it and the copied ship
+(or fleet, when unseated). Rebuilding a system's copy moves a character not
+there to no place. The row is "Name - Ship", "Name - System" or "Name -
+Location Unknown", without state or command words (port: the copy keeps
+none).
+
 ## Open
 
 - The `+0x6c` field on each row item and its purpose.
