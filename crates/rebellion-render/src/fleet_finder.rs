@@ -1340,6 +1340,75 @@ mod tests {
     }
 
     #[test]
+    fn a_copied_fleet_stays_while_the_sides_fleet_is_en_route_and_vanishes_on_its_arrival_day() {
+        // FUN_004f9a60: the Alliance's copy of Yaga Minor stays frozen while
+        // Fleet 3 is en route (+0x50 bit 4) and is rebuilt live from the
+        // master on the day it arrives. A0 2026-11-14-stale-views second
+        // run: Fleet 2 listed on day 90 (1x-yaga-replay-fleetwin-d90), gone
+        // from the Yaga Minor Fleet window (1x-yaga-arrival-fleetwin-d91,
+        // sha256 9a4c0b3a) and the Fleet Finder's Imperial Fleets
+        // (1x-fleetfinder-empire-d91, e744caf2) on the ETA day 91.
+        use rebellion_core::missions::MissionState;
+        use rebellion_core::troop_transport::TroopTransportState;
+        let mut world = GameWorld::default();
+        let empire = ControlKind::Controlled(Faction::Empire);
+        let yaga = add_system(&mut world, "Yaga Minor", empire);
+        let ghorman = add_system(
+            &mut world,
+            "Ghorman",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        world.systems[ghorman].dat_id = DatId::new(101);
+        let kuat = add_system(&mut world, "Kuat", empire);
+        world.systems[kuat].dat_id = DatId::new(102);
+        let imperial = add_fleet(&mut world, yaga, false, &["Imperial Star Destroyer"]);
+        let alliance = add_fleet(&mut world, yaga, true, &["Medium Transport"]);
+        let mut movement = MovementState::new();
+        let (missions, transport) = (MissionState::new(), TroopTransportState::new());
+        let fog = FogState::new(Faction::Alliance);
+        let day = |world: &mut GameWorld, movement: &MovementState| {
+            rebellion_core::object_views::advance_extras(world, movement, &missions, &transport);
+            rebellion_core::object_views::advance(world, &transport, movement);
+        };
+        let imperial_fleets = |world: &GameWorld, movement: &MovementState| {
+            names(&rows(
+                world,
+                movement,
+                &fog,
+                Faction::Alliance,
+                FinderMode::Fleets,
+                FinderTab::Imperial,
+            ))
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+        };
+        let window = |world: &GameWorld| {
+            crate::fleet_window::copy_entries(world, &fog, Faction::Alliance, yaga).len()
+        };
+        let fleet_2 = world.fleet_name(imperial).unwrap().to_owned();
+        day(&mut world, &movement);
+        // Fleet 3 withdraws; Fleet 2 then leaves for Kuat.
+        world.fleets[alliance].location = ghorman;
+        day(&mut world, &movement);
+        world.fleets[imperial].location = kuat;
+        day(&mut world, &movement);
+        assert_eq!(imperial_fleets(&world, &movement), std::slice::from_ref(&fleet_2));
+        assert_eq!(window(&world), 1);
+        // Fleet 3 is ordered back; en route the day before its arrival.
+        assert!(movement.order(alliance, ghorman, yaga, 6));
+        world.fleets[alliance].location = yaga;
+        day(&mut world, &movement);
+        assert_eq!(imperial_fleets(&world, &movement), [fleet_2]);
+        assert_eq!(window(&world), 1);
+        // The arrival day ends the order (MovementSystem::advance).
+        movement.cancel(alliance);
+        day(&mut world, &movement);
+        assert!(imperial_fleets(&world, &movement).is_empty());
+        assert_eq!(window(&world), 0);
+    }
+
+    #[test]
     fn a_typed_name_chooses_the_first_row_it_best_begins() {
         // FUN_00609650: the first row with the longest common prefix,
         // compared without case (FUN_005f3430 flag 0).
