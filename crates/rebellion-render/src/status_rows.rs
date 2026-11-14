@@ -3006,6 +3006,43 @@ mod tests {
             super::tests::rows(&live[..2]),
             vec![("Attached: ", "Coruscant"), ("Status:", "Awaiting Orders")]
         );
+        // A0 2026-11-14-stale-views/07-kothlis-reg1-status-d375: a copy
+        // frozen on its planet, not en route, reads "Attached Kothlis,
+        // Awaiting Orders" with no ETA row.
+        let resting = DatId::new(0x1000_0008);
+        let home = ViewPlace::Surface(world.systems[chandrila].dat_id);
+        apply(
+            &mut world,
+            &[ViewUpdate::Set {
+                side: Faction::Alliance,
+                id: resting,
+                view: ObjectView::Regiment(RegimentView {
+                    class,
+                    is_alliance: false,
+                    strength: 100,
+                    place: home,
+                    arrival: None,
+                    live: false,
+                }),
+            }],
+        );
+        let states = States::new();
+        let at_rest = status_view(
+            states.sources(&world),
+            StatusObject::ViewedTroop {
+                alliance: true,
+                id: resting,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            super::tests::rows(&at_rest.rows[..3]),
+            vec![
+                ("Attached: ", "Chandrila"),
+                ("Status:", "Awaiting Orders"),
+                ("Maintenance Cost:", "0"),
+            ]
+        );
     }
 
     #[test]

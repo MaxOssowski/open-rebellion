@@ -152,3 +152,21 @@ the level 1..12 pushes.
 
 port: every ported level copies the whole system and its contents (the
 regiment, system and extras copies), not the level's own type ranges.
+
+## When a copy goes (traced 2026-11-14)
+
+A side's copy is never dropped on its own. An object is deleted only through
+`GameObj_SetReadyForDelete` (`FUN_004f7a30`, `+0x50` bit `0x8000`), which
+`FUN_004f82d0` sets only when `FUN_004f6da0` holds: `FUN_004f6c70` walks the
+three copies (`FUN_00539fd0(0..2)`) and needs each one's `+0x50` bit 3
+(destroyed). A frozen copy takes the destroyed bit only when it next syncs,
+that is when its side sees the object (or its container) live again. Then
+`Event31A_GameObjReadyForDeleteChanged_Fire` (`FUN_0057bd00`) runs
+`FUN_004f83b0`, which removes all three copies from their group
+(`FUN_0053f3a0` -> `FUN_00585c70`; `FUN_00584470` clears a slot). So a side
+keeps seeing a dead or departed fleet in its frozen copy of a system until it
+sees that system again.
+
+port: the copies of a system's fleets and missions (`SystemDetails`, v120)
+stay as seen until the side's copy of the system goes live again, when they
+are rebuilt from the live system.

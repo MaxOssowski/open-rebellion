@@ -626,7 +626,7 @@ fn day(setup: &mut Setup, missions: &crate::missions::MissionState) {
         &mut setup.world,
         &setup.movement,
         missions,
-        &setup.transport.squadrons,
+        &setup.transport,
     );
     step(setup);
 }
@@ -964,10 +964,289 @@ fn a_push_copies_the_systems_fleets_and_missions_frozen() {
         has_death_star: false,
         special_forces: Vec::new(),
     });
-    setup.world.object_views.queue_push(Faction::Alliance, chandrila);
+    setup
+        .world
+        .object_views
+        .queue_push(Faction::Alliance, chandrila);
     day(&mut setup, &missions);
     let extras = alliance_extras(&setup, chandrila).unwrap();
     assert!(!extras.live);
     assert_eq!(extras.fleets.len(), 1);
-    assert!(setup.world.object_views.empire_extras.values().all(|value| value.live));
+    assert!(setup
+        .world
+        .object_views
+        .empire_extras
+        .values()
+        .all(|value| value.live));
+}
+
+fn alliance_details(setup: &Setup, at: SystemKey) -> Option<SystemDetails> {
+    let id = setup.world.systems[at].dat_id;
+    setup
+        .world
+        .object_views
+        .system_details(Faction::Alliance, id)
+        .cloned()
+}
+
+#[test]
+fn a_frozen_copy_keeps_a_fleet_as_seen_after_it_has_moved_and_died() {
+    // FUN_004f9a60 froze the Alliance's copy; GameObj_SetReadyForDelete
+    // (FUN_004f82d0 -> FUN_004f6c70) waits for the destroyed bit on every
+    // copy, so the side keeps its copy until it sees the system again.
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let missions = crate::missions::MissionState::new();
+    let class = setup
+        .world
+        .capital_ship_classes
+        .insert(crate::world::CapitalShipClass {
+            dat_id: DatId::new(0x1400_0003),
+            hull: 50,
+            ..Default::default()
+        });
+    let tie = setup
+        .world
+        .fighter_classes
+        .insert(crate::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            ..Default::default()
+        });
+    let vader = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0001),
+        is_empire: true,
+        ..Default::default()
+    });
+    let mut ship = crate::world::ShipInstance::new(class, 40, true);
+    ship.name = Some("Victory Destroyer 1".into());
+    let imperial = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![ship],
+        fighters: vec![crate::world::FighterEntry {
+            class: tie,
+            count: 3,
+            carrier: None,
+        }],
+        characters: vec![vader],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    let regiment = setup.regiment;
+    setup.world.systems[chandrila].ground_units.clear();
+    setup.transport.push_cargo(imperial, regiment);
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let seen = alliance_details(&setup, chandrila).unwrap();
+    let copy = seen
+        .fleets
+        .iter()
+        .find(|fleet| !fleet.is_alliance)
+        .unwrap()
+        .clone();
+    assert_eq!(copy.name, setup.world.fleet_name(imperial).unwrap());
+    assert_eq!(
+        copy.ships,
+        [ShipCopy {
+            class: DatId::new(0x1400_0003),
+            name: Some("Victory Destroyer 1".into()),
+            hull: 40,
+        }]
+    );
+    assert_eq!(copy.fighters, [(DatId::new(0x1c00_0005), 3)]);
+    assert_eq!(copy.troops, [ARMY]);
+    assert_eq!(copy.characters, [DatId::new(0x3000_0001)]);
+    // The watcher leaves; the fleet moves on, then dies.
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    setup.world.fleets[imperial].location = coruscant;
+    day(&mut setup, &missions);
+    setup.world.fleets.remove(imperial);
+    day(&mut setup, &missions);
+    let frozen = alliance_details(&setup, chandrila).unwrap();
+    assert_eq!(
+        frozen
+            .fleets
+            .iter()
+            .filter(|fleet| !fleet.is_alliance)
+            .cloned()
+            .collect::<Vec<_>>(),
+        [copy]
+    );
+    // Seen again, the copy is rebuilt without it.
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    assert!(alliance_details(&setup, chandrila)
+        .unwrap()
+        .fleets
+        .iter()
+        .all(|fleet| fleet.is_alliance));
+}
+
+#[test]
+fn a_seen_systems_missions_are_copied_with_their_members() {
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let mut missions = crate::missions::MissionState::new();
+    let agent = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0009),
+        is_empire: true,
+        ..Default::default()
+    });
+    let decoy = setup
+        .world
+        .special_forces
+        .insert(crate::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0006),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: true,
+        });
+    missions.dispatch(crate::missions::MissionRequest {
+        kind: crate::missions::MissionKind::Sabotage,
+        faction: crate::missions::MissionFaction::Empire,
+        team: vec![crate::missions::MissionMember::Character(agent)],
+        decoys: vec![crate::missions::MissionMember::SpecialForce(decoy)],
+        target_system: chandrila,
+        target_character: None,
+        target_object: None,
+        tick: 0,
+    });
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let details = alliance_details(&setup, chandrila).unwrap();
+    let [mission] = &details.missions[..] else {
+        panic!("{details:?}");
+    };
+    assert_eq!(mission.side, 2);
+    assert_eq!(mission.kind, crate::missions::MissionKind::Sabotage);
+    assert_eq!(
+        mission.team,
+        [MemberCopy::Character(DatId::new(0x3000_0009))]
+    );
+    assert_eq!(
+        mission.decoys,
+        [MemberCopy::SpecialForce(DatId::new(0x3c00_0006))]
+    );
+}
+
+#[test]
+fn seeding_details_copies_each_system_in_the_sides_fog() {
+    let mut setup = setup();
+    let mut fog_alliance = FogState::new(Faction::Alliance);
+    fog_alliance.reveal(setup.chandrila);
+    let fog_empire = FogState::new(Faction::Empire);
+    let missions = crate::missions::MissionState::new();
+    seed_details_from_fog(
+        &mut setup.world,
+        &setup.movement,
+        &missions,
+        &setup.transport,
+        [&fog_alliance, &fog_empire],
+    );
+    assert!(alliance_details(&setup, setup.chandrila).is_some());
+    assert!(alliance_details(&setup, setup.coruscant).is_none());
+    assert_eq!(setup.world.object_views.empire_details.len(), 2);
+}
+
+#[test]
+fn a_fleet_made_in_a_frozen_system_shows_there_with_nothing_in_it() {
+    // A0 2026-11-14-stale-views/04-kothlis-battle-alert-d371 (no Imperial
+    // fleet at Kothlis while the Alliance saw it), 05-sector-after-d374
+    // and 06-kothlis-fleet16-d374-montage (Imperial Fleet 16 there after,
+    // all four tabs empty), 08-fleetfinder-empire-d375 (listed): a new
+    // object takes frozen side copies at once (FUN_0053f760); its ships,
+    // unfinished then, never sync (FUN_005404d0).
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let missions = crate::missions::MissionState::new();
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    // One that predates the copy, elsewhere, stays out of it.
+    setup.world.insert_fleet(Fleet {
+        location: coruscant,
+        capital_ships: vec![],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    let class = setup
+        .world
+        .capital_ship_classes
+        .insert(crate::world::CapitalShipClass {
+            dat_id: DatId::new(0x1400_0003),
+            ..Default::default()
+        });
+    let made = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![crate::world::ShipInstance::new(class, 10, true)],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    // A new one that has already left is in hyperspace: not copied.
+    let gone = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    assert!(setup.movement.order(gone, chandrila, coruscant, 10));
+    day(&mut setup, &missions);
+    let copy = alliance_details(&setup, chandrila).unwrap();
+    let imperial: Vec<&FleetDetail> = copy
+        .fleets
+        .iter()
+        .filter(|fleet| !fleet.is_alliance)
+        .collect();
+    assert_eq!(imperial.len(), 1);
+    assert_eq!(imperial[0].serial, setup.world.fleet_serial(made));
+    assert_eq!(imperial[0].name, setup.world.fleet_name(made).unwrap());
+    assert!(imperial[0].ships.is_empty());
+    // Once only.
+    day(&mut setup, &missions);
+    assert_eq!(
+        alliance_details(&setup, chandrila)
+            .unwrap()
+            .fleets
+            .iter()
+            .filter(|fleet| !fleet.is_alliance)
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_fleet_in_hyperspace_is_not_in_its_systems_full_copy() {
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let moving = setup.world.insert_fleet(Fleet {
+        location: chandrila,
+        capital_ships: vec![],
+        fighters: vec![],
+        characters: vec![],
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    assert!(setup.movement.order(moving, chandrila, coruscant, 10));
+    let missions = crate::missions::MissionState::new();
+    let details = SystemDetails::of(
+        &setup.world,
+        &setup.movement,
+        &missions,
+        &setup.transport,
+        chandrila,
+    );
+    assert!(details.fleets.is_empty());
+    assert_eq!(details.last_serial, setup.world.fleet_serial(moving));
 }

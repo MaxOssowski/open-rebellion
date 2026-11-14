@@ -1903,6 +1903,13 @@ async fn main() {
             &mission_state,
             [&fog_alliance_state, &fog_empire_state],
         );
+        rebellion_core::object_views::seed_details_from_fog(
+            &mut world,
+            &movement_state,
+            &mission_state,
+            &troop_transport_state,
+            [&fog_alliance_state, &fog_empire_state],
+        );
         // port: a fixture's fog stands for what its side sees now, so its
         // copies of those systems start live, as before the copies; the
         // day's step freezes them once the clock runs and the side does not
@@ -4610,7 +4617,7 @@ async fn main() {
                 &mut world,
                 &movement_state,
                 &mission_state,
-                &troop_transport_state.squadrons,
+                &troop_transport_state,
             );
             rebellion_core::object_views::advance(
                 &mut world,
@@ -5334,6 +5341,13 @@ async fn main() {
                                     &mut world,
                                     &movement_state,
                                     &mission_state,
+                                    [&fog_alliance_state, &fog_empire_state],
+                                );
+                                rebellion_core::object_views::seed_details_from_fog(
+                                    &mut world,
+                                    &movement_state,
+                                    &mission_state,
+                                    &troop_transport_state,
                                     [&fog_alliance_state, &fog_empire_state],
                                 );
                                 economy_state = EconomyState::default();
@@ -6760,7 +6774,8 @@ async fn main() {
                                     fleet: entry.fleet(),
                                     ship: match entry {
                                         rebellion_render::fleet_window::FleetWindowEntry::Ship { index, .. } => Some(index),
-                                        rebellion_render::fleet_window::FleetWindowEntry::Fleet(_) => None,
+                                        rebellion_render::fleet_window::FleetWindowEntry::Fleet(_)
+                                        | rebellion_render::fleet_window::FleetWindowEntry::Copy { .. } => None,
                                     },
                                     name,
                                 });
@@ -7877,11 +7892,18 @@ async fn main() {
                     ) {
                         // A fleet in hyperspace is its destination's child
                         // (FUN_00556390), so its windows open there.
-                        if let Some(system) = rebellion_core::movement::listed_location(
-                            &movement_state,
-                            &world,
-                            entry.fleet(),
-                        ) {
+                        // A copied fleet opens at the system its copy is of.
+                        let copied = match entry {
+                            rebellion_render::fleet_window::FleetWindowEntry::Copy { system, .. } => Some(system),
+                            _ => None,
+                        };
+                        if let Some(system) = copied.or_else(|| {
+                            rebellion_core::movement::listed_location(
+                                &movement_state,
+                                &world,
+                                entry.fleet(),
+                            )
+                        }) {
                             sector_window_state.open_for_system(
                                 &world,
                                 system,

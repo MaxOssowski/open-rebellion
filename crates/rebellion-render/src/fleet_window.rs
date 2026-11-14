@@ -732,6 +732,8 @@ fn entry_object(world: &GameWorld, entry: FleetWindowEntry) -> ItemObject {
             index,
             roster: fleet_join::roster(world, fleet).unwrap_or_default(),
         },
+        // port: a copy has no live object; its menu acts on none.
+        FleetWindowEntry::Copy { .. } => ItemObject::Fleet(FleetKey::default()),
     }
 }
 
@@ -808,15 +810,82 @@ impl FleetWindowTab {
 pub enum FleetWindowEntry {
     Fleet(FleetKey),
     Ship { fleet: FleetKey, index: usize },
+    /// The `fleet`th other-side fleet of the viewing side's (`alliance`)
+    /// frozen copy of `system` (`SystemDetails`, `FUN_004f9a60`): what the
+    /// side saw then, though the fleet may have moved or died since.
+    Copy {
+        alliance: bool,
+        system: SystemKey,
+        fleet: usize,
+    },
 }
 
 impl FleetWindowEntry {
+    /// The live fleet; none (the null key) for a copy.
     #[must_use]
-    pub const fn fleet(self) -> FleetKey {
+    pub fn fleet(self) -> FleetKey {
         match self {
             Self::Fleet(fleet) | Self::Ship { fleet, .. } => fleet,
+            Self::Copy { .. } => FleetKey::default(),
         }
     }
+
+    /// The copied fleet a [`Self::Copy`] names.
+    #[must_use]
+    pub fn copy(self, world: &GameWorld) -> Option<&rebellion_core::object_views::FleetDetail> {
+        let Self::Copy {
+            alliance,
+            system,
+            fleet,
+        } = self
+        else {
+            return None;
+        };
+        let viewer = Faction::of_alliance(alliance);
+        let id = world.systems.get(system)?.dat_id;
+        world
+            .object_views
+            .system_details(viewer, id)?
+            .fleets
+            .iter()
+            .filter(|copy| copy.is_alliance != alliance)
+            .nth(fleet)
+    }
+}
+
+/// The viewing side's frozen copies of `system`'s other-side fleets, as
+/// entries (`FUN_004f2d10`, `FUN_004f9a60`); none while the side sees the
+/// system live.
+pub(crate) fn copy_entries(
+    world: &GameWorld,
+    fog: &FogState,
+    player: Faction,
+    system: SystemKey,
+) -> Vec<FleetWindowEntry> {
+    if crate::viewed_contents::frozen_extras(world, fog, player, system).is_none() {
+        return Vec::new();
+    }
+    let alliance = player == Faction::Alliance;
+    let Some(id) = world.systems.get(system).map(|value| value.dat_id) else {
+        return Vec::new();
+    };
+    let count = world
+        .object_views
+        .system_details(player, id)
+        .map_or(0, |details| {
+            details
+                .fleets
+                .iter()
+                .filter(|copy| copy.is_alliance != alliance)
+                .count()
+        });
+    (0..count)
+        .map(|fleet| FleetWindowEntry::Copy {
+            alliance,
+            system,
+            fleet,
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1206,6 +1275,7 @@ impl FleetWindowState {
         let name = match entry {
             FleetWindowEntry::Fleet(fleet) => world.fleet_name(fleet),
             FleetWindowEntry::Ship { fleet, index } => world.ship_name(fleet, index),
+            FleetWindowEntry::Copy { .. } => None,
         }
         .map(str::to_owned);
         let Some(text) = name else {
@@ -1361,7 +1431,7 @@ impl FleetWindowState {
                 .enumerate()
                 .filter_map(|(row, entry)| match entry {
                     FleetWindowEntry::Fleet(fleet) => Some((*fleet, row)),
-                    FleetWindowEntry::Ship { .. } => None,
+                    FleetWindowEntry::Ship { .. } | FleetWindowEntry::Copy { .. } => None,
                 })
                 .collect(),
             selected,
@@ -1468,7 +1538,7 @@ impl FleetWindowState {
                 Some(FleetWindowEntry::Ship { fleet, index }) => {
                     Some(ship_target(world, *fleet, *index).map(ItemTarget::Object))
                 }
-                Some(FleetWindowEntry::Fleet(_)) => Some(None),
+                Some(FleetWindowEntry::Fleet(_) | FleetWindowEntry::Copy { .. }) => Some(None),
                 None => None,
             }
         } else if in_rect(RIGHT_LIST, local) {
@@ -1721,6 +1791,8 @@ pub fn icon_side(
     system: SystemKey,
 ) -> (u8, usize) {
     let fleets = visible_fleets(world, movement, fog, player, system);
+    // The other side's copied fleets count too (FUN_004f2d10).
+    let copies = copy_entries(world, fog, player, system);
     let count = |side: u8| {
         fleets
             .iter()
@@ -1731,6 +1803,11 @@ pub fn icon_side(
                     .is_some_and(|value| fleet_side(value.is_alliance) == side)
             })
             .count()
+            + copies
+                .iter()
+                .filter_map(|entry| entry.copy(world))
+                .filter(|copy| fleet_side(copy.is_alliance) == side)
+                .count()
     };
     let own = faction_side(player);
     let other = match own {
@@ -1851,17 +1928,6 @@ fn visible_fleets(
             })
         })
         .collect();
-    // The other side's fleets of the player's frozen copy (FUN_004f2d10,
-    // FUN_004f9a60), in their creation order after the player's own.
-    if let Some(extras) = crate::viewed_contents::frozen_extras(world, fog, player, system) {
-        for copy in extras.fleets.iter().filter(|copy| copy.is_alliance != player_is_alliance) {
-            if let Some(fleet) = crate::viewed_contents::fleet_by_serial(world, copy.serial) {
-                if !fleets.contains(&fleet) {
-                    fleets.push(fleet);
-                }
-            }
-        }
-    }
     fleets
 }
 
@@ -1879,6 +1945,9 @@ fn left_entries(
     let joined = |fleet: FleetKey| {
         join_target(world, movement, fleet).is_some_and(|target| fleets.contains(&target))
     };
+    // The other side's fleets of the player's frozen copy (FUN_004f2d10,
+    // FUN_004f9a60) after the player's own: as seen then.
+    let copies = copy_entries(world, fog, player, window.system);
     for &fleet in fleets.iter().filter(|&&fleet| !joined(fleet)) {
         entries.push(FleetWindowEntry::Fleet(fleet));
         if window.expanded.contains(&fleet) {
@@ -1896,6 +1965,7 @@ fn left_entries(
             }
         }
     }
+    entries.extend(copies);
     entries
 }
 
@@ -2047,7 +2117,7 @@ fn drop_target(
                     value.capital_ships.iter().filter(|ship| ship.alive).count()
                 }),
                 FleetWindowEntry::Ship { .. } if picked_entries(window, entries).len() > 1 => 1,
-                FleetWindowEntry::Ship { .. } => 0,
+                FleetWindowEntry::Ship { .. } | FleetWindowEntry::Copy { .. } => 0,
             };
             if row < ships {
                 return Some(fleet_target(entry.fleet()));
@@ -2092,6 +2162,18 @@ fn tab_enabled(
                 FleetWindowTab::Fighters => flags & CONTENT_SQUADRONS != 0,
                 FleetWindowTab::Troops => flags & CONTENT_REGIMENTS != 0,
                 FleetWindowTab::Personnel => flags & CONTENT_PERSONNEL != 0,
+            };
+        }
+        // A copied fleet's tabs light by what the copy holds.
+        Some(entry @ FleetWindowEntry::Copy { .. }) => {
+            let Some(copy) = entry.copy(world) else {
+                return false;
+            };
+            return match tab {
+                FleetWindowTab::CapitalShips => !copy.ships.is_empty(),
+                FleetWindowTab::Fighters => !copy.fighters.is_empty(),
+                FleetWindowTab::Troops => !copy.troops.is_empty(),
+                FleetWindowTab::Personnel => !copy.characters.is_empty(),
             };
         }
         None => return false,
@@ -2373,6 +2455,78 @@ fn ship_item_row(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<usi
     Some(ships[..index].iter().filter(|ship| ship.alive).count())
 }
 
+/// A copied fleet's right list (`FleetDetail`): its ships with their
+/// damage, its squadrons, its regiments and its characters as the side saw
+/// them (`FUN_004f9a60`). port: the items open no menu.
+fn copy_items(
+    world: &GameWorld,
+    copy: &rebellion_core::object_views::FleetDetail,
+    tab: FleetWindowTab,
+) -> Vec<RightItem> {
+    let item = |mini, kind, label: String, damaged| RightItem {
+        mini,
+        kind,
+        label,
+        no_hyperdrive: false,
+        contents: 0,
+        damaged,
+        captive: false,
+        en_route: false,
+        object: None,
+    };
+    match tab {
+        FleetWindowTab::CapitalShips => copy
+            .ships
+            .iter()
+            .filter_map(|ship| {
+                let class = world
+                    .capital_ship_classes
+                    .values()
+                    .find(|class| class.dat_id == ship.class)?;
+                Some(item(
+                    capital_ship_mini_id(ship.class),
+                    MiniObject::Craft,
+                    ship.name.clone().unwrap_or_else(|| class.name.clone()),
+                    ship.hull < i32::try_from(class.hull).unwrap_or(i32::MAX),
+                ))
+            })
+            .collect(),
+        FleetWindowTab::Fighters => copy
+            .fighters
+            .iter()
+            .filter_map(|(class, count)| {
+                let fighter = world.fighter_classes.values().find(|value| value.dat_id == *class)?;
+                Some((0..*count).map(move |_| {
+                    item(fighter_mini_id(*class), MiniObject::Craft, fighter.name.clone(), false)
+                }))
+            })
+            .flatten()
+            .collect(),
+        FleetWindowTab::Troops => copy
+            .troops
+            .iter()
+            .filter_map(|class| {
+                let (mini, label) = troop_mini(*class)?;
+                Some(item(Some(mini), MiniObject::Regiment(*class), label.into(), false))
+            })
+            .collect(),
+        FleetWindowTab::Personnel => copy
+            .characters
+            .iter()
+            .filter_map(|id| {
+                let key = crate::viewed_contents::character_key(world, *id)?;
+                let character = &world.characters[key];
+                Some(item(
+                    character_picture(character),
+                    MiniObject::Character,
+                    character.name.clone(),
+                    false,
+                ))
+            })
+            .collect(),
+    }
+}
+
 fn right_items(
     world: &GameWorld,
     transport: &TroopTransportState,
@@ -2385,6 +2539,9 @@ fn right_items(
     // 1's six TIE Fighter squadrons, three Stormtrooper Regiments and
     // Veers. The port seats the fleet's units as `ship_cargo` does, and the
     // units on their way in as `ship_load` does.
+    if let Some(entry @ FleetWindowEntry::Copy { .. }) = selected {
+        return entry.copy(world).map_or_else(Vec::new, |copy| copy_items(world, copy, tab));
+    }
     if let Some(FleetWindowEntry::Ship { fleet, index }) = selected {
         let cargo = ship_load(world, transport, arrivals, fleet);
         let Some(own) = cargo.get(index) else {
@@ -3167,7 +3324,7 @@ fn draw_fleet_window(
         .iter()
         .filter_map(|entry| match entry {
             FleetWindowEntry::Fleet(fleet) => Some(*fleet),
-            FleetWindowEntry::Ship { .. } => None,
+            FleetWindowEntry::Ship { .. } | FleetWindowEntry::Copy { .. } => None,
         })
         .collect();
     let picked = picked_entries(window, &entries);
@@ -3462,6 +3619,53 @@ fn draw_fleet_window(
                             );
                         }
                     }
+                    FleetWindowEntry::Copy { .. } => {
+                        // A copied fleet's row, as the side saw it
+                        // (FUN_004f9a60): its side's art and its name.
+                        let copy = entry.copy(world);
+                        let side = copy.map_or(side, |copy| fleet_side(copy.is_alliance));
+                        paint_line(&list_painter, item, scale, (2.0, 6.0), (5.0, 6.0));
+                        for (target, item, chosen) in &targets {
+                            let item = *item;
+                            if *chosen {
+                                paint_native(
+                                    target,
+                                    ctx,
+                                    cache,
+                                    DllSource::Strategy,
+                                    side_art(FLEET_SELECTED, side),
+                                    item,
+                                    scale,
+                                    0.0,
+                                    0.0,
+                                );
+                            }
+                            for id in fleet_entry_layers(side, false, false) {
+                                paint_native(
+                                    target,
+                                    ctx,
+                                    cache,
+                                    DllSource::Strategy,
+                                    id,
+                                    item,
+                                    scale,
+                                    5.0,
+                                    5.0,
+                                );
+                            }
+                        }
+                        if let Some(copy) = copy {
+                            crate::theme::paint_gdi_text(
+                                &list_painter,
+                                logical_rect(item, scale, 7.0, 3.0, 84.0, 14.0),
+                                scale,
+                                10,
+                                &copy.name,
+                                egui::Color32::WHITE,
+                                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
+                            );
+                        }
+                    }
                     FleetWindowEntry::Ship { fleet, index } => {
                         let last = entries
                             .get(row + 1)
@@ -3641,14 +3845,7 @@ fn draw_fleet_window(
                         result.toggle = Some(*fleet);
                     }
                 }
-                let object = match *entry {
-                    FleetWindowEntry::Fleet(fleet) => ItemObject::Fleet(fleet),
-                    FleetWindowEntry::Ship { fleet, index } => ItemObject::Ship {
-                        fleet,
-                        index,
-                        roster: fleet_join::roster(world, fleet).unwrap_or_default(),
-                    },
-                };
+                let object = entry_object(world, *entry);
                 if let (true, Some(point)) = (
                     response.secondary_clicked(),
                     response.interact_pointer_pos(),
@@ -9172,30 +9369,84 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_frozen_copy_lists_the_other_sides_fleets_it_saw() {
+    fn a_frozen_copy_lists_the_other_sides_fleets_as_seen_after_they_have_died() {
         // FUN_004f2d10 reads the player's copy; FUN_004f9a60 froze it with
-        // an Imperial fleet in orbit: the Fleet window and its icon keep it
-        // after it has left for another system.
+        // an Imperial fleet in orbit; GameObj_SetReadyForDelete
+        // (FUN_004f82d0 -> FUN_004f6c70) keeps the copy until the side
+        // sees the system again. The Fleet window, its icon and the Fleet
+        // Finder list the fleet as seen, its ships and squadrons in the
+        // right list, after it has died.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
         let imperial = add_fleet(&mut world, system, false, 0);
+        let tie = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            name: "TIE Fighter".into(),
+            ..Default::default()
+        });
+        world.fleets[imperial].fighters.push(rebellion_core::world::FighterEntry {
+            class: tie,
+            count: 2,
+            carrier: None,
+        });
+        world.fleets[imperial].capital_ships[0].hull_current = 40;
+        // A second ship at full hull is not damaged (100 of 100).
+        let full = world.fleets[imperial].capital_ships[0].class;
+        world.fleets[imperial]
+            .capital_ships
+            .push(ShipInstance::new(full, 100, true));
+        let name = world.fleet_name(imperial).unwrap().to_owned();
         let missions = rebellion_core::missions::MissionState::new();
         let movement = MovementState::default();
+        let transport = TroopTransportState::default();
         let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
-        let extras = rebellion_core::object_views::SystemExtras::of(&world, &movement, &missions, system, false);
+        let extras =
+            rebellion_core::object_views::SystemExtras::of(&world, &movement, &missions, system, false);
+        let details = rebellion_core::object_views::SystemDetails::of(
+            &world, &movement, &missions, &transport, system,
+        );
         let id = world.systems[system].dat_id;
         world.object_views.alliance_systems.insert(id, copy);
         world.object_views.alliance_extras.insert(id, extras);
-        let elsewhere = world.systems.insert(world.systems[system].clone());
-        world.systems[elsewhere].dat_id = DatId::new(101);
-        world.fleets[imperial].location = elsewhere;
+        world.object_views.alliance_details.insert(id, details);
+        world.fleets.remove(imperial);
         world.systems[system].fleets.clear();
         let unseen = FogState::new(Faction::Alliance);
-        assert_eq!(
-            visible_fleets(&world, &movement, &unseen, Faction::Alliance, system),
-            [imperial]
-        );
+        let entries = copy_entries(&world, &unseen, Faction::Alliance, system);
+        let copied = FleetWindowEntry::Copy {
+            alliance: true,
+            system,
+            fleet: 0,
+        };
+        assert_eq!(entries, [copied]);
+        assert_eq!(copied.copy(&world).unwrap().name, name);
+        assert_eq!(copied.fleet(), FleetKey::default());
         assert_eq!(icon_side(&world, &movement, &unseen, Faction::Alliance, system), (2, 1));
-        // The Fleet Finder's Imperial tab lists it too.
+        let ships = right_items(&world, &transport, &[], Some(copied), FleetWindowTab::CapitalShips);
+        assert_eq!(ships.len(), 2);
+        assert!(ships[0].damaged);
+        assert!(!ships[1].damaged);
+        let fighters = right_items(&world, &transport, &[], Some(copied), FleetWindowTab::Fighters);
+        assert_eq!(
+            fighters.iter().map(|item| item.label.as_str()).collect::<Vec<_>>(),
+            ["TIE Fighter", "TIE Fighter"]
+        );
+        assert!(tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::CapitalShips));
+        assert!(tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::Fighters));
+        assert!(!tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::Troops));
+        assert!(!tab_enabled(&world, &transport, &[], Some(copied), FleetWindowTab::Personnel));
+        // The Fleet Finder's ships view lists the copied ship by class.
+        let ship_rows = crate::fleet_finder::rows(
+            &world,
+            &movement,
+            &unseen,
+            Faction::Alliance,
+            crate::fleet_finder::FinderMode::Ships,
+            crate::fleet_finder::FinderTab::Imperial,
+        );
+        assert_eq!(
+            ship_rows.iter().map(|row| row.name.as_str()).collect::<Vec<_>>(),
+            ["Transport", "Transport"]
+        );
         let rows = crate::fleet_finder::rows(
             &world,
             &movement,
@@ -9204,10 +9455,10 @@ pub(crate) mod tests {
             crate::fleet_finder::FinderMode::Fleets,
             crate::fleet_finder::FinderTab::Imperial,
         );
-        assert_eq!(rows.len(), 1);
+        assert_eq!(rows.iter().map(|row| row.name.as_str()).collect::<Vec<_>>(), [name.as_str()]);
         // Without the copy, nothing of the Empire's.
-        world.object_views.alliance_extras.clear();
-        assert!(visible_fleets(&world, &movement, &unseen, Faction::Alliance, system).is_empty());
+        world.object_views.alliance_details.clear();
+        assert!(copy_entries(&world, &unseen, Faction::Alliance, system).is_empty());
         assert!(crate::fleet_finder::rows(
             &world,
             &movement,

@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 119;
+pub const SAVE_VERSION: u32 = 120;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -90,7 +90,11 @@ pub const V117: u32 = 117;
 /// (`ObjectViews::alliance_extras`, `empire_extras`), its last fields.
 pub const V118: u32 = 118;
 
-/// Whether a save of `version` loads (the current one, or v116 to v118
+/// v119: the object views without the full fleet and mission copies
+/// (`ObjectViews::alliance_details`, `empire_details`), its last fields.
+pub const V119: u32 = 119;
+
+/// Whether a save of `version` loads (the current one, or v116 to v119
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -109,10 +113,17 @@ type ExtrasTail = (
     std::collections::HashMap<rebellion_core::ids::DatId, rebellion_core::object_views::SystemExtras>,
 );
 
+/// The two details maps v120 added at the end of `ObjectViews`, empty.
+type DetailsTail = (
+    std::collections::HashMap<rebellion_core::ids::DatId, rebellion_core::object_views::SystemDetails>,
+    std::collections::HashMap<rebellion_core::ids::DatId, rebellion_core::object_views::SystemDetails>,
+);
+
 /// An older body as a current one. `SaveState::object_views` is the last
 /// field, and each version's additions are its last fields: a v116 body
-/// takes an empty `ObjectViews`'s encoding, a v117 body four empty maps'
-/// (the system views and the extras), a v118 body two (the extras).
+/// takes an empty `ObjectViews`'s encoding, a v117 body six empty maps'
+/// (the system views, the extras and the details), a v118 body four (the
+/// extras and the details), a v119 body two (the details).
 ///
 /// # Errors
 /// Returns an error if the empty fields cannot be encoded.
@@ -124,8 +135,12 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
     } else if version == V117 {
         body.extend(bincode::serialize(&SystemViewsTail::default())?);
         body.extend(bincode::serialize(&ExtrasTail::default())?);
+        body.extend(bincode::serialize(&DetailsTail::default())?);
     } else if version == V118 {
         body.extend(bincode::serialize(&ExtrasTail::default())?);
+        body.extend(bincode::serialize(&DetailsTail::default())?);
+    } else if version == V119 {
+        body.extend(bincode::serialize(&DetailsTail::default())?);
     }
     Ok(body)
 }
@@ -169,11 +184,20 @@ pub fn decode_body(
     } else if version == V117 {
         rebellion_core::object_views::seed_systems_from_fog(&mut state.world, &state.movement, fogs);
     }
-    if version < SAVE_VERSION {
+    if version < V119 {
         rebellion_core::object_views::seed_extras_from_fog(
             &mut state.world,
             &state.movement,
             &state.missions,
+            fogs,
+        );
+    }
+    if version < SAVE_VERSION {
+        rebellion_core::object_views::seed_details_from_fog(
+            &mut state.world,
+            &state.movement,
+            &state.missions,
+            &state.troop_transport,
             fogs,
         );
     }
@@ -293,6 +317,10 @@ fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFinger
             if version <= V118 {
                 views.remove("alliance_extras");
                 views.remove("empire_extras");
+            }
+            if version <= V119 {
+                views.remove("alliance_details");
+                views.remove("empire_details");
             }
         }
     }
@@ -433,7 +461,7 @@ mod native {
     use super::{
         compute_mod_hash, compute_state_fingerprint, decode_body, version_loads, SaveMeta,
         SaveState, StateFingerprint, MAX_SAVE_SLOTS, MIGRATED_VERSION, SAVE_MAGIC, SAVE_VERSION,
-        STATE_FINGERPRINT_VERSION, V117, V118,
+        STATE_FINGERPRINT_VERSION, V117, V118, V119,
     };
     use std::io::{Read, Write};
     use std::path::{Path, PathBuf};
@@ -900,7 +928,7 @@ pub mod wasm_impl {
     ///
     /// A body without its metadata (an interrupted write) counts as no save.
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
-        for version in [SAVE_VERSION, V118, V117, MIGRATED_VERSION] {
+        for version in [SAVE_VERSION, V119, V118, V117, MIGRATED_VERSION] {
             if let (Some(body), Some(meta)) = (
                 storage_get(&versioned_slot_key(version, slot))?,
                 storage_get(&versioned_meta_key(version, slot))?,
@@ -1000,6 +1028,8 @@ pub mod wasm_impl {
             versioned_meta_key(V117, slot),
             versioned_slot_key(V118, slot),
             versioned_meta_key(V118, slot),
+            versioned_slot_key(V119, slot),
+            versioned_meta_key(V119, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1027,7 +1057,7 @@ pub mod wasm_impl {
     }
 
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
-        for version in [SAVE_VERSION, V118, V117, MIGRATED_VERSION] {
+        for version in [SAVE_VERSION, V119, V118, V117, MIGRATED_VERSION] {
             storage_remove(&versioned_slot_key(version, slot))?;
             storage_remove(&versioned_meta_key(version, slot))?;
         }
@@ -1524,7 +1554,8 @@ mod tests {
         assert!(state.object_views.alliance_systems.is_empty());
         assert!(state.object_views.empire_systems.is_empty());
         let tail = bincode::serialize(&SystemViewsTail::default()).unwrap().len()
-            + bincode::serialize(&ExtrasTail::default()).unwrap().len();
+            + bincode::serialize(&ExtrasTail::default()).unwrap().len()
+            + bincode::serialize(&DetailsTail::default()).unwrap().len();
         write_old(saves_dir, state, V117, tail)
     }
 
@@ -1533,8 +1564,17 @@ mod tests {
     fn write_v118(saves_dir: &std::path::Path, state: &SaveState) -> usize {
         assert!(state.object_views.alliance_extras.is_empty());
         assert!(state.object_views.empire_extras.is_empty());
-        let tail = bincode::serialize(&ExtrasTail::default()).unwrap();
-        write_old(saves_dir, state, V118, tail.len())
+        let tail = bincode::serialize(&ExtrasTail::default()).unwrap().len()
+            + bincode::serialize(&DetailsTail::default()).unwrap().len();
+        write_old(saves_dir, state, V118, tail)
+    }
+
+    /// `state` written as a v119 file: no details. `state` holds none.
+    fn write_v119(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert!(state.object_views.alliance_details.is_empty());
+        assert!(state.object_views.empire_details.is_empty());
+        let tail = bincode::serialize(&DetailsTail::default()).unwrap();
+        write_old(saves_dir, state, V119, tail.len())
     }
 
     /// `state` written as a `version` file whose body is `cut` bytes short.
@@ -1660,6 +1700,51 @@ mod tests {
         let extras = views.system_extras(Faction::Alliance, dat_id).expect("the fog's extras");
         assert!(!extras.live);
         assert_eq!(meta.state_fingerprint, compute_state_fingerprint(&loaded).unwrap());
+    }
+
+    #[test]
+    fn a_v119_save_keeps_its_extras_and_gains_full_fleet_and_mission_copies() {
+        // FUN_004f9a60: the saved extras stay; the fog's system gets its
+        // full copy (SystemDetails).
+        let saves_dir = tmp_dir("v119_migration");
+        let (mut state, _) = state_with_imperial_regiment();
+        let system = state.world.systems.keys().next().unwrap();
+        rebellion_core::object_views::seed_extras_from_fog(
+            &mut state.world,
+            &state.movement,
+            &state.missions,
+            [&state.fog_alliance, &state.fog_empire],
+        );
+        state.object_views = state.world.object_views.clone();
+        let dat_id = state.world.systems[system].dat_id;
+        let saved = state
+            .object_views
+            .system_extras(Faction::Alliance, dat_id)
+            .cloned()
+            .unwrap();
+        // An Imperial fleet arrives after the copy: re-seeding the extras
+        // would copy it.
+        state.world.insert_fleet(rebellion_core::world::Fleet {
+            location: system,
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        write_v119(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v119 save migrates");
+        let views = &loaded.world.object_views;
+        assert_eq!(views.system_extras(Faction::Alliance, dat_id), Some(&saved));
+        assert!(views.system_details(Faction::Alliance, dat_id).is_some());
+        assert_eq!(meta.state_fingerprint, compute_state_fingerprint(&loaded).unwrap());
+        // The v119 fingerprint leaves the details out.
+        assert_eq!(
+            fingerprint_as(&state, V119).unwrap(),
+            fingerprint_as(&loaded, V119).unwrap()
+        );
     }
 
     #[test]

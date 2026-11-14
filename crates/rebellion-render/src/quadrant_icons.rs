@@ -680,9 +680,9 @@ fn mission_side(contents: &SystemContents<'_>, missions: &MissionState) -> u8 {
             extras
                 .missions
                 .iter()
-                .filter(|(id, side)| {
-                    *side == other && missions.missions().iter().any(|mission| mission.id == *id)
-                })
+                // As seen then, though it may have ended since (the copy
+                // stays until the side sees the system: FUN_004f82d0).
+                .filter(|(_, side)| *side == other)
                 .map(|(id, _)| *id),
         );
     }
@@ -1071,10 +1071,11 @@ mod tests {
     }
 
     #[test]
-    fn a_frozen_copys_other_side_mission_lights_the_missions_icon_while_it_runs() {
+    fn a_frozen_copys_other_side_mission_lights_the_missions_icon_as_seen() {
         // FUN_004a1f60 over the player's copy (FUN_004f2d10, FUN_004f9a60):
-        // the Empire's mission aimed at the system wins the icon while the
-        // mission runs, its agent long gone from the player's sight.
+        // the Empire's mission aimed at the system wins the icon as seen,
+        // its agent gone from the player's sight, even after it has ended
+        // (GameObj_SetReadyForDelete FUN_004f82d0 keeps the copy).
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
         let agent = add_character(&mut world, system, false);
         let mut missions = MissionState::new();
@@ -1098,7 +1099,9 @@ mod tests {
             missions_side(world, &FogState::new(Faction::Alliance), missions, Faction::Alliance, system)
         };
         assert_eq!(side(&world, &missions), 2);
-        assert_eq!(side(&world, &MissionState::new()), 3);
+        assert_eq!(side(&world, &MissionState::new()), 2);
+        world.object_views.alliance_extras.clear();
+        assert_eq!(side(&world, &missions), 3);
     }
 
     #[test]

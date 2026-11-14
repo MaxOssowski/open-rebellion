@@ -7290,6 +7290,7 @@ fn fleet_load_observation(
             .map(|entry| match entry {
                 FleetWindowEntry::Fleet(_) => "fleet",
                 FleetWindowEntry::Ship { .. } => "ship",
+                FleetWindowEntry::Copy { .. } => "copy",
             }),
         tab: report.as_ref().map(|report| format!("{:?}", report.tab)),
         enabled: report.as_ref().map_or([false; 4], |report| report.enabled),
@@ -7719,6 +7720,7 @@ fn finder_entry(
         FleetWindowEntry::Ship { fleet, index } => {
             ("ship", fleet_ordinal(world, fleet), Some(index))
         }
+        FleetWindowEntry::Copy { fleet, .. } => ("copy", None, Some(fleet)),
     }
 }
 

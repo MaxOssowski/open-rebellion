@@ -631,20 +631,17 @@ fn mission_rows(
         }
     }
     // The other side's missions of the player's frozen copy (FUN_004f2d10,
-    // FUN_004f9a60) that still run. port: a copied mission shows through the
-    // live one; its members are not copied.
-    if let Some(extras) = crate::viewed_contents::frozen_extras(world, fog, player, system) {
-        let own = crate::fleet_window::faction_side(player);
-        for (id, side) in &extras.missions {
-            if *side != own {
-                sides.entry(*id).or_insert(*side);
-            }
-        }
+    // FUN_004f9a60), as seen then, though they may have ended since.
+    let copied = copied_missions(world, fog, player, system);
+    for copy in &copied {
+        sides.entry(copy.id).or_insert(copy.side);
     }
     sides
         .into_iter()
         .filter_map(|(id, side)| {
-            let kind = mission(missions, id)?.kind;
+            let kind = mission(missions, id).map(|value| value.kind).or_else(|| {
+                copied.iter().find(|copy| copy.id == id).map(|copy| copy.kind)
+            })?;
             kind.record_id()?;
             Some(MissionRow {
                 mission: id,
@@ -652,6 +649,73 @@ fn mission_rows(
                 picture: MISSION_MINI_BASE + kind_icon(kind, side_faction(side)),
                 label: kind_name(kind),
             })
+        })
+        .collect()
+}
+
+/// The other side's missions the player's frozen copy of `system` holds
+/// (`SystemDetails::missions`); none while the player sees it live.
+fn copied_missions(
+    world: &GameWorld,
+    fog: &FogState,
+    player: Faction,
+    system: SystemKey,
+) -> Vec<rebellion_core::object_views::MissionDetail> {
+    if crate::viewed_contents::frozen_extras(world, fog, player, system).is_none() {
+        return Vec::new();
+    }
+    let own = faction_side(player);
+    world
+        .systems
+        .get(system)
+        .and_then(|value| world.object_views.system_details(player, value.dat_id))
+        .map(|details| {
+            details
+                .missions
+                .iter()
+                .filter(|mission| mission.side != own)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A copied mission's member rows for `tab`, as the copy holds them: a
+/// character by its live object, a special force by its class.
+fn copied_member_rows(
+    world: &GameWorld,
+    copy: &rebellion_core::object_views::MissionDetail,
+    tab: MissionsTab,
+) -> Vec<MemberRow> {
+    use rebellion_core::object_views::MemberCopy;
+    let members = if tab == MissionsTab::Decoys {
+        &copy.decoys
+    } else {
+        &copy.team
+    };
+    members
+        .iter()
+        .filter_map(|member| match *member {
+            MemberCopy::Character(id) => {
+                let key = crate::viewed_contents::character_key(world, id)?;
+                let character = &world.characters[key];
+                Some(MemberRow {
+                    member: MissionMember::Character(key),
+                    mini: character_picture(character),
+                    label: character.name.clone(),
+                    marks: Vec::new(),
+                })
+            }
+            MemberCopy::SpecialForce(class) => {
+                let (mini, label) = special_force_mini(class)?;
+                Some(MemberRow {
+                    // port: a copied special force has no live key.
+                    member: MissionMember::SpecialForce(Default::default()),
+                    mini: Some(mini),
+                    label: label.into(),
+                    marks: Vec::new(),
+                })
+            }
         })
         .collect()
 }
@@ -668,6 +732,13 @@ fn member_rows(
     id: u64,
     tab: MissionsTab,
 ) -> Vec<MemberRow> {
+    // A copied mission lists the members the copy holds (FUN_004f9a60).
+    if let Some(copy) = copied_missions(world, fog, player, system)
+        .into_iter()
+        .find(|copy| copy.id == id)
+    {
+        return copied_member_rows(world, &copy, tab);
+    }
     let Some(value) = mission(missions, id) else {
         return Vec::new();
     };
@@ -2649,28 +2720,43 @@ mod tests {
     }
 
     #[test]
-    fn a_frozen_copy_lists_the_other_sides_missions_that_still_run() {
-        // FUN_004a1590 over the player's copy (FUN_004f2d10, FUN_004f9a60):
-        // the Empire's Diplomacy aimed at the system stays listed while it
-        // runs, its agent out of the player's sight.
+    fn a_frozen_copy_lists_the_other_sides_missions_as_seen_with_their_members() {
+        // FUN_004a1590 and FUN_004a1ba0 over the player's copy
+        // (FUN_004f2d10, FUN_004f9a60): the Empire's Diplomacy aimed at the
+        // system stays listed with its agent, as seen, after it has ended
+        // (GameObj_SetReadyForDelete FUN_004f82d0 keeps the copy until the
+        // side sees the system again).
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
         let agent = character(&mut world, system, "Agent", false);
+        world.characters[agent].dat_id = DatId::new(833);
         let mut missions = MissionState::new();
         let id = send(&mut missions, MissionKind::Diplomacy, false, &[agent], &[], system, None);
         let movement = rebellion_core::movement::MovementState::default();
+        let transport = rebellion_core::troop_transport::TroopTransportState::default();
         let copy = rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
         let extras =
             rebellion_core::object_views::SystemExtras::of(&world, &movement, &missions, system, false);
+        let details = rebellion_core::object_views::SystemDetails::of(
+            &world, &movement, &missions, &transport, system,
+        );
         let dat_id = world.systems[system].dat_id;
         world.object_views.alliance_systems.insert(dat_id, copy);
         world.object_views.alliance_extras.insert(dat_id, extras);
+        world.object_views.alliance_details.insert(dat_id, details);
         world.characters[agent].current_system = None;
         let unseen = FogState::new(Faction::Alliance);
-        let rows = mission_rows(&world, &unseen, &missions, Faction::Alliance, system);
+        let ended = MissionState::new();
+        let rows = mission_rows(&world, &unseen, &ended, Faction::Alliance, system);
         assert_eq!(rows.iter().map(|row| (row.mission, row.side)).collect::<Vec<_>>(), [(id, 2)]);
+        assert_eq!(rows[0].label, kind_name(MissionKind::Diplomacy));
+        let members = member_rows(&world, &unseen, &ended, Faction::Alliance, system, id, MissionsTab::Agents);
+        assert_eq!(members.iter().map(|row| row.label.as_str()).collect::<Vec<_>>(), ["Agent"]);
+        assert!(member_rows(&world, &unseen, &ended, Faction::Alliance, system, id, MissionsTab::Decoys)
+            .is_empty());
         // The Empire's own view holds no copy of its own mission.
         assert!(mission_rows(&world, &FogState::new(Faction::Empire), &missions, Faction::Empire, system)
             .is_empty());
-        assert!(mission_rows(&world, &unseen, &MissionState::new(), Faction::Alliance, system).is_empty());
+        world.object_views.alliance_details.clear();
+        assert!(mission_rows(&world, &unseen, &ended, Faction::Alliance, system).is_empty());
     }
 }

@@ -118,21 +118,6 @@ pub fn frozen_extras<'a>(
     world.object_views.system_extras(player, id)
 }
 
-/// The live fleet a copy names by its creation serial. port: the copy's
-/// fleet is shown through the live fleet while it exists (the port keeps
-/// no copies of a fleet's ships); a serial of 0 names none.
-#[must_use]
-pub fn fleet_by_serial(world: &GameWorld, serial: u64) -> Option<rebellion_core::ids::FleetKey> {
-    (serial != 0)
-        .then(|| {
-            world
-                .fleets
-                .keys()
-                .find(|key| world.fleet_serial(*key) == serial)
-        })
-        .flatten()
-}
-
 /// The live character a copy names by its id.
 #[must_use]
 pub fn character_key(world: &GameWorld, id: DatId) -> Option<rebellion_core::ids::CharacterKey> {

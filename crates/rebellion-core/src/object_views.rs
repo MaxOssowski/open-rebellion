@@ -136,6 +136,19 @@ pub struct ObjectViews {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub empire_extras: HashMap<DatId, SystemExtras>,
+    /// The Alliance's copies of each system's fleets and missions in full:
+    /// names, ships, squadrons, troops and members (v120).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub alliance_details: HashMap<DatId, SystemDetails>,
+    /// The Empire's (v120).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub empire_details: HashMap<DatId, SystemDetails>,
     /// port: the debug "see everything" mode: the windows show every live
     /// object of both sides and ignore the views and the fog. Not saved.
     #[serde(skip)]
@@ -210,6 +223,32 @@ impl ObjectViews {
         match side {
             Faction::Alliance => Some(&mut self.alliance_extras),
             Faction::Empire => Some(&mut self.empire_extras),
+            Faction::Neutral => None,
+        }
+    }
+
+    /// `side`'s full copy of system `id`'s fleets and missions.
+    #[must_use]
+    pub fn system_details(&self, side: Faction, id: DatId) -> Option<&SystemDetails> {
+        match side {
+            Faction::Alliance => self.alliance_details.get(&id),
+            Faction::Empire => self.empire_details.get(&id),
+            Faction::Neutral => None,
+        }
+    }
+
+    fn system_details_map(&self, side: Faction) -> Option<&HashMap<DatId, SystemDetails>> {
+        match side {
+            Faction::Alliance => Some(&self.alliance_details),
+            Faction::Empire => Some(&self.empire_details),
+            Faction::Neutral => None,
+        }
+    }
+
+    fn details_mut(&mut self, side: Faction) -> Option<&mut HashMap<DatId, SystemDetails>> {
+        match side {
+            Faction::Alliance => Some(&mut self.alliance_details),
+            Faction::Empire => Some(&mut self.empire_details),
             Faction::Neutral => None,
         }
     }
@@ -572,6 +611,163 @@ pub fn queue_push_both(world: &mut GameWorld, system: SystemKey) {
     }
 }
 
+/// A capital ship as a side's copy holds it: class, name and hull.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShipCopy {
+    pub class: DatId,
+    pub name: Option<String>,
+    pub hull: i32,
+}
+
+/// A fleet as a side's copy of its system holds it in full (`FUN_004f9a60`
+/// on the fleet and, by the inherited seen bit `FUN_004f7bf0`, on its
+/// ships, squadrons, regiments and characters).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FleetDetail {
+    pub serial: u64,
+    pub name: String,
+    pub is_alliance: bool,
+    /// Its living ships.
+    pub ships: Vec<ShipCopy>,
+    /// Its squadrons: each class's id and count.
+    pub fighters: Vec<(DatId, u32)>,
+    /// The regiments aboard, by class.
+    pub troops: Vec<DatId>,
+    /// The characters aboard, by id.
+    pub characters: Vec<DatId>,
+}
+
+/// A mission member as a copy holds it: a character by its id, a special
+/// force by its class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MemberCopy {
+    Character(DatId),
+    SpecialForce(DatId),
+}
+
+/// A mission as a side's copy of its target system holds it in full.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MissionDetail {
+    pub id: u64,
+    /// Its side, 1 or 2.
+    pub side: u8,
+    pub kind: crate::missions::MissionKind,
+    pub team: Vec<MemberCopy>,
+    pub decoys: Vec<MemberCopy>,
+}
+
+/// A side's full copy of a system's fleets and missions (v120), kept with
+/// its [`SystemExtras`]: what the side saw then, even after a fleet has
+/// moved or died. The original keeps a side's copy of an object until the
+/// side has seen it destroyed: `GameObj_SetReadyForDelete` (`FUN_004f82d0`
+/// -> `FUN_004f6da0` -> `FUN_004f6c70`) needs `+0x50` bit 3 (destroyed) on
+/// all three copies (`FUN_00539fd0(0..2)`), which a frozen copy gets only
+/// when it next syncs; only then `Event31A` (`FUN_0057bd00` ->
+/// `FUN_004f83b0`) removes the three copies (`FUN_0053f3a0` ->
+/// `FUN_00585c70`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemDetails {
+    pub fleets: Vec<FleetDetail>,
+    pub missions: Vec<MissionDetail>,
+    /// The last fleet serial the galaxy had given when the copy was taken:
+    /// a fleet made later in the system, while the copy is frozen, takes
+    /// an empty copy ([`advance_extras`]).
+    pub last_serial: u64,
+}
+
+impl SystemDetails {
+    /// `system`'s fleets and missions in full, as copied now. port: a
+    /// mission's side is its faction's side bits, 1 or 2 (`+0x24` bits
+    /// 6..7).
+    #[must_use]
+    pub fn of(
+        world: &GameWorld,
+        movement: &MovementState,
+        missions: &crate::missions::MissionState,
+        transport: &TroopTransportState,
+        system: SystemKey,
+    ) -> Self {
+        let member = |member: &crate::missions::MissionMember| match member {
+            crate::missions::MissionMember::Character(key) => world
+                .characters
+                .get(*key)
+                .map(|value| MemberCopy::Character(value.dat_id)),
+            crate::missions::MissionMember::SpecialForce(key) => world
+                .special_forces
+                .get(*key)
+                .map(|value| MemberCopy::SpecialForce(value.class_dat_id)),
+        };
+        let mut fleets: Vec<FleetDetail> = world
+            .fleets
+            .iter()
+            .filter(|(key, fleet)| fleet.location == system && !movement.is_in_transit(*key))
+            .map(|(key, fleet)| FleetDetail {
+                serial: world.fleet_serial(key),
+                name: world.fleet_name(key).unwrap_or_default().to_owned(),
+                is_alliance: fleet.is_alliance,
+                ships: fleet
+                    .capital_ships
+                    .iter()
+                    .filter(|ship| ship.alive)
+                    .filter_map(|ship| {
+                        Some(ShipCopy {
+                            class: world.capital_ship_classes.get(ship.class)?.dat_id,
+                            name: ship.name.clone(),
+                            hull: ship.hull_current,
+                        })
+                    })
+                    .collect(),
+                fighters: fleet
+                    .fighters
+                    .iter()
+                    .filter_map(|entry| {
+                        Some((world.fighter_classes.get(entry.class)?.dat_id, entry.count))
+                    })
+                    .collect(),
+                troops: transport
+                    .cargo(key)
+                    .iter()
+                    .filter_map(|troop| world.troops.get(*troop).map(|value| value.class_dat_id))
+                    .collect(),
+                characters: fleet
+                    .characters
+                    .iter()
+                    .filter_map(|character| {
+                        world.characters.get(*character).map(|value| value.dat_id)
+                    })
+                    .collect(),
+            })
+            .collect();
+        fleets.sort_by_key(|fleet| fleet.serial);
+        let mut copied: Vec<MissionDetail> = missions
+            .missions()
+            .iter()
+            .filter(|mission| mission.target_system == system)
+            .map(|mission| MissionDetail {
+                id: mission.id,
+                side: match mission.faction {
+                    crate::missions::MissionFaction::Alliance => 1,
+                    crate::missions::MissionFaction::Empire => 2,
+                },
+                kind: mission.kind,
+                team: mission.team.iter().filter_map(&member).collect(),
+                decoys: mission.decoys.iter().filter_map(&member).collect(),
+            })
+            .collect();
+        copied.sort_by_key(|mission| mission.id);
+        Self {
+            fleets,
+            missions: copied,
+            last_serial: world
+                .fleets
+                .keys()
+                .map(|key| world.fleet_serial(key))
+                .max()
+                .unwrap_or(0),
+        }
+    }
+}
+
 /// The day's fleet, mission and traveller copies (`FUN_004f9a60`): each
 /// system's extras follow its seen bit as [`compute_systems`] does; then
 /// each other-side unit in hyperspace that left a system the side sees for
@@ -586,8 +782,9 @@ pub fn advance_extras(
     world: &mut GameWorld,
     movement: &MovementState,
     missions: &crate::missions::MissionState,
-    squadrons: &crate::squadrons::SquadronTransits,
+    transport: &TroopTransportState,
 ) {
+    let squadrons = &transport.squadrons;
     for side in [Faction::Alliance, Faction::Empire] {
         let alliance = side == Faction::Alliance;
         let mut updates: Vec<(DatId, SystemExtras)> = Vec::new();
@@ -700,6 +897,75 @@ pub fn advance_extras(
                 }
             }
         }
+        // The full copies follow the extras (FUN_004f9a60 on each fleet and
+        // mission there).
+        let details: Vec<(DatId, SystemDetails)> = updates
+            .iter()
+            .filter_map(|(id, _)| {
+                let (key, _) = world
+                    .systems
+                    .iter()
+                    .find(|(_, value)| value.dat_id == *id)?;
+                Some((
+                    *id,
+                    SystemDetails::of(world, movement, missions, transport, key),
+                ))
+            })
+            .collect();
+        // A0 2026-11-14-stale-views/06-kothlis-fleet16-d374-montage: an
+        // Imperial fleet made in Kothlis after the Alliance last saw it
+        // shows in the frozen copy with all four of its tabs empty. A new
+        // object takes its side copies at once, frozen (FUN_0053f760:
+        // FUN_00540630(2)), with its container; its ships, unfinished then
+        // (+0x50 bit 2 clear), never sync into it (FUN_005404d0). port: a
+        // fleet with a serial above the copy's last, in orbit there, takes
+        // a copy with its name only; one that flew in from elsewhere does
+        // not (hyp: its container change does not reach a frozen copy).
+        let refreshed: std::collections::HashSet<DatId> =
+            details.iter().map(|(id, _)| *id).collect();
+        let mut made: Vec<(DatId, FleetDetail)> = Vec::new();
+        if let Some(map) = world.object_views.details_mut(side) {
+            map.extend(details);
+        }
+        if let Some(map) = world.object_views.system_details_map(side) {
+            for (key, fleet) in &world.fleets {
+                if fleet.is_alliance == alliance || movement.is_in_transit(key) {
+                    continue;
+                }
+                let Some(id) = world.systems.get(fleet.location).map(|value| value.dat_id) else {
+                    continue;
+                };
+                let serial = world.fleet_serial(key);
+                let Some(copy) = map.get(&id) else {
+                    continue;
+                };
+                if refreshed.contains(&id)
+                    || serial <= copy.last_serial
+                    || copy.fleets.iter().any(|known| known.serial == serial)
+                {
+                    continue;
+                }
+                made.push((
+                    id,
+                    FleetDetail {
+                        serial,
+                        name: world.fleet_name(key).unwrap_or_default().to_owned(),
+                        is_alliance: fleet.is_alliance,
+                        ships: Vec::new(),
+                        fighters: Vec::new(),
+                        troops: Vec::new(),
+                        characters: Vec::new(),
+                    },
+                ));
+            }
+        }
+        if let Some(map) = world.object_views.details_mut(side) {
+            for (id, fleet) in made {
+                if let Some(copy) = map.get_mut(&id) {
+                    copy.fleets.push(fleet);
+                }
+            }
+        }
         let Some(extras) = world.object_views.extras_mut(side) else {
             continue;
         };
@@ -722,6 +988,44 @@ pub fn advance_extras(
 /// the systems its fog shows or it sees (the v118 migration; a fixture's
 /// start), live or frozen by `FUN_004f9a60`.
 pub fn seed_extras_from_fog(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    missions: &crate::missions::MissionState,
+    fogs: [&FogState; 2],
+) {
+    seed_extras_only(world, movement, missions, fogs);
+}
+
+/// Seeds each side's full fleet and mission copies (`SystemDetails`) for
+/// the systems its fog shows or it sees (the v116 to v119 migrations; a new
+/// game's and a fixture's start), as copied now.
+pub fn seed_details_from_fog(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    missions: &crate::missions::MissionState,
+    transport: &TroopTransportState,
+    fogs: [&FogState; 2],
+) {
+    for fog in fogs {
+        let side = fog.faction;
+        let updates: Vec<(DatId, SystemDetails)> = world
+            .systems
+            .iter()
+            .filter(|(key, _)| system_seen(world, movement, side, *key) || fog.is_visible(*key))
+            .map(|(key, system)| {
+                (
+                    system.dat_id,
+                    SystemDetails::of(world, movement, missions, transport, key),
+                )
+            })
+            .collect();
+        if let Some(map) = world.object_views.details_mut(side) {
+            map.extend(updates);
+        }
+    }
+}
+
+fn seed_extras_only(
     world: &mut GameWorld,
     movement: &MovementState,
     missions: &crate::missions::MissionState,

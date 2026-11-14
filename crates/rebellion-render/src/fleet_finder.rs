@@ -201,17 +201,39 @@ pub fn rows(
     tab: FinderTab,
 ) -> Vec<FinderRow> {
     let player_is_alliance = player == Faction::Alliance;
-    // The other side's fleets the player's frozen copies hold, by serial
-    // (FUN_004f9a60).
-    let copied: std::collections::HashSet<u64> = world
-        .systems
-        .iter()
-        .filter_map(|(system, _)| crate::viewed_contents::frozen_extras(world, fog, player, system))
-        .flat_map(|extras| extras.fleets.iter())
-        .filter(|copy| copy.is_alliance != player_is_alliance)
-        .map(|copy| copy.serial)
-        .collect();
     let mut rows = Vec::new();
+    // The other side's fleets the player's frozen copies hold, as seen
+    // then (FUN_004f2d10, FUN_004f9a60): their names, or their ships'.
+    if tab.lists(!player_is_alliance) {
+        for (system, _) in &world.systems {
+            for entry in crate::fleet_window::copy_entries(world, fog, player, system) {
+                let Some(copy) = entry.copy(world) else {
+                    continue;
+                };
+                match mode {
+                    FinderMode::Fleets => rows.push(FinderRow {
+                        object: entry,
+                        name: copy.name.clone(),
+                    }),
+                    FinderMode::Ships => {
+                        for ship in &copy.ships {
+                            let Some(class) = world
+                                .capital_ship_classes
+                                .values()
+                                .find(|class| class.dat_id == ship.class)
+                            else {
+                                continue;
+                            };
+                            rows.push(FinderRow {
+                                object: entry,
+                                name: class.name.clone(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
     for (fleet, value) in &world.fleets {
         if !tab.lists(value.is_alliance) {
             continue;
@@ -221,7 +243,6 @@ pub fn rows(
         };
         if value.is_alliance != player_is_alliance
             && !opposing_contents_visible(world, fog, player, location)
-            && !copied.contains(&world.fleet_serial(fleet))
         {
             continue;
         }

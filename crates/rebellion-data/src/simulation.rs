@@ -854,7 +854,7 @@ pub fn run_simulation_tick(
         world,
         &states.movement,
         &states.missions,
-        &states.troop_transport.squadrons,
+        &states.troop_transport,
     );
     rebellion_core::object_views::advance(world, &states.troop_transport, &states.movement);
 
