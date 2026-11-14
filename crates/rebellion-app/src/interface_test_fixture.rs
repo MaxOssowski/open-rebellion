@@ -10003,6 +10003,10 @@ mod tests {
                         world,
                         &applied.manufacturing,
                         deliveries.en_route(),
+                        (
+                            primary,
+                            rebellion_core::manufacturing::ProductionArea::ConstructionYard
+                        ),
                         primary,
                         kind,
                         1,

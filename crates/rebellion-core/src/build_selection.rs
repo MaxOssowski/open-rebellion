@@ -285,11 +285,19 @@ fn facility_slot(kind: BuildableKind) -> Option<bool> {
 /// queued for `site` and on their way there count too. Each unit takes one
 /// slot: `FUN_005504d0` asks one per unit, and `FUN_00550eb0` writes the
 /// lowered room back (`FUN_0054fca0`, `FUN_0054ff00`).
+///
+/// The units of `ordering`, the manager (system and area) whose queue the
+/// order replaces, take no slot: `FUN_00552210` gives their room back
+/// first (`FUN_00552000` -> `FUN_00552dd0` in mode 0, which `FUN_0054fca0`
+/// adds where mode 1 subtracts), as Confirm scraps them (`FUN_0052a2c0`).
+/// hyp: the manager's `+0x24` bits `0x30`, which skip that
+/// (`FUN_005287f0`), are clear in a campaign.
 #[must_use]
 pub fn lacks_facility_room(
     world: &GameWorld,
     manufacturing: &ManufacturingState,
     en_route: &[Delivery],
+    ordering: (SystemKey, ProductionArea),
     site: SystemKey,
     kind: BuildableKind,
     count: u32,
@@ -322,6 +330,7 @@ pub fn lacks_facility_room(
     let queued = manufacturing
         .queues()
         .iter()
+        .filter(|(manager, _)| **manager != ordering)
         .flat_map(|((at, _), queue)| queue.items().iter().map(move |item| (*at, item)))
         .filter(|(at, item)| item.destination.unwrap_or(*at) == site)
         .filter_map(|(_, item)| facility_slot(item.kind));
@@ -370,7 +379,15 @@ pub fn estimate(
         )
         .filter(|_| {
             !exceeds_maintenance(maintenance, unallocated)
-                && !lacks_facility_room(world, manufacturing, en_route, destination, kind, count)
+                && !lacks_facility_room(
+                    world,
+                    manufacturing,
+                    en_route,
+                    (system, area),
+                    destination,
+                    kind,
+                    count,
+                )
         }),
         deployment: transit_days(world, kind, system, destination),
     }
@@ -797,6 +814,7 @@ mod tests {
             &world,
             &manufacturing,
             &[],
+            (away, ProductionArea::ConstructionYard),
             away,
             mine,
             1
@@ -806,6 +824,7 @@ mod tests {
             &world,
             &manufacturing,
             &[],
+            (away, ProductionArea::ConstructionYard),
             away,
             mine,
             1
@@ -814,6 +833,7 @@ mod tests {
             &world,
             &manufacturing,
             &[],
+            (away, ProductionArea::ConstructionYard),
             away,
             facility,
             1
@@ -823,6 +843,7 @@ mod tests {
             &world,
             &manufacturing,
             &[],
+            (away, ProductionArea::ConstructionYard),
             away,
             mine,
             1
@@ -863,6 +884,54 @@ mod tests {
             facility,
             2
         ));
+    }
+
+    // FUN_005385f0 runs FUN_00552210 on each ordering manager before it
+    // adds the new units: its products (manager +0x54 -> +0x18, copied by
+    // FUN_005287f0) go through FUN_00552000 -> FUN_00552dd0 with mode 0,
+    // and FUN_0054fca0 adds a mode-0 need back to the room (mode 1, the new
+    // unit's, subtracts it). Confirm scraps those products (FUN_0052a2c0),
+    // so their slots count as free for the order that replaces them.
+    #[test]
+    fn a_facility_order_takes_back_the_slots_of_the_units_it_replaces() {
+        let mut world = catalog();
+        let home = system(&mut world, 0);
+        let away = system(&mut world, 200);
+        yard(&mut world, home, 0x2a00_0003, true);
+        yard(&mut world, away, 0x2a00_0003, true);
+        // Energy 3 less the yard: two slots.
+        world.systems[home].total_energy = 3;
+        world.systems[away].total_energy = 9;
+        let facility = BuildableKind::ManufacturingFacility(FacilityBuild {
+            class: DatId::new(0x2a00_0003),
+            is_alliance: true,
+        });
+        let yards = ProductionArea::ConstructionYard;
+        let valid = |manufacturing: &ManufacturingState, count| {
+            estimate(
+                &world,
+                manufacturing,
+                &[],
+                home,
+                yards,
+                facility,
+                count,
+                true,
+                ROOMY,
+            )
+            .completion
+            .is_some()
+        };
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(home, QueueItem::new(facility, 10));
+        manufacturing.enqueue(home, QueueItem::new(facility, 10));
+        // Both slots are the band's own queue, which the order replaces.
+        assert!(valid(&manufacturing, 2));
+        assert!(!valid(&manufacturing, 3));
+        // Another manager's unit for home keeps its slot.
+        manufacturing.enqueue(away, QueueItem::new(facility, 10).delivered_to(home));
+        assert!(valid(&manufacturing, 1));
+        assert!(!valid(&manufacturing, 2));
     }
 
     #[test]
