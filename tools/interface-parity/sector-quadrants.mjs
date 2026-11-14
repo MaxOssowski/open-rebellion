@@ -47,7 +47,8 @@ const QUADRANTS_FACILITY = 119;
 // other side's, frozen in the player's copies as A0
 // 2026-11-14-stale-views shows Kothlis (OBJ-02-C010): two Stormtrooper and
 // one Army regiment, six squadrons, one shipyard, five refineries and five
-// mines, all but one refinery since gone from the live system.
+// mines, all but one regiment and one refinery since gone from the live
+// system.
 // QuadrantsStaleSeeEverything (124): the same with the debug "see
 // everything" mode on.
 const QUADRANTS_STALE = 124;
@@ -745,8 +746,7 @@ const cases = [
       const { window } = await openDefenses(page, setup, "second");
       assert.equal(window.side, faction.other, JSON.stringify(window));
       const [, regiments, squadrons, shields, batteries] = window.counts;
-      assert.deepEqual([regiments, shields, batteries], [3, 0, 0], JSON.stringify(window));
-      assert.ok(squadrons === 6 || squadrons === 0, JSON.stringify(window));
+      assert.deepEqual([regiments, squadrons, shields, batteries], [3, 6, 0, 0], JSON.stringify(window));
       return { counts: window.counts };
     },
   },
@@ -767,10 +767,22 @@ const cases = [
     },
   },
   {
-    name: "stale-see-everything",
+    name: "stale-see-everything-defenses",
     scenario: QUADRANTS_STALE_SEE_EVERYTHING,
     // port: the debug mode shows the live system, which has lost all but
-    // one refinery.
+    // one regiment and one refinery: one regiment, no squadron, shield or
+    // battery of its side (the frozen copy lists three regiments).
+    async run(page, faction, setup) {
+      const { window } = await openDefenses(page, setup, "second");
+      const [, regiments, squadrons, shields, batteries] = window.counts;
+      assert.deepEqual([regiments, squadrons, shields, batteries], [1, 0, 0, 0], JSON.stringify(window));
+      return { counts: window.counts };
+    },
+  },
+  {
+    name: "stale-see-everything-facilities",
+    scenario: QUADRANTS_STALE_SEE_EVERYTHING,
+    // port: the debug mode's System window lists the live refinery only.
     async run(page, faction, setup) {
       const [left, top] = quadrant(setup, "second", "system");
       await doubleClick(page, { x: Math.round(left) + 4, y: Math.round(top) + 9 });
@@ -778,10 +790,7 @@ const cases = [
         (o, dat) => (o.system_pages || []).some(([system]) => system === dat), setup.second_dat_id);
       const [, pages] = opened.system_pages.find(([system]) => system === setup.second_dat_id);
       assert.deepEqual(pages, [0, 0, 0, 1, 0], JSON.stringify(opened.system_pages));
-      const { window } = await openDefenses(page, setup, "second");
-      const [, regiments, squadrons, shields, batteries] = window.counts;
-      assert.deepEqual([regiments, squadrons, shields, batteries], [0, 0, 0, 0], JSON.stringify(window));
-      return { counts: window.counts, pages };
+      return { pages };
     },
   },
   {

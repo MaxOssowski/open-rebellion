@@ -1904,9 +1904,10 @@ fn place_stale_second(
     systems.insert(id, copy);
     extras_map.insert(id, extras);
     details_map.insert(id, details);
-    // The live system has since lost them all.
+    // The live system has since lost them all but one regiment and one
+    // refinery, so the debug mode has something of the side to show.
     let value = &mut world.systems[second];
-    for key in std::mem::take(&mut value.ground_units) {
+    for key in value.ground_units.split_off(1) {
         world.troops.remove(key);
     }
     // One refinery stays, so the live system still shows its facility
@@ -13213,7 +13214,7 @@ mod tests {
             assert_eq!(world.systems[second].production_facilities.len(), 1);
             let regiments = rebellion_render::viewed_contents::viewed_surface_regiments(world, viewer, second);
             assert_eq!(regiments.len(), 3);
-            assert!(world.systems[second].ground_units.is_empty());
+            assert_eq!(world.systems[second].ground_units.len(), 1);
             let details = views.system_details(viewer, id).unwrap();
             let last = details.fleets.last().unwrap();
             assert_eq!(last.is_alliance, !alliance);
