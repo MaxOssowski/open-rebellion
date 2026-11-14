@@ -5198,6 +5198,8 @@ fn object_menu_report<'a>(
                 | Scenario::QuadrantsFacility
                 | Scenario::QuadrantsStale
                 | Scenario::QuadrantsStaleSeeEverything
+                | Scenario::EnemyRegimentFrozen
+                | Scenario::EnemyRegimentAtRest
                 | Scenario::FleetWindowYavin
                 | Scenario::FleetWindowA0
                 | Scenario::BatteryStatus
@@ -8923,6 +8925,45 @@ mod tests {
             (report.target_screen_x, report.target_screen_y),
             (cell.x, cell.y)
         );
+    }
+
+    #[test]
+    fn a_frozen_regiments_menu_reports_its_status_row_without_a_target_planet() {
+        // The status-window gate's enemy-regiment-frozen case (b215: its
+        // menu never reported): the scenario opens no sector window, so the
+        // report targets no planet, as the Build Selection gates' do.
+        let mut world = diplomacy_world(Faction::Alliance);
+        let here = world.systems.keys().next().unwrap();
+        let second = world.systems[here].clone();
+        world.systems.insert(second);
+        let rect = egui_macroquad::egui::Rect::from_min_size(
+            egui_macroquad::egui::Pos2::ZERO,
+            egui_macroquad::egui::vec2(10.0, 10.0),
+        );
+        for scenario in [Scenario::EnemyRegimentFrozen, Scenario::EnemyRegimentAtRest] {
+            let menu = ObjectMenuState::new(
+                Some(MenuObject::ViewedTroop {
+                    alliance: true,
+                    id: rebellion_core::ids::DatId::new(0x1000_0001),
+                }),
+                OrderGates::default(),
+                (0, 0),
+            );
+            let report = object_menu_report(
+                request(scenario, CockpitFaction::Alliance),
+                (rect, None),
+                &menu,
+                &world,
+                &SectorWindowState::default(),
+                (
+                    &DefensesWindowState::default(),
+                    &SystemWindowState::default(),
+                    &FleetWindowState::default(),
+                ),
+            )
+            .expect("the menu reports");
+            assert!(report.status_window_row.is_some());
+        }
     }
 
     #[test]
