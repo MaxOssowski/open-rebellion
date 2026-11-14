@@ -381,6 +381,45 @@ there to no place. The row is "Name - Ship", "Name - System" or "Name -
 Location Unknown", without state or command words (port: the copy keeps
 none).
 
+### Display on a copied character (traced 2026-11-14)
+
+`FUN_00464890` case `0xc9` calls `FUN_00429440(view, +0x178)` and closes
+the Finder whatever it returns. `FUN_00429440` looks the id up in the
+player's side's copies (`FUN_004f2d10(+0x9c, id)`) and reads the copy's
+container (`FUN_004025b0`), so a copied character opens what its copy
+holds, never the live character's place:
+
+- a capital ship (`0x14..0x1b`): the ship's fleet, unless that fleet's
+  container is `0xf2`, gives the system (`FUN_004f26d0`); the sector window
+  opens on the side's copy of it (`FUN_00429ce0` -> `FUN_004f3970`), then
+  the Fleet window (kind 4) with the character chosen (vtable `+0x6c`);
+- a system (`0x90..0x97`): the copy's mission key `+0x68` (`FUN_0042d170`)
+  finds the side's copy of its mission (`FUN_004f3000`); one not hidden
+  (`FUN_00520b70` is 0) opens the Missions window (kind 11), else the
+  Defenses window (kind 10);
+- an abode (`0x98..0x9f`): nothing, return 0;
+- anything else, or none: the target system stays null (`FUN_004ece30`),
+  `FUN_004ece60` fails at `LAB_00429c3c`, nothing opens and it returns 1.
+
+port: `CopyPlace` (`personnel_finder.rs`): Fleet opens the system's Fleet
+window with the copied fleet chosen (the copy entry, not the character in
+it); System opens the Defenses window (a copy keeps no mission key, so
+never the Missions window); Nowhere opens nothing, and the Finder closes.
+
+### Characters on missions (traced 2026-11-14)
+
+A character on a mission at a system has the system as its container
+(`FUN_00429440`'s system branch reads its mission key there), so its copy
+follows the system's copy like any character on the planet. port: a member
+at its mission's target has `current_system` set
+(`missions.rs`), so `object_views::character_copies` already copies it at
+that system. Not ported: the copy's state words (" ( On Mission ) ",
+" ( Enroute ) "), the Missions window on Display, and a character seen
+leaving for an unseen system, whose copy the original freezes en route in
+its destination (`FUN_00556390`): the port's copy is left in no place by
+the origin's live rebuild ("Location Unknown"), while the destination's
+extras keep it as a traveller. No A0 capture shows that row.
+
 ## Open
 
 - The `+0x6c` field on each row item and its purpose.

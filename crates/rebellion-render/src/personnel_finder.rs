@@ -227,6 +227,22 @@ pub struct SfCount {
     pub all_usable: bool,
 }
 
+/// Where the player's copy of a character puts it, as `FUN_00429440` reads
+/// the copy's container (`FUN_004025b0`) for a Display.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyPlace {
+    /// Aboard a ship of a copied fleet: that system's Fleet window with the
+    /// copy chosen (kind 4).
+    Fleet(crate::fleet_window::FleetWindowEntry),
+    /// On a copied system: its Defenses window (kind 10). port: a copy
+    /// keeps no mission key, so never the Missions window.
+    System(SystemKey),
+    /// In no ship or system: nothing opens, though the Finder closes
+    /// (`FUN_00429440` leaves its target system null and returns 1;
+    /// `FUN_00464890` case `0xc9` closes after it).
+    Nowhere,
+}
+
 /// One list row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PersonnelFinderRow {
@@ -237,6 +253,9 @@ pub enum PersonnelFinderRow {
         location: String,
         state: String,
         system: Option<SystemKey>,
+        /// Where the player's copy of an other-side character puts it, when
+        /// the row shows that copy; none for a live row.
+        copy: Option<CopyPlace>,
     },
     /// A system (or fleet) with SpecForces counts (FUN_00465540).
     SpecForces {
@@ -472,8 +491,10 @@ pub fn character_rows_travelling(
             continue;
         }
         let mut at = character.current_system;
-        // The text of the player's copy of the character, when it shows one.
+        // The text and place of the player's copy of the character, when it
+        // shows one.
         let mut copy_text = None;
+        let mut copy_place = None;
         if character.is_alliance != player_is_alliance
             && !character
                 .current_system
@@ -504,6 +525,11 @@ pub fn character_rows_travelling(
                     .unwrap_or_else(|| "Location Unknown".to_owned());
                 // port: a copy keeps no state or command word.
                 copy_text = Some(format!("{} - {place}", character.name));
+                copy_place = Some(match at {
+                    None => CopyPlace::Nowhere,
+                    Some(system) => copied_fleet(world, player, system, character.dat_id)
+                        .map_or(CopyPlace::System(system), CopyPlace::Fleet),
+                });
             } else {
                 let Some(system) = copied.get(&character.dat_id) else {
                     continue;
@@ -530,10 +556,36 @@ pub fn character_rows_travelling(
             location,
             state,
             system: at,
+            copy: copy_place,
         });
     }
     rows.sort_by_cached_key(|row| row.display_name().to_ascii_lowercase());
     rows
+}
+
+/// The player's copied fleet at `system` that holds the character `id`, as
+/// a Fleet window entry (`FleetWindowEntry::Copy`), while the player sees
+/// `system` through its frozen copy.
+fn copied_fleet(
+    world: &GameWorld,
+    player: Faction,
+    system: SystemKey,
+    id: rebellion_core::ids::DatId,
+) -> Option<crate::fleet_window::FleetWindowEntry> {
+    let alliance = player == Faction::Alliance;
+    let details = world
+        .object_views
+        .system_details(player, world.systems.get(system)?.dat_id)?;
+    let fleet = details
+        .fleets
+        .iter()
+        .filter(|copy| copy.is_alliance != alliance)
+        .position(|copy| copy.characters.contains(&id))?;
+    Some(crate::fleet_window::FleetWindowEntry::Copy {
+        alliance,
+        system,
+        fleet,
+    })
 }
 
 /// Build the SpecForces view rows for `tab` (FUN_00464e10 view 2,
@@ -665,6 +717,9 @@ pub enum PersonnelFinderAction {
     },
     /// SpecForces fleet row: open the Fleet window.
     OpenFleet { system: SystemKey, fleet: FleetKey },
+    /// A copied character row: what its copy's container opens
+    /// ([`CopyPlace`]), never the live character's place.
+    OpenCopy(CopyPlace),
 }
 
 #[derive(Debug, Clone)]
@@ -1373,6 +1428,9 @@ fn action_for_row(
     tab: PersonnelTab,
 ) -> PersonnelFinderAction {
     match row {
+        PersonnelFinderRow::Character {
+            copy: Some(place), ..
+        } => PersonnelFinderAction::OpenCopy(*place),
         PersonnelFinderRow::Character { key, system, .. } => PersonnelFinderAction::OpenCharacter {
             character: *key,
             system: *system,
@@ -1886,6 +1944,68 @@ mod tests {
     }
 
     #[test]
+    fn display_on_a_copied_character_opens_its_copied_fleet_or_system_or_nothing() {
+        // FUN_00429440 on the side's copy (FUN_004f2d10): a ship container
+        // opens its fleet's system and the Fleet window (kind 4); a system
+        // container the Defenses window (kind 10); no ship or system leaves
+        // the target null, so nothing opens (FUN_00464890 case 0xc9 still
+        // closes the Finder). The live character's place never shows.
+        let mut galaxy = yaga();
+        let piett = galaxy.world.characters.insert(Character {
+            dat_id: DatId::new(0x3000_0011),
+            name: "Piett".into(),
+            is_alliance: false,
+            is_empire: true,
+            current_system: Some(galaxy.yaga),
+            ..default_character()
+        });
+        view_day(&mut galaxy);
+        galaxy.world.fleets[galaxy.alliance].location = galaxy.ghorman;
+        view_day(&mut galaxy);
+        let elsewhere = add_system(&mut galaxy.world, "Kuat");
+        galaxy.world.systems[elsewhere].dat_id = DatId::new(102);
+        galaxy.world.systems[elsewhere].control = ControlKind::Controlled(Faction::Empire);
+        galaxy.world.fleets[galaxy.imperial].location = elsewhere;
+        galaxy.world.characters[piett].current_system = Some(elsewhere);
+        view_day(&mut galaxy);
+        let actions = |galaxy: &Yaga| {
+            character_rows(
+                &galaxy.world,
+                &FogState::new(Faction::Alliance),
+                Faction::Alliance,
+                PersonnelTab::Imperial,
+            )
+            .iter()
+            .map(|row| action_for_row(row, &galaxy.world, PersonnelTab::Imperial))
+            .collect::<Vec<_>>()
+        };
+        // Rows in name order: Darth Vader, Piett.
+        assert_eq!(
+            actions(&galaxy),
+            [
+                PersonnelFinderAction::OpenCopy(CopyPlace::Fleet(
+                    crate::fleet_window::FleetWindowEntry::Copy {
+                        alliance: true,
+                        system: galaxy.yaga,
+                        fleet: 0,
+                    }
+                )),
+                PersonnelFinderAction::OpenCopy(CopyPlace::System(galaxy.yaga)),
+            ]
+        );
+        // Seen again without either: nothing opens.
+        galaxy.world.fleets[galaxy.alliance].location = galaxy.yaga;
+        view_day(&mut galaxy);
+        assert_eq!(
+            actions(&galaxy),
+            [
+                PersonnelFinderAction::OpenCopy(CopyPlace::Nowhere),
+                PersonnelFinderAction::OpenCopy(CopyPlace::Nowhere),
+            ]
+        );
+    }
+
+    #[test]
     fn a_fleet_carrying_the_tabs_sf_units_is_a_row_of_its_own() {
         // FUN_00464e10: after a system's own row, each fleet of the tab's
         // side there whose ships carry special forces gets a row
@@ -2312,6 +2432,7 @@ mod tests {
             location: "Yavin".into(),
             state: String::new(),
             system: Some(system),
+            copy: None,
         };
         assert_eq!(
             action_for_row(&char_row, &world, PersonnelTab::Alliance),

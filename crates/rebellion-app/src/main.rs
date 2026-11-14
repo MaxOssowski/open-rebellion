@@ -8041,6 +8041,22 @@ async fn main() {
                         PersonnelFinderAction::OpenFleet { system, fleet } => {
                             Some((system, FinderTarget::Fleet(fleet)))
                         }
+                        // FUN_00429440 on the player's copy of the
+                        // character: its copied fleet, its copied system,
+                        // or nothing.
+                        PersonnelFinderAction::OpenCopy(place) => {
+                            use rebellion_render::fleet_window::FleetWindowEntry;
+                            use rebellion_render::personnel_finder::CopyPlace;
+                            match place {
+                                CopyPlace::Fleet(entry @ FleetWindowEntry::Copy { system, .. }) => {
+                                    Some((system, FinderTarget::CopiedFleet(entry)))
+                                }
+                                CopyPlace::Fleet(_) | CopyPlace::Nowhere => None,
+                                CopyPlace::System(system) => {
+                                    Some((system, FinderTarget::Defenses))
+                                }
+                            }
+                        }
                     });
                     // A right-button release on a Finder opens the object
                     // menu with nothing selected (FUN_004ac5c0, FUN_00461740).
@@ -8124,6 +8140,22 @@ async fn main() {
                                             fleet,
                                         ),
                                     );
+                                }
+                            }
+                            FinderTarget::CopiedFleet(entry) => {
+                                if let Some(point) = sector_window_state.fleet_window_point(
+                                    &world,
+                                    cockpit_layout,
+                                    system,
+                                ) {
+                                    fleet_window_state.open(
+                                        &world,
+                                        system,
+                                        point,
+                                        cockpit_state.faction,
+                                        cockpit_layout,
+                                    );
+                                    fleet_window_state.select(system, entry);
                                 }
                             }
                         }
@@ -11976,6 +12008,8 @@ enum FinderTarget {
     Regiments,
     /// The Fleet window (kind 4) with the fleet selected.
     Fleet(rebellion_core::ids::FleetKey),
+    /// The Fleet window (kind 4) with a copied fleet selected.
+    CopiedFleet(rebellion_render::fleet_window::FleetWindowEntry),
     /// The Missions window (kind 11) showing the member's mission.
     Missions(rebellion_core::missions::MissionMember),
 }
