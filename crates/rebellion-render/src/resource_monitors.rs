@@ -7,6 +7,7 @@
 use egui_macroquad::egui;
 use rebellion_core::blockade::BlockadeState;
 use rebellion_core::dat::Faction;
+use rebellion_core::delivery::DeliveryState;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::production_cycle::ProductionState;
 use rebellion_core::side_resources::{maintenance_totals, MaintenanceTotals, MONITOR_MAX};
@@ -60,6 +61,7 @@ pub const fn monitor_rect(faction: CockpitFaction, monitor: ResourceMonitor) -> 
 fn side_totals(
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    deliveries: &DeliveryState,
     blockade: &BlockadeState,
     uprising: &UprisingState,
     faction: CockpitFaction,
@@ -68,9 +70,13 @@ fn side_totals(
         CockpitFaction::Alliance => Faction::Alliance,
         CockpitFaction::Empire => Faction::Empire,
     };
-    maintenance_totals(world, manufacturing, side, |system| {
-        blockade.is_blockaded(system) || uprising.is_uprising(system)
-    })
+    maintenance_totals(
+        world,
+        manufacturing,
+        deliveries.en_route(),
+        side,
+        |system| blockade.is_blockaded(system) || uprising.is_uprising(system),
+    )
 }
 
 /// The value the cockpit's side reads on its Maintenance monitor.
@@ -78,11 +84,20 @@ fn side_totals(
 pub fn maintenance_available(
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    deliveries: &DeliveryState,
     blockade: &BlockadeState,
     uprising: &UprisingState,
     faction: CockpitFaction,
 ) -> i32 {
-    side_totals(world, manufacturing, blockade, uprising, faction).available()
+    side_totals(
+        world,
+        manufacturing,
+        deliveries,
+        blockade,
+        uprising,
+        faction,
+    )
+    .available()
 }
 
 /// The maintenance the cockpit's side's new orders may still take, which
@@ -91,11 +106,20 @@ pub fn maintenance_available(
 pub fn maintenance_unallocated(
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    deliveries: &DeliveryState,
     blockade: &BlockadeState,
     uprising: &UprisingState,
     faction: CockpitFaction,
 ) -> i32 {
-    side_totals(world, manufacturing, blockade, uprising, faction).unallocated()
+    side_totals(
+        world,
+        manufacturing,
+        deliveries,
+        blockade,
+        uprising,
+        faction,
+    )
+    .unallocated()
 }
 
 /// The Maintenance monitor's text (`FUN_00429200`, command `0x14e`): the
@@ -345,7 +369,14 @@ mod tests {
         let blockade = BlockadeState::new();
         let mut uprising = UprisingState::new();
         let read = |uprising: &UprisingState, faction| {
-            maintenance_available(&world, &manufacturing, &blockade, uprising, faction)
+            maintenance_available(
+                &world,
+                &manufacturing,
+                &DeliveryState::new(),
+                &blockade,
+                uprising,
+                faction,
+            )
         };
         assert_eq!(read(&uprising, CockpitFaction::Alliance), 100);
         assert_eq!(read(&uprising, CockpitFaction::Empire), 50);
@@ -364,7 +395,14 @@ mod tests {
         // FUN_0052e970 reads the same capacity, less its allocated half;
         // nothing here charges upkeep.
         let free = |faction| {
-            maintenance_unallocated(&world, &manufacturing, &blockade, &uprising, faction)
+            maintenance_unallocated(
+                &world,
+                &manufacturing,
+                &DeliveryState::new(),
+                &blockade,
+                &uprising,
+                faction,
+            )
         };
         assert_eq!(free(CockpitFaction::Alliance), 50);
         assert_eq!(free(CockpitFaction::Empire), 50);

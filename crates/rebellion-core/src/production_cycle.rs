@@ -397,6 +397,7 @@ impl ProductionSystem {
         state: &mut ProductionState,
         world: &GameWorld,
         manufacturing: &ManufacturingState,
+        deliveries: &crate::delivery::DeliveryState,
         blocked: impl Fn(SystemKey) -> bool,
         modifier: impl Fn(SystemKey) -> i32,
         tick_events: &[TickEvent],
@@ -447,7 +448,9 @@ impl ProductionSystem {
                     cycle.allocated = 0;
                 }
 
-                let upkeep = maintenance_totals(world, manufacturing, side, &blocked).upkeep;
+                let upkeep =
+                    maintenance_totals(world, manufacturing, deliveries.en_route(), side, &blocked)
+                        .upkeep;
                 rebalance(&mut state.facilities, &mines, upkeep);
                 rebalance(&mut state.facilities, &refineries, upkeep);
 
@@ -924,6 +927,7 @@ mod tests {
                 state,
                 world,
                 &ManufacturingState::new(),
+                &crate::delivery::DeliveryState::new(),
                 |_| false,
                 |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],
@@ -1015,6 +1019,7 @@ mod tests {
                 state,
                 &world,
                 &ManufacturingState::new(),
+                &crate::delivery::DeliveryState::new(),
                 |_| false,
                 |system| if system == here { modifier } else { 100 },
                 &[TickEvent { tick }],
@@ -1204,6 +1209,7 @@ mod tests {
                 state,
                 &world,
                 &ManufacturingState::new(),
+                &crate::delivery::DeliveryState::new(),
                 |system| system == here,
                 |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],
@@ -1262,6 +1268,7 @@ mod tests {
                 state,
                 &world,
                 &ManufacturingState::new(),
+                &crate::delivery::DeliveryState::new(),
                 |_| false,
                 |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],
@@ -1297,6 +1304,7 @@ mod tests {
                 state,
                 &world,
                 &ManufacturingState::new(),
+                &crate::delivery::DeliveryState::new(),
                 |system| blocked && system == refineries,
                 |_| PRODUCTION_MODIFIER,
                 &[TickEvent { tick }],

@@ -259,6 +259,7 @@ impl AutoscrapSystem {
         world: &GameWorld,
         transport: &TroopTransportState,
         manufacturing: &ManufacturingState,
+        deliveries: &crate::delivery::DeliveryState,
         blocked: impl Fn(SystemKey) -> bool,
         tick_events: &[TickEvent],
         rolls: &[f64],
@@ -279,7 +280,9 @@ impl AutoscrapSystem {
         let mut rolls = rolls.iter().copied();
         let mut scrapped = Vec::new();
         for side in [Faction::Alliance, Faction::Empire] {
-            let over = maintenance_totals(world, manufacturing, side, &blocked).is_over_limit();
+            let over =
+                maintenance_totals(world, manufacturing, deliveries.en_route(), side, &blocked)
+                    .is_over_limit();
             let timer = state.timer(side);
             match (over, *timer) {
                 (false, _) => *timer = None,
@@ -481,6 +484,7 @@ mod tests {
             &f.world,
             &TroopTransportState::default(),
             &ManufacturingState::new(),
+            &crate::delivery::DeliveryState::new(),
             |_| false,
             &[TickEvent { tick }],
             &[roll, roll],

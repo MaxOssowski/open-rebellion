@@ -61,6 +61,7 @@ const MAX_STEPS: usize = 256;
 fn side_tallies(
     world: &GameWorld,
     mfg_state: &ManufacturingState,
+    deliveries: &crate::delivery::DeliveryState,
     uprisings: &crate::uprising::UprisingState,
     faction: AiFaction,
     galaxy: &crate::ai_records::Galaxy,
@@ -72,8 +73,13 @@ fn side_tallies(
                 .get(s)
                 .is_some_and(|sys| crate::blockade::BlockadeSystem::system_is_blockaded(world, sys))
     };
-    let totals =
-        crate::side_resources::maintenance_totals(world, mfg_state, faction.as_faction(), blocked);
+    let totals = crate::side_resources::maintenance_totals(
+        world,
+        mfg_state,
+        deliveries.en_route(),
+        faction.as_faction(),
+        blocked,
+    );
     let mut tallies = crate::ai_module1::Tallies::of(galaxy, totals.capacity(), totals.upkeep);
     tallies.special_upkeep = special_upkeep(world, faction);
     tallies
@@ -1130,6 +1136,7 @@ impl AISystem {
         state: &mut AIState,
         world: &GameWorld,
         mfg_state: &ManufacturingState,
+        deliveries: &crate::delivery::DeliveryState,
         mission_state: &MissionState,
         movement: &crate::movement::MovementState,
         economy: &crate::economy::EconomyState,
@@ -1213,7 +1220,7 @@ impl AISystem {
             uprisings,
             faction,
         };
-        let tallies = side_tallies(world, mfg_state, uprisings, faction, &galaxy);
+        let tallies = side_tallies(world, mfg_state, deliveries, uprisings, faction, &galaxy);
         // port: eight modules share the construction yards through the
         // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
         // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
@@ -10874,6 +10881,7 @@ mod tests {
             state,
             world,
             &ManufacturingState::new(),
+            &crate::delivery::DeliveryState::new(),
             &MissionState::new(),
             &crate::movement::MovementState::new(),
             &crate::economy::EconomyState::default(),
@@ -11367,7 +11375,15 @@ mod tests {
         let mfg = ManufacturingState::new();
         let mut uprisings = crate::uprising::UprisingState::default();
         let capacity = |world: &GameWorld, uprisings: &crate::uprising::UprisingState| {
-            side_tallies(world, &mfg, uprisings, AiFaction::Alliance, &galaxy).capacity
+            side_tallies(
+                world,
+                &mfg,
+                &crate::delivery::DeliveryState::new(),
+                uprisings,
+                AiFaction::Alliance,
+                &galaxy,
+            )
+            .capacity
         };
         assert_eq!(capacity(&world, &uprisings), 50);
         uprisings.active_uprisings.insert(

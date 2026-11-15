@@ -3,6 +3,7 @@
 //! (`ghidra/notes/side-resource-monitors.md`).
 
 use crate::dat::Faction;
+use crate::delivery::Delivery;
 use crate::ids::{DatId, SystemKey};
 use crate::manufacturing::{BuildableKind, ManufacturingState};
 use crate::world::GameWorld;
@@ -74,11 +75,14 @@ impl MaintenanceTotals {
 /// port: a facility, ship or unit exists in the world only once completed,
 /// so "usable" (`+0x50` bit 0) is every facility present, and the objects
 /// under construction (`FUN_0052a140` creates them at the order) are the
-/// queued items of the side's systems.
+/// queued items of the side's systems. A product travelling to its
+/// destination is an `en_route` delivery, charged to the side its delivery
+/// records.
 #[must_use]
 pub fn maintenance_totals(
     world: &GameWorld,
     manufacturing: &ManufacturingState,
+    en_route: &[Delivery],
     side: Faction,
     blocked: impl Fn(SystemKey) -> bool,
 ) -> MaintenanceTotals {
@@ -99,6 +103,11 @@ pub fn maintenance_totals(
             .fighter_classes
             .get(class)
             .map_or(0, |value| value.maintenance_cost)
+    };
+    let product_cost = |kind: BuildableKind| match kind {
+        BuildableKind::CapitalShip(class) => ship_cost(class),
+        BuildableKind::Fighter(class) => fighter_cost(class),
+        kind => kind.class_dat_id().map_or(0, class_cost),
     };
     let is_alliance = match side {
         Faction::Alliance => Some(true),
@@ -178,11 +187,17 @@ pub fn maintenance_totals(
             continue;
         }
         for item in queue.items() {
-            upkeep += match item.kind {
-                BuildableKind::CapitalShip(class) => ship_cost(class),
-                BuildableKind::Fighter(class) => fighter_cost(class),
-                kind => kind.class_dat_id().map_or(0, class_cost),
-            };
+            upkeep += product_cost(item.kind);
+        }
+    }
+
+    // A product en route is completed but stays created and not destroyed
+    // (`FUN_0052bee0` moves nothing), so it is existing and costs until it
+    // arrives (ghidra/notes/unfinished-products.md). Its side is the one
+    // its delivery records.
+    for delivery in en_route {
+        if delivery.side == side {
+            upkeep += product_cost(delivery.kind);
         }
     }
 
@@ -261,7 +276,7 @@ mod tests {
     }
 
     fn totals(world: &GameWorld, side: Faction) -> MaintenanceTotals {
-        maintenance_totals(world, &ManufacturingState::new(), side, |_| false)
+        maintenance_totals(world, &ManufacturingState::new(), &[], side, |_| false)
     }
 
     #[test]
@@ -312,6 +327,7 @@ mod tests {
         let alliance = maintenance_totals(
             &world,
             &ManufacturingState::new(),
+            &[],
             Faction::Alliance,
             |at| at == blocked,
         );
@@ -470,13 +486,70 @@ mod tests {
         }
         manufacturing.enqueue(there, QueueItem::new(BuildableKind::Troop(regiment), 10));
 
-        let alliance = maintenance_totals(&world, &manufacturing, Faction::Alliance, |_| false);
+        let alliance =
+            maintenance_totals(&world, &manufacturing, &[], Faction::Alliance, |_| false);
         assert_eq!(alliance.upkeep, 20 + 4 + 2 + 7);
         // The mine under construction is not usable yet, so it adds nothing
         // to the pool.
         assert_eq!(alliance.mine_capacity, 0);
-        let empire = maintenance_totals(&world, &manufacturing, Faction::Empire, |_| false);
+        let empire = maintenance_totals(&world, &manufacturing, &[], Faction::Empire, |_| false);
         assert_eq!(empire.upkeep, 2);
+    }
+
+    #[test]
+    fn a_product_en_route_is_charged_to_its_side() {
+        // FUN_0052bee0 completes the product and sets it en route without
+        // moving it; it stays created and not destroyed, so +0x50 bit 6
+        // (existing) holds and FUN_0052fff0 adds its class cost
+        // (ghidra/notes/unfinished-products.md).
+        let mut world = GameWorld::default();
+        let yard = system(&mut world, ControlKind::Controlled(Faction::Alliance));
+        let target = system(&mut world, ControlKind::Controlled(Faction::Alliance));
+        world.systems[target].x = 400;
+        let regiment = class(&mut world, 0x1000_0001, 2);
+        let cruiser = world.capital_ship_classes.insert(CapitalShipClass {
+            maintenance_cost: 20,
+            ..CapitalShipClass::default()
+        });
+        let wing = world.fighter_classes.insert(FighterClass {
+            maintenance_cost: 4,
+            ..FighterClass::default()
+        });
+        let mut deliveries = crate::delivery::DeliveryState::new();
+        let departures: Vec<crate::manufacturing::Departure> = [
+            BuildableKind::CapitalShip(cruiser),
+            BuildableKind::Fighter(wing),
+            BuildableKind::Troop(regiment),
+        ]
+        .into_iter()
+        .map(|kind| crate::manufacturing::Departure {
+            origin: yard,
+            destination: target,
+            tick: 1,
+            kind,
+            name: None,
+        })
+        .collect();
+        deliveries.depart(&world, &departures);
+        assert_eq!(deliveries.en_route().len(), 3);
+
+        let manufacturing = ManufacturingState::new();
+        let alliance = maintenance_totals(
+            &world,
+            &manufacturing,
+            deliveries.en_route(),
+            Faction::Alliance,
+            |_| false,
+        );
+        assert_eq!(alliance.upkeep, 20 + 4 + 2);
+        let empire = maintenance_totals(
+            &world,
+            &manufacturing,
+            deliveries.en_route(),
+            Faction::Empire,
+            |_| false,
+        );
+        assert_eq!(empire.upkeep, 0);
     }
 
     #[test]

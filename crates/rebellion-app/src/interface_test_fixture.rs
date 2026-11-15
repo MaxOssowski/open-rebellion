@@ -5696,7 +5696,7 @@ fn production_report(
         let is_alliance = request.faction == CockpitFaction::Alliance;
         let side = rebellion_core::dat::Faction::of_alliance(is_alliance);
         let unallocated =
-            rebellion_core::side_resources::maintenance_totals(world, manufacturing, side, |_| {
+            rebellion_core::side_resources::maintenance_totals(world, manufacturing, en_route, side, |_| {
                 false
             })
             .unallocated();
@@ -10760,6 +10760,7 @@ mod tests {
             let totals = rebellion_core::side_resources::maintenance_totals(
                 world,
                 &ManufacturingState::new(),
+                &[],
                 side,
                 |_| false,
             );
