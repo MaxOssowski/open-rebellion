@@ -681,7 +681,10 @@ async function runCopied(browser, base, faction) {
     const lost = imperial.rows.filter((row) => / - Location Unknown$/.test(row));
     const enroute = imperial.rows.filter((row) => / - [^()]+ \( Enroute \) $/.test(row));
     const busy = imperial.rows.filter((row) => / - [^()]+ \( On Mission \) $/.test(row));
-    const aboard = imperial.rows.filter((row) => !/ - Location Unknown$/.test(row) && !/\)/.test(row));
+    // The copy aboard keeps the Admiral's word it froze with (+0x96 via
+    // FUN_004f04f0; A0 2026-11-15-partial-cells r3-...-imperial-no-
+    // captives-d1258 6966a4fce5ca: "Griff - Gorgon ( Admiral )").
+    const aboard = imperial.rows.filter((row) => / - [^()]+ \( Admiral \) $/.test(row));
     assert.equal(lost.length, 1, JSON.stringify(imperial.rows));
     assert.equal(enroute.length, 1, JSON.stringify(imperial.rows));
     assert.equal(busy.length, 1, JSON.stringify(imperial.rows));
@@ -691,8 +694,8 @@ async function runCopied(browser, base, faction) {
       busy[0].replace(/^.* - /, "").replace(/ \(.*$/, ""), JSON.stringify(imperial.rows));
     // The copied ship's name, numbered by its class, with no state word
     // and not the fleet's name.
-    assert.match(aboard[0], /^[A-Za-z][A-Za-z' -]* - [A-Za-z][A-Za-z -]* \d+$/, aboard[0]);
-    assert.ok(!/ - Fleet \d+$/.test(aboard[0]), aboard[0]);
+    assert.match(aboard[0], /^[A-Za-z][A-Za-z' -]* - [A-Za-z][A-Za-z -]* \d+ \( Admiral \) $/, aboard[0]);
+    assert.ok(!/ - Fleet \d+ /.test(aboard[0]), aboard[0]);
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: label, status: "pass", steps };
   } catch (error) {

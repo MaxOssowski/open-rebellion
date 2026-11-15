@@ -2106,6 +2106,7 @@ fn place_copied_characters(
     let details = SystemDetails::of(world, movement, missions, troop_transport, at);
     let copied = character_copies(world, movement, viewer, at);
     let lost_id = world.characters[lost].dat_id;
+    let aboard_id = world.characters[aboard].dat_id;
     let travelling_id = world.characters[travelling].dat_id;
     let busy_id = world.characters[busy].dat_id;
     for key in [lost, travelling, busy] {
@@ -2152,6 +2153,18 @@ fn place_copied_characters(
     };
     states.insert(travelling_id, state(false, true));
     states.insert(busy_id, state(true, false));
+    // The copy aboard froze holding an Admiral's command (+0x96, kept by
+    // FUN_004f04f0 while frozen), which the live character has since lost:
+    // "Name - <ship> ( Admiral ) " (FUN_00465bb0, 0x8801).
+    let commands = if alliance {
+        &mut views.alliance_character_commands
+    } else {
+        &mut views.empire_character_commands
+    };
+    commands.insert(
+        aboard_id,
+        rebellion_core::character_command::CommandKind::Admiral,
+    );
 }
 
 /// The arrival day of the frozen copy in `EnemyRegimentFrozen`: A0
@@ -13756,7 +13769,7 @@ mod tests {
         assert_eq!(
             texts,
             [
-                "Darth Vader - Imperial Star Destroyer 1",
+                "Darth Vader - Imperial Star Destroyer 1 ( Admiral ) ",
                 "Piett - Location Unknown",
                 "Thrawn - System ( Enroute ) ",
                 "Veers - System ( On Mission ) ",
