@@ -61,6 +61,11 @@ const TARGET_NAME: (f32, f32, f32) = (37.0, 294.0, 185.0);
 /// A list item's name color, unselected and selected (list `+0xd8`/`+0xdc`,
 /// `FUN_00607ea0`).
 const ITEM_TEXT: egui::Color32 = egui::Color32::from_rgb(0x78, 0x78, 0x78);
+/// A list item's name font: the original's font 10, as the Defenses
+/// window's list labels (A0 2026-11-15-partial-cells/rescue-agents-tab-
+/// han-d763, sha256 b667575fbb6b: "Han Solo" under his mini, as tall as
+/// the Defenses window's names).
+const ITEM_FONT: u16 = 10;
 const ITEM_TEXT_SELECTED: egui::Color32 = egui::Color32::WHITE;
 /// A mission kind's name color in the box and its drop-down: the box's
 /// `+0x94`, white (`FUN_0060bed0`, set again by `FUN_0046a9c0`), which
@@ -334,6 +339,14 @@ pub enum MissionDialogAction {
     Encyclopedia,
 }
 
+/// A character target's portrait: `FUN_0042c3b0(.., 1, 1)` draws GOKRES
+/// `(class +0x30 & 0xfff)`, the mini's id less `0x4000`
+/// (`fleet-window.md`, "En route marks"); `None` for any other target.
+fn target_portrait(world: &GameWorld, target: MissionTargetPick) -> Option<u32> {
+    let character = world.characters.get(target.character?)?;
+    character_picture(character)?.checked_sub(0x4000)
+}
+
 /// The name of an object target, `None` for a system target.
 fn object_target_name(world: &GameWorld, target: MissionTargetPick) -> Option<String> {
     use crate::system_window::{defense_facility_mini, special_force_mini, troop_mini};
@@ -511,12 +524,14 @@ fn member_layers(world: &GameWorld, member: MissionMember, mini: u32) -> Vec<(Dl
 }
 
 /// Where a bitmap of `size` pixels lands when centered in `bounds` at
-/// `scale`: the original's `(box - size) / 2` offsets (`FUN_0046a9c0`).
+/// `scale`: the original's `(box - size) / 2` offsets (`FUN_0046a9c0`), in
+/// its own pixels, C's division truncating toward zero.
 fn centered(bounds: egui::Rect, size: egui::Vec2, scale: f32) -> egui::Rect {
+    let offset = |extent: f32, of: f32| ((extent / scale - of) / 2.0).trunc() * scale;
     egui::Rect::from_min_size(
         egui::pos2(
-            bounds.min.x + ((bounds.width() - size.x * scale) / 2.0).floor(),
-            bounds.min.y + ((bounds.height() - size.y * scale) / 2.0).floor(),
+            bounds.min.x + offset(bounds.width(), size.x),
+            bounds.min.y + offset(bounds.height(), size.y),
         ),
         size * scale,
     )
@@ -763,9 +778,28 @@ pub fn draw_mission_dialog(
                         scale,
                         KIND_TEXT,
                     );
-                    // An object target shows its name; port: its portrait
-                    // (FUN_0042c3b0(.., 1, 1)) is not drawn.
+                    // An object target shows its name over its picture: a
+                    // character its portrait (FUN_0042c3b0(.., 1, 1); A0
+                    // 2026-11-15-partial-cells/rescue-dialog-han-on-leia-
+                    // fleet90-d1428). port: other objects' pictures are not
+                    // drawn.
                     if let Some(name) = object_target_name(world, dialog.target) {
+                        if let Some(portrait) = target_portrait(world, dialog.target) {
+                            // The 80-high portrait is clipped to the 79-high
+                            // box control (A0 kinds2/50..55: the row under
+                            // the box keeps the dialog's ground).
+                            let (x, y, w, h) = TARGET_BOX;
+                            let boxed = painter.with_clip_rect(at(x, y, w, h));
+                            paint_centered(
+                                &boxed,
+                                ctx,
+                                cache,
+                                DllSource::Gokres,
+                                portrait,
+                                at(x, y, w, h),
+                                scale,
+                            );
+                        }
                         let (x, y, w) = TARGET_NAME;
                         crate::theme::paint_gdi_text(
                             &painter,
@@ -860,7 +894,7 @@ pub fn draw_mission_dialog(
                             list,
                             scale,
                             to_decoys,
-                            &egui::FontId::proportional((8.0 * scale).max(5.0)),
+                            ITEM_FONT,
                         );
                         if let Some(member) = result.clicked {
                             dialog.toggle(member);
@@ -1070,7 +1104,7 @@ fn draw_list(
     list: egui::Rect,
     scale: f32,
     decoys: bool,
-    font: &egui::FontId,
+    font: u16,
 ) -> ListResult {
     let mut result = ListResult::default();
     let list_painter = painter.with_clip_rect(list);
@@ -1112,15 +1146,18 @@ fn draw_list(
         } else {
             ITEM_TEXT
         };
-        list_painter.text(
-            egui::pos2(
-                item.center().x,
-                image.map_or(item.center().y, |rect| rect.max.y),
+        let top = image.map_or(item.center().y, |rect| rect.max.y);
+        crate::theme::paint_gdi_text(
+            &list_painter,
+            egui::Rect::from_min_max(
+                egui::pos2(item.min.x, top),
+                egui::pos2(item.max.x, item.max.y),
             ),
-            egui::Align2::CENTER_TOP,
-            name,
-            font.clone(),
+            scale,
+            font,
+            &name,
             color,
+            (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
         );
         let clip = item.intersect(list);
         let response = ui.interact(
@@ -1302,6 +1339,38 @@ mod tests {
                 target,
             })
         );
+    }
+
+    #[test]
+    fn a_character_target_shows_its_gokres_portrait() {
+        // FUN_0042c3b0(.., 1, 1) draws the portrait, GOKRES (class +0x30 &
+        // 0xfff), the mini's id less 0x4000 (fleet-window.md). A0
+        // 2026-11-15-partial-cells/rescue-dialog-han-on-leia-fleet90-d1428
+        // (sha256 44c8c052b951) shows captive Leia Organa's in the target
+        // box; Luke after Dagobah takes the Jedi Knight's 0x850.
+        let mut world = GameWorld::default();
+        let leia = world.characters.insert(Character {
+            name: "Leia Organa".into(),
+            dat_id: rebellion_core::ids::DatId::new(577),
+            is_major: true,
+            is_captive: true,
+            ..Character::default()
+        });
+        let luke = world.characters.insert(Character {
+            name: "Luke Skywalker".into(),
+            dat_id: rebellion_core::ids::DatId::new(0x242),
+            is_major: true,
+            dagobah_completed: true,
+            ..Character::default()
+        });
+        let pick = |character| MissionTargetPick {
+            system: SystemKey::default(),
+            character: Some(character),
+            object: None,
+        };
+        assert_eq!(target_portrait(&world, pick(leia)), Some(2_113));
+        assert_eq!(target_portrait(&world, pick(luke)), Some(0x850));
+        assert_eq!(target_portrait(&world, SystemKey::default().into()), None);
     }
 
     #[test]
@@ -2064,6 +2133,20 @@ mod tests {
 
         assert_eq!(rect.min, egui::pos2(56.0, 54.0));
         assert_eq!(rect.size(), egui::vec2(122.0, 50.0));
+        // C's division truncates toward zero: an 80-high portrait in the
+        // 79-high target box sits at its top, (79 - 80) / 2 = 0 (A0
+        // 2026-11-15-partial-cells/rescue-dialog-han-on-leia-fleet90-d1428,
+        // sha256 44c8c052b951: Leia's portrait from the box's y 211).
+        let target = egui::Rect::from_min_size(egui::pos2(51.0, 211.0), egui::vec2(165.0, 79.0));
+        assert_eq!(
+            centered(target, egui::vec2(80.0, 80.0), 1.0).min,
+            egui::pos2(93.0, 211.0)
+        );
+        let doubled = egui::Rect::from_min_size(egui::pos2(102.0, 422.0), egui::vec2(330.0, 158.0));
+        assert_eq!(
+            centered(doubled, egui::vec2(80.0, 80.0), 2.0).min,
+            egui::pos2(186.0, 422.0)
+        );
     }
 
     #[test]
