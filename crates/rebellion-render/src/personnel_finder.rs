@@ -531,10 +531,11 @@ pub fn character_rows_travelling(
                     .clone()
                     .or_else(|| at.map(|system| world.systems[system].name.clone()))
                     .unwrap_or_else(|| "Location Unknown".to_owned());
-                // The copy's state word, On Mission before Enroute, only
-                // with a place (FUN_00465bb0 jumps past the words without
-                // one). port: the copy keeps no Captured, Injured or command
-                // word.
+                // The copy's state word, On Mission before Enroute, then the
+                // command word its +0x96 held when it last synced
+                // (FUN_004ee350 -> FUN_004f04f0), only with a place
+                // (FUN_00465bb0 jumps past the words without one). port: the
+                // copy keeps no Captured or Injured word.
                 let state = world.object_views.character_state(player, character.dat_id);
                 let word = if state.on_mission {
                     Some("On Mission")
@@ -543,9 +544,16 @@ pub fn character_rows_travelling(
                 } else {
                     None
                 };
+                let command = command_word(
+                    world
+                        .object_views
+                        .character_command(player, character.dat_id),
+                );
                 let mut text = format!("{} - {place}", character.name);
-                if let (Some(word), Some(_)) = (word, at) {
-                    text.push_str(&format!(" ( {word} ) "));
+                if at.is_some() {
+                    for word in [word, command].into_iter().flatten() {
+                        text.push_str(&format!(" ( {word} ) "));
+                    }
                 }
                 copy_text = Some(text);
                 copy_place = Some(match at {
@@ -2114,6 +2122,80 @@ mod tests {
                 PersonnelFinderAction::OpenCopy(CopyPlace::System(kuat)),
                 PersonnelFinderAction::OpenCopy(CopyPlace::Nowhere),
                 PersonnelFinderAction::OpenCopy(CopyPlace::System(kuat)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_copied_row_keeps_the_command_word_its_copy_held_when_it_froze() {
+        // FUN_00464e10 hands FUN_00465bb0 the side's copy of the character
+        // (FUN_004f2ec0 with the window's side), and FUN_00465bb0 reads its
+        // +0x96 for 0x8802 Commander, 0x8801 Admiral, 0x8800 General after
+        // the state word. The master's setter FUN_004ee350 reaches a copy
+        // through FUN_004f04f0, which writes only while FUN_005404d0 holds:
+        // a frozen copy keeps its old word. A0 2026-11-15-partial-cells/r3-
+        // personnel-finder-imperial-no-captives-d1258 (6966a4fce5ca):
+        // "Brandei - Yaga Minor ( General )", "Griff - Gorgon ( Admiral )".
+        use rebellion_core::character_command::CommandKind;
+        use rebellion_core::object_views::{CharacterCopy, CharacterCopyState, SystemView};
+        let mut world = GameWorld::default();
+        let kuat = add_system(&mut world, "Kuat");
+        world.systems[kuat].control = ControlKind::Controlled(Faction::Empire);
+        let id = world.systems[kuat].dat_id;
+        let view = SystemView::of(&world, &world.systems[kuat], false);
+        world.object_views.alliance_systems.insert(id, view);
+        for (raw, name, at) in [
+            (0x3000_0031, "Brandei", Some(id)),
+            (0x3000_0032, "Griff", Some(id)),
+            (0x3000_0033, "Needa", None),
+        ] {
+            world.characters.insert(Character {
+                dat_id: DatId::new(raw),
+                name: name.into(),
+                is_alliance: false,
+                is_empire: true,
+                // The live character holds no command now.
+                command: CommandKind::None,
+                ..default_character()
+            });
+            world.object_views.alliance_characters.insert(
+                DatId::new(raw),
+                CharacterCopy {
+                    system: at,
+                    ship: None,
+                },
+            );
+            world
+                .object_views
+                .alliance_character_commands
+                .insert(DatId::new(raw), CommandKind::General);
+        }
+        world
+            .object_views
+            .alliance_character_commands
+            .insert(DatId::new(0x3000_0032), CommandKind::Admiral);
+        world.object_views.alliance_character_states.insert(
+            DatId::new(0x3000_0032),
+            CharacterCopyState {
+                on_mission: false,
+                hidden_mission: false,
+                enroute: true,
+            },
+        );
+        let rows = character_rows(
+            &world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Imperial,
+        );
+        let texts: Vec<_> = rows.iter().map(PersonnelFinderRow::display_name).collect();
+        assert_eq!(
+            texts,
+            [
+                "Brandei - Kuat ( General ) ",
+                "Griff - Kuat ( Enroute )  ( Admiral ) ",
+                // No container: no words at all (0x465cb5 -> 0x46606f).
+                "Needa - Location Unknown",
             ]
         );
     }

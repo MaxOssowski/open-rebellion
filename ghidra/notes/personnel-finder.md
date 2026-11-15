@@ -429,8 +429,30 @@ port (save v122): `object_views::CharacterCopyState` keeps On Mission (not
 for a captive), the mission's hidden flag and Enroute, taken from the live
 character when the copy is taken; a character the side saw leave for an
 unseen system (`advance_extras`' travellers) gets a copy in the destination
-with Enroute. Not kept: Captured, Injured and the command word. No A0
+with Enroute. Not kept: Captured and Injured (the command word is kept since v123,
+below). No A0
 capture shows a copied On Mission or Enroute row yet.
+
+### The command word of a copied row (traced 2026-11-15)
+
+`FUN_00464e10` (view 3) looks each row's id up with `FUN_004f2ec0(window
++0x154 -> +0x9c, id)`, the typed lookup into the viewing side's copies, and
+passes that copy to `FUN_00465bb0`, which reads the command word from the
+copy's own `+0x96` (1 `0x8802` Commander, 2 `0x8801` Admiral, 3 `0x8800`
+General), after the state word and only with a ship or system container.
+The master's setter `FUN_004ee350` writes `+0x96` and then calls
+`FUN_004f04f0` on copy 1 and copy 2 (`FUN_00539fd0`); `FUN_004f04f0`
+copies the master's word only when `FUN_005404d0(context +8)` holds, so a
+frozen copy keeps the word it held when it froze. A0 2026-11-15-partial-
+cells/r3-personnel-finder-imperial-no-captives-d1258 (sha256
+6966a4fce5ca, the Alliance's Imperial tab) lists "Brandei - Yaga Minor (
+General )" and "Griff - Gorgon ( Admiral )" beside rows in Location
+Unknown.
+
+port (save v123): `ObjectViews::alliance_character_commands` /
+`empire_character_commands` keep each copy's word, taken with the copy;
+a copy left in no place drops it. A copied row prints the state word, then
+the command word, each in " ( " and " ) ".
 
 ## Open
 

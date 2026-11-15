@@ -175,6 +175,19 @@ pub struct ObjectViews {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub empire_character_states: HashMap<DatId, CharacterCopyState>,
+    /// The Alliance's copies' command words (`+0x96`), by the character's
+    /// id (v123): a character absent here holds no command.
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub alliance_character_commands: HashMap<DatId, crate::character_command::CommandKind>,
+    /// The Empire's copies' command words (v123).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub empire_character_commands: HashMap<DatId, crate::character_command::CommandKind>,
     /// port: the debug "see everything" mode: the windows show every live
     /// object of both sides and ignore the views and the fog. Not saved.
     #[serde(skip)]
@@ -300,6 +313,36 @@ impl ObjectViews {
         }
         .copied()
         .unwrap_or_default()
+    }
+
+    /// The command word (`+0x96`) of `side`'s copy of the character `id`,
+    /// as it was when the copy last synced: the master's setter
+    /// (`FUN_004ee350`) reaches a copy through `FUN_004f04f0`, which writes
+    /// only when `FUN_005404d0` holds, so a frozen copy keeps its old word.
+    #[must_use]
+    pub fn character_command(
+        &self,
+        side: Faction,
+        id: DatId,
+    ) -> crate::character_command::CommandKind {
+        match side {
+            Faction::Alliance => self.alliance_character_commands.get(&id),
+            Faction::Empire => self.empire_character_commands.get(&id),
+            Faction::Neutral => None,
+        }
+        .copied()
+        .unwrap_or_default()
+    }
+
+    fn character_commands_mut(
+        &mut self,
+        side: Faction,
+    ) -> Option<&mut HashMap<DatId, crate::character_command::CommandKind>> {
+        match side {
+            Faction::Alliance => Some(&mut self.alliance_character_commands),
+            Faction::Empire => Some(&mut self.empire_character_commands),
+            Faction::Neutral => None,
+        }
     }
 
     fn character_states_mut(
@@ -855,7 +898,8 @@ fn record_characters(
     side: Faction,
     copies: Vec<(DatId, Vec<(DatId, CharacterCopy)>)>,
 ) {
-    let states: Vec<(DatId, CharacterCopyState)> = copies
+    use crate::character_command::CommandKind;
+    let states: Vec<(DatId, CharacterCopyState, CommandKind)> = copies
         .iter()
         .flat_map(|(_, list)| list.iter())
         .filter_map(|(id, _)| {
@@ -863,7 +907,11 @@ fn record_characters(
                 .characters
                 .values()
                 .find(|value| value.dat_id == *id)?;
-            Some((*id, CharacterCopyState::of(character, false)))
+            Some((
+                *id,
+                CharacterCopyState::of(character, false),
+                character.command,
+            ))
         })
         .collect();
     let Some(map) = world.object_views.characters_mut(side) else {
@@ -881,6 +929,17 @@ fn record_characters(
     for (_, list) in copies {
         map.extend(list);
     }
+    if let Some(map) = world.object_views.character_commands_mut(side) {
+        for id in &lost {
+            map.remove(id);
+        }
+        for (id, _, command) in &states {
+            map.remove(id);
+            if *command != CommandKind::None {
+                map.insert(*id, *command);
+            }
+        }
+    }
     if let Some(map) = world.object_views.character_states_mut(side) {
         for id in lost {
             map.remove(&id);
@@ -888,6 +947,7 @@ fn record_characters(
         map.extend(
             states
                 .into_iter()
+                .map(|(id, state, _)| (id, state))
                 .filter(|(_, state)| *state != CharacterCopyState::default()),
         );
     }
@@ -899,14 +959,20 @@ fn record_characters(
 /// Personnel Finder reads "Name - Destination ( Enroute ) "
 /// (`FUN_00465bb0`, `0x8744`).
 fn record_traveller(world: &mut GameWorld, side: Faction, id: DatId, to: DatId) {
-    let Some(state) = world
+    let Some((state, command)) = world
         .characters
         .values()
         .find(|value| value.dat_id == id)
-        .map(|character| CharacterCopyState::of(character, true))
+        .map(|character| (CharacterCopyState::of(character, true), character.command))
     else {
         return;
     };
+    if let Some(map) = world.object_views.character_commands_mut(side) {
+        map.remove(&id);
+        if command != crate::character_command::CommandKind::None {
+            map.insert(id, command);
+        }
+    }
     if let Some(map) = world.object_views.characters_mut(side) {
         map.insert(
             id,

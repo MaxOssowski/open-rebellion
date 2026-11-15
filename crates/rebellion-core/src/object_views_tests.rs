@@ -942,6 +942,94 @@ fn a_character_copied_on_a_mission_keeps_its_mission_bits_until_seen_again() {
 }
 
 #[test]
+fn a_characters_copy_keeps_the_command_word_it_held_when_it_froze() {
+    // FUN_004ee350 sets the master's +0x96 and syncs each copy through
+    // FUN_004f04f0, which writes only while FUN_005404d0 holds: a frozen
+    // copy keeps its old command word for FUN_00465bb0.
+    use crate::character_command::CommandKind;
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let mut missions = crate::missions::MissionState::new();
+    let brandei = DatId::new(0x3000_0001);
+    let key = setup.world.characters.insert(crate::world::Character {
+        dat_id: brandei,
+        is_empire: true,
+        current_system: Some(chandrila),
+        command: CommandKind::General,
+        ..Default::default()
+    });
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let command = |setup: &Setup| {
+        setup
+            .world
+            .object_views
+            .character_command(Faction::Alliance, brandei)
+    };
+    assert_eq!(command(&setup), CommandKind::General);
+    // Live, the copy follows a change.
+    setup.world.characters[key].command = CommandKind::Admiral;
+    day(&mut setup, &missions);
+    assert_eq!(command(&setup), CommandKind::Admiral);
+    // Frozen, it keeps the word.
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    setup.world.characters[key].command = CommandKind::None;
+    day(&mut setup, &missions);
+    assert_eq!(command(&setup), CommandKind::Admiral);
+    // Seen again with none, the copy has none.
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    assert_eq!(command(&setup), CommandKind::None);
+    // A traveller seen leaving takes its word with it, en route.
+    setup.world.characters[key].command = CommandKind::Commander;
+    day(&mut setup, &missions);
+    setup.world.characters[key].current_system = None;
+    setup.world.characters[key].command = CommandKind::Commander;
+    missions.push_transit(crate::missions::MemberTransit {
+        member: crate::missions::MissionMember::Character(key),
+        mission_id: 0,
+        to: coruscant,
+        arrival: 40,
+        abode: None,
+    });
+    day(&mut setup, &missions);
+    assert_eq!(command(&setup), CommandKind::Commander);
+}
+
+#[test]
+fn a_copy_left_in_no_place_drops_its_command_word() {
+    use crate::character_command::CommandKind;
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let missions = crate::missions::MissionState::new();
+    let griff = DatId::new(0x3000_0002);
+    let key = setup.world.characters.insert(crate::world::Character {
+        dat_id: griff,
+        is_empire: true,
+        current_system: Some(chandrila),
+        command: CommandKind::Admiral,
+        ..Default::default()
+    });
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    setup.world.characters[key].current_system = Some(coruscant);
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let views = &setup.world.object_views;
+    assert_eq!(
+        views.character(Faction::Alliance, griff),
+        Some(&CharacterCopy::default())
+    );
+    assert_eq!(
+        views.character_command(Faction::Alliance, griff),
+        CommandKind::None
+    );
+}
+
+#[test]
 fn seeding_extras_copies_each_system_in_the_sides_fog() {
     let mut setup = setup();
     let mut fog_alliance = FogState::new(Faction::Alliance);

@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 122;
+pub const SAVE_VERSION: u32 = 123;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -104,7 +104,12 @@ pub const V120: u32 = 120;
 /// its last fields.
 pub const V121: u32 = 121;
 
-/// Whether a save of `version` loads (the current one, or v116 to v121
+/// v122: the object views without the character copies' command words
+/// (`ObjectViews::alliance_character_commands`, `empire_character_commands`),
+/// its last fields.
+pub const V122: u32 = 122;
+
+/// Whether a save of `version` loads (the current one, or v116 to v122
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -155,6 +160,19 @@ type StatesTail = (
     >,
 );
 
+/// The two character copy command maps v123 added at the end of
+/// `ObjectViews`, empty.
+type CommandsTail = (
+    std::collections::HashMap<
+        rebellion_core::ids::DatId,
+        rebellion_core::character_command::CommandKind,
+    >,
+    std::collections::HashMap<
+        rebellion_core::ids::DatId,
+        rebellion_core::character_command::CommandKind,
+    >,
+);
+
 /// An older body as a current one. `SaveState::object_views` is the last
 /// field, and each version's additions are its last fields: a v116 body
 /// takes an empty `ObjectViews`'s encoding, a v117 body six empty maps'
@@ -185,6 +203,9 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
     }
     if (V117..=V121).contains(&version) {
         body.extend(bincode::serialize(&StatesTail::default())?);
+    }
+    if (V117..=V122).contains(&version) {
+        body.extend(bincode::serialize(&CommandsTail::default())?);
     }
     Ok(body)
 }
@@ -376,6 +397,10 @@ fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFinger
             if version <= V121 {
                 views.remove("alliance_character_states");
                 views.remove("empire_character_states");
+            }
+            if version <= V122 {
+                views.remove("alliance_character_commands");
+                views.remove("empire_character_commands");
             }
         }
     }
@@ -983,7 +1008,16 @@ pub mod wasm_impl {
     ///
     /// A body without its metadata (an interrupted write) counts as no save.
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
-        for version in [SAVE_VERSION, V121, V120, V119, V118, V117, MIGRATED_VERSION] {
+        for version in [
+            SAVE_VERSION,
+            V122,
+            V121,
+            V120,
+            V119,
+            V118,
+            V117,
+            MIGRATED_VERSION,
+        ] {
             if let (Some(body), Some(meta)) = (
                 storage_get(&versioned_slot_key(version, slot))?,
                 storage_get(&versioned_meta_key(version, slot))?,
@@ -1089,6 +1123,8 @@ pub mod wasm_impl {
             versioned_meta_key(V120, slot),
             versioned_slot_key(V121, slot),
             versioned_meta_key(V121, slot),
+            versioned_slot_key(V122, slot),
+            versioned_meta_key(V122, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1116,7 +1152,16 @@ pub mod wasm_impl {
     }
 
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
-        for version in [SAVE_VERSION, V121, V120, V119, V118, V117, MIGRATED_VERSION] {
+        for version in [
+            SAVE_VERSION,
+            V122,
+            V121,
+            V120,
+            V119,
+            V118,
+            V117,
+            MIGRATED_VERSION,
+        ] {
             storage_remove(&versioned_slot_key(version, slot))?;
             storage_remove(&versioned_meta_key(version, slot))?;
         }
@@ -1647,9 +1692,23 @@ mod tests {
             + states_tail()
     }
 
-    /// The length of the two empty character copy state maps v122 added.
+    /// The length of the two empty character copy state maps v122 added
+    /// and the two empty command maps v123 added.
     fn states_tail() -> usize {
-        bincode::serialize(&StatesTail::default()).unwrap().len()
+        bincode::serialize(&StatesTail::default()).unwrap().len() + commands_tail()
+    }
+
+    /// The length of the two empty character copy command maps v123 added.
+    fn commands_tail() -> usize {
+        bincode::serialize(&CommandsTail::default()).unwrap().len()
+    }
+
+    /// `state` written as a v122 file: no character copy commands. `state`
+    /// holds none.
+    fn write_v122(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert!(state.object_views.alliance_character_commands.is_empty());
+        assert!(state.object_views.empire_character_commands.is_empty());
+        write_old(saves_dir, state, V122, commands_tail())
     }
 
     /// `state` written as a v121 file: no character copy states. `state`
@@ -1924,6 +1983,49 @@ mod tests {
             fingerprint_as(&state, V121).unwrap(),
             fingerprint_as(&loaded, V121).unwrap()
         );
+    }
+
+    #[test]
+    fn a_v122_save_keeps_its_character_copies_and_gains_no_command_words() {
+        // v123 adds the copies' command words (+0x96, FUN_004f04f0); a v122
+        // copy loads without them.
+        let saves_dir = tmp_dir("v122_migration");
+        let (mut state, _) = state_with_imperial_regiment();
+        let vader = rebellion_core::ids::DatId::new(0x3000_0001);
+        let copy = rebellion_core::object_views::CharacterCopy {
+            system: Some(rebellion_core::ids::DatId::new(0x9000_0001)),
+            ship: None,
+        };
+        state
+            .object_views
+            .alliance_characters
+            .insert(vader, copy.clone());
+        write_v122(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v122 save migrates");
+        let views = &loaded.world.object_views;
+        assert_eq!(views.character(Faction::Alliance, vader), Some(&copy));
+        assert_eq!(
+            views.character_command(Faction::Alliance, vader),
+            rebellion_core::character_command::CommandKind::None
+        );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V122).unwrap(),
+            fingerprint_as(&loaded, V122).unwrap()
+        );
+        // The v122 fingerprint leaves the command words out.
+        let old = fingerprint_as(&state, V122).unwrap();
+        let current = fingerprint_as(&state, SAVE_VERSION).unwrap();
+        state.object_views.alliance_character_commands.insert(
+            vader,
+            rebellion_core::character_command::CommandKind::General,
+        );
+        assert_eq!(fingerprint_as(&state, V122).unwrap(), old);
+        assert_ne!(fingerprint_as(&state, SAVE_VERSION).unwrap(), current);
     }
 
     #[test]
