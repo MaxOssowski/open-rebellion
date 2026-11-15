@@ -912,6 +912,27 @@ pub fn apply(
         _ => {}
     }
 
+    // The Alliance's Rescue matches A0 2026-11-15-partial-cells/rescue-
+    // dialog-han-on-leia-fleet90-d1428 (sha256 44c8c052b951): Han Solo the
+    // agent, Leia Organa the prisoner. The scenario takes the first
+    // character as its agent and the second as its prisoner, so the two
+    // trade places with them.
+    if request.scenario == Scenario::RescueTargeting && player_is_alliance {
+        let named = |world: &GameWorld, name: &str| {
+            world
+                .characters
+                .iter()
+                .find(|(_, character)| character.name == name)
+                .map(|(key, _)| key)
+        };
+        for (index, name) in [(0, "Han Solo"), (1, "Leia Organa")] {
+            let slot = world.characters.keys().nth(index);
+            if let (Some(slot), Some(found)) = (slot, named(world, name)) {
+                swap_characters(world, slot, found);
+            }
+        }
+    }
+
     // The agent is the first character; for the Command scenario, the first
     // whose class may be an admiral (FUN_004ed1c0).
     let agent = world
@@ -2238,6 +2259,29 @@ fn place_frozen_enemy_regiment(
 /// there, so it fills the first cell of that system's personnel page
 /// (`FUN_004eec60` gives it the captor's side). The agent's Defenses window
 /// opens at the galaxy view's right edge, the prison's at its left edge.
+/// Trades the records of two characters, and their places in the fleets.
+fn swap_characters(
+    world: &mut GameWorld,
+    a: rebellion_core::ids::CharacterKey,
+    b: rebellion_core::ids::CharacterKey,
+) {
+    if a == b {
+        return;
+    }
+    let first = world.characters[a].clone();
+    let second = std::mem::replace(&mut world.characters[b], first);
+    world.characters[a] = second;
+    for fleet in world.fleets.values_mut() {
+        for key in &mut fleet.characters {
+            if *key == a {
+                *key = b;
+            } else if *key == b {
+                *key = a;
+            }
+        }
+    }
+}
+
 fn place_prisoner(
     request: FixtureRequest,
     world: &mut GameWorld,
@@ -9121,6 +9165,52 @@ mod tests {
         assert_eq!(target.captured_by, None);
         assert_eq!(target.current_system, Some(there));
         assert!(defenses.is_open(here) && defenses.is_open(there));
+    }
+
+    #[test]
+    fn the_alliance_rescue_sends_han_solo_for_a_captive_leia_organa() {
+        // A0 2026-11-15-partial-cells/rescue-dialog-han-on-leia-fleet90-
+        // d1428 (sha256 44c8c052b951): Han Solo's Rescue on captive Leia.
+        let mut world = diplomacy_world(Faction::Alliance);
+        let here = world.systems.keys().next().unwrap();
+        let mut second = world.systems[here].clone();
+        second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+        world.systems.insert(second);
+        for name in ["Bystander", "Han Solo", "Leia Organa"] {
+            world.characters.insert(rebellion_core::world::Character {
+                name: name.into(),
+                is_alliance: true,
+                recruited: true,
+                current_system: Some(here),
+                ..Default::default()
+            });
+        }
+        let mut defenses = DefensesWindowState::default();
+        apply(
+            request(Scenario::RescueTargeting, CockpitFaction::Alliance),
+            &mut world,
+            &mut GameMode::MainMenu,
+            &mut MissionFaction::Alliance,
+            &mut CockpitState::new(CockpitFaction::Alliance),
+            &mut GalaxyMapState::default(),
+            &mut MovementState::default(),
+            &mut ManufacturingState::default(),
+            &mut EconomyState::default(),
+            &mut MissionState::default(),
+            &mut BlockadeState::default(),
+            &mut SectorWindowState::default(),
+            &mut SystemWindowState::default(),
+            &mut FleetWindowState::default(),
+            &mut defenses,
+            &mut TroopTransportState::default(),
+            &mut rebellion_core::uprising::UprisingState::new(),
+        );
+        let mut keys = world.characters.keys();
+        let (agent, prisoner) = (keys.next().unwrap(), keys.next().unwrap());
+        assert_eq!(world.characters[agent].name, "Han Solo");
+        assert_eq!(world.characters[agent].current_system, Some(here));
+        assert_eq!(world.characters[prisoner].name, "Leia Organa");
+        assert!(world.characters[prisoner].is_captive);
     }
 
     #[test]

@@ -622,8 +622,102 @@ async function inspect(server, source, faction, scenario, executable) {
         comparisons.push({ label: "a0-rescue-buttons", different_pixels: region(30, 320, 230, 352) });
       }
     }
+    // OBJ-11-C013, the Alliance's Rescue against A0 2026-11-15-partial-
+    // cells (the dialog at (168, 38)); the fixture's agent is Han Solo and
+    // its prisoner Leia Organa, as in rescue-dialog-han-on-leia-fleet90-
+    // d1428 (44c8c052b951). Pixels where the content matches, the frame
+    // where the names differ; the regions under A0's pointer are left out.
+    let rescueA0 = null;
+    if (scenario.name === "rescue" && faction.name === "alliance") {
+      const a0Dir = path.join(root, ".artifacts/a0-vm/2026-11-15-partial-cells");
+      const a0 = (file) => cropDialog(fs.readFileSync(path.join(a0Dir, file)), origin);
+      const regionOf = (port, reference) => (x0, y0, x1, y1) => {
+        let differing = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const at = (y * port.width + x) * 4;
+            if ([0, 1, 2].some((c) => port.data[at + c] !== reference.data[at + c])) differing += 1;
+          }
+        }
+        return differing;
+      };
+      const press = async (x, y) => {
+        await page.mouse.move(origin.x + x, origin.y + y);
+        await frames(page);
+        await page.mouse.down();
+        await frames(page);
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        await frames(page);
+      };
+      rescueA0 = {};
+      const leia = regionOf(opened, a0("rescue-dialog-han-on-leia-fleet90-d1428-OBJ-11-C013.png"));
+      const icon = kindIcon.at;
+      rescueA0.leia_kind_icon = leia(icon.x, icon.y, icon.x + 130, icon.y + 64);
+      rescueA0.leia_buttons = leia(30, 320, 230, 352);
+      // Open (not asserted): A0 shows three black pixels at the portrait's
+      // top-left corner (57..58, 212..213) where the port keys the bitmap.
+      rescueA0.leia_portrait = leia(60, 214, 216, 290);
+      rescueA0.leia_target_frame = leia(28, 192, 60, 300);
+      const flowOpen = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+      rescueA0.target = flowOpen.target_character;
+      // The kind list (Missions at (101, 174)): Rescue alone (A0 rescue-
+      // kinds-list-one-item-d763, df49db0d184e).
+      await press(101 + 32, 174 + 9);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      const listed = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
+      fs.writeFileSync(path.join(directory, "rescue-kind-list.png"), PNG.sync.write(listed));
+      const list = regionOf(listed, a0("rescue-kinds-list-one-item-d763-OBJ-11-C013.png"));
+      // The item's icon left of the bar. Open (not asserted): the list's
+      // right column x 234 and bottom row y 291 are black in the port, the
+      // dialog's ground in A0, and the one-item thumb ends 4 pixels short of
+      // A0's.
+      rescueA0.list_icon = list(35, 203, 218, 291);
+      rescueA0.list_bar = list(218, 175, 236, 292);
+      // Choosing the row closes the list (rescue-chosen-list-closed-d763).
+      await press(135, 250);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      const closed = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
+      rescueA0.closed_kind_icon = regionOf(closed, a0("rescue-chosen-list-closed-d763-OBJ-11-C013.png"))(
+        icon.x, icon.y, icon.x + 130, icon.y + 64);
+      // The Agents tab (0x98 at (137, 20)): Han Solo listed (rescue-agents-
+      // tab-han-d763, b667575fbb6b).
+      await press(137 + 58, 20 + 16);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      const agents = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
+      fs.writeFileSync(path.join(directory, "rescue-agents.png"), PNG.sync.write(agents));
+      const tab = regionOf(agents, a0("rescue-agents-tab-han-d763-OBJ-11-C013.png"));
+      rescueA0.agents_headers = tab(0, 60, 259, 95);
+      rescueA0.agents_portrait = tab(28, 105, 95, 135);
+      rescueA0.agents_lists = tab(0, 95, 259, 318);
+      rescueA0.agents_buttons = tab(30, 320, 230, 352);
+      // The check button (at (100, 320)) launches the Rescue (rescue-
+      // launched-han-gone-from-yavin-d763, fc76a97a15e3).
+      await press(100 + 33, 320 + 16);
+      await page.waitForFunction(() => window.__openRebellionInterfaceMissionFlow?.dialog_open === false,
+        null, { timeout: 10_000 });
+      const launched = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+      rescueA0.launched = launched.missions;
+      fs.writeFileSync(path.join(directory, "rescue-launched-screen.png"),
+        await page.screenshot({ animations: "disabled" }));
+      console.log(JSON.stringify({ rescue_a0: rescueA0 }));
+      // The kind icon, buttons, portrait, the closed list's icon, the agents
+      // page's headers, Han's mini and buttons every pixel A0's; the names
+      // (the accepted text deviation) and A0's pointer are left out.
+      assert.deepEqual(
+        [rescueA0.leia_kind_icon, rescueA0.leia_buttons, rescueA0.leia_portrait, rescueA0.list_icon,
+          rescueA0.closed_kind_icon, rescueA0.agents_headers, rescueA0.agents_portrait,
+          rescueA0.agents_buttons],
+        [0, 0, 0, 0, 0, 0, 0, 0], JSON.stringify(rescueA0));
+      assert.equal(rescueA0.target, "Leia Organa");
+      // Begin Mission files the Rescue on Leia and closes the dialog.
+      assert.deepEqual(rescueA0.launched, [["Rescue", "Leia Organa", null]], JSON.stringify(rescueA0));
+    }
     let cancelled = null;
-    if (targeting) {
+    if (targeting && !rescueA0) {
       comparisons.push(targeting.cursorCheck);
       // Cancel (0x15, the right bottom button at (170, 320)) closes the
       // dialog and starts nothing (FUN_0046c3c0; A0 menus3/61, 62).
@@ -652,6 +746,7 @@ async function inspect(server, source, faction, scenario, executable) {
       ...(targeting ? { object_menu: targeting.menu, target_pointer: targeting.pointer, cancelled } : {}),
       ...(kindIcon ? { kind_icon: kindIcon } : {}),
       ...(kindList ? { kind_list: kindList } : {}),
+      ...(rescueA0 ? { rescue_a0: rescueA0 } : {}),
       comparisons,
       requests,
       errors,
