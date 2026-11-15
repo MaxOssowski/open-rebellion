@@ -33,10 +33,8 @@ not state outright.
   clear Completed bit, not a state bit.
 - **Where it sits.** In its destination's container from the order on:
   a capital ship in the target system's bit-1 spare fleet
-  (`ship-deployment-fleet.md`); hyp: a regiment or facility in the system
-  itself, a squadron aboard a ship with room or on the planet (A0
-  `pending-facility/23-tab0` shows an A-wing under construction on Pzob's
-  Fighter Squadrons page, so the planet is one of its containers). The
+  (`ship-deployment-fleet.md`); a regiment, squadron, special force or
+  facility in the target system itself ("Settled", below). The
   manufacturing manager keeps it in its queue (`+0x54 -> +0x18`) and
   accepts it as the current product while it is created and not completed,
   destroyed or en route (`FUN_00528890`).
@@ -72,7 +70,7 @@ only.
 | Battle result (`FUN_0040c780`) | the same objects again (`planet-squadrons-in-battle.md`) | No (mode 1). |
 | Retreat, gravity well (`FUN_00516730` output 1) | enemy fleets `FUN_004ffef0(system, 1, side)`, their ships `FUN_00502e30(fleet, 1, side)` | No. |
 | Retreat, a unit that can move (output 2) | viewer fleets `FUN_004ffef0(system, 1, side)` and their ships `FUN_00502e30(fleet, 1, side)`, slot `+0x34` != 0; then planet squadrons `FUN_00503a50(system, 1, side)` | No: a fleet holding only unfinished ships is not Usable, so it is not walked; a mixed fleet is found through its finished ships. |
-| Retreat, the destination (output 3) | `FUN_005545e0` -> `FUN_005571c0` -> the unit's `vt74`. For a fleet, `Fleet_vt74` (`FUN_004fe0d0`) passes "check Completed" only when `(+0x58 & 6) == 0` (not a spare); a capital ship (`CapShip_vt74`, `FUN_00500ac0`) always passes it. `FUN_00553410` then posts `0x20` for a clear Completed bit. | The unit is the fleet, whose own Completed bit is set by `FUN_004fe630` once it holds any Existing member, and which is skipped when it is a spare. So a fleet's unfinished members do not raise `0x20` through the unit check. **Open:** see "FUN_005513a0" below. |
+| Retreat, the destination (output 3) | `FUN_005545e0` -> `FUN_005571c0` -> the unit's `vt74`. For a fleet, `Fleet_vt74` (`FUN_004fe0d0`) passes "check Completed" only when `(+0x58 & 6) == 0` (not a spare); a capital ship (`CapShip_vt74`, `FUN_00500ac0`) always passes it. `FUN_00553410` then posts `0x20` for a clear Completed bit. | The unit is the fleet, whose own Completed bit is set by `FUN_004fe630` once it holds any Existing member, and which is skipped when it is a spare. So a fleet's unfinished members do not raise `0x20` through the unit check, and the candidate walk does not either ("Settled", below). |
 | Fleet Usable (`Fleet_vt84`, `FUN_004fe540`) | members mode 3, needs one Completed and not EnrouteActive | Not counted toward Usable. |
 | Fleet mobile (`Fleet_vt38`, `FUN_004fda10`) and speed (`FUN_004fd900`) | members mode 3, Completed and not EnrouteActive | Not counted: a fleet of only unfinished ships cannot move; a mixed fleet moves at its finished ships' speed. |
 | Capital ship as a mover (`CapShip_vt74`) | the ship itself | Refused, code `0x20`. Squadrons and regiments do not call `FUN_00553410` through `vt74` (its only `vt74` callers are Fleet, CapShip and System), matching A0 `pending-facility/24-awing-menu`: an unfinished A-wing's Move is white. |
@@ -82,35 +80,103 @@ only.
 | Status window (`FUN_0044a470` and the fleet/ship rows, `status-window.md`) | the object | "Under Construction" (34647) while Completed is clear. |
 | The enemy's view copy (`FUN_004f9a60`) | the object | The owner's copy is always live. The other side's copy is live only with the side's seen bit **and** Completed **and** not en route, so the enemy's copy of an unfinished product stays frozen (`per-side-object-views.md`). |
 
+## Settled 2026-11-15 (Stage A)
+
+### `FUN_005513a0` does not refuse a candidate for an unfinished member
+
+- **Its receiver and argument** (disassembly `0x557265..0x55727b`):
+  `FUN_005571c0` builds a leg checker at `[esp+0x34]` (`FUN_00551060`),
+  sets it up with `FUN_005511d0` (the unit's side, the order `0x204`, or
+  `0x241` for a character, `FUN_00551100`), and calls `FUN_005513a0` on it
+  (ECX) with a copy of its own `param_2` (EBX, the candidate's key). So the
+  checker's `+0xc` is not a key: it is the checker's status pair, and
+  `+0x10 == -1` is "no refusal yet". The argument is the candidate.
+- **What it walks.** The candidate object, its system (`FUN_00552ff0` ->
+  `FUN_0050c640`), the system's container, every fleet there
+  (`FUN_004ffe70(system, 4)`) and every ship of each fleet
+  (`FUN_00502db0(fleet, 4)`). For each it runs `FUN_00552d10` ->
+  `FUN_00550700`.
+- **What `FUN_00550700` computes.** For each of nine family rows
+  (`FUN_0054f5b0`: `0x14..0x18` capital ships, `0x18..0x1c` Death Stars,
+  `0x1c..0x20` squadrons, `0x20..0x30` facilities, `0x2c..0x2d`, ...) it
+  asks the object's `vt74` (may it take a child of that family for this
+  side and order) and `vt78` (its room). The answer goes into a local
+  status (`[esp+0x40]`), which is copied into the row's entry and appended
+  to the checker's capacity table (`FUN_00520580`, `FUN_0054fae0` on
+  `[esp+0x78]`). It does not write the checker's status `+0xc`.
+- **So** an unfinished capital ship's `0x20` (`CapShip_vt74`) only marks
+  that ship as no container for any family in the table. The planner
+  (`FUN_00551630` -> `FUN_00552300`) then picks containers from that table:
+  a fleet unit goes to the system itself, which never asks the ships. The
+  candidate is accepted or refused on the checker's own status, which the
+  members' rows leave alone. **An unfinished member does not disable
+  Retreat.** EVT-02-C008's Sluis Van case is left with the hidden
+  CC-7700 (or another gravity-well ship) as its candidate cause.
+
+### Containers of a regiment, squadron and special-force product
+
+`FUN_00552300` (the planner) scores, keeping the first with no error
+(`FUN_0054fbb0`):
+1. the target itself (`FUN_00552b10`);
+2. for a system target (`0x90..0x98`), the side's bit-1 spare (bit 2 for
+   route kind `0x270`);
+3. while an error remains, the ships of the side's **usable** fleets there
+   (`FUN_004ffef0(system, 1, side)`, `FUN_00502e30(fleet, 1, side)`).
+   For a fleet target (`0x08..0x10`), its usable ships (mode 1).
+
+A system's room (`System_vt78`, `FUN_00507750`) accepts regiments
+(`0x10..0x14`), squadrons (`0x1c..0x20`), characters and special forces
+(`0x30..0x40`), `0x40..0x80` and `0xa0..0xb0` with no limit
+(`*param_5 = 1`), facilities (`0x20..0x30`) up to the system's energy
+(`FUN_00509650`/`FUN_00509660` less those present), and refuses capital
+ships (`*param_4 = 0`). So a regiment, squadron or special-force product
+ordered for a system lives **in that system**, never in a fleet or aboard
+a ship; only capital ships go into the spare. This matches A0
+`pending-facility/23-tab0` (an A-wing under construction on Pzob's planet
+page). Because step 3 walks mode 1, an unfinished ship is never chosen as
+a carrier.
+
+### A moving fleet carries its unfinished members
+
+- The Move's per-object execute `FUN_00556390` asks the object's slot
+  `+0x38` (mobile). For a fleet that needs a member Completed and not
+  EnrouteActive (`FUN_004fda10`); the fleet then changes container through
+  slot `+0xa8` (`FUN_004f8630` -> `FUN_004f6fd0`). Its own container-change
+  hook (`Fleet_vtf4`, `FUN_004ff570`) only clears the spare bits
+  (`FUN_004fe2a0`, `FUN_004fe310`); no code splits members off. The
+  unfinished ships stay its children and go with it.
+- They are not Deployed, so `FUN_004f8240` gives them no en-route bit
+  while the fleet travels.
+- On completion `FUN_0052bee0` compares the yard's location with the
+  product's (by then the fleet's), and sets EnrouteActive when they differ:
+  the finished ship then makes its own trip to its fleet.
+- Inference: a fleet holding only unfinished ships is not mobile and its
+  speed is 0 (`FUN_004fd900`), so its Move leg is refused
+  (`move-order.md`, "the fleet cannot enter hyperspace").
+
+### Moving an unfinished squadron or regiment
+
+`FUN_00556390`: an object whose slot `+0x38` is 0 changes container at once
+through slot `+0xa8`, with no transit bit. A squadron's or regiment's
+`+0x38` is Deployed (bit 16), which only `FUN_0052bee0` sets, so an
+unfinished one moves to its new container at once, and its later
+completion starts the trip from the yard to that container. Their
+`vt74` does not test Completed (only Fleet, CapShip and System call
+`FUN_00553410`), which is why A0 `pending-facility/24` shows Move white.
+
 ## Open
 
-- **`FUN_005513a0`.** Reached from `FUN_005571c0` for each route
-  candidate, it walks the fleets at an object resolved from the route
-  record's `+0xc` key (`FUN_00552ff0` -> `FUN_0050c640` / `FUN_00553130`)
-  in mode 4 (`FUN_004ffe70(.., 4)`) and every ship of each fleet in mode 4
-  (`FUN_00502db0(fleet, 4)`), and runs `FUN_00552d10` on each. That calls
-  `FUN_00550700`, which calls the object's `vt74` for each of nine table
-  rows (`FUN_0054f5b0`) and records the status. For a capital ship
-  `vt74` checks Completed, so an unfinished ship in those fleets posts
-  `0x20`. Not settled: whether the key at `+0xc` is the candidate
-  destination or the unit's own system, and whether a posted `0x20` in
-  that walk makes `FUN_005545e0`'s `status[1]` differ from -1 (Retreat's
-  output 3). If it does, an unfinished ship in a fleet at the battle's
-  system can disable Retreat, as `2026-11-12-evt-02-c008-cause` suspected.
-- The containers of a regiment, squadron and special-force product
-  (`FUN_00552300` scoring, `FUN_00550af0`/`FUN_0054f5b0` capacity tables).
-- What happens to unfinished members when their fleet moves: they are its
-  children, so hyp: they travel with it and `FUN_0052bee0` then starts a
-  delivery from the yard's system to wherever the fleet is.
 - Whether `0x300` numbers a spare at once (A0 66 read "Destination: Fleet"
   right after the order, then "Fleet 4" after completion).
 - Where a battle is triggered and whether a spare holding only unfinished
   ships counts as presence (`FUN_00512280`, `FUN_005124c0`).
+- The A0 checks in the design README.
 
 ## Read
 
 In full: `004f7d50`, `0052a140`, `00553410`, `004fe0d0`, `00500ac0`,
 `004fe630`, `004fe870`, `004fe540`, `004fda10`, `00516730`, `005571c0`,
 `005511d0`, `005513a0`, `00552d10`, `00552e80`, `00552ff0`, `005001b0`,
-`00502db0`. In part: `0040b0e0` (lines 195..390), `005140c0`,
+`00502db0`, `00556390`, `004ff570`, `00507750`, `0054f5b0` (head),
+`00551630`. Disassembly: `0x5571c0..0x5573b4`, `0x550700..0x550a00`. In part: `0040b0e0` (lines 195..390), `005140c0`, `00552300`,
 `00550700` (the `vt74`/`vt78` loop).

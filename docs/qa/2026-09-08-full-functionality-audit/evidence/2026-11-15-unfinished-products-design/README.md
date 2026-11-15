@@ -35,14 +35,14 @@ the design, and what must be settled first.
    | Unfinished Death Star (`FUN_0040b0e0` via the ManuMgr, `0x40b4d2`) | product | **fights** | differs: not modelled |
    | Retreat outputs 1 and 2 (`FUN_00516730`) | 1 | ignored | same |
    | Retreat output 3, the unit's own check | fleet | none (a fleet with an Existing member is Completed; a spare skips the check) | same |
-   | Retreat output 3, `FUN_005513a0`'s mode-4 walk | 4 | may post `0x20` (**open**) | differs if it does |
+   | Retreat output 3, `FUN_005513a0`'s mode-4 walk | 4 | the member's `0x20` only marks it as no container in the capacity table; the candidate is not refused (Stage A) | same |
    | Fleet Usable / mobile / speed | 3, Completed only | ignored | same for mixed fleets; a fleet of only unfinished ships cannot exist in the port |
    | Capital ship as its own mover (`CapShip_vt74`) | object | refused `0x20` | n/a (not an object) |
-   | Squadron/regiment Move | object | allowed (A0 `pending-facility/24`) | differs: grey (known port note) |
+   | Squadron/regiment Move | object | allowed; it changes container at once, with no trip (`FUN_00556390`, not Deployed) | differs: grey (Stage B) |
    | Fleet window lists (`FUN_004a3340`) | 3 | listed with mark 11570/11572 | differs: ships not listed |
    | Defenses window pages | 3 | listed | same (`DefensesItem::Pending`) |
    | Fleet icon (`FUN_004feea0(.., 3)`) | 3 | a spare with only unfinished ships shows the icon (hyp) | differs |
-   | Maintenance (`FUN_0052fff0`) | bit 6 | costs from the order, and while en route | queued items cost; **deliveries en route do not** |
+   | Maintenance (`FUN_0052fff0`) | bit 6 | costs from the order, and while en route | same since Stage A (deliveries en route now cost) |
    | Enemy's view copy (`FUN_004f9a60`) | object | frozen | n/a |
 
 5. It is finished when progress reaches the cost (`FUN_0052b960` ->
@@ -51,9 +51,9 @@ the design, and what must be settled first.
 
 So for battle and for Retreat's outputs 1 and 2 the port's current split
 (products outside fleets) already gives the original's result. The
-differences are in the windows, the fleet icon, maintenance during
-delivery, the unfinished Death Star, a moving fleet's unfinished members
-(open), and possibly Retreat output 3 (open).
+differences are in the windows, the fleet icon, the unfinished Death
+Star, a moving fleet's unfinished ships, and the Move of an unfinished
+squadron or regiment. Retreat output 3 is not one of them (Stage A).
 
 ## Why the port is not changed in this stage
 
@@ -69,9 +69,9 @@ delivery, the unfinished Death Star, a moving fleet's unfinished members
 - **Representation.** Squadrons are counted entries (`FighterEntry {
   class, count, carrier }`), not objects, so an unfinished squadron needs
   its own entry kind or a split count; facilities have no state field.
-- **Open trace.** The motivating case, Retreat output 3, turns on
-  `FUN_005513a0`, which is not settled. Porting the containers without it
-  would not close EVT-02-C008.
+- **Open trace (settled in Stage A).** Retreat output 3 turned on
+  `FUN_005513a0`. Stage A shows an unfinished member does not refuse the
+  candidate, so the container change does not close EVT-02-C008.
 
 ## Design (for the next stage)
 
@@ -114,27 +114,64 @@ delivery, the unfinished Death Star, a moving fleet's unfinished members
    round trip, and the seed-42 replay golden regenerated in its own commit
    (cause: products in containers).
 
-## What to settle before porting
+## Stage A (2026-11-15)
 
-- `FUN_005513a0`: which object the route record's `+0xc` key names, and
-  whether a `0x20` posted by a member's `vt74` there fails
-  `FUN_005545e0`'s acceptance (`status[1] == -1`).
-- The containers of regiment, squadron and special-force products
-  (`FUN_00552300`, `FUN_00550af0`, `FUN_0054f5b0`).
-- A moving fleet's unfinished members (hyp: they go with it).
-- A0, four steps: order a capital ship at a system with no fleet of the
-  side; check (1) the fleet icon appears, (2) the Fleet window lists the
-  ship with the red grid, (3) the maintenance monitor rises at the order,
-  (4) a battle there before completion leaves the ship out of the forces
-  list.
+**Settled by static trace** (`ghidra/notes/unfinished-products.md`,
+"Settled"):
+- `FUN_005513a0` runs on the leg checker that `FUN_005571c0` builds, with
+  the candidate's key. Its `+0xc` is the checker's status pair, not a key.
+  Members' `vt74` answers fill the per-family capacity table, not that
+  status. An unfinished member therefore never refuses a Retreat
+  candidate.
+- A regiment, squadron or special-force product lives in its target
+  system (`System_vt78` accepts them without limit, and `FUN_00552300`
+  scores the target first). Only capital ships go into the bit-1 spare.
+  Unfinished ships are never chosen as carriers (mode-1 step 3).
+- A moving fleet carries its unfinished ships (`FUN_00556390`,
+  `Fleet_vtf4` splits nothing). They get no en-route bit. On completion
+  the ship travels from the yard to wherever its fleet is.
+- An unfinished squadron or regiment that is moved changes container at
+  once, with no trip (`FUN_00556390`: not Deployed, so not mobile).
+
+**Design consequences for Stage B.** Nothing in the core design changes,
+but the work gets smaller:
+- Only capital ships need a fleet member flag. Regiments, squadrons and
+  special forces become unfinished members of `System::ground_units`,
+  `System::fighters` and `System::special_forces`. Facilities become
+  unfinished members of the system's facility lists.
+- The order places a capital ship in the side's spare fleet at the target.
+  Everything else goes to the target system.
+- Completion sets Completed, and starts a delivery trip from the yard when
+  the member's system differs: a trip per member (as today's `Delivery`,
+  but keyed to the member), not a container change.
+- Carrier choice and fleet speed and mobility skip unfinished ships.
+
+**Fixed in Stage A.** `maintenance_totals` now charges deliveries en route
+(`FUN_0052fff0`, every Existing object). Test:
+`a_product_en_route_is_charged_to_its_side`.
+
+**Not done in Stage A: Move for an unfinished squadron or regiment.**
+The original's Move moves the product into the target container at once
+(a planet, or a carrier ship through `FUN_00552300`). Today the port has
+no object to move:
+- the row is a queue entry, keyed by system and class only;
+- a queue item can name only a destination system, never a ship.
+
+Turning the row white would offer an order that cannot carry out the
+original's effect. It goes into Stage B, where the product is a system
+member.
+
+**Still for A0** (four steps): order a capital ship at a system with no
+fleet of the side; check:
+1. the fleet icon appears;
+2. the Fleet window lists the ship with the red grid;
+3. the maintenance monitor rises at the order;
+4. a battle there before completion leaves the ship out of the forces
+   list.
 
 ## Small finding outside the architecture
 
-`side_resources::maintenance_totals` charges queued items but not
+`side_resources::maintenance_totals` charged queued items but not
 deliveries en route. In the original a product en route is Existing and
-costs maintenance (`FUN_0052fff0` sums every object with bit 6). This can
-be fixed on its own (count `DeliveryState::en_route()` by side) before the
-architecture change.
-
-No code changed, so no tests, mutants, provenance scan or browser gates
-ran.
+costs maintenance (`FUN_0052fff0` sums every object with bit 6). Fixed in
+Stage A.
