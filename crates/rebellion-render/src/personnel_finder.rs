@@ -378,9 +378,10 @@ pub fn character_target(character: &rebellion_core::world::Character) -> Charact
 ///   "Retired" (`0x8799`) when its destruction reason (`+0x40`) is
 ///   `0x14..0x16`, as a Retire order's (`FUN_00534c00`) is;
 /// - in an abode (container family `0x98..0x9f`), the abode's name alone;
-/// - otherwise its container's name ("Location Unknown", `0x1895`, with
-///   none), the state word, then the command word, each in " ( " and " ) "
-///   (`DAT_006a8790`, `DAT_006a878c`).
+/// - with no container, "Location Unknown" (`0x1895`) alone: the function
+///   jumps past the words (`0x465cb5` -> `0x46606f`);
+/// - otherwise its container's name, the state word, then the command
+///   word, each in " ( " and " ) " (`DAT_006a8790`, `DAT_006a878c`).
 ///
 /// A character aboard names the ship it rides (`Character::ship`), as its
 /// container (A0 mission-reports/ Empire game day 4: "Darth Vader -
@@ -430,8 +431,12 @@ fn character_text(
                 .or(destination)
                 .and_then(|system| world.systems.get(system))
                 .map(|system| system.name.clone())
-        })
-        .unwrap_or_else(|| "Location Unknown".to_owned());
+        });
+    // No container: 0x1895 alone, past the state and command words
+    // (0x465cb5 -> 0x46606f).
+    let Some(location) = location else {
+        return format!("{} - Location Unknown", character.name);
+    };
     let mut text = format!("{} - {location}", character.name);
     for word in [character_state(character), command_word(character.command)]
         .into_iter()
@@ -2268,8 +2273,10 @@ mod tests {
             &[(key, mon_calamari)],
         );
         assert_eq!(listed[0].display_name(), "Adar Tallon - Mon Calamari ( Enroute ) ");
+        // With no container FUN_00465bb0 jumps past the state and command
+        // words (0x465c0c, 0x465cb5 to 0x46606f): "Location Unknown" alone.
         let unknown = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
-        assert_eq!(unknown[0].display_name(), "Adar Tallon - Location Unknown ( Enroute ) ");
+        assert_eq!(unknown[0].display_name(), "Adar Tallon - Location Unknown");
         // The window keeps the destinations main sets each frame.
         let mut state = PersonnelFinderState::default();
         state.set_destinations(vec![(key, mon_calamari)]);
@@ -2296,6 +2303,23 @@ mod tests {
         );
         state.set_view(PersonnelView::SpecForces);
         assert_eq!(state.shown_character_rows(&world, &fog), None, "SpecForces view");
+    }
+
+    #[test]
+    fn a_character_in_no_place_reads_location_unknown_without_words() {
+        // FUN_00465bb0: with no container (vtable +0xc, FUN_004ece60 on its
+        // id) the row keeps 0x1895 "Location Unknown" and jumps past the
+        // Captured, On Mission, Injured, Enroute and command words
+        // (0x465cb5 -> 0x46606f).
+        let mut world = GameWorld::default();
+        let mut ozzel = default_character();
+        ozzel.name = "Ozzel".into();
+        ozzel.injury = 40;
+        ozzel.command = rebellion_core::character_command::CommandKind::Admiral;
+        world.characters.insert(ozzel);
+        let fog = FogState::new(Faction::Alliance);
+        let listed = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
+        assert_eq!(listed[0].display_name(), "Ozzel - Location Unknown");
     }
 
     #[test]
@@ -2372,7 +2396,8 @@ mod tests {
         assert_eq!(
             names,
             [
-                "Han - Location Unknown ( Enroute ) ",
+                // No container: no state word (0x465cb5 -> 0x46606f).
+                "Han - Location Unknown",
                 "Leia - Yavin ( Captured ) ",
                 "Wedge - Location Unknown"
             ]
