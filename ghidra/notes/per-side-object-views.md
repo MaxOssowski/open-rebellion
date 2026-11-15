@@ -177,3 +177,9 @@ fleet in orbit with the ship's name, or on the planet. A character the
 rebuilt copy no longer holds is left in no place, and the Personnel Finder
 reads it as "Location Unknown" (`personnel-finder.md`, A0
 1x-personnelfinder-empire-d85/d91).
+
+port (v122): a character the side saw leave for a system it does not see
+gets a copy in the destination with its en route bit (`CharacterCopyState`,
+`FUN_00556390`, `FUN_004f9a60` `+0x50` bit 4); every character copy also
+keeps whether it was on a (hidden) mission when copied
+(`personnel-finder.md`, "Characters on missions").

@@ -162,6 +162,19 @@ pub struct ObjectViews {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     pub empire_characters: HashMap<DatId, CharacterCopy>,
+    /// The Alliance's copies' state bits, by the character's id (v122): a
+    /// character absent here has none ([`CharacterCopyState`]).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub alliance_character_states: HashMap<DatId, CharacterCopyState>,
+    /// The Empire's copies' state bits (v122).
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub empire_character_states: HashMap<DatId, CharacterCopyState>,
     /// port: the debug "see everything" mode: the windows show every live
     /// object of both sides and ignore the views and the fog. Not saved.
     #[serde(skip)]
@@ -272,6 +285,30 @@ impl ObjectViews {
         match side {
             Faction::Alliance => self.alliance_characters.get(&id),
             Faction::Empire => self.empire_characters.get(&id),
+            Faction::Neutral => None,
+        }
+    }
+
+    /// The state bits of `side`'s copy of the character `id`; none when it
+    /// has none.
+    #[must_use]
+    pub fn character_state(&self, side: Faction, id: DatId) -> CharacterCopyState {
+        match side {
+            Faction::Alliance => self.alliance_character_states.get(&id),
+            Faction::Empire => self.empire_character_states.get(&id),
+            Faction::Neutral => None,
+        }
+        .copied()
+        .unwrap_or_default()
+    }
+
+    fn character_states_mut(
+        &mut self,
+        side: Faction,
+    ) -> Option<&mut HashMap<DatId, CharacterCopyState>> {
+        match side {
+            Faction::Alliance => Some(&mut self.alliance_character_states),
+            Faction::Empire => Some(&mut self.empire_character_states),
             Faction::Neutral => None,
         }
     }
@@ -713,6 +750,38 @@ pub struct CharacterCopy {
     pub ship: Option<String>,
 }
 
+/// The state bits a side's copy of a character keeps (v122), as
+/// `FUN_00465bb0` reads them for the row's state word:
+/// - on a mission: the copy's mission key `+0x68` (`FUN_0042d170`) names a
+///   mission object (family `0x50..0x7f`) while `+0xac` bit 0 (captive) is
+///   clear: "On Mission" (`0x8745`); `FUN_00429440` then opens the Missions
+///   window (kind 11) unless that mission is hidden (`FUN_00520b70`);
+/// - en route: `+0x50` bit 4 (`0x10`): "Enroute" (`0x8744`). A copy seen
+///   leaving for a system the side does not see is frozen there with it
+///   (`FUN_00556390`, `FUN_004f9a60`).
+///
+/// port: the bits are taken from the live character when the copy is
+/// taken; Captured and Injured, and the command word, are not kept.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterCopyState {
+    pub on_mission: bool,
+    /// Its mission is hidden (`FUN_00520b70`).
+    pub hidden_mission: bool,
+    pub enroute: bool,
+}
+
+impl CharacterCopyState {
+    /// The bits of `character` as a copy takes them now, en route or not.
+    #[must_use]
+    pub fn of(character: &crate::world::Character, enroute: bool) -> Self {
+        Self {
+            on_mission: character.on_mission && !character.is_captive,
+            hidden_mission: character.on_mission && character.on_hidden_mission,
+            enroute,
+        }
+    }
+}
+
 /// The other side's living characters at `system` as `side` copies them
 /// now: those aboard its fleets in orbit (with their ships' names) and
 /// those on the planet, in id order.
@@ -786,18 +855,69 @@ fn record_characters(
     side: Faction,
     copies: Vec<(DatId, Vec<(DatId, CharacterCopy)>)>,
 ) {
+    let states: Vec<(DatId, CharacterCopyState)> = copies
+        .iter()
+        .flat_map(|(_, list)| list.iter())
+        .filter_map(|(id, _)| {
+            let character = world
+                .characters
+                .values()
+                .find(|value| value.dat_id == *id)?;
+            Some((*id, CharacterCopyState::of(character, false)))
+        })
+        .collect();
     let Some(map) = world.object_views.characters_mut(side) else {
         return;
     };
+    let mut lost = Vec::new();
     for (system, _) in &copies {
-        for copy in map.values_mut() {
+        for (id, copy) in map.iter_mut() {
             if copy.system == Some(*system) {
                 *copy = CharacterCopy::default();
+                lost.push(*id);
             }
         }
     }
     for (_, list) in copies {
         map.extend(list);
+    }
+    if let Some(map) = world.object_views.character_states_mut(side) {
+        for id in lost {
+            map.remove(&id);
+        }
+        map.extend(
+            states
+                .into_iter()
+                .filter(|(_, state)| *state != CharacterCopyState::default()),
+        );
+    }
+}
+
+/// A character `side` saw leave for a system it does not see: its copy is
+/// frozen en route in the destination (`FUN_00556390` makes the destination
+/// its container; `FUN_004f9a60` freezes it with `+0x50` bit 4 set), so the
+/// Personnel Finder reads "Name - Destination ( Enroute ) "
+/// (`FUN_00465bb0`, `0x8744`).
+fn record_traveller(world: &mut GameWorld, side: Faction, id: DatId, to: DatId) {
+    let Some(state) = world
+        .characters
+        .values()
+        .find(|value| value.dat_id == id)
+        .map(|character| CharacterCopyState::of(character, true))
+    else {
+        return;
+    };
+    if let Some(map) = world.object_views.characters_mut(side) {
+        map.insert(
+            id,
+            CharacterCopy {
+                system: Some(to),
+                ship: None,
+            },
+        );
+    }
+    if let Some(map) = world.object_views.character_states_mut(side) {
+        map.insert(id, state);
     }
 }
 
@@ -1167,6 +1287,13 @@ pub fn advance_extras(
             for (id, fleet) in made {
                 if let Some(copy) = map.get_mut(&id) {
                     copy.fleets.push(fleet);
+                }
+            }
+        }
+        for (to, traveller) in &travellers {
+            if let TravellerCopy::Character { id, .. } = traveller {
+                if let Some(to) = world.systems.get(*to).map(|value| value.dat_id) {
+                    record_traveller(world, side, *id, to);
                 }
             }
         }

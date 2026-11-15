@@ -804,6 +804,144 @@ fn a_character_seen_the_day_before_and_now_on_its_way_is_copied_en_route() {
 }
 
 #[test]
+fn a_character_seen_leaving_for_an_unseen_system_is_copied_en_route_there() {
+    // FUN_00556390 makes the destination the traveller's container and
+    // FUN_004f9a60 freezes the side's copy with +0x50 bit 4 (en route), so
+    // FUN_00465bb0 reads "Name - Destination ( Enroute ) " (0x8744).
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let mut missions = crate::missions::MissionState::new();
+    let vader = DatId::new(0x3000_0001);
+    let key = setup.world.characters.insert(crate::world::Character {
+        dat_id: vader,
+        is_empire: true,
+        current_system: Some(chandrila),
+        ..Default::default()
+    });
+    fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    assert_eq!(
+        setup
+            .world
+            .object_views
+            .character_state(Faction::Alliance, vader),
+        CharacterCopyState::default()
+    );
+    setup.world.characters[key].current_system = None;
+    missions.push_transit(crate::missions::MemberTransit {
+        member: crate::missions::MissionMember::Character(key),
+        mission_id: 0,
+        to: coruscant,
+        arrival: 40,
+        abode: None,
+    });
+    day(&mut setup, &missions);
+    let views = &setup.world.object_views;
+    assert_eq!(
+        views.character(Faction::Alliance, vader),
+        Some(&CharacterCopy {
+            system: Some(setup.world.systems[coruscant].dat_id),
+            ship: None,
+        })
+    );
+    assert_eq!(
+        views.character_state(Faction::Alliance, vader),
+        CharacterCopyState {
+            on_mission: false,
+            hidden_mission: false,
+            enroute: true,
+        }
+    );
+    // The next days keep it so; once he is seen at Coruscant, the copy is
+    // live there with no state.
+    day(&mut setup, &missions);
+    assert!(
+        setup
+            .world
+            .object_views
+            .character_state(Faction::Alliance, vader)
+            .enroute
+    );
+    missions = crate::missions::MissionState::new();
+    setup.world.characters[key].current_system = Some(coruscant);
+    fleet(&mut setup.world, coruscant, true);
+    day(&mut setup, &missions);
+    assert_eq!(
+        setup
+            .world
+            .object_views
+            .character_state(Faction::Alliance, vader),
+        CharacterCopyState::default()
+    );
+    assert_eq!(
+        setup
+            .world
+            .object_views
+            .character(Faction::Alliance, vader)
+            .and_then(|copy| copy.system),
+        Some(setup.world.systems[coruscant].dat_id)
+    );
+}
+
+#[test]
+fn a_character_copied_on_a_mission_keeps_its_mission_bits_until_seen_again() {
+    // FUN_00465bb0: the copy's mission key (+0x68, FUN_0042d170) names a
+    // mission, so its row reads "( On Mission )" (0x8745); FUN_00429440
+    // opens the Missions window unless the mission is hidden
+    // (FUN_00520b70).
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let missions = crate::missions::MissionState::new();
+    let piett = DatId::new(0x3000_0002);
+    let key = setup.world.characters.insert(crate::world::Character {
+        dat_id: piett,
+        is_empire: true,
+        current_system: Some(chandrila),
+        on_mission: true,
+        on_hidden_mission: true,
+        ..Default::default()
+    });
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    day(&mut setup, &missions);
+    let state = |setup: &Setup| {
+        setup
+            .world
+            .object_views
+            .character_state(Faction::Alliance, piett)
+    };
+    assert_eq!(
+        state(&setup),
+        CharacterCopyState {
+            on_mission: true,
+            hidden_mission: true,
+            enroute: false,
+        }
+    );
+    // Out of sight the mission ends: the frozen copy keeps it.
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    setup.world.characters[key].on_mission = false;
+    setup.world.characters[key].on_hidden_mission = false;
+    day(&mut setup, &missions);
+    assert!(state(&setup).on_mission);
+    // A captive's copy reads no mission (+0xac bit 0 comes first).
+    fleet(&mut setup.world, chandrila, true);
+    setup.world.characters[key].on_mission = true;
+    setup.world.characters[key].is_captive = true;
+    day(&mut setup, &missions);
+    assert!(!state(&setup).on_mission);
+    // Seen again free, the copy follows.
+    setup.world.characters[key].on_mission = false;
+    setup.world.characters[key].is_captive = false;
+    day(&mut setup, &missions);
+    assert_eq!(state(&setup), CharacterCopyState::default());
+    // A stale hidden flag off a mission hides nothing.
+    setup.world.characters[key].on_hidden_mission = true;
+    day(&mut setup, &missions);
+    assert_eq!(state(&setup), CharacterCopyState::default());
+}
+
+#[test]
 fn seeding_extras_copies_each_system_in_the_sides_fog() {
     let mut setup = setup();
     let mut fog_alliance = FogState::new(Faction::Alliance);
