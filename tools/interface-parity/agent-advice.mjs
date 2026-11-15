@@ -306,6 +306,14 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(500);
     await shot("advice-message");
+    // FUN_00469de0: the display plays the advice's +0x30 from STRATEGY.DLL
+    // (FUN_0048b2e0: 0x461 Alliance, 0x462 Empire; A0
+    // cmd07-c011-preempt-attempt.wav, WAVE 1122) at the effects volume.
+    const wave = faction.name === "alliance" ? 1121 : 1122;
+    const sounds = () => log.filter((line) => line.includes("[message] display sound"));
+    await waitFor(page, log, "the advice's display sound", () => sounds().length > 0, 5_000);
+    assert.equal(sounds().length, 1, sounds().join("\n"));
+    assert.match(sounds()[0], new RegExp(`directory=strategy-dll wave=${wave} loaded=true`));
     // A long advice shows the text control's bar (FUN_0041efe0:
     // FUN_0060a490(.., 0x299a, ..)) at its right edge: A0
     // agent-advice/02-advice-message (the Empire) has its up and down

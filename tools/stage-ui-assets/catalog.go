@@ -8,7 +8,8 @@ type dllTarget struct {
 	Expected        int
 	ExpectedType302 int
 	// ExpectedRCData and ExpectedWave stage the advisor's clip records
-	// (RCDATA/{id}.bin) and voice clips (WAVE/{id}.wav) when non-zero.
+	// (RCDATA/{id}.bin) and voice clips or message sounds (WAVE/{id}.wav)
+	// when non-zero.
 	ExpectedRCData int
 	ExpectedWave   int
 	// Optional targets are skipped when the source has none of their names.
@@ -18,7 +19,9 @@ type dllTarget struct {
 var uiDLLTargets = []dllTarget{
 	{Filename: "COMMON.DLL", Directory: "common-dll", Expected: 321},
 	{Filename: "GOKRES.DLL", Directory: "gokres-dll", Expected: 580},
-	{Filename: "STRATEGY.DLL", Directory: "strategy-dll", Expected: 1042},
+	// Its WAVEs are the messages' display sounds (+0x30, slot 7,
+	// FUN_00469de0).
+	{Filename: "STRATEGY.DLL", Directory: "strategy-dll", Expected: 1042, ExpectedWave: 66},
 	{Filename: "TACTICAL.DLL", Directory: "tactical-dll", Expected: 288},
 	{Filename: "ALSPRITE.DLL", Directory: "alsprite-dll", Expected: 38, ExpectedType302: 1640, ExpectedRCData: 752, ExpectedWave: 213},
 	{Filename: "EMSPRITE.DLL", Directory: "emsprite-dll", Expected: 34, ExpectedType302: 2348, ExpectedRCData: 753, ExpectedWave: 216},

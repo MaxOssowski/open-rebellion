@@ -241,6 +241,21 @@ class RuntimePackBuilderTests(unittest.TestCase):
             ):
                 self.assertIn(expected, entries)
 
+    def test_strategy_message_sounds_pack_with_the_advisor_voices(self) -> None:
+        # FUN_00469de0 plays a displayed message's +0x30 from STRATEGY.DLL
+        # (slot 7); the browser loads it as the advisor's voices are.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base"
+            base.mkdir()
+            (base / "SYSTEMSD.DAT").write_bytes(b"systems")
+            folder = root / "ui" / "strategy-dll" / "WAVE"
+            folder.mkdir(parents=True)
+            (folder / "1122.wav").write_bytes(b"WAVE")
+
+            entries = [(entry.kind, entry.key) for entry in PACKER.collect_entries(base, root / "ui")]
+            self.assertIn((PACKER.KIND_AUDIO, "advisor/strategy-dll/1122.wav"), entries)
+
     def test_edata_artwork_is_validated_and_namespaced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

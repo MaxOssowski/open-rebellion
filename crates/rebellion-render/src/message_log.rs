@@ -219,6 +219,10 @@ pub struct GameMessage {
     /// opens in place of its text (`FUN_00469de0` -> `FUN_0042a410`).
     #[serde(skip)]
     pub assault_report: Option<Box<rebellion_core::assault_report::AssaultReport>>,
+    /// The sounds its display plays (`FUN_00469de0`): `+0x30` from
+    /// STRATEGY.DLL and `+0x32` from the side's sprite DLL, 0 for none.
+    #[serde(skip)]
+    pub sounds: crate::message_sound::MessageSounds,
     /// The event code (`+0x28`) its delivery hands each side's advisor
     /// (`FUN_0048a060` → slot `+0x14`), Alliance then Empire; 0 for none.
     #[serde(skip)]
@@ -307,6 +311,7 @@ impl GameMessage {
             picture: None,
             title: None,
             assault_report: None,
+            sounds: crate::message_sound::MessageSounds::NONE,
             advisor_event: [0; 2],
             continue_question: None,
             mission: None,
@@ -338,6 +343,7 @@ impl GameMessage {
             picture: None,
             title: None,
             assault_report: None,
+            sounds: crate::message_sound::MessageSounds::NONE,
             advisor_event: [0; 2],
             continue_question: None,
             mission: None,
@@ -431,6 +437,13 @@ impl GameMessage {
         self
     }
 
+    /// Give the message the sounds its display plays (`+0x30`, `+0x32`).
+    #[must_use]
+    pub fn with_sounds(mut self, sounds: crate::message_sound::MessageSounds) -> Self {
+        self.sounds = sounds;
+        self
+    }
+
     /// Show `picture` above the message's text.
     #[must_use]
     pub fn with_picture(mut self, picture: MessagePicture) -> Self {
@@ -519,6 +532,9 @@ pub struct MessageLog {
     /// The story movies waiting to play, oldest first (the message
     /// manager's `+0x28`, drained one at a time by `FUN_00488b90`).
     story_movies: std::collections::VecDeque<StoryMovie>,
+    /// The sounds of the messages displayed since the last take
+    /// ([`Self::display_message`]).
+    displayed_sounds: Vec<crate::message_sound::MessageSounds>,
 }
 
 /// A category's posting option bit 4: its messages post silently, without
@@ -545,6 +561,7 @@ impl MessageLog {
             refusals: Vec::new(),
             posting: (0, std::collections::BTreeMap::new()),
             story_movies: std::collections::VecDeque::new(),
+            displayed_sounds: Vec::new(),
         }
     }
 
@@ -738,6 +755,20 @@ impl MessageLog {
         if let Some(msg) = self.messages.iter_mut().find(|m| m.id == id) {
             msg.unread = false;
         }
+    }
+
+    /// Display a message in the Message window (`FUN_00469de0`): mark it
+    /// read and queue its sounds for [`crate::message_sound::MessageSoundPlayer`].
+    pub fn display_message(&mut self, id: MessageId) {
+        if let Some(message) = self.messages.iter_mut().find(|message| message.id == id) {
+            message.unread = false;
+            self.displayed_sounds.push(message.sounds);
+        }
+    }
+
+    /// The sounds of the messages displayed since the last take, in order.
+    pub fn take_displayed_sounds(&mut self) -> Vec<crate::message_sound::MessageSounds> {
+        std::mem::take(&mut self.displayed_sounds)
     }
 
     /// Answer a Mission Report's question (`Class_0065b710_vt38` /
@@ -1069,6 +1100,25 @@ mod tests {
             message.with_picture_if(Some(picture)).picture,
             Some(picture)
         );
+    }
+
+    #[test]
+    fn displaying_a_message_marks_it_read_and_queues_its_sounds() {
+        // FUN_00469de0: each display plays the message's +0x30 / +0x32,
+        // a silent one included (it still stops the last sounds).
+        let mut log = MessageLog::new();
+        let sounds = crate::message_sound::MessageSounds::advice(false);
+        let voiced = log.push(GameMessage::new(1, "advice", MessageCategory::Event).with_sounds(sounds));
+        let silent = log.push(GameMessage::new(1, "plain", MessageCategory::Event));
+        log.display_message(voiced);
+        log.display_message(silent);
+        log.display_message(9999);
+        assert_eq!(
+            log.take_displayed_sounds(),
+            [sounds, crate::message_sound::MessageSounds::NONE]
+        );
+        assert!(log.take_displayed_sounds().is_empty());
+        assert!(log.messages().iter().all(|message| !message.unread));
     }
 
     #[test]

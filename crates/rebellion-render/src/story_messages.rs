@@ -2402,7 +2402,8 @@ pub fn agent_advice_message(
                 background: picture,
                 foreground: None,
             })
-            .with_advisor_events(events[0], events[1]),
+            .with_advisor_events(events[0], events[1])
+            .with_sounds(crate::message_sound::MessageSounds::advice(alliance)),
     )
 }
 
@@ -2504,6 +2505,29 @@ mod tests {
         assert_eq!(empire.advisor_event, [0, 0x2a]);
 
         assert!(agent_advice_message(2, true, 4, &texts).is_none());
+    }
+
+    #[test]
+    fn an_advice_plays_its_sides_strategy_sound_when_displayed() {
+        // FUN_0048b2e0: +0x30 = 0x461 for side 1, else 0x462; +0x32 stays
+        // the base class's 0 (FUN_004c4d90). A0 cmd07-c011: WAVE 1122.
+        let texts: HashMap<u16, String> = [
+            (0x6004, "Victory Conditions".to_owned()),
+            (0x6005, "To defeat the Empire".to_owned()),
+            (0x681f, "Maintenance Points".to_owned()),
+            (0x6820, "Every unit".to_owned()),
+        ]
+        .into_iter()
+        .collect();
+        let sounds = |alliance, number| {
+            agent_advice_message(number, alliance, 4, &texts).map(|message| message.sounds)
+        };
+        let sound = |strategy| crate::message_sound::MessageSounds {
+            strategy,
+            sprite: 0,
+        };
+        assert_eq!(sounds(true, 1), Some(sound(1121)));
+        assert_eq!(sounds(false, 10), Some(sound(1122)));
     }
 
     #[test]

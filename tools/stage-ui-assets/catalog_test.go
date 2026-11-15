@@ -112,3 +112,17 @@ func TestStageOwnedOptionsConfirmationResources(t *testing.T) {
 		}
 	}
 }
+
+// The Message window plays a message's +0x30 from DLL slot 7, STRATEGY.DLL
+// (FUN_00469de0, FUN_00421c70), so its 66 WAVEs are staged with its bitmaps.
+func TestStrategyDLLStagesItsMessageSounds(t *testing.T) {
+	for _, target := range uiDLLTargets {
+		if target.Filename == "STRATEGY.DLL" {
+			if target.ExpectedWave != 66 {
+				t.Fatalf("STRATEGY.DLL ExpectedWave = %d, want 66", target.ExpectedWave)
+			}
+			return
+		}
+	}
+	t.Fatal("STRATEGY.DLL is not in the staging catalog")
+}

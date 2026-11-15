@@ -60,8 +60,9 @@ RAW_TABLES = (
 BRIEFING_UI_DIRS = frozenset({"albrief-dll", "embrief-dll"})
 # The DLLs whose WAVE voices the advisor plays: the briefings', and the
 # sprite DLLs' for its reactions (FUN_004c2dd0 / FUN_004c0d00 schedule
-# messages whose records are slot 9's).
-ADVISOR_VOICE_DIRS = BRIEFING_UI_DIRS | {"alsprite-dll", "emsprite-dll"}
+# messages whose records are slot 9's), and STRATEGY.DLL's, whose WAVEs a
+# displayed message plays (+0x30, slot 7, FUN_00469de0).
+ADVISOR_VOICE_DIRS = BRIEFING_UI_DIRS | {"alsprite-dll", "emsprite-dll", "strategy-dll"}
 
 def validate_options_resources(ui_dir: Path) -> None:
     """Refuse stale UI staging that would omit the original confirmation controls."""

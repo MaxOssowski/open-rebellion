@@ -1727,6 +1727,8 @@ async fn main() {
     // directory and WAVE id, with their lengths.
     let mut advisor_voice_seconds: std::collections::HashMap<(String, u16), f32> =
         std::collections::HashMap::new();
+    // The Message window's two display sounds (FUN_00469de0).
+    let mut message_sound_player = rebellion_render::message_sound::MessageSoundPlayer::default();
     #[cfg(target_arch = "wasm32")]
     let browser_advisor_voices: Vec<(String, u16, Vec<u8>)> = {
         let keys: Vec<String> = browser_audio_files
@@ -2342,6 +2344,63 @@ async fn main() {
             });
             egui_macroquad::draw();
             theme_applied = true;
+        }
+
+        // FUN_00469de0: each displayed message stops the last one's sounds
+        // (FUN_0046a6e0) and plays its own (+0x30 STRATEGY, +0x32 sprite),
+        // at the effects volume like the advisor's voices.
+        for sounds in msg_log.take_displayed_sounds() {
+            let faction = if player_faction == MissionFaction::Alliance {
+                rebellion_render::advisor::AdvisorFaction::Alliance
+            } else {
+                rebellion_render::advisor::AdvisorFaction::Empire
+            };
+            for command in message_sound_player.display(sounds, faction) {
+                use rebellion_render::message_sound::MessageSoundCommand;
+                match command {
+                    MessageSoundCommand::Stop { directory, wave } => {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        audio_engine.stop_advisor_voice(directory, wave);
+                        #[cfg(target_arch = "wasm32")]
+                        if let Some(engine) = browser_menu_audio.as_mut() {
+                            engine.stop_advisor_voice(directory, wave);
+                        }
+                    }
+                    MessageSoundCommand::Play { directory, wave } => {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let key = (directory.to_owned(), wave);
+                            if !advisor_voice_seconds.contains_key(&key) {
+                                let path = gdata_path
+                                    .join("ui")
+                                    .join(directory)
+                                    .join("WAVE")
+                                    .join(format!("{wave}.wav"));
+                                if let Ok(bytes) = std::fs::read(path) {
+                                    audio_engine.load_advisor_voice_bytes(directory, wave, &bytes);
+                                    advisor_voice_seconds.insert(
+                                        key,
+                                        rebellion_render::advisor_clip::wave_seconds(&bytes),
+                                    );
+                                }
+                            }
+                        }
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let loaded = audio_engine.play_advisor_voice(directory, wave, &audio_vol);
+                        #[cfg(target_arch = "wasm32")]
+                        let loaded = browser_menu_audio.as_mut().is_some_and(|engine| {
+                            engine.play_advisor_voice(directory, wave, &audio_vol)
+                        });
+                        macroquad::logging::info!(
+                            "[message] display sound directory={} wave={} loaded={} muted={}",
+                            directory,
+                            wave,
+                            loaded,
+                            audio_vol.muted
+                        );
+                    }
+                }
+            }
         }
 
         // ── Advisor animation timer ────────────────────────────────────────
@@ -12419,7 +12478,7 @@ fn apply_message_index_actions(
             MessageIndexAction::MarkCategoryRead(Some(rail)) => log.mark_read(rail),
             MessageIndexAction::MarkCategoryRead(None) => log.mark_all_read(),
             MessageIndexAction::DeleteSelected(ids) => log.delete_by_ids(&ids),
-            MessageIndexAction::MessageDisplayed(id) => log.mark_message_read(id),
+            MessageIndexAction::MessageDisplayed(id) => log.display_message(id),
             // The caller opened the object's window or the Encyclopedia.
             MessageIndexAction::Display { .. } | MessageIndexAction::Encyclopedia(_) => {}
             // Either answer drops the held Abort (vt +0x38 / +0x3c); the

@@ -31,6 +31,7 @@ pub mod manufacturing_window;
 pub mod message_index;
 pub mod message_log;
 pub mod message_pictures;
+pub mod message_sound;
 pub mod minis;
 pub mod mission_dialog;
 pub mod missions_window;
