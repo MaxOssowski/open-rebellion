@@ -7867,6 +7867,7 @@ fn fleet_load_observation(
             .map(|entry| match entry {
                 FleetWindowEntry::Fleet(_) => "fleet",
                 FleetWindowEntry::Ship { .. } => "ship",
+                FleetWindowEntry::Product { .. } => "product",
                 FleetWindowEntry::Copy { .. } => "copy",
             }),
         tab: report.as_ref().map(|report| format!("{:?}", report.tab)),
@@ -8297,6 +8298,7 @@ fn finder_entry(
         FleetWindowEntry::Ship { fleet, index } => {
             ("ship", fleet_ordinal(world, fleet), Some(index))
         }
+        FleetWindowEntry::Product { fleet, .. } => ("product", fleet_ordinal(world, fleet), None),
         FleetWindowEntry::Copy { fleet, .. } => ("copy", None, Some(fleet)),
     }
 }

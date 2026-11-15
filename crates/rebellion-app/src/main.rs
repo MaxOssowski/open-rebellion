@@ -6834,12 +6834,19 @@ async fn main() {
                             // FUN_00422ce0: a drop from the Fleet window
                             // (type 4) moves the selection against the
                             // window under the point with 0x201.
+                            // port: an unfinished ship's Rename is not
+                            // ported; begin_rename never opens one.
+                            FleetWindowAction::Rename {
+                                entry: rebellion_render::fleet_window::FleetWindowEntry::Product { .. },
+                                ..
+                            } => {}
                             FleetWindowAction::Rename { entry, name } => {
                                 panel_actions.push(PanelAction::Rename {
                                     fleet: entry.fleet(),
                                     ship: match entry {
                                         rebellion_render::fleet_window::FleetWindowEntry::Ship { index, .. } => Some(index),
                                         rebellion_render::fleet_window::FleetWindowEntry::Fleet(_)
+                                        | rebellion_render::fleet_window::FleetWindowEntry::Product { .. }
                                         | rebellion_render::fleet_window::FleetWindowEntry::Copy { .. } => None,
                                     },
                                     name,

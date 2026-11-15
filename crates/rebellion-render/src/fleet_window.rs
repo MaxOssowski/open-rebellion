@@ -742,6 +742,7 @@ fn entry_object(world: &GameWorld, entry: FleetWindowEntry) -> ItemObject {
             index,
             roster: fleet_join::roster(world, fleet).unwrap_or_default(),
         },
+        FleetWindowEntry::Product { product, .. } => ItemObject::Product(product),
         // port: a copy has no live object; its menu acts on none.
         FleetWindowEntry::Copy { .. } => ItemObject::Fleet(FleetKey::default()),
     }
@@ -820,6 +821,10 @@ impl FleetWindowTab {
 pub enum FleetWindowEntry {
     Fleet(FleetKey),
     Ship { fleet: FleetKey, index: usize },
+    /// An unfinished ship of `fleet`, by its product
+    /// (`rebellion_core::products`): `FUN_004a3d40` lists the fleet's ships
+    /// in mode 3 (Existing).
+    Product { fleet: FleetKey, product: u64 },
     /// The `fleet`th other-side fleet of the viewing side's (`alliance`)
     /// frozen copy of `system` (`SystemDetails`, `FUN_004f9a60`): what the
     /// side saw then, though the fleet may have moved or died since.
@@ -835,7 +840,7 @@ impl FleetWindowEntry {
     #[must_use]
     pub fn fleet(self) -> FleetKey {
         match self {
-            Self::Fleet(fleet) | Self::Ship { fleet, .. } => fleet,
+            Self::Fleet(fleet) | Self::Ship { fleet, .. } | Self::Product { fleet, .. } => fleet,
             Self::Copy { .. } => FleetKey::default(),
         }
     }
@@ -1290,7 +1295,8 @@ impl FleetWindowState {
         let name = match entry {
             FleetWindowEntry::Fleet(fleet) => world.fleet_name(fleet),
             FleetWindowEntry::Ship { fleet, index } => world.ship_name(fleet, index),
-            FleetWindowEntry::Copy { .. } => None,
+            // port: an unfinished ship's Rename is not ported.
+            FleetWindowEntry::Product { .. } | FleetWindowEntry::Copy { .. } => None,
         }
         .map(str::to_owned);
         let Some(text) = name else {
@@ -1446,7 +1452,9 @@ impl FleetWindowState {
                 .enumerate()
                 .filter_map(|(row, entry)| match entry {
                     FleetWindowEntry::Fleet(fleet) => Some((*fleet, row)),
-                    FleetWindowEntry::Ship { .. } | FleetWindowEntry::Copy { .. } => None,
+                    FleetWindowEntry::Ship { .. }
+                    | FleetWindowEntry::Product { .. }
+                    | FleetWindowEntry::Copy { .. } => None,
                 })
                 .collect(),
             selected,
@@ -1553,7 +1561,11 @@ impl FleetWindowState {
                 Some(FleetWindowEntry::Ship { fleet, index }) => {
                     Some(ship_target(world, *fleet, *index).map(ItemTarget::Object))
                 }
-                Some(FleetWindowEntry::Fleet(_) | FleetWindowEntry::Copy { .. }) => Some(None),
+                Some(
+                    FleetWindowEntry::Fleet(_)
+                    | FleetWindowEntry::Product { .. }
+                    | FleetWindowEntry::Copy { .. },
+                ) => Some(None),
                 None => None,
             }
         } else if in_rect(RIGHT_LIST, local) {
@@ -1978,6 +1990,22 @@ fn left_entries(
                     );
                 }
             }
+            // Its unfinished ships follow (FUN_004a3d40 walks mode 3).
+            entries.extend(
+                world
+                    .products
+                    .in_fleet(fleet)
+                    .filter(|product| {
+                        matches!(
+                            product.kind,
+                            rebellion_core::manufacturing::BuildableKind::CapitalShip(_)
+                        )
+                    })
+                    .map(|product| FleetWindowEntry::Product {
+                        fleet,
+                        product: product.id,
+                    }),
+            );
         }
     }
     entries.extend(copies);
@@ -2132,7 +2160,9 @@ fn drop_target(
                     value.capital_ships.iter().filter(|ship| ship.alive).count()
                 }),
                 FleetWindowEntry::Ship { .. } if picked_entries(window, entries).len() > 1 => 1,
-                FleetWindowEntry::Ship { .. } | FleetWindowEntry::Copy { .. } => 0,
+                FleetWindowEntry::Ship { .. }
+                | FleetWindowEntry::Product { .. }
+                | FleetWindowEntry::Copy { .. } => 0,
             };
             if row < ships {
                 return Some(fleet_target(entry.fleet()));
@@ -2164,6 +2194,9 @@ fn tab_enabled(
 ) -> bool {
     let fleet = match selected {
         Some(FleetWindowEntry::Fleet(fleet)) => fleet,
+        // An unfinished ship carries nothing (its rows in the capacity
+        // table are refused, unfinished-products.md).
+        Some(FleetWindowEntry::Product { .. }) => return false,
         // A0 fleet2/umgul-transport1-selected: Medium Transport 1's
         // regiments light its Troops tab, Corellian Corvette 1's stays
         // dark; a ship's tabs follow its own content flags.
@@ -3399,7 +3432,9 @@ fn draw_fleet_window(
         .iter()
         .filter_map(|entry| match entry {
             FleetWindowEntry::Fleet(fleet) => Some(*fleet),
-            FleetWindowEntry::Ship { .. } | FleetWindowEntry::Copy { .. } => None,
+            FleetWindowEntry::Ship { .. }
+            | FleetWindowEntry::Product { .. }
+            | FleetWindowEntry::Copy { .. } => None,
         })
         .collect();
     let picked = picked_entries(window, &entries);
@@ -3739,6 +3774,70 @@ fn draw_fleet_window(
                                 egui::Color32::WHITE,
                                 (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                             );
+                        }
+                    }
+                    FleetWindowEntry::Product { fleet, product } => {
+                        let last = entries
+                            .get(row + 1)
+                            .is_none_or(|next| next.fleet() != fleet);
+                        if last {
+                            paint_line(&list_painter, item, scale, (2.0, 0.0), (2.0, 6.0));
+                            paint_line(&list_painter, item, scale, (2.0, 6.0), (5.0, 6.0));
+                        } else {
+                            paint_line(&list_painter, item, scale, (2.0, 0.0), (2.0, 50.0));
+                        }
+                        let value = world.products.get(product);
+                        let class = value.and_then(|value| match value.kind {
+                            rebellion_core::manufacturing::BuildableKind::CapitalShip(class) => {
+                                world.capital_ship_classes.get(class)
+                            }
+                            _ => None,
+                        });
+                        if let (Some(value), Some(class)) = (value, class) {
+                            let name = value.name.as_deref().unwrap_or(&class.name);
+                            crate::theme::paint_gdi_text(
+                                &list_painter,
+                                logical_rect(item, scale, 7.0, 3.0, 84.0, 14.0),
+                                scale,
+                                10,
+                                name,
+                                egui::Color32::WHITE,
+                                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
+                            );
+                        }
+                        for (target, item, _) in targets.iter().filter(|(_, _, chosen)| *chosen) {
+                            paint_native(
+                                target,
+                                ctx,
+                                cache,
+                                DllSource::Strategy,
+                                side_art(FLEET_SELECTED, side),
+                                *item,
+                                scale,
+                                0.0,
+                                0.0,
+                            );
+                        }
+                        if let (Some(value), Some(mini)) =
+                            (value, class.and_then(|class| capital_ship_mini_id(class.dat_id)))
+                        {
+                            // Under construction: the unfinished mark last
+                            // (FUN_0042c3b0); on its trip: the en route one.
+                            let travelling = world.products.arrival(product).is_some();
+                            let mut marks = mini_marks(MiniObject::Craft, mini, travelling, false);
+                            if !travelling {
+                                marks.push(unfinished_mini_mark(value.is_alliance));
+                            }
+                            for (target, item, _) in &targets {
+                                for &(source, id) in marks
+                                    .iter()
+                                    .chain(std::iter::once(&(DllSource::Gokres, mini)))
+                                {
+                                    paint_native(
+                                        target, ctx, cache, source, id, *item, scale, 5.0, 15.0,
+                                    );
+                                }
+                            }
                         }
                     }
                     FleetWindowEntry::Ship { fleet, index } => {
@@ -9334,6 +9433,34 @@ pub(crate) mod tests {
         );
         assert_eq!(unfinished_mini_mark(true), (DllSource::Strategy, 11_570));
         assert_eq!(unfinished_mini_mark(false), (DllSource::Strategy, 11_572));
+        // FUN_004a3d40: the expanded fleet's entry lists it after its ships.
+        let mut open = window(system, Some(FleetWindowEntry::Fleet(fleet)));
+        let movement = MovementState::default();
+        assert_eq!(
+            left_entries(&world, &movement, &fog(system), Faction::Alliance, &open),
+            [FleetWindowEntry::Fleet(fleet)]
+        );
+        open.expanded.push(fleet);
+        let entry = FleetWindowEntry::Product { fleet, product };
+        assert_eq!(
+            left_entries(&world, &movement, &fog(system), Faction::Alliance, &open),
+            [
+                FleetWindowEntry::Fleet(fleet),
+                FleetWindowEntry::Ship { fleet, index: 0 },
+                entry,
+            ]
+        );
+        assert_eq!(entry.fleet(), fleet);
+        assert_eq!(entry_object(&world, entry), ItemObject::Product(product));
+        // It carries nothing: every tab is dark for it alone.
+        for tab in [
+            FleetWindowTab::CapitalShips,
+            FleetWindowTab::Fighters,
+            FleetWindowTab::Troops,
+            FleetWindowTab::Personnel,
+        ] {
+            assert!(!tab_enabled(&world, &transport, &[], Some(entry), tab));
+        }
     }
 
     #[test]
