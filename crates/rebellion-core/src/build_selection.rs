@@ -334,10 +334,22 @@ pub fn lacks_facility_room(
         .flat_map(|((at, _), queue)| queue.items().iter().map(move |item| (*at, item)))
         .filter(|(at, item)| item.destination.unwrap_or(*at) == site)
         .filter_map(|(_, item)| facility_slot(item.kind));
+    // Those on their way: a delivery, or a facility finished elsewhere
+    // travelling inside its destination (FUN_0052bee0; crate::products).
     let travelling = en_route
         .iter()
         .filter(|delivery| delivery.destination == site)
-        .filter_map(|delivery| facility_slot(delivery.kind));
+        .map(|delivery| delivery.kind)
+        .chain(
+            world
+                .products
+                .travelling()
+                .filter(|(product, _)| {
+                    product.container == crate::products::Container::System(site)
+                })
+                .map(|(product, _)| product.kind),
+        )
+        .filter_map(facility_slot);
     let (mut facilities, mut mines) = (0_u32, 0_u32);
     for is_mine in built.chain(queued).chain(travelling) {
         facilities += 1;
@@ -884,6 +896,26 @@ mod tests {
             facility,
             2
         ));
+
+        // So does a facility finished elsewhere, travelling inside its
+        // destination (FUN_0052bee0 EnrouteActive; crate::products).
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(away, QueueItem::new(facility, 10).delivered_to(home));
+        crate::products::reconcile(&mut world, &manufacturing);
+        let settled = crate::products::settle(
+            &mut world,
+            Vec::new(),
+            vec![crate::manufacturing::Departure {
+                origin: away,
+                destination: home,
+                tick: 0,
+                kind: facility,
+                name: None,
+            }],
+        );
+        assert_eq!(settled.trips.len(), 1);
+        let manufacturing = ManufacturingState::new();
+        assert!(!valid(&world, &manufacturing, &[], yards, facility, 1));
     }
 
     // FUN_005385f0 runs FUN_00552210 on each ordering manager before it

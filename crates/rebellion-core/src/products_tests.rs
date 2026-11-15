@@ -419,29 +419,48 @@ fn a_facility_order_places_an_unfinished_facility_in_its_system() {
 }
 
 #[test]
-fn a_facility_finished_away_from_its_yard_still_travels_as_a_delivery() {
-    // port: its trip stays a delivery, which the facility pages and the
-    // slot count read.
+fn a_facility_finished_away_from_its_yard_travels_inside_its_system_then_completes() {
+    // FUN_0052bee0 sets EnrouteActive on a product whose container (the
+    // facility's destination system) is not its yard's, then Completed,
+    // moving nothing; the arrival (0x387 -> FUN_004fba10 ->
+    // FUN_00556620) clears EnrouteActive (unfinished-products.md, "When
+    // it becomes finished"; unfinished-facility.md: bit 4, "Enroute").
     let mut s = setup();
     let build = crate::manufacturing::FacilityBuild {
         class: DatId::new(0x2c00_0001),
         is_alliance: false,
     };
-    s.manufacturing.enqueue(
-        s.yard,
-        QueueItem::new(BuildableKind::ProductionFacility(build), 5).delivered_to(s.there),
-    );
+    let kind = BuildableKind::ProductionFacility(build);
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(kind, 5).delivered_to(s.there));
     reconcile(&mut s.world, &s.manufacturing);
+    let id = s.world.products.all()[0].id;
     let departure = Departure {
         origin: s.yard,
         destination: s.there,
         tick: 1,
-        kind: BuildableKind::ProductionFacility(build),
+        kind,
         name: None,
     };
     let settled = settle(&mut s.world, Vec::new(), vec![departure.clone()]);
-    assert_eq!(settled.departures, vec![departure]);
-    assert!(settled.trips.is_empty());
+    assert!(settled.departures.is_empty());
+    assert_eq!(settled.trips, vec![departure]);
+    let days = crate::delivery::transit_days(&s.world, kind, s.yard, s.there);
+    let arrival = 1 + u64::from(days);
+    assert_eq!(s.world.products.arrival(id), Some(arrival));
+    assert_eq!(s.world.products.all()[0].container, Container::System(s.there));
+    assert_eq!(arrive(&mut s.world, arrival - 1), Arrived::default());
+    let arrived = arrive(&mut s.world, arrival);
+    assert_eq!(
+        arrived.completions,
+        vec![CompletionEvent {
+            system: s.there,
+            tick: arrival,
+            kind,
+            name: None,
+            fleet: None,
+        }]
+    );
     assert!(s.world.products.all().is_empty());
 }
 

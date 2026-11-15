@@ -248,5 +248,7 @@ Still port deviations:
   of its container. Its staged spare waits empty and invisible until the
   ship arrives.
 - **Facilities** keep their queue-built rows.
+  A facility finished away from its destination travels as a product trip
+  inside that system (2026-11-15 evening), not as a delivery.
 - **Death Star.** The unfinished Death Star's part in a battle is not
   ported.

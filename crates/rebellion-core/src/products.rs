@@ -510,10 +510,10 @@ pub fn settle(
         if let Some(id) = id {
             let product = world.products.get(id).cloned();
             if let Some(product) = product {
+                // A facility too: its container is its destination system
+                // (unfinished-facility.md, bit 4 "Enroute").
                 if let Some(at) = container_system(world, product.container) {
-                    // port: a facility's trip stays a delivery, which
-                    // its pages and the slot count read.
-                    if at != yard && !is_facility(kind) {
+                    if at != yard {
                         let days = crate::delivery::transit_days(world, kind, yard, at);
                         world.products.trips.push((id, tick + u64::from(days)));
                         out.trips.push(Departure {

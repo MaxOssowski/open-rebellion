@@ -476,8 +476,17 @@ pub fn page_cells(
             }
         }
     }
+    // Then those travelling to it: a facility finished elsewhere stays in
+    // its system on its trip (FUN_0052bee0; rebellion_core::products), and
+    // a delivery from an older save.
+    let travelling = world
+        .products
+        .travelling()
+        .filter(|(product, _)| product.container == rebellion_core::products::Container::System(system))
+        .map(|(product, day)| (product.kind, Some(day)));
     let queued = pending_units(manufacturing, system)
         .map(|kind| (kind, None))
+        .chain(travelling)
         .chain(
             deliveries
                 .en_route()
@@ -1055,6 +1064,55 @@ mod tests {
             FacilityPage::Shipyards,
         );
         assert!(none.is_empty());
+    }
+
+    // FUN_0052bee0: a facility finished away from its destination stays
+    // there, Completed and EnrouteActive, so the page lists it en route
+    // (FUN_00458fe0: base + 3) until it arrives.
+    #[test]
+    fn a_facility_finished_elsewhere_lists_en_route_inside_its_system() {
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Bortras", ALLIANCE);
+        let elsewhere = add_system(&mut world, "Denab", ALLIANCE);
+        let template = alliance(0x2800_0004);
+        let kind = BuildableKind::ManufacturingFacility(template);
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(elsewhere, QueueItem::new(kind, 5).delivered_to(system));
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let settled = rebellion_core::products::settle(
+            &mut world,
+            Vec::new(),
+            vec![rebellion_core::manufacturing::Departure {
+                origin: elsewhere,
+                destination: system,
+                tick: 0,
+                kind,
+                name: None,
+            }],
+        );
+        assert_eq!(settled.trips.len(), 1);
+        let arrival = world.products.travelling().next().map(|(_, day)| day);
+        let manufacturing = ManufacturingState::new();
+        let cells = page_cells(
+            &world,
+            &manufacturing,
+            &DeliveryState::new(),
+            true,
+            system,
+            FacilityPage::Shipyards,
+        );
+        assert_eq!(
+            cells,
+            [FacilityCell {
+                item: FacilityItem::Pending {
+                    index: 0,
+                    class: DatId::new(0x2800_0004),
+                    owner: 1,
+                    arrival,
+                },
+                picture: 9_013
+            }]
+        );
     }
 
     // FUN_004568a0 case 0x6c: the mines page fills its system's deposits

@@ -195,6 +195,19 @@ completion starts the trip from the yard to that container. Their
   Alliance blockaded and took the system with no battle alert (run 2,
   days 509..550). This fits the mode-1 battle walks.
 
+### A facility's trip (ported 2026-11-15)
+
+`FUN_0052bee0` does not test the product's family: a facility finished
+away from its destination sets EnrouteActive there and stays in that
+system's facility list, as a ship or unit does in its container. Its page
+draws it en route (`FUN_00458fe0`, base + 3; `unfinished-facility.md`),
+it keeps its energy slot and costs maintenance, and the arrival
+(`0x387` -> `FUN_004fba10` -> `FUN_00556620`) makes it usable. The port
+keeps it as a product trip (`rebellion_core::products::settle`); the
+facility pages (`manufacturing_window::page_cells`) and the room check
+(`build_selection::lacks_facility_room`) read those trips. A `Delivery` of
+a facility now comes only from an older save.
+
 ## Open
 
 - What the Move of an unfinished capital ship, or of a fleet holding only
