@@ -17,12 +17,14 @@
 // FUN_00609650 finds (FUN_00464c20, 0x408): "Q", which no row begins,
 // chooses the first row; "Y" and "Ya" keep it, and nothing scrolls.
 //
-// Last, for the Alliance, the PersonnelCopied fixture (code 127): the
-// Imperial tab lists the player's copies of two Imperial characters, one
-// aboard a ship of a fleet only its frozen copy of a system holds, "Name -
-// <ship> N", the other in no place, "Name - Location Unknown"
+// Last, for each faction, the PersonnelCopied fixture (code 127): the other
+// side's tab lists the player's copies of four of the other side's
+// characters: one aboard a ship of a fleet only its frozen copy of a system
+// holds, "Name - <ship> N"; one in no place, "Name - Location Unknown"
 // (FUN_00465bb0, 0x1895; A0 2026-11-14-stale-views second run,
-// 1x-personnelfinder-empire-d85 d57ed845 and d91 1b8818d8).
+// 1x-personnelfinder-empire-d85 d57ed845 and d91 1b8818d8); one frozen
+// en route to that system, "Name - <system> ( Enroute ) " (+0x50 bit 4,
+// 0x8744); and one on a mission there, "( On Mission ) " (0x8745).
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node personnel-states.mjs [--out=DIR] [--faction=alliance|empire]
@@ -633,8 +635,9 @@ async function runSpecForces(browser, base) {
   }
 }
 
-async function runCopied(browser, base) {
-  const directory = path.join(OUT, "alliance-copied");
+async function runCopied(browser, base, faction) {
+  const label = `${faction.name}-copied`;
+  const directory = path.join(OUT, label);
   await fs.mkdir(directory, { recursive: true });
   const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
   const page = await context.newPage();
@@ -645,7 +648,7 @@ async function runCopied(browser, base) {
   });
   page.on("pageerror", (error) => errors.push(String(error)));
   try {
-    const code = PERSONNEL_COPIED | (1 << 8);
+    const code = PERSONNEL_COPIED | (faction.byte << 8);
     await page.goto(`${base}?fixture-code=${code}`);
     const deadline = Date.now() + 30_000;
     while ((await ready(page))?.status !== "ready") {
@@ -655,27 +658,38 @@ async function runCopied(browser, base) {
     await frames(page, 6);
     await page.locator("#glcanvas").focus();
     await page.keyboard.press("F5");
-    const own = await until(page, "F5 opens the Personnel Finder", (o) => o.tab === "alliance");
-    await click(page, own.tabs[1]);
+    const alliance = faction.name === "alliance";
+    const own = await until(page, "F5 opens the Personnel Finder",
+      (o) => o.tab === (alliance ? "alliance" : "imperial"));
+    await click(page, own.tabs[alliance ? 1 : 0]);
     await page.mouse.move(2, 2);
-    const imperial = await until(page, "the Imperial tab shows", (o) => o.tab === "imperial");
+    const imperial = await until(page, "the other side's tab shows",
+      (o) => o.tab === (alliance ? "imperial" : "alliance"));
     await frames(page, 3);
-    const bytes = await page.screenshot({ path: path.join(directory, "imperial-copies.png") });
-    steps.push({ label: "imperial-copies", rows: imperial.rows,
+    const bytes = await page.screenshot({ path: path.join(directory, "other-side-copies.png") });
+    steps.push({ label: "other-side-copies", rows: imperial.rows,
       sha256: createHash("sha256").update(bytes).digest("hex") });
-    assert.equal(imperial.rows.length, 2, JSON.stringify(imperial.rows));
+    assert.equal(imperial.rows.length, 4, JSON.stringify(imperial.rows));
     const lost = imperial.rows.filter((row) => / - Location Unknown$/.test(row));
-    const aboard = imperial.rows.filter((row) => !/ - Location Unknown$/.test(row));
+    const enroute = imperial.rows.filter((row) => / - [^()]+ \( Enroute \) $/.test(row));
+    const busy = imperial.rows.filter((row) => / - [^()]+ \( On Mission \) $/.test(row));
+    const aboard = imperial.rows.filter((row) => !/ - Location Unknown$/.test(row) && !/\)/.test(row));
     assert.equal(lost.length, 1, JSON.stringify(imperial.rows));
+    assert.equal(enroute.length, 1, JSON.stringify(imperial.rows));
+    assert.equal(busy.length, 1, JSON.stringify(imperial.rows));
+    assert.equal(aboard.length, 1, JSON.stringify(imperial.rows));
+    // The en route and mission copies name the same copied system.
+    assert.equal(enroute[0].replace(/^.* - /, "").replace(/ \(.*$/, ""),
+      busy[0].replace(/^.* - /, "").replace(/ \(.*$/, ""), JSON.stringify(imperial.rows));
     // The copied ship's name, numbered by its class, with no state word
     // and not the fleet's name.
     assert.match(aboard[0], /^[A-Za-z][A-Za-z' -]* - [A-Za-z][A-Za-z -]* \d+$/, aboard[0]);
     assert.ok(!/ - Fleet \d+$/.test(aboard[0]), aboard[0]);
     assert.deepEqual(errors, [], errors.join("; "));
-    return { faction: "alliance-copied", status: "pass", steps };
+    return { faction: label, status: "pass", steps };
   } catch (error) {
     await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
-    return { faction: "alliance-copied", status: "fail", error: String(error.stack || error), steps, errors };
+    return { faction: label, status: "fail", error: String(error.stack || error), steps, errors };
   } finally {
     await context.close();
   }
@@ -697,7 +711,7 @@ try {
   if (args.only !== "copied" && (!args.faction || args.faction === "alliance")) {
     results.push(await runSpecForces(browser, base));
   }
-  if (!args.faction || args.faction === "alliance") results.push(await runCopied(browser, base));
+  for (const faction of FACTIONS) results.push(await runCopied(browser, base, faction));
 } finally {
   await browser.close();
   server.close();

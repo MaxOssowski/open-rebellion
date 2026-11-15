@@ -1964,11 +1964,12 @@ fn place_stale_second(
 
 /// The `PersonnelCopied` scenario: a system other than `primary` with no
 /// fleet of the player's becomes the other side's, with a new fleet of the
-/// other side's first capital ship class carrying its first recruited
-/// character. The player's side takes its copies of that system there
-/// (`SystemView`, `SystemExtras`, `SystemDetails`, `CharacterCopy`),
-/// frozen; its second recruited character takes a copy in no place
-/// ("Location Unknown"), standing on the same system.
+/// other side's first capital ship class carrying its first character. The
+/// player's side takes its copies of that system there (`SystemView`,
+/// `SystemExtras`, `SystemDetails`, `CharacterCopy`), frozen; its second
+/// character takes a copy in no place ("Location Unknown"), its third one
+/// en route to the system and its fourth one on a mission there
+/// (`CharacterCopyState`). All four stand on the system and are recruited.
 fn place_copied_characters(
     request: FixtureRequest,
     world: &mut GameWorld,
@@ -1978,7 +1979,8 @@ fn place_copied_characters(
     primary: SystemKey,
 ) {
     use rebellion_core::object_views::{
-        character_copies, CharacterCopy, SystemDetails, SystemExtras, SystemView,
+        character_copies, CharacterCopy, CharacterCopyState, SystemDetails, SystemExtras,
+        SystemView,
     };
     let alliance = request.faction == CockpitFaction::Alliance;
     let viewer = Faction::of_alliance(alliance);
@@ -1993,12 +1995,18 @@ fn place_copied_characters(
     }) else {
         return;
     };
-    let mut characters = world
+    // The other side's living characters, its recruited ones first; those
+    // taken here are recruited (the Empire's galaxy recruits few Alliance
+    // characters).
+    let mut others: Vec<_> = world
         .characters
         .iter()
-        .filter(|(_, value)| value.is_alliance != alliance && value.recruited && !value.is_killed)
-        .map(|(key, _)| key);
-    let (Some(aboard), Some(lost)) = (characters.next(), characters.next()) else {
+        .filter(|(_, value)| value.is_alliance != alliance && !value.is_killed)
+        .map(|(key, value)| (!value.recruited, key))
+        .collect();
+    others.sort();
+    let chosen: Vec<_> = others.into_iter().map(|(_, key)| key).take(4).collect();
+    let [aboard, lost, travelling, busy] = chosen[..] else {
         return;
     };
     let Some(class) = world
@@ -2010,8 +2018,9 @@ fn place_copied_characters(
         return;
     };
     world.systems[at].control = ControlKind::Controlled(other);
-    for key in [aboard, lost] {
+    for key in [aboard, lost, travelling, busy] {
         let character = &mut world.characters[key];
+        character.recruited = true;
         character.current_system = None;
         character.current_fleet = None;
         character.current_abode = None;
@@ -2045,7 +2054,22 @@ fn place_copied_characters(
     let details = SystemDetails::of(world, movement, missions, troop_transport, at);
     let copied = character_copies(world, movement, viewer, at);
     let lost_id = world.characters[lost].dat_id;
-    world.characters[lost].current_system = Some(at);
+    let travelling_id = world.characters[travelling].dat_id;
+    let busy_id = world.characters[busy].dat_id;
+    for key in [lost, travelling, busy] {
+        world.characters[key].current_system = Some(at);
+    }
+    // A traveller seen leaving for the system, frozen en route there
+    // (FUN_00556390, +0x50 bit 4), and one on a mission there (+0x68).
+    let placed = CharacterCopy {
+        system: Some(id),
+        ship: None,
+    };
+    let state = |on_mission, enroute| CharacterCopyState {
+        on_mission,
+        hidden_mission: false,
+        enroute,
+    };
     let views = &mut world.object_views;
     let (systems, extras_map, details_map, characters_map) = if alliance {
         (
@@ -2067,6 +2091,15 @@ fn place_copied_characters(
     details_map.insert(id, details);
     characters_map.extend(copied);
     characters_map.insert(lost_id, CharacterCopy::default());
+    characters_map.insert(travelling_id, placed.clone());
+    characters_map.insert(busy_id, placed);
+    let states = if alliance {
+        &mut views.alliance_character_states
+    } else {
+        &mut views.empire_character_states
+    };
+    states.insert(travelling_id, state(false, true));
+    states.insert(busy_id, state(true, false));
 }
 
 /// The arrival day of the frozen copy in `EnemyRegimentFrozen`: A0
@@ -13559,12 +13592,17 @@ mod tests {
     // (d91, 1b8818d8); FUN_00465bb0 keeps 0x1895 for a copy in no ship or
     // system.
     #[test]
-    fn the_personnel_copied_scenario_lists_a_copied_ship_and_a_lost_copy() {
+    fn the_personnel_copied_scenario_lists_a_copied_ship_a_lost_copy_and_copied_states() {
         let applied = apply_to_loading_world_with(
             request(Scenario::PersonnelCopied, CockpitFaction::Alliance),
             |world| {
                 let here = world.systems.keys().next().unwrap();
-                for (id, name) in [(0x3000_0101, "Darth Vader"), (0x3000_0102, "Piett")] {
+                for (id, name) in [
+                    (0x3000_0101, "Darth Vader"),
+                    (0x3000_0102, "Piett"),
+                    (0x3000_0103, "Thrawn"),
+                    (0x3000_0104, "Veers"),
+                ] {
                     world.characters.insert(rebellion_core::world::Character {
                         dat_id: rebellion_core::ids::DatId::new(id),
                         name: name.into(),
@@ -13602,7 +13640,9 @@ mod tests {
             texts,
             [
                 "Darth Vader - Imperial Star Destroyer 1",
-                "Piett - Location Unknown"
+                "Piett - Location Unknown",
+                "Thrawn - System ( Enroute ) ",
+                "Veers - System ( On Mission ) ",
             ]
         );
     }
