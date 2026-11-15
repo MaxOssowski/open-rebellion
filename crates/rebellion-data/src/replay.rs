@@ -762,9 +762,11 @@ impl ReplayRuntime {
             deliveries,
             player_agent,
             object_views,
+            products,
         } = state;
         let mut world = world;
         world.object_views = object_views;
+        world.products = products;
         let (fog, inactive_fog) = if player_is_alliance {
             (fog_alliance, fog_empire)
         } else {
@@ -917,6 +919,7 @@ impl ReplayRuntime {
             deliveries: self.states.deliveries.clone(),
             player_agent: self.player_agent.clone(),
             object_views: self.world.object_views.clone(),
+            products: self.world.products.clone(),
         }
     }
 }
@@ -1255,6 +1258,7 @@ mod tests {
             deliveries: rebellion_core::delivery::DeliveryState::default(),
             player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
             object_views: rebellion_core::object_views::ObjectViews::default(),
+            products: rebellion_core::products::Products::default(),
         }
     }
 

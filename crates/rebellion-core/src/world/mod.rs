@@ -1823,6 +1823,11 @@ pub struct GameWorld {
     /// them.
     #[serde(skip)]
     pub object_views: crate::object_views::ObjectViews,
+    /// The unfinished products in their containers ([`crate::products`]).
+    /// The save keeps them as its last field (`SaveState::products`,
+    /// v124), so the world's own encoding skips them.
+    #[serde(skip)]
+    pub products: crate::products::Products,
 }
 
 /// An abode (ABODESD, family `0x98`, class vtable `0x00669260` built by
@@ -1883,7 +1888,7 @@ pub struct FleetNames {
     /// port: the original keeps an empty spare; the port makes the fleet
     /// with its first ship.
     #[serde(default)]
-    ship_spares: Vec<(SystemKey, bool, FleetKey)>,
+    pub(crate) ship_spares: Vec<(SystemKey, bool, FleetKey)>,
 }
 
 /// port: a save written before the difficulty was stored loads at column 2,

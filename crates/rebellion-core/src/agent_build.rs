@@ -126,8 +126,12 @@ pub fn accept_target(
             .systems
             .get(target.system)
             .is_some_and(|sys| crate::uprising::holder(sys) == Some(side));
-        let fleet_there = world.fleets.values().any(|fleet| {
-            fleet.location == target.system && Faction::of_alliance(fleet.is_alliance) == side
+        // A staged spare (only unfinished ships) is not Usable
+        // (FUN_004fe540; crate::products).
+        let fleet_there = world.fleets.iter().any(|(key, fleet)| {
+            fleet.location == target.system
+                && Faction::of_alliance(fleet.is_alliance) == side
+                && !crate::products::is_staged(world, key)
         });
         if !held && !fleet_there {
             return Err(BuildRefusal::UnheldSystem);

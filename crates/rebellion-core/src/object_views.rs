@@ -444,6 +444,8 @@ pub fn system_seen(
             fleet.is_alliance == alliance
                 && fleet.location == system
                 && !movement.is_in_transit(key)
+                // port: a staged spare (crate::products) watches nothing.
+                && !crate::products::is_staged(world, key)
         })
 }
 

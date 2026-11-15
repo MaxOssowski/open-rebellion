@@ -194,13 +194,17 @@ pub fn run_simulation_tick(
     let suspended = suspended_systems(&states.blockade, &states.uprising);
     // Each yard cycle takes one refined material and ends with one build
     // point for its manager (FUN_00530820, FUN_0052a430).
-    let mfg_advance = advance_yards(
+    rebellion_core::products::reconcile(world, &states.manufacturing);
+    let mut mfg_advance = advance_yards(
         &mut states.production,
         world,
         &mut states.manufacturing,
         |system| suspended.contains(&system),
         tick_events,
     );
+    // A finished product completes in its container, or travels there
+    // from its yard (FUN_0052bee0; rebellion_core::products).
+    rebellion_core::products::settle_advance(world, &mut mfg_advance);
     integrator.apply_build_completions(world, &mfg_advance.completions);
     integrator.apply_manufacturing_idle(world, &mfg_advance.newly_idle);
     for completion in &mfg_advance.completions {
@@ -848,6 +852,10 @@ pub fn run_simulation_tick(
         &mut |m| draw_from_roll(take_rolls(1)[0], m),
     );
     integrator.record_loyalty_shifts(&shifts);
+
+    // The day's orders placed their units in their containers
+    // (FUN_0052a140; rebellion_core::products).
+    rebellion_core::products::reconcile(world, &states.manufacturing);
 
     // ── 13f. Each side's views of the other side's objects ──────────────
     // After movement, control and missions (FUN_004f9a60 per object;

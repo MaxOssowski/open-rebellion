@@ -499,6 +499,9 @@ pub fn icon_targets(
             .collect(),
         0x10 => crate::movement::listed_fleets(movement, world, system)
             .into_iter()
+            // An unfinished product takes no Scrap (A0 2026-11-15 "u-2":
+            // Fleet 4's Scrap grey; crate::products).
+            .filter(|&fleet| !crate::products::is_staged(world, fleet))
             .map(ScrapTarget::Fleet)
             .collect(),
         _ => Vec::new(),

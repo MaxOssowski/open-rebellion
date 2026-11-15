@@ -811,6 +811,7 @@ impl LiveCampaign<'_> {
             deliveries: self.deliveries.clone(),
             player_agent: self.player_agent.clone(),
             object_views: self.world.object_views.clone(),
+            products: self.world.products.clone(),
         }
     }
 
@@ -853,6 +854,7 @@ impl LiveCampaign<'_> {
         *self.deliveries = state.deliveries;
         *self.player_agent = state.player_agent;
         self.world.object_views = state.object_views;
+        self.world.products = state.products;
     }
 }
 
@@ -2949,16 +2951,20 @@ async fn main() {
             // A manager with no yard left scraps its queue; yards in a
             // system in uprising or under blockade are suspended.
             scrap_yardless_queues(&world, &mut mfg_state);
+            rebellion_core::products::reconcile(&mut world, &mfg_state);
             let suspended = suspended_systems(&blockade_state, &uprising_state);
             // Each yard cycle takes one refined material and ends with one
             // build point for its manager.
-            let mfg_advance = advance_yards(
+            let mut mfg_advance = advance_yards(
                 &mut production_state,
                 &world,
                 &mut mfg_state,
                 |system| suspended.contains(&system),
                 &tick_events,
             );
+            // A finished product completes in its container, or travels
+            // there from its yard (FUN_0052bee0; rebellion_core::products).
+            rebellion_core::products::settle_advance(&mut world, &mut mfg_advance);
             for completion in &mfg_advance.completions {
                 // Apply the built item to the game world (ships, facilities, troops).
                 rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
@@ -4649,6 +4655,10 @@ async fn main() {
                 Some(victory_state.alliance_hq),
                 &mut |m| sim_rng.gen_range(0..m.max(1)),
             );
+
+            // The day's orders placed their units in their containers
+            // (FUN_0052a140; rebellion_core::products).
+            rebellion_core::products::reconcile(&mut world, &mfg_state);
 
             // ── Each side's views of the other side's objects ───────────────
             // After movement, control and missions (FUN_004f9a60 per object;
@@ -9719,6 +9729,9 @@ async fn main() {
                         #[cfg(not(target_arch = "wasm32"))]
                         &sounds_dir,
                     );
+                    // An order's units are objects from its fire
+                    // (FUN_0052a140): placed now, in their containers.
+                    rebellion_core::products::reconcile(&mut world, &mfg_state);
                     if let Some((system, area, count)) = confirmed {
                         system_window_state.confirmed_build(
                             &world, &mfg_state, system, area, count,

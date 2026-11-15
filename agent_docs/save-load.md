@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v123, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, each side's object views, and the v116 to v122 migrations"
+description: "Native and browser save v124, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, each side's object views, and the v116 to v123 migrations"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-29
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v123. v116 to v122 still load
+serializable snapshot. The current format is v124. v116 to v123 still load
 through their migrations (below); no other version does.
 
-## Native format (v123)
+## Native format (v124)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -75,6 +75,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `deliveries` | `DeliveryState`; v100 adds each delivery's side, for its autoroute when its destination is destroyed; v116 adds the name its order gave it |
 | `player_agent` | `PlayerAgent`; v108 adds Translate Counterpart (`DAT_006b28b0` bit `0x1000`), the advisor's update flag (`DAT_006b28bc`) and its schedule's last days (the advisor class `+0x168`), as `FUN_004397a0` saves them; the next free days (`+0x16c`) load as 0 (`FUN_00439550`); v109 adds the agent's advice: `+0x148` (the last advice's sub-tick), `+0x150` (the windows seen and the list built) and `+0x154` (the advice not yet posted) (`ghidra/notes/agent-advice-list.md`) |
 | `object_views` | `ObjectViews` (v117, the last field): each side's views of the other side's regiments, keyed by the regiment's object id (`DatId`, its class family and a running number; `regiment_ids` maps the live regiments), live or frozen by `FUN_004f9a60` (`ghidra/notes/per-side-object-views.md`). The loaders copy it into `GameWorld::object_views`, which the world's own encoding skips. v118 adds each side's system views (`alliance_systems`, `empire_systems`, by the system's id: its control, support, energy and raw material, and its facilities, planet squadrons, special forces and characters). v119 adds each side's extras (`alliance_extras`, `empire_extras`, by the system's id: the fleets in orbit by creation serial, the missions aimed there by id and side, and the squadrons, special forces and characters it saw leave for the system while it does not see it). v120 adds each side's details (`alliance_details`, `empire_details`: the fleets with their names, ships, squadrons, regiments and characters, and the missions with their kind and members), kept as seen until the side sees the system again. v121 adds each side's character copies (`alliance_characters`, `empire_characters`, by the character's id: the system whose copy last held it and the copied ship it rode, or no place once that copy went live without it; the Personnel Finder's "Location Unknown", `FUN_00465bb0`). v122 adds each side's character copy state bits (`alliance_character_states`, `empire_character_states`, by the character's id: on a mission, its mission hidden, en route; a character absent has none). v123 adds each side's character copy command words (`alliance_character_commands`, `empire_character_commands`: `+0x96` as the copy last synced, `FUN_004f04f0`). The debug `see_everything` flag is not saved |
+| `products` | `Products` (v124, the last field): each ordered unit not yet finished, in its container (`rebellion_core::products`; `FUN_0052a140` creates it at the order, Existing and not Completed): a capital ship in the target's spare fleet, a regiment, squadron or special force in the target system. The loaders copy it into `GameWorld::products`, which the world's own encoding skips |
 
 Loading restores the RNG, dual-AI state, repair episodes, and combat memory
 instead of reseeding or clearing them. `campaign_config` keeps the selected
@@ -102,9 +103,9 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## The v116 to v122 migrations
+## The v116 to v123 migrations
 
-The loader reads `SAVE_VERSION` (123), `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
+The loader reads `SAVE_VERSION` (124), `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
 `MIGRATED_VERSION` (116). Any other version is rejected with a message to
 start a new game.
 
@@ -112,8 +113,8 @@ A v116 body lacks only the trailing `object_views` field, a v117 body only
 that field's six trailing maps (system views, extras and details), a v118
 body four (extras and details) and a v119 body two (details); v117 to v120
 bodies also lack the two character copy maps, v117 to v121 bodies the
-two character copy state maps, and v117 to v122 bodies the two command
-maps, so `migrate_body` appends the empty encoding before decoding. The fingerprint is checked as the old
+two character copy state maps, v117 to v122 bodies the two command
+maps, and every older body the products, so `migrate_body` appends the empty encoding before decoding. The fingerprint is checked as the old
 version wrote it (`fingerprint_as`: its version in the hash, without the
 missing keys). Then a v116 save takes `object_views::seed_from_fog` (each
 side's views of the other side's regiments and of the systems its fog
@@ -123,8 +124,10 @@ takes `seed_extras_from_fog` (v116 to v118) and `seed_details_from_fog`
 (v116 to v119, which also seeds the character copies); a v120 save takes
 `seed_characters_from_copies` from its saved system and fleet copies.
 A v121 save's copies load without state bits, a v122 save's without
-command words. The browser reads a slot's v122, v121, v120, v119, v118,
-v117, then v116 keys when it has no v123 ones; Delete removes all.
+command words. A v123 or older save's queued units are placed in their
+containers on load (`products::reconcile`); its deliveries stay trips.
+The browser reads a slot's v123, v122, v121, v120, v119, v118, v117,
+then v116 keys when it has no v124 ones; Delete removes all.
 
 Changing `SaveState`, or any type it holds, including `GameWorld`, changes the
 bincode layout. Bincode is positional, so `#[serde(default)]` does not keep old

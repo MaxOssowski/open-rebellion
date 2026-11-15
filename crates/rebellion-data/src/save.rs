@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 123;
+pub const SAVE_VERSION: u32 = 124;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -109,7 +109,11 @@ pub const V121: u32 = 121;
 /// its last fields.
 pub const V122: u32 = 122;
 
-/// Whether a save of `version` loads (the current one, or v116 to v122
+/// v123: the save without the unfinished products (`SaveState::products`),
+/// its last field.
+pub const V123: u32 = 123;
+
+/// Whether a save of `version` loads (the current one, or v116 to v123
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -207,6 +211,11 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
     if (V117..=V122).contains(&version) {
         body.extend(bincode::serialize(&CommandsTail::default())?);
     }
+    if version <= V123 {
+        body.extend(bincode::serialize(
+            &rebellion_core::products::Products::default(),
+        )?);
+    }
     Ok(body)
 }
 
@@ -238,6 +247,7 @@ pub fn decode_body(
         "save state fingerprint mismatch: expected {expected}, computed {found}"
     );
     state.world.object_views = state.object_views.clone();
+    state.world.products = state.products.clone();
     let fogs = [&state.fog_alliance, &state.fog_empire];
     if version == MIGRATED_VERSION {
         rebellion_core::object_views::seed_from_fog(
@@ -270,6 +280,13 @@ pub fn decode_body(
         rebellion_core::object_views::seed_characters_from_copies(&mut state.world);
     }
     state.object_views = state.world.object_views.clone();
+    if version <= V123 {
+        // A v123 save's queued units have no products yet: they are
+        // placed in their containers now, as their orders would have
+        // (crate::products::reconcile). Its deliveries stay trips.
+        rebellion_core::products::reconcile(&mut state.world, &state.manufacturing);
+    }
+    state.products = state.world.products.clone();
     let fingerprint = compute_state_fingerprint(&state)?;
     Ok((state, fingerprint))
 }
@@ -375,6 +392,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V123 {
+            fields.remove("products");
+        }
         if version == MIGRATED_VERSION {
             fields.remove("object_views");
         } else if let Some(serde_json::Value::Object(views)) = fields.get_mut("object_views") {
@@ -504,6 +524,13 @@ pub struct SaveState {
     /// appending an empty one ([`migrate_body`]). The loaders copy it
     /// into `world.object_views`; the world's own encoding skips it.
     pub object_views: rebellion_core::object_views::ObjectViews,
+    // ── v124: the unfinished products ───────────────────────────────────
+    /// `GameWorld::products` ([`rebellion_core::products`]): each unit
+    /// ordered and not yet finished, in its container. It stays the last
+    /// field: an older body is read by appending an empty one
+    /// ([`migrate_body`]), then its queues are placed. The loaders copy it
+    /// into `world.products`; the world's own encoding skips it.
+    pub products: rebellion_core::products::Products,
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,6 +1037,7 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V123,
             V122,
             V121,
             V120,
@@ -1125,6 +1153,8 @@ pub mod wasm_impl {
             versioned_meta_key(V121, slot),
             versioned_slot_key(V122, slot),
             versioned_meta_key(V122, slot),
+            versioned_slot_key(V123, slot),
+            versioned_meta_key(V123, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1154,6 +1184,7 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V123,
             V122,
             V121,
             V120,
@@ -1305,6 +1336,7 @@ mod tests {
             deliveries: DeliveryState::default(),
             player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
             object_views: rebellion_core::object_views::ObjectViews::default(),
+            products: rebellion_core::products::Products::default(),
         }
     }
 
@@ -1698,9 +1730,23 @@ mod tests {
         bincode::serialize(&StatesTail::default()).unwrap().len() + commands_tail()
     }
 
-    /// The length of the two empty character copy command maps v123 added.
+    /// The length of the two empty character copy command maps v123 added
+    /// and the empty products v124 added.
     fn commands_tail() -> usize {
-        bincode::serialize(&CommandsTail::default()).unwrap().len()
+        bincode::serialize(&CommandsTail::default()).unwrap().len() + products_tail()
+    }
+
+    /// The length of the empty products v124 added.
+    fn products_tail() -> usize {
+        bincode::serialize(&rebellion_core::products::Products::default())
+            .unwrap()
+            .len()
+    }
+
+    /// `state` written as a v123 file: no products. `state` holds none.
+    fn write_v123(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert!(state.products.all().is_empty());
+        write_old(saves_dir, state, V123, products_tail())
     }
 
     /// `state` written as a v122 file: no character copy commands. `state`
@@ -1982,6 +2028,59 @@ mod tests {
         assert_eq!(
             fingerprint_as(&state, V121).unwrap(),
             fingerprint_as(&loaded, V121).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v123_save_places_its_queued_units_in_their_containers() {
+        // v124 keeps the unfinished products (FUN_0052a140 creates each
+        // ordered unit at the order, in its container). A v123 save had
+        // only the queue: its queued ship goes into a new spare, its
+        // squadron into the system (crate::products::reconcile).
+        use rebellion_core::manufacturing::{BuildableKind, QueueItem};
+        let saves_dir = tmp_dir("v123_migration");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        state.world.systems[system].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        let ship = state
+            .world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass::default());
+        let wing = state
+            .world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass::default());
+        state
+            .manufacturing
+            .enqueue(system, QueueItem::new(BuildableKind::CapitalShip(ship), 10));
+        state
+            .manufacturing
+            .enqueue(system, QueueItem::new(BuildableKind::Fighter(wing), 10));
+        write_v123(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v123 save migrates");
+        let products = loaded.world.products.all();
+        assert_eq!(products.len(), 2);
+        assert!(matches!(
+            products[0].container,
+            rebellion_core::products::Container::Fleet(_)
+        ));
+        assert_eq!(
+            products[1].container,
+            rebellion_core::products::Container::System(system)
+        );
+        assert_eq!(loaded.products, loaded.world.products);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        // The v123 fingerprint leaves the products out.
+        let mut placed = loaded.clone();
+        placed.products = rebellion_core::products::Products::default();
+        assert_eq!(
+            fingerprint_as(&placed, V123).unwrap(),
+            fingerprint_as(&loaded, V123).unwrap()
         );
     }
 

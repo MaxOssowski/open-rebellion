@@ -581,6 +581,10 @@ pub fn system_side_fleets(
                 .fleets
                 .get(*fleet)
                 .is_some_and(|value| value.is_alliance == expected_is_alliance)
+                // port: a staged spare (only unfinished ships) takes no
+                // icon order; what its Move does is untraced
+                // (unfinished-products.md, "Open").
+                && !crate::products::is_staged(world, *fleet)
         })
         .collect()
 }
@@ -745,6 +749,10 @@ pub fn listed_fleets(state: &MovementState, world: &GameWorld, system: SystemKey
             .filter(|order| order.destination == system && world.fleets.contains_key(order.fleet))
             .map(|order| order.fleet),
     );
+    // A spare holding only unfinished ships is Existing (FUN_004fe630), so
+    // the mode-3 walks list it (FUN_004a3340; A0 2026-11-15 "u-2": Fleet 4
+    // in Corellia's window right after the order; crate::products).
+    fleets.extend(crate::products::staged_fleets_at(world, system));
     fleets.sort_unstable();
     fleets.dedup();
     // A system's children sit in an AVL tree by object key (FUN_005f5100):

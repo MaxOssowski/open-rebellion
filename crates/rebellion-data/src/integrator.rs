@@ -4913,6 +4913,7 @@ mod tests {
             tick: 1,
             kind: BuildableKind::CapitalShip(class),
             name: None,
+            fleet: None,
         };
         apply_build_completion_inner(&completion, &mut world);
         apply_build_completion_inner(&completion, &mut world);
@@ -4956,6 +4957,7 @@ mod tests {
                     tick: 1,
                     kind: BuildableKind::CapitalShip(ship),
                     name: None,
+                    fleet: None,
                 },
                 world,
             );
@@ -4982,6 +4984,50 @@ mod tests {
         let next = world.ship_spare(yard, false).expect("a new spare");
         assert_ne!(next, spare);
         assert_eq!(world.fleets[next].ship_count(), 1);
+    }
+
+    #[test]
+    fn a_finished_ship_completes_in_its_staged_spare_which_joins_the_system() {
+        // FUN_0052a140 placed the ship in the bit-1 spare at the order
+        // (A0 2026-11-15 "u-2": Fleet 4 at once); FUN_0052bee0 completes
+        // it there without a change of container, and the spare, Usable
+        // now (FUN_004fe540), joins the system's fleets (FUN_00508660).
+        use rebellion_core::manufacturing::{ManufacturingState, QueueItem};
+        let mut world = GameWorld::default();
+        let yard = add_system(&mut world, "Corellia");
+        let ship = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            hull: 100,
+            ..Default::default()
+        });
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.build_units(
+            yard,
+            vec![QueueItem::new(BuildableKind::CapitalShip(ship), 10).ordered(&mut world)],
+        );
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let spare = world.fleets.keys().next().expect("the spare");
+        assert!(world.systems[yard].fleets.is_empty());
+        let name = world.products.all()[0].name.clone();
+        let settled = rebellion_core::products::settle(
+            &mut world,
+            vec![CompletionEvent {
+                system: yard,
+                tick: 9,
+                kind: BuildableKind::CapitalShip(ship),
+                name,
+                fleet: None,
+            }],
+            Vec::new(),
+        );
+        for completion in &settled.completions {
+            apply_build_completion_inner(completion, &mut world);
+        }
+        assert_eq!(world.fleets.len(), 1);
+        assert_eq!(world.fleets[spare].ship_count(), 1);
+        assert_eq!(world.systems[yard].fleets, vec![spare]);
+        assert_eq!(world.ship_spare(yard, false), Some(spare));
+        assert!(world.products.all().is_empty());
     }
 
     #[test]
@@ -5044,6 +5090,7 @@ mod tests {
                     tick: 1,
                     kind,
                     name: None,
+                    fleet: None,
                 },
                 &mut world,
             );
@@ -5075,6 +5122,7 @@ mod tests {
                 tick: 1,
                 kind: BuildableKind::CapitalShip(class),
                 name: None,
+                fleet: None,
             },
             &mut world,
         );
@@ -5162,6 +5210,7 @@ mod tests {
                     tick: 1,
                     kind: BuildableKind::CapitalShip(class),
                     name: None,
+                    fleet: None,
                 },
                 world,
             );
@@ -5211,6 +5260,7 @@ mod tests {
                     tick: 1,
                     kind: BuildableKind::Fighter(tie),
                     name: None,
+                    fleet: None,
                 },
                 &mut world,
             );
@@ -5247,6 +5297,7 @@ mod tests {
                 tick: 1,
                 kind: BuildableKind::Troop(DatId::new(0x1000_0003)),
                 name: None,
+                fleet: None,
             },
             &mut world,
         );
@@ -5298,6 +5349,7 @@ mod tests {
                     tick: 1,
                     kind,
                     name: None,
+                    fleet: None,
                 },
                 &mut world,
             );
@@ -6190,7 +6242,33 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
             // next orders' ships too (ghidra/notes/ship-deployment-fleet.md;
             // A0 2026-11-11-icon-menu-topic/66: Coruscant's Carracks made
             // Fleet 4 beside Fleet 1).
-            let fleet_key = world.ship_spare(sys_key, is_alliance);
+            // An ordered ship was an unfinished product in its fleet from
+            // the order on (FUN_0052a140; crate::products): it completes
+            // there (FUN_0052bee0 changes no container). A staged spare
+            // (its only members were unfinished) joins the system's list
+            // with its first finished ship.
+            let fleet_key = completion
+                .fleet
+                .filter(|&fleet| {
+                    world
+                        .fleets
+                        .get(fleet)
+                        .is_some_and(|f| f.location == sys_key && f.is_alliance == is_alliance)
+                })
+                .or_else(|| rebellion_core::products::spare_at(world, sys_key, is_alliance));
+            if let Some(fleet) = fleet_key {
+                if world
+                    .systems
+                    .get(sys_key)
+                    .is_some_and(|sys| !sys.fleets.contains(&fleet))
+                {
+                    if let Some(sys) = world.systems.get_mut(sys_key) {
+                        sys.fleets.push(fleet);
+                        // FUN_00508660: the fleet joins the system.
+                        sys.unit_joined(is_alliance);
+                    }
+                }
+            }
 
             // The ship keeps the name its order gave it (QueueItem::name,
             // FUN_0052a140 creates the named object at the order).

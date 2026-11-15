@@ -164,6 +164,7 @@ pub fn load_game_data_with_options(
         last_ship_id: 0,
         abodes: slotmap::SlotMap::with_key(),
         object_views: rebellion_core::object_views::ObjectViews::default(),
+        products: rebellion_core::products::Products::default(),
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────

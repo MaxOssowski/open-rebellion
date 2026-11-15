@@ -568,6 +568,7 @@ impl ManufacturingState {
                     tick,
                     kind: item.kind,
                     name: item.name,
+                    fleet: None,
                 }),
             }
         }
@@ -599,6 +600,10 @@ pub struct CompletionEvent {
     pub kind: BuildableKind,
     /// The name its order gave it ([`QueueItem::name`]).
     pub name: Option<String>,
+    /// The fleet holding the finished capital ship when it was an
+    /// unfinished product (`crate::products`); `None` takes the system's
+    /// spare.
+    pub fleet: Option<crate::ids::FleetKey>,
 }
 
 /// Wraps the outputs of `crate::production_cycle::advance_yards` so the
@@ -921,6 +926,7 @@ mod tests {
                 tick: 9,
                 kind: fighter_item(1).kind,
                 name: None,
+                fleet: None,
             }]
         );
     }

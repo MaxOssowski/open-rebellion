@@ -224,6 +224,7 @@ impl DeliveryState {
                     tick: delivery.arrival_tick,
                     kind: delivery.kind,
                     name: delivery.name,
+                    fleet: None,
                 });
             }
         }
@@ -324,6 +325,7 @@ mod tests {
                 tick: 17,
                 kind,
                 name: None,
+                fleet: None,
             }]
         );
         assert!(state.en_route().is_empty());

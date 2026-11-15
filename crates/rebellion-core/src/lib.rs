@@ -54,6 +54,7 @@ pub mod movement;
 pub mod net_protocol;
 pub mod object_views;
 pub mod production_cycle;
+pub mod products;
 pub mod pictures;
 pub mod repair;
 pub mod research;
