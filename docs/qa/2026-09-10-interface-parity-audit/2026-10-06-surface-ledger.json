@@ -289,7 +289,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-main-menu-hit/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "The 14 logical regions from REBEXE (main-menu-parity.md) and outside-edge probes pass in Astra R2/R3 and F-016D (84/84 focus transitions). No A0 hit test. Browser run on macOS only; rerun on Linux. 2026-11-05: A0 hit test (main-menu-hit/): the controls take a press only on their bitmaps' opaque pixels (Intermediate, Easy, lever, Empire, Alliance, Quit keyed corners do nothing); the port now hit-tests so (hit_test_exact), checked in main-menu-states.mjs on Linux. Open: the galaxy-size screens, Game Type, Load/Options, Credits and Multiplayer have no A0 probe. 2026-11-12: Linux reruns pass (0 pixels off); Multiplayer (11151..11180, 10005) has 250 deep keyed positions — needs one A0 press at e.g. (75,385).",
+          "note": "The 14 logical regions from REBEXE (main-menu-parity.md) and outside-edge probes pass in Astra R2/R3 and F-016D (84/84 focus transitions). No A0 hit test. Browser run on macOS only; rerun on Linux. 2026-11-05: A0 hit test (main-menu-hit/): the controls take a press only on their bitmaps' opaque pixels (Intermediate, Easy, lever, Empire, Alliance, Quit keyed corners do nothing); the port now hit-tests so (hit_test_exact), checked in main-menu-states.mjs on Linux. Open: the galaxy-size screens, Game Type, Load/Options, Credits and Multiplayer have no A0 probe. 2026-11-12: Linux reruns pass (0 pixels off); Multiplayer (11151..11180, 10005) has 250 deep keyed positions — needs one A0 press at e.g. (75,385). 2026-11-15: A0 .artifacts/a0-vm/2026-11-15-partial-cells s-mp1..s-mp8 (e8f19068c279, 6cd4dcf49295): the Head to Head press opens the DirectPlay flow; the hover tip 'Play Head to Head' matches the port (tooltip.mjs). The destination is out of scope (single-player browser); the port opens a placeholder. The keyed hit test still lacks a recorded A0 press point.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2293,7 +2293,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-droid-encyclopedia-quadrants/README.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-icon-menus-move/README.md"
           ],
-          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's Move and Confirmed Move are ported (FUN_00512700 kind 8, FUN_0053c4b0 split, FUN_0053c1a0 refusal); an icon's Move never asks (FUN_00487cc0). Every icon's menu row is now ported; no A0 of the icon menus' states. 2026-11-11 b187: A0 of the defenses icon's menu (2026-11-11-icon-menu-and-topic-box-a0): Move/Confirmed Move white for a free team, grey while a character, regiment or squadron of the side is on its way in; Scrap grey too. The port now counts regiments and squadrons flying in (TroopTransportState::surface_arrival_pending). Open: Coruscant grey on days 12-17 with no seen cause (deliveries not counted). 2026-11-11 b189: deliveries now count. The original's product travels inside its destination's container (FUN_005150c0 -> FUN_00556430, build-delivery.md), so a built regiment, squadron or special force on its way greys the defenses icon's Move and Scrap (DeliveryState::surface_arrival_pending; unit test). Coruscant's grey on days 12-17 is consistent with this but stays inferred: the deliveries were not seen in A0. b194: the last highlighted row stays lit after the pointer leaves (FUN_004aab50 +0x118; A0 2026-11-11-icon-menu-topic/00,07,12); sector-quadrants defenses-icon-menu-a0 matches A0 00 (frame 0/808 off, rows, ink within 1-2 px). Still missing: other icons' menus after leaving, and the Move-greying cause. 2026-11-12 trace: all icon kinds use one Game Menu Window (FUN_004ac5c0 -> FUN_004aab50, lit row in +0x118), as the port's draw_game_menu_with_submenu; Move greys when the side has nothing there, a character or special force is moving or on a mission (FUN_0054c110), or a regiment or squadron is en route (FUN_004f9860 code 4) — queued products do not (FUN_0053c100); the port follows this. Coruscant's grey on days 12-17 needs the 4-step A0 listed in the README. 2026-11-13 b206: the fleet icon's menu at a neutral system (A0 hyperspace-icons/00: ring 1120 px 0 differ, rows within a pixel) and an en route squadron's menu (status-window squadron-en-route, A0 icon-drag-move/17: ring 728 px 0 differ, grey/white rows as A0) match. Coruscant's Move grey on days 12-17 still needs its A0 steps.",
+          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's Move and Confirmed Move are ported (FUN_00512700 kind 8, FUN_0053c4b0 split, FUN_0053c1a0 refusal); an icon's Move never asks (FUN_00487cc0). Every icon's menu row is now ported; no A0 of the icon menus' states. 2026-11-11 b187: A0 of the defenses icon's menu (2026-11-11-icon-menu-and-topic-box-a0): Move/Confirmed Move white for a free team, grey while a character, regiment or squadron of the side is on its way in; Scrap grey too. The port now counts regiments and squadrons flying in (TroopTransportState::surface_arrival_pending). Open: Coruscant grey on days 12-17 with no seen cause (deliveries not counted). 2026-11-11 b189: deliveries now count. The original's product travels inside its destination's container (FUN_005150c0 -> FUN_00556430, build-delivery.md), so a built regiment, squadron or special force on its way greys the defenses icon's Move and Scrap (DeliveryState::surface_arrival_pending; unit test). Coruscant's grey on days 12-17 is consistent with this but stays inferred: the deliveries were not seen in A0. b194: the last highlighted row stays lit after the pointer leaves (FUN_004aab50 +0x118; A0 2026-11-11-icon-menu-topic/00,07,12); sector-quadrants defenses-icon-menu-a0 matches A0 00 (frame 0/808 off, rows, ink within 1-2 px). Still missing: other icons' menus after leaving, and the Move-greying cause. 2026-11-12 trace: all icon kinds use one Game Menu Window (FUN_004ac5c0 -> FUN_004aab50, lit row in +0x118), as the port's draw_game_menu_with_submenu; Move greys when the side has nothing there, a character or special force is moving or on a mission (FUN_0054c110), or a regiment or squadron is en route (FUN_004f9860 code 4) — queued products do not (FUN_0053c100); the port follows this. Coruscant's grey on days 12-17 needs the 4-step A0 listed in the README. 2026-11-13 b206: the fleet icon's menu at a neutral system (A0 hyperspace-icons/00: ring 1120 px 0 differ, rows within a pixel) and an en route squadron's menu (status-window squadron-en-route, A0 icon-drag-move/17: ring 728 px 0 differ, grey/white rows as A0) match. Coruscant's Move grey on days 12-17 still needs its A0 steps. 2026-11-15: A0 .artifacts/a0-vm/2026-11-15-partial-cells s- (new Empire game): the Imperial fleet's menu at Coruscant shows Move and Confirmed Move white on days 4, 11, 13-15, 17, 18 and up to 53 (bba4d2958abe, 6c7997a6e2b9), so this game had no day-12..17 grey; the earlier grey stays tied to deliveries in flight (inferred).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5144,7 +5144,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/"
           ],
-          "note": "The 'dead' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it.",
+          "note": "The 'dead' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it. 2026-11-15 (b220): A0 shows 'Killed' rows on both sides (.artifacts/a0-vm/2026-11-15-partial-cells); personnel-states.mjs now checks Killed, Retired and an abode row on both sides. Retired and abode rows have no A0 yet. Also fixed by trace: a character in no place reads 'Location Unknown' with no state words (FUN_00465bb0 0x465cb5).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5909,7 +5909,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-ship-status-hits/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-ship-hit-counters/"
           ],
-          "note": "Subsystem hit terms (GNPRTB 2048, FUN_005010c0) are unit-tested; no A0 or browser check of a hit ship.",
+          "note": "Subsystem hit terms (GNPRTB 2048, FUN_005010c0) are unit-tested; no A0 or browser check of a hit ship. 2026-11-15: A0 8bce5f1cbf27 shows a subsystem hit as 'Ship Damaged: Yes' with full hull 1800:1800 and Shield Recharge Rate 8:10, as the port counts subsystem hits; not yet compared in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5973,7 +5973,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-ship-repair-timer/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-ship-hit-repair/"
           ],
-          "note": "Repair on timer 0x380 is ported in the simulation; no UI state compared in A0 or the browser.",
+          "note": "Repair on timer 0x380 is ported in the simulation; no UI state compared in A0 or the browser. 2026-11-15: A0 .artifacts/a0-vm/2026-11-15-partial-cells e-/e2-/e3-: a damaged Victory Destroyer (Shield Recharge 8:10, 'Ship Damaged: Yes', 8bce5f1cbf27) did not repair in 62 days at Coruscant, which has no shipyard (Ship Construction 0:0, 6705da20ecb9): consistent with the port's trace (FUN_00501c50/FUN_0050bb70/FUN_00528040: every 30 days without FastRepair, damage control 20%). The positive case at a shipyard was not observed: the Alliance took Corellia the day after arrival, twice.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6697,7 +6697,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-facility-lost-message/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-destroyed-messages/"
           ],
-          "note": "Facility Lost (0x303, TEXTSTRA 0x70b0/0x70b1) is filed on the Manufacturing rail; unit tests only, no browser or A0 check of the state.",
+          "note": "Facility Lost (0x303, TEXTSTRA 0x70b0/0x70b1) is filed on the Manufacturing rail; unit tests only, no browser or A0 check of the state. 2026-11-15 (b220): message-display.mjs files and opens Facility Lost on the Manufacturing rail on both sides (text only); no Facility Lost appeared in four A0 Alliance routes and one Empire game.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7490,25 +7490,25 @@
         {
           "id": "OBJ-12-C009",
           "requirement": "captured",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-capture-remove-request/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/"
           ],
-          "note": "Captured members (FUN_0054bb90) and the Personnel Finder's 'Captured' word are ported; unit tests only, no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Captured members (FUN_0054bb90) and the Personnel Finder's 'Captured' word are ported; unit tests only, no A0. Batch b220 (2026-11-15): A0 .artifacts/a0-vm/2026-11-15-partial-cells rows 'Leia Organa - Yaga Minor ( Captured )', 'Mon Mothma - Plunderer ( Captured )' (0be4236024ec, e43a12aa38b1, 9fbd1ee50231) and, from the Empire's view, 'Piett - Corellia ( Captured )' (2a81e5d29f9e) match the port's words and spacing; personnel-states.mjs checks Captured rows on both sides.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-12-C010",
           "requirement": "killed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/"
           ],
-          "note": "'Killed' (0x8798) row text and death handling ported; unit tests only, no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "'Killed' (0x8798) row text and death handling ported; unit tests only, no A0. Batch b220 (2026-11-15): A0 .artifacts/a0-vm/2026-11-15-partial-cells 'Orrimaarko - Killed' (Alliance view) and 'Veers - Killed' (Empire view, 2a81e5d29f9e) match the port's row text (0x8798); personnel-states.mjs checks Killed rows on both sides.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-12-C011",
@@ -8213,14 +8213,14 @@
         {
           "id": "EVT-01-C002",
           "requirement": "disaster",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-uprising-browser/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-uprising-disaster-texts/"
           ],
-          "note": "Natural disaster posts its original text listing what it destroyed (disaster_texts); seen in the browser (incident-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Natural disaster posts its original text listing what it destroyed (disaster_texts); seen in the browser (incident-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). Batch b220 (2026-11-15): A0 .artifacts/a0-vm/2026-11-15-partial-cells r2-msg-natural-disaster-on-yavin-d824 (bc967b60eb32) and its index row (b4dea7dc97f2): the message is filed on the Resource rail (FUN_0048e940 class, fixed from Popular Support); message-display.mjs compares the row icon, picture, title image and rail with A0 (0 px off) and the text word for word.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "EVT-01-C003",
@@ -8454,7 +8454,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-rescue-attempt/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-injury-healing-bounty-a0/README.md"
           ],
-          "note": "Jabba's palace, bounty hunters and Rescue Attempt messages ported (jabba_captures_message, bounty_messages); seen in the browser via fixtures. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-09: A0 04-han-bounty-hunters-day372 matches the browser (Han Solo Attacked by Bounty Hunters: text word for word, picture 0x41c, title image and rail 0 px). Still partial: no A0 of Jabba's palace, the bounty capture or the Rescue Attempt.",
+          "note": "Jabba's palace, bounty hunters and Rescue Attempt messages ported (jabba_captures_message, bounty_messages); seen in the browser via fixtures. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-09: A0 04-han-bounty-hunters-day372 matches the browser (Han Solo Attacked by Bounty Hunters: text word for word, picture 0x41c, title image and rail 0 px). Still partial: no A0 of Jabba's palace, the bounty capture or the Rescue Attempt. 2026-11-15 (b220): A0 .artifacts/a0-vm/2026-11-15-partial-cells 'Han Solo Captured' (885de2a03b34), the second bounty attack (25b06c1cfee3), 'Orrimaarko Captured'/'Escaped' (704310248349, 9c2e291d9b9e) and the rescue Mission Report (b114a1a92986) match the port's TEXTSTRA texts word for word (DAT-backed test). Jabba's palace still has no A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
