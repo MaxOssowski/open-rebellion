@@ -1295,8 +1295,17 @@ impl FleetWindowState {
         let name = match entry {
             FleetWindowEntry::Fleet(fleet) => world.fleet_name(fleet),
             FleetWindowEntry::Ship { fleet, index } => world.ship_name(fleet, index),
-            // port: an unfinished ship's Rename is not ported.
-            FleetWindowEntry::Product { .. } | FleetWindowEntry::Copy { .. } => None,
+            // FUN_004f6270: the product's own name, else its class's.
+            FleetWindowEntry::Product { product, .. } => world.products.get(product).and_then(|value| {
+                value.name.as_deref().or_else(|| match value.kind {
+                    rebellion_core::manufacturing::BuildableKind::CapitalShip(class) => world
+                        .capital_ship_classes
+                        .get(class)
+                        .map(|class| class.name.as_str()),
+                    _ => None,
+                })
+            }),
+            FleetWindowEntry::Copy { .. } => None,
         }
         .map(str::to_owned);
         let Some(text) = name else {
@@ -8882,6 +8891,43 @@ pub(crate) mod tests {
         assert!(state.begin_rename(&world, system, ship));
         assert_eq!(state.selection(system).unwrap().0, Some(ship));
         assert_eq!(state.windows[0].rename.as_ref().unwrap().item, None);
+    }
+
+    #[test]
+    fn an_unfinished_ships_rename_opens_on_its_tree_entry_and_names_it() {
+        // 0x203 on the unfinished ship (A0 2026-11-15 "u-2": Rename white):
+        // the field opens on its entry in its fleet's tree, holding its
+        // name (FUN_004f6270), and Enter issues the rename for it.
+        use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 1);
+        world.set_ship_spare(system, true, fleet);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(
+            system,
+            QueueItem::new(BuildableKind::CapitalShip(class), 5).ordered(&mut world),
+        );
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let product = world.products.all()[0].id;
+        let entry = FleetWindowEntry::Product { fleet, product };
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        assert!(state.expand(system, fleet));
+        assert!(state.begin_rename(&world, system, entry));
+        assert_eq!(state.selection(system).unwrap().0, Some(entry));
+        let named = world.products.all()[0].name.clone().unwrap();
+        assert_eq!(state.windows[0].rename.as_ref().unwrap().item, None);
+
+        let mut frames = hover(at(-50.0, 0.0));
+        frames.push(vec![egui::Event::Text("Rogue".into())]);
+        frames.push(vec![key(egui::Key::Enter)]);
+        frames.push(vec![]);
+        let run = run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        let issued = renames(&run.actions);
+        assert_eq!(issued.len(), 1);
+        assert_eq!(issued[0].0, entry);
+        assert_ne!(issued[0].1, named);
     }
 
     #[test]

@@ -846,3 +846,34 @@ fn a_ship_on_its_trip_takes_no_move_to_a_system_without_a_spare() {
     assert!(!move_to_target(&mut s.world, id, s.yard, None));
     assert_eq!(s.world.products, before);
 }
+
+#[test]
+fn renaming_an_unfinished_ship_renames_its_queued_unit_too() {
+    // 0x203 on the unfinished object (A0 2026-11-15 "u-2": Rename white);
+    // the queued unit's name is the finished ship's (QueueItem::name), so
+    // the next reconcile keeps the product.
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 2);
+    let second = s.world.products.all()[1].id;
+    assert!(rename(
+        &mut s.world,
+        &mut s.manufacturing,
+        second,
+        "Liberty".into()
+    ));
+    let items = s
+        .manufacturing
+        .queue(s.yard, ProductionArea::Shipyard)
+        .unwrap()
+        .items();
+    assert_eq!(items[1].name.as_deref(), Some("Liberty"));
+    assert_ne!(items[0].name.as_deref(), Some("Liberty"));
+    let before = s.world.products.clone();
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.products, before);
+    assert_eq!(
+        s.world.products.get(second).unwrap().name.as_deref(),
+        Some("Liberty")
+    );
+    assert!(!rename(&mut s.world, &mut s.manufacturing, 99, "X".into()));
+}

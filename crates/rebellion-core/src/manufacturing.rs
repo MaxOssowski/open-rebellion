@@ -221,6 +221,16 @@ impl ProductionQueue {
         self.items.front()
     }
 
+    /// Rename (`0x203`) the unit at `index`: the product's name is the
+    /// queued unit's ([`QueueItem::name`]). False with no unit there.
+    pub fn rename(&mut self, index: usize, name: String) -> bool {
+        let Some(item) = self.items.get_mut(index) else {
+            return false;
+        };
+        item.name = Some(name);
+        true
+    }
+
     /// All items in queue order (index 0 = the current product).
     #[must_use]
     pub fn items(&self) -> &VecDeque<QueueItem> {

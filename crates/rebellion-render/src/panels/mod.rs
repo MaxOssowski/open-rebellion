@@ -69,6 +69,9 @@ pub enum PanelAction {
         ship: Option<usize>,
         name: String,
     },
+    /// Rename (`0x203`) of an unfinished ship, issued from its edit
+    /// (`rebellion_core::products::rename`).
+    RenameProduct { product: u64, name: String },
     /// A capital ship's Create Fleet (`0x270`, `fleet_join::create_fleet`).
     CreateFleet {
         fleet: FleetKey,

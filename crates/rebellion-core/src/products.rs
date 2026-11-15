@@ -616,6 +616,57 @@ pub fn arrive(world: &mut GameWorld, now: u64) -> Arrived {
     out
 }
 
+/// Rename (`0x203`, `FUN_00429350`) an unfinished unit: its name
+/// (`+0x34`) changes, and with it its queued unit's, which names the
+/// finished object (A0 2026-11-15 "u-2": the unfinished Carrack's Rename
+/// white). An object en route takes no order (`FUN_004f9860`).
+pub fn rename(
+    world: &mut GameWorld,
+    manufacturing: &mut ManufacturingState,
+    id: u64,
+    name: String,
+) -> bool {
+    if world.products.arrival(id).is_some() {
+        return false;
+    }
+    let Some(product) = world.products.get(id).cloned() else {
+        return false;
+    };
+    let area = ProductionArea::of(product.kind);
+    // Its place among the queue's units this module keeps.
+    let Some(ordinal) = world
+        .products
+        .items
+        .iter()
+        .filter(|p| p.yard == product.yard && ProductionArea::of(p.kind) == area)
+        .filter(|p| world.products.arrival(p.id).is_none())
+        .position(|p| p.id == id)
+    else {
+        return false;
+    };
+    let Some(index) = manufacturing.queue(product.yard, area).and_then(|queue| {
+        queue
+            .items()
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| is_tracked(item.kind))
+            .nth(ordinal)
+            .map(|(index, _)| index)
+    }) else {
+        return false;
+    };
+    if !manufacturing
+        .queue_mut(product.yard, area)
+        .rename(index, name.clone())
+    {
+        return false;
+    }
+    if let Some(value) = world.products.items.iter_mut().find(|p| p.id == id) {
+        value.name = Some(name);
+    }
+    true
+}
+
 /// Move: an unfinished unit is not Deployed, so not mobile (slot `+0x38`),
 /// and `FUN_00556390` puts it in its new container at once, with no trip
 /// (`unfinished-products.md`, "Moving an unfinished squadron or

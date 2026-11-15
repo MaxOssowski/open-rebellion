@@ -6834,12 +6834,16 @@ async fn main() {
                             // FUN_00422ce0: a drop from the Fleet window
                             // (type 4) moves the selection against the
                             // window under the point with 0x201.
-                            // port: an unfinished ship's Rename is not
-                            // ported; begin_rename never opens one.
                             FleetWindowAction::Rename {
-                                entry: rebellion_render::fleet_window::FleetWindowEntry::Product { .. },
-                                ..
-                            } => {}
+                                entry:
+                                    rebellion_render::fleet_window::FleetWindowEntry::Product {
+                                        product,
+                                        ..
+                                    },
+                                name,
+                            } => {
+                                panel_actions.push(PanelAction::RenameProduct { product, name });
+                            }
                             FleetWindowAction::Rename { entry, name } => {
                                 panel_actions.push(PanelAction::Rename {
                                     fleet: entry.fleet(),
@@ -7805,9 +7809,27 @@ async fn main() {
                         // port: with no Fleet window open there, one opens.
                         Some((
                             ObjectMenuCommand::Rename,
-                            Some(object @ (MenuObject::Fleet(_) | MenuObject::Ship { .. })),
+                            Some(
+                                object @ (MenuObject::Fleet(_)
+                                | MenuObject::Ship { .. }
+                                | MenuObject::PendingShip { .. }),
+                            ),
                         )) => {
                             let entry = match object {
+                                // An unfinished ship is renamed in its
+                                // fleet's tree, which opens for it.
+                                MenuObject::PendingShip { product } => world
+                                    .products
+                                    .get(product)
+                                    .and_then(|value| match value.container {
+                                        rebellion_core::products::Container::Fleet(fleet) => {
+                                            Some(rebellion_render::fleet_window::FleetWindowEntry::Product {
+                                                fleet,
+                                                product,
+                                            })
+                                        }
+                                        rebellion_core::products::Container::System(_) => None,
+                                    }),
                                 MenuObject::Ship { fleet, index, .. } => {
                                     Some(rebellion_render::fleet_window::FleetWindowEntry::Ship {
                                         fleet,
@@ -7846,6 +7868,12 @@ async fn main() {
                                             cockpit_layout,
                                         );
                                     }
+                                }
+                                if matches!(
+                                    entry,
+                                    rebellion_render::fleet_window::FleetWindowEntry::Product { .. }
+                                ) {
+                                    fleet_window_state.expand(system, entry.fleet());
                                 }
                                 fleet_window_state.begin_rename(&world, system, entry);
                             }
@@ -12000,6 +12028,11 @@ fn order_gates(
         // which refuses an object en route: A0 greys Rename on a fleet in
         // hyperspace and on its ship (a0-vm/menus/22, 29 and 31).
         rename: match selection {
+            // An unfinished ship of the player's, not on its trip (A0
+            // 2026-11-15 "u-2": Rename white).
+            Some(MenuObject::PendingShip { product }) => {
+                product_move_enabled(world, product, is_alliance)
+            }
             Some(MenuObject::Fleet(fleet)) => {
                 world
                     .fleets
@@ -12603,6 +12636,12 @@ fn apply_panel_action(
                     .systems
                     .get(destination)
                     .map_or("", |value| value.name.as_str())
+            );
+        }
+        PanelAction::RenameProduct { product, name } => {
+            let renamed = rebellion_core::products::rename(world, mfg_state, product, name);
+            macroquad::logging::info!(
+                "[interface] command=0x203 product={product} renamed={renamed}"
             );
         }
         PanelAction::Rename { fleet, ship, name } => {

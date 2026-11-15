@@ -684,8 +684,8 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
     let character = matches!(selection, Some(MenuObject::Character(_)));
     let special_force = matches!(selection, Some(MenuObject::SpecialForce(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
-    // An unfinished ship keeps Move and Confirmed Move (A0 2026-11-15
-    // "u-2": white), not Create Fleet or Rename (port: grey) or Scrap.
+    // An unfinished ship keeps Move, Confirmed Move and Rename (A0
+    // 2026-11-15 "u-2": white), not Create Fleet or Scrap.
     let pending_ship = matches!(selection, Some(MenuObject::PendingShip { .. }));
     let producer = matches!(selection, Some(MenuObject::Producer { .. }));
     // The facility icon's Reserved acts on every manager of the system
@@ -788,7 +788,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (defenses && gates.defenses_move)
                 }
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
-                ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
+                ObjectMenuCommand::Rename => (fleet_entry || ship || pending_ship) && gates.rename,
                 ObjectMenuCommand::Destination => gates.destination,
                 // Reserved (0x216): each Event216's +0x18 asks its
                 // manager's +0x1d8 (FUN_004f9860), FUN_00553770 an
@@ -2404,10 +2404,9 @@ mod tests {
     }
 
     #[test]
-    fn an_unfinished_ship_keeps_move_and_greys_create_fleet_rename_and_scrap() {
-        // A0 2026-11-15 "u-2-carrack-unfinished-menu": Move and Confirmed
-        // Move white, Create Fleet grey, Scrap grey. port: Rename grey too
-        // (A0 white; a product's rename is not ported).
+    fn an_unfinished_ship_keeps_move_and_rename_and_greys_create_fleet_and_scrap() {
+        // A0 2026-11-15 "u-2-carrack-unfinished-menu": Move, Confirmed
+        // Move and Rename white, Create Fleet grey, Scrap grey.
         let pending = MenuObject::PendingShip { product: 4 };
         // Its Scrap names no target, so the scrap gate is shut.
         assert_eq!(pending.scrap_target(), None);
@@ -2431,7 +2430,7 @@ mod tests {
         );
         assert_eq!(
             enabled(&rows),
-            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+            ["Move", "Confirmed Move", "Rename", "Encyclopedia", "Status"]
         );
         assert_eq!(pending.mission_member(), None);
         assert_eq!(
