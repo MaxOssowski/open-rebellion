@@ -106,6 +106,13 @@ pub enum PanelAction {
         system: rebellion_core::ids::SystemKey,
         fleet: Option<rebellion_core::ids::FleetKey>,
     },
+    /// The Move (`0x201`) of unfinished units (`rebellion_core::products`)
+    /// released on a system: each changes container at once, with no trip
+    /// (`FUN_00556390`: not Deployed, so not mobile).
+    MoveProducts {
+        products: Vec<u64>,
+        system: rebellion_core::ids::SystemKey,
+    },
     /// A special force's Move (`0x201` -> `0x241`) released on a system,
     /// or on a fleet there to board: the Move mission with the unit as its
     /// team, as a character's.

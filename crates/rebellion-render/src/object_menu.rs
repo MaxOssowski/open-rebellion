@@ -136,10 +136,12 @@ pub enum MenuObject {
         arrival: Option<u64>,
     },
     /// A Defenses window squadron being built for `system`'s planet
-    /// (`0x1c..0x1f`, `+0x50` bit 2 clear), by its class.
+    /// (`0x1c..0x1f`, `+0x50` bit 2 clear), by its class, and its product
+    /// (`rebellion_core::products`).
     PendingFighter {
         system: SystemKey,
         class: FighterKey,
+        product: Option<u64>,
     },
     /// A squadron of `class` travelling by Move to `to`, a planet (the
     /// Defenses window) or a fleet (the Fleet window), until day `arrival`
@@ -151,10 +153,12 @@ pub enum MenuObject {
         arrival: u64,
     },
     /// A Defenses window regiment in training for `system` (`0x10..0x13`,
-    /// `+0x50` bit 2 clear), by its class.
+    /// `+0x50` bit 2 clear), by its class, and its product
+    /// (`rebellion_core::products`).
     PendingTroop {
         system: SystemKey,
         class: rebellion_core::ids::DatId,
+        product: Option<u64>,
     },
     /// A Missions window's mission, by its id (`0x50..0x7f`): the window's
     /// slot 22 (`FUN_004a0400`) gives the left list's selected missions to
@@ -293,13 +297,13 @@ impl MenuObject {
                 owner,
                 arrival,
             }),
-            Self::PendingFighter { system, class } => {
+            Self::PendingFighter { system, class, .. } => {
                 Some(StatusObject::PendingFighter { system, class })
             }
             Self::TravellingFighter { to, class, arrival } => {
                 Some(StatusObject::TravellingFighter { to, class, arrival })
             }
-            Self::PendingTroop { system, class } => {
+            Self::PendingTroop { system, class, .. } => {
                 Some(StatusObject::PendingTroop { system, class })
             }
             Self::Mission(id) => Some(StatusObject::Mission(id)),
@@ -641,10 +645,29 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 }
         )
     );
-    let troop = matches!(selection, Some(MenuObject::Troop(_)));
+    // An unfinished regiment or squadron keeps its Move (A0 2026-11-15
+    // "u-3": the unfinished TIE's Move white; its vt74 asks nothing of
+    // Completed, unfinished-products.md).
+    let troop = matches!(
+        selection,
+        Some(
+            MenuObject::Troop(_)
+                | MenuObject::PendingTroop {
+                    product: Some(_),
+                    ..
+                }
+        )
+    );
     let squadron = matches!(
         selection,
-        Some(MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. })
+        Some(
+            MenuObject::Fighter { .. }
+                | MenuObject::PlanetFighter { .. }
+                | MenuObject::PendingFighter {
+                    product: Some(_),
+                    ..
+                }
+        )
     );
     let fleet_entry = matches!(selection, Some(MenuObject::Fleet(_)));
     let character = matches!(selection, Some(MenuObject::Character(_)));
@@ -675,7 +698,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
         Some(MenuObject::Fleet(_)) => &[MOVE, CONFIRMED_MOVE, BOMBARDMENT, ASSAULT, RENAME, SCRAP],
         // A regiment in training keeps them, its Scrap grey for want of a
-        // target. port: its Move rows are grey too (a queue entry).
+        // target; its Move follows its gate (A0 2026-11-15 "u-3").
         Some(
             MenuObject::Troop(_)
             | MenuObject::PendingTroop { .. }
@@ -699,8 +722,8 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         // FUN_00502fe0 -> FUN_00557ce0: 0x201, 0x202, 0x204 (no STRATEGY
         // record) and 0x200.
         // An unfinished squadron keeps them (A0 pending-facility/24); its
-        // Scrap names no target, so it is grey. port: its Move rows are grey
-        // too, where A0 offers them: an unfinished unit is a queue entry.
+        // Scrap names no target, so it is grey, and its Move follows its
+        // gate (A0 2026-11-15 "u-3": white).
         // One in hyperspace keeps them all grey, as an en route regiment's
         // are (A0 2026-11-11-regiment-en-route/03; FUN_004f9860 refuses an
         // object in hyperspace).
@@ -2327,14 +2350,16 @@ mod tests {
     }
 
     #[test]
-    fn an_unfinished_squadron_lists_the_squadron_rows_with_a_grey_scrap() {
+    fn an_unfinished_squadron_keeps_its_move_rows_with_a_grey_scrap() {
         // A0 pending-facility/24: Pzob's A-wing under construction opens
         // Move, Confirmed Move, Encyclopedia, Status and a grey Scrap
-        // (FUN_00502fe0's list). port: its Move rows stay grey where A0
-        // offers them, for the squadron is a queue entry.
+        // (FUN_00502fe0's list); A0 2026-11-15 "u-3": the unfinished TIE's
+        // Move and Confirmed Move are white. Its Move follows its gate
+        // (the squadron's vt74 asks nothing of Completed).
         let pending = MenuObject::PendingFighter {
             system: SystemKey::default(),
             class: FighterKey::default(),
+            product: Some(7),
         };
         let movable = OrderGates {
             squadron_move: true,
@@ -2345,7 +2370,12 @@ mod tests {
             labels(&rows),
             ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"]
         );
-        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(
+            enabled(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+        );
+        let shut = object_menu_rows(Some(pending), MISSION_GATE);
+        assert_eq!(enabled(&shut), ["Encyclopedia", "Status"]);
         assert_eq!(pending.scrap_target(), None);
         assert_eq!(pending.mission_member(), None);
         assert_eq!(
@@ -2391,13 +2421,15 @@ mod tests {
     }
 
     #[test]
-    fn a_regiment_in_training_lists_the_regiment_rows_with_a_grey_scrap() {
+    fn a_regiment_in_training_keeps_its_move_rows_with_a_grey_scrap() {
         // FUN_00504b30's list: Move, Confirmed Move and Scrap. Its Scrap
-        // names no target, so it is grey. port: its Move rows are grey too,
-        // for the regiment is a queue entry.
+        // names no target, so it is grey. Its Move follows its gate, as an
+        // unfinished squadron's (A0 2026-11-15 "u-3"; the regiment's vt74
+        // asks nothing of Completed).
         let pending = MenuObject::PendingTroop {
             system: SystemKey::default(),
             class: rebellion_core::ids::DatId::new(0x1000_0002),
+            product: Some(3),
         };
         let movable = OrderGates {
             troop_move: true,
@@ -2408,7 +2440,10 @@ mod tests {
             labels(&rows),
             ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"]
         );
-        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(
+            enabled(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+        );
         assert_eq!(pending.scrap_target(), None);
         assert_eq!(
             pending.status_object(),

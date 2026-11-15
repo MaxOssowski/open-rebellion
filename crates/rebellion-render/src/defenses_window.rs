@@ -231,6 +231,9 @@ pub enum DefensesItem {
         index: usize,
         kind: BuildableKind,
         arrival: Option<u64>,
+        /// A regiment's or squadron's product
+        /// (`rebellion_core::products`); none for a facility.
+        product: Option<u64>,
     },
 }
 
@@ -264,10 +267,19 @@ impl DefensesItem {
                 system,
                 kind,
                 arrival,
+                product,
                 ..
             } => match kind {
-                BuildableKind::Fighter(class) => Some(MenuObject::PendingFighter { system, class }),
-                BuildableKind::Troop(class) => Some(MenuObject::PendingTroop { system, class }),
+                BuildableKind::Fighter(class) => Some(MenuObject::PendingFighter {
+                    system,
+                    class,
+                    product,
+                }),
+                BuildableKind::Troop(class) => Some(MenuObject::PendingTroop {
+                    system,
+                    class,
+                    product,
+                }),
                 BuildableKind::DefenseFacility(build) => Some(MenuObject::PendingFacility {
                     system,
                     class: build.class,
@@ -1184,11 +1196,13 @@ fn viewed_regiment_rows(
         .collect()
 }
 
-/// The units queued for `system` (being built), then those travelling there
-/// (en route), that `page` lists for `side`: squadrons of the side's
-/// classes on page 2, its regiments in training on page 1, its shields or
-/// batteries on pages 3 and 4. port: a squadron or regiment en route is not
-/// listed.
+/// The units being built in `system` (its unfinished regiments and
+/// squadrons, `rebellion_core::products`; its facilities from the queues),
+/// then those travelling there (en route), that `page` lists for `side`:
+/// squadrons of the side's classes on page 2, its regiments in training on
+/// page 1, its shields or batteries on pages 3 and 4. An unfinished unit
+/// lists where it stands, which a Move may have changed. port: a squadron
+/// or regiment en route is not listed.
 fn pending_rows(
     world: &GameWorld,
     production: DefensesProduction<'_>,
@@ -1196,8 +1210,15 @@ fn pending_rows(
     system: SystemKey,
     page: DefensesPage,
 ) -> Vec<DefensesRow> {
-    let queued = crate::manufacturing_window::pending_units(production.manufacturing, system)
-        .map(|kind| (kind, None))
+    let queued = world
+        .products
+        .in_system(system)
+        .map(|product| (product.kind, None, Some(product.id)))
+        .chain(
+            crate::manufacturing_window::pending_units(production.manufacturing, system)
+                .filter(|&kind| !rebellion_core::products::is_tracked(kind))
+                .map(|kind| (kind, None, None)),
+        )
         .chain(
             production
                 .deliveries
@@ -1205,11 +1226,11 @@ fn pending_rows(
                 .iter()
                 .filter(|delivery| delivery.destination == system)
                 .filter(|delivery| matches!(delivery.kind, BuildableKind::DefenseFacility(_)))
-                .map(|delivery| (delivery.kind, Some(delivery.arrival_tick))),
+                .map(|delivery| (delivery.kind, Some(delivery.arrival_tick), None)),
         );
     queued
         .enumerate()
-        .filter_map(|(index, (kind, arrival))| {
+        .filter_map(|(index, (kind, arrival, product))| {
             let (unit_side, mini, label) = match (page, kind) {
                 (DefensesPage::Regiments, BuildableKind::Troop(class)) => {
                     let (mini, label) = troop_mini(class)?;
@@ -1242,6 +1263,7 @@ fn pending_rows(
                     index,
                     kind,
                     arrival,
+                    product,
                 },
                 mini,
                 label,
@@ -2534,7 +2556,7 @@ mod tests {
         // (0x2d32, side 1; FUN_0042c3b0 draws it last). A defense facility
         // en route (bit 4) takes 11509 (0x2cf5, families 0x22..0x27).
         use rebellion_core::manufacturing::{Departure, FacilityBuild, QueueItem};
-        let (world, system, missions) = stocked();
+        let (mut world, system, missions) = stocked();
         let class_named = |name: &str| {
             world
                 .fighter_classes
@@ -2560,6 +2582,12 @@ mod tests {
         ] {
             manufacturing.enqueue(system, QueueItem::new(kind, 5));
         }
+        // The squadrons are products in the system from the order
+        // (FUN_0052a140; rebellion_core::products).
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        // The built rows, without the products.
+        let mut bare = world.clone();
+        bare.products = rebellion_core::products::Products::default();
         let mut deliveries = DeliveryState::default();
         deliveries.depart(
             &world,
@@ -2591,7 +2619,7 @@ mod tests {
             )
         };
         let tail = |page| {
-            let built = labels(&world, &fog, &missions, system, page).len();
+            let built = labels(&bare, &fog, &missions, system, page).len();
             rows(page).split_off(built)
         };
 
@@ -2603,7 +2631,8 @@ mod tests {
             squadron.item.menu_object(),
             Some(MenuObject::PendingFighter {
                 system,
-                class: xwing
+                class: xwing,
+                product: Some(1),
             })
         );
         assert_eq!(
@@ -2679,6 +2708,9 @@ mod tests {
                 QueueItem::new(BuildableKind::Troop(DatId::new(raw)), 5),
             );
         }
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let mut bare = world.clone();
+        bare.products = rebellion_core::products::Products::default();
         let deliveries = DeliveryState::default();
         let production = DefensesProduction {
             manufacturing: &manufacturing,
@@ -2687,7 +2719,7 @@ mod tests {
             squadrons: &[],
         };
         let fog = seen(system);
-        let built = labels(&world, &fog, &missions, system, DefensesPage::Regiments).len();
+        let built = labels(&bare, &fog, &missions, system, DefensesPage::Regiments).len();
         let rows = page_rows(
             &world,
             &fog,
@@ -2712,7 +2744,8 @@ mod tests {
             training.item.menu_object(),
             Some(MenuObject::PendingTroop {
                 system,
-                class: DatId::new(ALLIANCE_ARMY)
+                class: DatId::new(ALLIANCE_ARMY),
+                product: Some(1),
             })
         );
     }

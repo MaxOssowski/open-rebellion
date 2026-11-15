@@ -75,6 +75,10 @@ pub enum TargetOrder {
         /// trip's days first (`FUN_00487cc0`).
         confirmed: bool,
     },
+    /// The Move (`0x201`) of unfinished regiments or squadrons
+    /// (`rebellion_core::products`), or Confirmed Move (`0x202`) when
+    /// `confirmed`. Released on a system each moves there at once.
+    ProductMove { products: Vec<u64>, confirmed: bool },
     /// A capital ship's Move (`0x201`). Released on a Fleet window it joins
     /// that fleet; on a system it forms a fleet of its own there
     /// (`ghidra/notes/fleet-join-split.md`).

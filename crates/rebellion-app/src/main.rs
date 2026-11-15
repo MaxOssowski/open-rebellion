@@ -7577,6 +7577,26 @@ async fn main() {
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
+                        // An unfinished regiment's or squadron's Move
+                        // (A0 2026-11-15 "u-3").
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(
+                                MenuObject::PendingTroop {
+                                    product: Some(product),
+                                    ..
+                                }
+                                | MenuObject::PendingFighter {
+                                    product: Some(product),
+                                    ..
+                                },
+                            ),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::ProductMove {
+                                products: vec![product],
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                            }));
+                        }
                         Some((
                             command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
                             Some(MenuObject::Troop(troop)),
@@ -8797,6 +8817,26 @@ async fn main() {
                                     ReleaseTarget::Fleet { .. } => {
                                         macroquad::logging::info!(
                                             "[interface] command=0x201 headquarters status=refused reason=fleet"
+                                        );
+                                    }
+                                },
+                                // An unfinished unit's 0x201: FUN_00556390
+                                // moves an object that is not mobile at
+                                // once. port: Confirmed Move asks nothing
+                                // (no trip, so no days to list), and a
+                                // Fleet window is refused (the planner's
+                                // carrier pick for a product is untraced).
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::ProductMove { products, .. },
+                                    target,
+                                }) => match target {
+                                    ReleaseTarget::System(system) => {
+                                        panel_actions
+                                            .push(PanelAction::MoveProducts { products, system });
+                                    }
+                                    ReleaseTarget::Fleet { .. } => {
+                                        macroquad::logging::info!(
+                                            "[interface] command=0x201 product status=refused reason=fleet"
                                         );
                                     }
                                 },
@@ -10543,6 +10583,16 @@ fn team_menu_order(
     }
 }
 
+/// An unfinished regiment's or squadron's Move (`0x201`): the order's
+/// `+0x18` asks the product's side (`FUN_004f9860`); its vt74 asks nothing
+/// of Completed (A0 2026-11-15 "u-3": the unfinished TIE's Move white).
+fn product_move_enabled(world: &GameWorld, product: u64, is_alliance: bool) -> bool {
+    world
+        .products
+        .get(product)
+        .is_some_and(|value| value.is_alliance == is_alliance)
+}
+
 /// Where a window selection's squadrons stand: a Fleet window squadron's
 /// fleet, a Defenses window squadron's planet, else `system`'s planet.
 fn team_squadron_place(team: &[MenuObject], system: SystemKey) -> SquadronPlace {
@@ -11785,6 +11835,10 @@ fn order_gates(
             Some(MenuObject::Troop(troop)) => {
                 troop_transport_state.regiment_move_enabled(world, troop, is_alliance)
             }
+            Some(MenuObject::PendingTroop {
+                product: Some(product),
+                ..
+            }) => product_move_enabled(world, product, is_alliance),
             _ => false,
         },
         headquarters_move: matches!(selection, Some(MenuObject::Headquarters(_)))
@@ -11828,6 +11882,11 @@ fn order_gates(
                     SquadronPlace::Planet(system),
                 )
             }
+            // An unfinished squadron of the player's (A0 2026-11-15 "u-3").
+            Some(MenuObject::PendingFighter {
+                product: Some(product),
+                ..
+            }) => product_move_enabled(world, product, is_alliance),
             _ => false,
         },
         // FUN_004f9860: the ship's fleet is the player's and in orbit.
@@ -12958,6 +13017,18 @@ fn apply_panel_action(
         }
         // A special force's Move: the Move mission 0x41000001 with the unit
         // as its team, as a character's.
+        PanelAction::MoveProducts { products, system } => {
+            for product in products {
+                let moved = rebellion_core::products::move_to(
+                    world,
+                    product,
+                    rebellion_core::products::Container::System(system),
+                );
+                macroquad::logging::info!(
+                    "[interface] command=0x201 product={product} moved={moved}"
+                );
+            }
+        }
         PanelAction::MoveSpecialForce { unit, system, fleet } => {
             let result = if rebellion_core::missions::move_place_allowed(
                 world,
