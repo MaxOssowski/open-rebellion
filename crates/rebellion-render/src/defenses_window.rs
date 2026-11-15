@@ -2767,6 +2767,50 @@ mod tests {
     }
 
     #[test]
+    fn a_finished_regiment_or_squadron_on_its_trip_takes_the_en_route_mark() {
+        // FUN_0052bee0: finished away from its yard it is Completed and en
+        // route (bit 4) in its container; FUN_0042c3b0 then lays the en
+        // route mark over the backdrop, and no unfinished mark (A0
+        // 2026-11-11-regiment-en-route/00 for a regiment on its way).
+        let row = |kind, mini| DefensesRow {
+            item: DefensesItem::Pending {
+                system: SystemKey::default(),
+                index: 0,
+                kind,
+                arrival: Some(9),
+                product: Some(1),
+            },
+            mini,
+            label: String::new(),
+        };
+        let world = GameWorld::default();
+        let regiment = DatId::new(ALLIANCE_ARMY);
+        let (mini, _) = troop_mini(regiment).unwrap();
+        assert_eq!(
+            row_marks(&world, &[], &[], &row(BuildableKind::Troop(regiment), mini)),
+            crate::fleet_window::mini_marks(
+                crate::fleet_window::MiniObject::Regiment(regiment),
+                mini,
+                true,
+                false
+            )
+        );
+        let squadron = row(BuildableKind::Fighter(FighterKey::default()), 17_000);
+        let marks = row_marks(&world, &[], &[], &squadron);
+        assert_eq!(
+            marks,
+            crate::fleet_window::mini_marks(
+                crate::fleet_window::MiniObject::Craft,
+                17_000,
+                true,
+                false
+            )
+        );
+        assert!(!marks.contains(&(DllSource::Strategy, 11_572)));
+        assert!(!marks.contains(&(DllSource::Strategy, 11_509)));
+    }
+
+    #[test]
     fn squadrons_travelling_to_the_planet_list_after_its_own_with_the_en_route_mark() {
         // FUN_00556390 puts a squadron sent by Move in its destination at
         // once, in hyperspace (+0x50 bit 4), as A0 2026-11-11-regiment-en-

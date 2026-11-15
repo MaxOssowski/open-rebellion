@@ -817,3 +817,32 @@ fn a_product_on_its_trip_takes_no_move() {
     assert!(!move_to_target(&mut s.world, id, s.yard, None));
     assert_eq!(s.world.products.travelling().count(), 1);
 }
+
+#[test]
+fn a_ship_on_its_trip_takes_no_move_to_a_system_without_a_spare() {
+    // FUN_004f9860 refuses an object en route, whatever the target.
+    let mut s = setup();
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5)
+            .ordered(&mut s.world)
+            .delivered_to(s.there),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let id = s.world.products.all()[0].id;
+    let name = s.world.products.all()[0].name.clone();
+    settle(
+        &mut s.world,
+        Vec::new(),
+        vec![Departure {
+            origin: s.yard,
+            destination: s.there,
+            tick: 2,
+            kind: BuildableKind::CapitalShip(s.carrack),
+            name,
+        }],
+    );
+    let before = s.world.products.clone();
+    assert!(!move_to_target(&mut s.world, id, s.yard, None));
+    assert_eq!(s.world.products, before);
+}
