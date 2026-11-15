@@ -6099,6 +6099,27 @@ pub fn researched_class(
     .then_some((tech, level))
 }
 
+/// The event-message scenario's Natural Disaster for the Alliance reader
+/// (`FUN_0048e940`, notification `0x154`, TEXTSTRA `0x7190` / `0x7191`,
+/// EVT-01-C002): Yavin, held by the Alliance, losing resources only, as A0
+/// 2026-11-15-partial-cells/r2-msg-natural-disaster-on-yavin-d824 (sha256
+/// bc967b60eb32) shows "Natural Disaster on Yavin" over "There has been a
+/// natural disaster on Yavin which has destroyed resources there.".
+#[must_use]
+pub fn disaster_system(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<rebellion_core::ids::SystemKey> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+        return None;
+    }
+    world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Yavin")
+        .map(|(key, _)| key)
+}
+
 /// The event-message scenario's Facility Lost for each reader (event
 /// `0x303`, `FUN_00497690`, TEXTSTRA `0x70b0` / `0x70b1`, OBJ-09-C008): a
 /// Mine of the reader's side that could not be deployed to the side's

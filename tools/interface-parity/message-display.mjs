@@ -1220,6 +1220,81 @@ async function run(browser, base, faction) {
         await waitReport(page, (value) => value.mode === "list", "the Popular Support list after smuggling");
       }
 
+      // Natural Disaster (FUN_0048e940, 0x7190 / 0x7191; EVT-01-C002), A0
+      // 2026-11-15-partial-cells (an Alliance game, day 824, the window at
+      // (62, 49)): r2-message-index-natural-disaster-row-d824 (sha256
+      // b4dea7dc97f2) lists "Natural Disaster on Yavin" chosen, its row's
+      // head (the Resource icon 0x2ad6: FUN_0048e940's class files it on
+      // the Resource rail) every pixel A0's; r2-msg-natural-disaster-on-
+      // yavin-d824 (bc967b60eb32) shows "There has been a natural disaster
+      // on Yavin which has destroyed resources there." over the incident
+      // picture, its title image and the rail every pixel A0's (the rail
+      // without the band of A0's hovered Message Index button and its
+      // tooltip, window y 85..150).
+      let disasterChecks = null;
+      if (faction.byte === 1) {
+        // Resource Messages (0x7d at the window's (187, 64)).
+        await click(page, [supportList.window_left + 187 + 8, supportList.window_top + 64 + 4]);
+        const resourceList = await waitReport(page, (value) => value.mode === "list"
+          && value.rows.includes("Natural Disaster on Yavin"), "the Resource list");
+        const disasterRow = resourceList.rows.indexOf("Natural Disaster on Yavin");
+        const at = await shown(disasterRow);
+        await click(page, at);
+        await page.mouse.move(2, 2);
+        await frames(page);
+        const chosenD = PNG.sync.read(await page.screenshot());
+        const a0Row = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/2026-11-15-partial-cells/r2-message-index-natural-disaster-row-d824-EVT-01-C002.png")));
+        // The Resource icon 0x2ad6 (FUN_00468ab0, keyed on index 0) at the
+        // row's (1, 1): its opaque pixels in the port and in A0 (the
+        // seventh row, 49 + 108 + 21 * 6); the keyed pixels show the list's
+        // background, which differs by row.
+        const rowTop = Math.round(at[1] - 10);
+        const resourceIcon = (await indexedBitmap(0x2ad6)).filter(([, , , index]) => index !== 0);
+        const headDiffer = differing(chosenD, [resourceList.window_left + 25 + 1, rowTop + 1], resourceIcon)
+          + differing(a0Row, [62 + 25 + 1, 49 + 108 + 21 * 6 + 1], resourceIcon);
+        await shot("natural-disaster-row");
+        await click(page, showMessage);
+        const disaster = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Natural Disaster on Yavin", "Display Message shows the Natural Disaster");
+        assert.equal(disaster.viewing_text,
+          "There has been a natural disaster on Yavin which has destroyed resources there.",
+          JSON.stringify(disaster));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("natural-disaster-yavin");
+        const shownD = PNG.sync.read(await page.screenshot());
+        const a0D = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/2026-11-15-partial-cells/r2-msg-natural-disaster-on-yavin-d824-EVT-01-C002.png")));
+        const [leftD, topD] = [Math.round(disaster.window_left), Math.round(disaster.window_top)];
+        const regionD = (x0, y0, x1, y1) => {
+          let differ = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = ((topD + y) * 640 + leftD + x) * 4;
+              const j = ((49 + y) * 640 + 62 + x) * 4;
+              if ([0, 1, 2].some((c) => shownD.data[i + c] !== a0D.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        disasterChecks = {
+          row_head_a0: headDiffer,
+          picture_a0: regionD(12, 33, 412, 233),
+          title_image_a0: regionD(15, 16, 30, 32),
+          rail_a0: regionD(414, 11, 468, 85) + regionD(414, 150, 468, 296),
+        };
+        rowChecks.natural_disaster = disasterChecks;
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Resource list after the disaster");
+        // Back to Popular Support Messages (0x7a at (78, 64)).
+        await click(page, [supportList.window_left + 78 + 8, supportList.window_top + 64 + 4]);
+        await waitReport(page, (value) => value.mode === "list"
+          && value.rows.includes("Smuggling Benefits"), "the Popular Support list again");
+        assert.deepEqual(disasterChecks, { row_head_a0: 0, picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+          JSON.stringify(disasterChecks));
+      }
+
       // Near Uprising (FUN_00498cb0, A0 uprising-clean/test-day795-umgul-
       // near-uprising, an unedited Alliance game): "Umgul Near Uprising"
       // over "Unrest has pushed Umgul close to uprising." (0x7070,
