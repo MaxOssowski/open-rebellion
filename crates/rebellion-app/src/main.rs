@@ -6909,6 +6909,7 @@ async fn main() {
                             // gives under the point, as one order.
                             action @ (FleetWindowAction::DragFleet { .. }
                             | FleetWindowAction::DragShip { .. }
+                            | FleetWindowAction::DragProducts { .. }
                             | FleetWindowAction::DragRegiment { .. }
                             | FleetWindowAction::DragMembers { .. }
                             | FleetWindowAction::DragSquadron { .. }) => {
@@ -6961,6 +6962,35 @@ async fn main() {
                                     ),
                                     FleetDropOrder::Ships(team) => {
                                         panel_actions.push(ship_move_action(team, target));
+                                    }
+                                    // An unfinished unit's drop: its Move
+                                    // (FUN_00487cc0 asks for 0x202, and
+                                    // for 0x201 out of its side's
+                                    // blockaded system).
+                                    FleetDropOrder::Products(products) => {
+                                        let (system, fleet) = match target {
+                                            ReleaseTarget::System(system) => (system, None),
+                                            ReleaseTarget::Fleet { fleet, system } => {
+                                                (system, Some(fleet))
+                                            }
+                                        };
+                                        let blockaded =
+                                            rebellion_core::products::move_asks(&world, &products);
+                                        if confirmed || blockaded {
+                                            move_confirmation_state.open(product_confirmation(
+                                                &world,
+                                                player_faction,
+                                                products,
+                                                (system, fleet),
+                                                blockaded,
+                                            ));
+                                        } else {
+                                            panel_actions.push(PanelAction::MoveProducts {
+                                                products,
+                                                system,
+                                                fleet,
+                                            });
+                                        }
                                     }
                                     FleetDropOrder::Team { place, team } => issue_team_move(
                                         &DefensesMoveContext {
@@ -7123,6 +7153,43 @@ async fn main() {
                                 ) else {
                                     continue;
                                 };
+                                // Unfinished regiments or squadrons dragged
+                                // out: their Move (A0 2026-11-15 "m-5": the
+                                // regiment dropped on Fleet 3 boarded it).
+                                let products: Vec<u64> = items
+                                    .iter()
+                                    .filter_map(|item| match *item {
+                                        rebellion_render::defenses_window::DefensesItem::Pending {
+                                            product: Some(product),
+                                            ..
+                                        } => Some(product),
+                                        _ => None,
+                                    })
+                                    .collect();
+                                if !products.is_empty() && products.len() == items.len() {
+                                    let (destination, fleet) = match target {
+                                        ReleaseTarget::System(system) => (system, None),
+                                        ReleaseTarget::Fleet { fleet, system } => (system, Some(fleet)),
+                                    };
+                                    let blockaded =
+                                        rebellion_core::products::move_asks(&world, &products);
+                                    if confirmed || blockaded {
+                                        move_confirmation_state.open(product_confirmation(
+                                            &world,
+                                            player_faction,
+                                            products,
+                                            (destination, fleet),
+                                            blockaded,
+                                        ));
+                                    } else {
+                                        panel_actions.push(PanelAction::MoveProducts {
+                                            products,
+                                            system: destination,
+                                            fleet,
+                                        });
+                                    }
+                                    continue;
+                                }
                                 let Some(team) = defenses_selection_team(&items) else {
                                     // hyp: an unfinished unit's move command
                                     // refuses (+0x50 bit 2 clear), and one
@@ -10456,6 +10523,8 @@ fn issue_defenses_move(
 enum FleetDropOrder {
     Fleets(Vec<FleetKey>),
     Ships(ShipTeam),
+    /// Unfinished units (`rebellion_core::products`).
+    Products(Vec<u64>),
     Team {
         /// The squadrons' fleet and its system; `None` for a team without
         /// squadrons, whose move reads no place.
@@ -10478,6 +10547,11 @@ fn fleet_drop_order(
             point,
             confirmed,
         } => Some((FleetDropOrder::Fleets(fleets), point, confirmed)),
+        FleetWindowAction::DragProducts {
+            products,
+            point,
+            confirmed,
+        } => Some((FleetDropOrder::Products(products), point, confirmed)),
         FleetWindowAction::DragShip {
             fleet,
             ships,

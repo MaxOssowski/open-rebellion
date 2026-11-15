@@ -266,6 +266,26 @@ pub fn rows(
                         });
                     }
                 }
+                // Its unfinished ships too, by their own names (A0
+                // 2026-11-15 "m-1-ship-finder": "Carrack Light Cruiser 3"
+                // under construction).
+                for product in world.products.in_fleet(fleet) {
+                    let rebellion_core::manufacturing::BuildableKind::CapitalShip(class) =
+                        product.kind
+                    else {
+                        continue;
+                    };
+                    let Some(class) = world.capital_ship_classes.get(class) else {
+                        continue;
+                    };
+                    rows.push(FinderRow {
+                        object: FleetWindowEntry::Product {
+                            fleet,
+                            product: product.id,
+                        },
+                        name: product.name.clone().unwrap_or_else(|| class.name.clone()),
+                    });
+                }
             }
         }
     }
@@ -1266,6 +1286,39 @@ mod tests {
             ["corellian Corvette", "Nebulon-B"]
         );
         assert_eq!(list(FinderTab::Imperial), ["Victory Star Destroyer"]);
+    }
+
+    #[test]
+    fn the_ship_finder_lists_an_unfinished_ship_by_its_name() {
+        // A0 2026-11-15 "m-1-ship-finder-lists-unfinished-carrack-3": the
+        // walk takes the fleet's ships in mode 3, the unfinished one too.
+        use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let mut galaxy = galaxy();
+        let home = galaxy.world.fleets[galaxy.own].location;
+        galaxy.world.set_ship_spare(home, true, galaxy.own);
+        let class = galaxy.world.fleets[galaxy.own].capital_ships[0].class;
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(
+            home,
+            QueueItem::new(BuildableKind::CapitalShip(class), 5).ordered(&mut galaxy.world),
+        );
+        rebellion_core::products::reconcile(&mut galaxy.world, &manufacturing);
+        let product = galaxy.world.products.all()[0].id;
+        let name = galaxy.world.products.all()[0].name.clone().unwrap();
+        let ships = rows(
+            &galaxy.world,
+            &rebellion_core::movement::MovementState::default(),
+            &galaxy.fog,
+            Faction::Alliance,
+            FinderMode::Ships,
+            FinderTab::Alliance,
+        );
+        assert!(ships.iter().any(|row| row.object
+            == FleetWindowEntry::Product {
+                fleet: galaxy.own,
+                product
+            }
+            && row.name == name));
     }
 
     #[test]

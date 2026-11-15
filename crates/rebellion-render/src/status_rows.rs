@@ -1960,10 +1960,12 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         StatusObject::PendingTroop { system, class } => {
             // The regiment stands where its product does (a Move may
             // have carried it).
-            let product = world
-                .products
-                .in_system(system)
-                .find(|product| product.kind == BuildableKind::Troop(class))?;
+            // On the planet or aboard a fleet there (A0 2026-11-15 "m-5").
+            let product = world.products.all().iter().find(|product| {
+                product.kind == BuildableKind::Troop(class)
+                    && rebellion_core::products::container_system(world, product.container)
+                        == Some(system)
+            })?;
             // Finished and on its way (bits 2 and 4): FUN_00445280 writes
             // "Enroute" and the ETA, over the en route mark.
             let arrival = world.products.arrival(product.id);
@@ -1988,10 +1990,11 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         // FUN_004444c0 on a squadron not yet completed: the planet
         // squadron's rows (A0 pending-facility/25) over 11571 / 11573.
         StatusObject::PendingFighter { system, class } => {
-            let queued = world
-                .products
-                .in_system(system)
-                .any(|product| product.kind == BuildableKind::Fighter(class));
+            let queued = world.products.all().iter().any(|product| {
+                product.kind == BuildableKind::Fighter(class)
+                    && rebellion_core::products::container_system(world, product.container)
+                        == Some(system)
+            });
             if !queued {
                 return None;
             }

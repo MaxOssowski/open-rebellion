@@ -627,7 +627,29 @@ fn left_drop(objects: &[ItemObject], point: egui::Pos2, confirmed: bool) -> Vec<
         });
     }
     actions.extend(ship_drops(objects, point, confirmed));
+    actions.extend(product_drops(objects, point, confirmed));
     actions
+}
+
+/// The dragged unfinished units' Move (`0x201`), one order for them all.
+fn product_drops(objects: &[ItemObject], point: egui::Pos2, confirmed: bool) -> Vec<FleetWindowAction> {
+    let products: Vec<u64> = objects
+        .iter()
+        .filter_map(|object| match *object {
+            ItemObject::Product(product)
+            | ItemObject::ProductFighter { product, .. }
+            | ItemObject::ProductTroop { product, .. } => Some(product),
+            _ => None,
+        })
+        .collect();
+    if products.is_empty() {
+        return Vec::new();
+    }
+    vec![FleetWindowAction::DragProducts {
+        products,
+        point,
+        confirmed,
+    }]
 }
 
 /// One ship order per fleet among `objects`' ships, in their order.
@@ -726,10 +748,12 @@ fn right_drop(
                 confirmed,
             }]
         }
-        // port: an unfinished ship's drag is not ported; its menu's Move is.
-        ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } | ItemObject::Product(_) => {
-            Vec::new()
-        }
+        // An unfinished unit dragged: its Move (A0 2026-11-15 "m-3": the
+        // Carrack dropped on Fleet 3; "m-5": the regiment likewise).
+        ItemObject::Product(_)
+        | ItemObject::ProductFighter { .. }
+        | ItemObject::ProductTroop { .. } => product_drops(objects, point, confirmed),
+        ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } => Vec::new()
     }
 }
 
@@ -1087,6 +1111,21 @@ enum ItemObject {
     /// (`rebellion_core::products`): `FUN_004a6be0` walks the ships in
     /// mode 3 (Existing), so it lists (A0 2026-11-15 "u-2").
     Product(u64),
+    /// An unfinished squadron aboard the fleet at `system`, by its product
+    /// (the Fighters tab walks mode 3, `FUN_005039d0(ship, 3)`).
+    ProductFighter {
+        product: u64,
+        system: SystemKey,
+        class: rebellion_core::ids::FighterKey,
+    },
+    /// An unfinished regiment aboard the fleet at `system`, by its product
+    /// (`FUN_00504c40(ship, 3)`; A0 2026-11-15 "m-5": the Army Regiment in
+    /// Fleet 3's regiments tab, on the grid).
+    ProductTroop {
+        product: u64,
+        system: SystemKey,
+        class: DatId,
+    },
 }
 
 impl ItemObject {
@@ -1116,6 +1155,24 @@ impl ItemObject {
                 roster,
             },
             Self::Product(product) => MenuObject::PendingShip { product },
+            Self::ProductFighter {
+                product,
+                system,
+                class,
+            } => MenuObject::PendingFighter {
+                system,
+                class,
+                product: Some(product),
+            },
+            Self::ProductTroop {
+                product,
+                system,
+                class,
+            } => MenuObject::PendingTroop {
+                system,
+                class,
+                product: Some(product),
+            },
         }
     }
 }
@@ -1783,6 +1840,13 @@ pub enum FleetWindowAction {
         point: egui::Pos2,
         confirmed: bool,
     },
+    /// Unfinished units (`rebellion_core::products`) dragged: their Move
+    /// (`0x201`, `FUN_00556390`), released on a fleet or a system.
+    DragProducts {
+        products: Vec<u64>,
+        point: egui::Pos2,
+        confirmed: bool,
+    },
     /// The Capital Ships tab's selected ships, or a left list ship entry,
     /// dragged: the same `0x201` for the ships
     /// (`ghidra/notes/fleet-join-split.md`).
@@ -2266,6 +2330,9 @@ fn tab_enabled(
                     .transits()
                     .iter()
                     .any(|transit| transit.leg == RegimentLeg::Fleet(fleet))
+                || world.products.in_fleet(fleet).any(|product| {
+                    matches!(product.kind, rebellion_core::manufacturing::BuildableKind::Troop(_))
+                })
         }
         FleetWindowTab::Personnel => {
             !value.characters.is_empty()
@@ -2509,7 +2576,13 @@ fn right_target(world: &GameWorld, items: &[RightItem], index: usize) -> Option<
         Some(ItemObject::SpecialForce(key)) => {
             Some(ItemTarget::Object(MissionTarget::SpecialForce(key)))
         }
-        Some(ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } | ItemObject::Product(_))
+        Some(
+            ItemObject::Fleet(_)
+            | ItemObject::TravellingFighter { .. }
+            | ItemObject::Product(_)
+            | ItemObject::ProductFighter { .. }
+            | ItemObject::ProductTroop { .. },
+        )
         | None => None,
     })
 }
@@ -2743,6 +2816,22 @@ fn right_items(
                     )
                 })
                 .chain(travelling)
+                // The unfinished squadrons aboard follow (mode 3).
+                .chain(world.products.in_fleet(fleet).filter_map(|product| {
+                    let rebellion_core::manufacturing::BuildableKind::Fighter(class) = product.kind
+                    else {
+                        return None;
+                    };
+                    Some((
+                        class,
+                        1,
+                        ItemObject::ProductFighter {
+                            product: product.id,
+                            system: value.location,
+                            class,
+                        },
+                    ))
+                }))
                 .filter_map(|(class, count, object)| {
                     Some((world.fighter_classes.get(class)?, count, object))
                 })
@@ -2794,6 +2883,29 @@ fn right_items(
                 en_route,
                 object: Some(ItemObject::Regiment(key)),
             })
+            // The unfinished regiments aboard follow (mode 3; A0 2026-11-15
+            // "m-5": on the grid).
+            .chain(world.products.in_fleet(fleet).filter_map(|product| {
+                let rebellion_core::manufacturing::BuildableKind::Troop(class) = product.kind else {
+                    return None;
+                };
+                let (mini, label) = troop_mini(class)?;
+                Some(RightItem {
+                    mini: Some(mini),
+                    kind: MiniObject::Regiment(class),
+                    label: label.to_owned(),
+                    no_hyperdrive: false,
+                    contents: 0,
+                    damaged: false,
+                    captive: false,
+                    en_route: world.products.arrival(product.id).is_some(),
+                    object: Some(ItemObject::ProductTroop {
+                        product: product.id,
+                        system: value.location,
+                        class,
+                    }),
+                })
+            }))
             .collect(),
         FleetWindowTab::Personnel => value
             .characters
@@ -4361,8 +4473,11 @@ fn draw_fleet_window(
                             // else 0x2d34 (11572) (A0 2026-11-15 "u-2": the
                             // Carrack on the Empire's green grid).
                             let unfinished = match item.object {
-                                Some(ItemObject::Product(product))
-                                    if world.products.arrival(product).is_none() =>
+                                Some(
+                                    ItemObject::Product(product)
+                                    | ItemObject::ProductFighter { product, .. }
+                                    | ItemObject::ProductTroop { product, .. },
+                                ) if world.products.arrival(product).is_none() =>
                                 {
                                     world
                                         .products
@@ -8891,6 +9006,101 @@ pub(crate) mod tests {
         assert!(state.begin_rename(&world, system, ship));
         assert_eq!(state.selection(system).unwrap().0, Some(ship));
         assert_eq!(state.windows[0].rename.as_ref().unwrap().item, None);
+    }
+
+    #[test]
+    fn an_unfinished_regiment_or_squadron_aboard_lists_in_its_tab_and_drags() {
+        // FUN_00504c40(ship, 3) and FUN_005039d0(ship, 3) walk mode 3: an
+        // unfinished regiment or squadron aboard lists (A0 2026-11-15 "m-5":
+        // the Army Regiment in Fleet 3's regiments tab, on the grid). A
+        // drag of an unfinished unit is its Move (A0 "m-3").
+        use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 1);
+        let ship_class = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[ship_class].troop_capacity = 2;
+        world.capital_ship_classes[ship_class].fighter_capacity = 2;
+        let army = DatId::new(0x1000_0002);
+        world.buildable_classes.insert(
+            army,
+            rebellion_core::world::BuildableClass {
+                is_alliance: true,
+                ..Default::default()
+            },
+        );
+        let wing = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0001),
+            name: "X-wing".into(),
+            is_alliance: true,
+            ..Default::default()
+        });
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(system, QueueItem::new(BuildableKind::Troop(army), 5));
+        manufacturing.enqueue(system, QueueItem::new(BuildableKind::Fighter(wing), 5));
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let id_of = |world: &GameWorld, kind| {
+            world.products.all().iter().find(|p| p.kind == kind).unwrap().id
+        };
+        let ids = vec![
+            id_of(&world, BuildableKind::Troop(army)),
+            id_of(&world, BuildableKind::Fighter(wing)),
+        ];
+        for &id in &ids {
+            assert!(rebellion_core::products::move_to_target(&mut world, id, system, Some(fleet), 0));
+        }
+        let transport = TroopTransportState::default();
+        let selected = Some(FleetWindowEntry::Fleet(fleet));
+        assert!(tab_enabled(&world, &transport, &[], selected, FleetWindowTab::Troops));
+        let troops = right_items(&world, &transport, &[], selected, FleetWindowTab::Troops);
+        let regiment = ItemObject::ProductTroop {
+            product: ids[0],
+            system,
+            class: army,
+        };
+        assert_eq!(troops.len(), 1);
+        assert_eq!(troops[0].object, Some(regiment));
+        assert_eq!(
+            regiment.menu_object(),
+            MenuObject::PendingTroop {
+                system,
+                class: army,
+                product: Some(ids[0]),
+            }
+        );
+        let fighters = right_items(&world, &transport, &[], selected, FleetWindowTab::Fighters);
+        let squadron = ItemObject::ProductFighter {
+            product: ids[1],
+            system,
+            class: wing,
+        };
+        assert_eq!(fighters.len(), 1);
+        assert_eq!(fighters[0].object, Some(squadron));
+        assert_eq!(
+            squadron.menu_object(),
+            MenuObject::PendingFighter {
+                system,
+                class: wing,
+                product: Some(ids[1]),
+            }
+        );
+        let point = egui::pos2(10.0, 20.0);
+        assert_eq!(
+            right_drop(&[regiment, squadron], point, true),
+            vec![FleetWindowAction::DragProducts {
+                products: ids.clone(),
+                point,
+                confirmed: true,
+            }]
+        );
+        assert_eq!(
+            left_drop(&[ItemObject::Product(9)], point, false),
+            vec![FleetWindowAction::DragProducts {
+                products: vec![9],
+                point,
+                confirmed: false,
+            }]
+        );
+        assert!(product_drops(&[ItemObject::Fleet(fleet)], point, false).is_empty());
     }
 
     #[test]
