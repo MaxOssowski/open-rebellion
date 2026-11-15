@@ -1862,6 +1862,9 @@ async fn main() {
             &mut uprising_state,
         );
         interface_test_fixture::place_deliveries(request, &world, &mut delivery_state);
+        // The fixture's queued units are products from their orders on
+        // (FUN_0052a140; rebellion_core::products).
+        rebellion_core::products::reconcile(&mut world, &mfg_state);
         // Every fixture's cockpit shows its own side's droids (the
         // Empire's IMP sprites, not the Alliance's).
         let side = if player_faction == MissionFaction::Alliance {

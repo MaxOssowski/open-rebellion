@@ -787,8 +787,8 @@ const cases = [
   // The regiment in training, the page's second cell: A0 02 reads
   // "Training" with no ETA row, the picture over 11514 and the unfinished
   // mark 11571 (11573 for side 2). A0 01's menu offers Move and Confirmed
-  // Move, which the port greys (see the 2026-11-11 evidence), so only the
-  // rows are compared.
+  // Move, as the port does since Stage B (2026-11-15); the rows are
+  // compared.
   {
     name: "regiment-training",
     code: REGIMENT_ENROUTE,
