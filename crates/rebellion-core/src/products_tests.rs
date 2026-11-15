@@ -1114,3 +1114,29 @@ fn a_regiment_or_special_force_finished_aboard_boards_its_fleet() {
     board(&mut s.world, &mut transport, &[elsewhere]);
     assert_eq!(transport.carried_count(fleet), 1);
 }
+
+#[test]
+fn a_regiment_or_squadron_on_its_trip_into_a_system_is_pending_there() {
+    // CMD-03-C018: the defenses icon's Move greys while a regiment or
+    // squadron of the side is on its way in (FUN_004f9860 code 4); a queued
+    // one does not (FUN_0053c100).
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    let id = s.world.products.all()[0].id;
+    assert!(move_to(&mut s.world, id, Container::System(s.there)));
+    assert!(!surface_arrival_pending(&s.world, s.there, false));
+    settle(
+        &mut s.world,
+        vec![CompletionEvent {
+            system: s.yard,
+            tick: 1,
+            kind: BuildableKind::Fighter(s.tie),
+            name: None,
+            fleet: None,
+        }],
+        Vec::new(),
+    );
+    assert!(surface_arrival_pending(&s.world, s.there, false));
+    assert!(!surface_arrival_pending(&s.world, s.there, true));
+    assert!(!surface_arrival_pending(&s.world, s.yard, false));
+}

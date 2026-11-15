@@ -10370,6 +10370,7 @@ fn defenses_move_enabled(
         // its facility too (`DeliveryState::surface_arrival_pending`).
         && !transport.surface_arrival_pending(world, system, is_alliance)
         && !deliveries.surface_arrival_pending(system, Faction::from(faction))
+        && !rebellion_core::products::surface_arrival_pending(world, system, is_alliance)
         && (team.members.is_empty() || missions.move_order_enabled(world, faction, &team.members))
         && team
             .troops

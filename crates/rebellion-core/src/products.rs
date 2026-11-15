@@ -616,6 +616,25 @@ pub fn arrive(world: &mut GameWorld, now: u64) -> Arrived {
     out
 }
 
+/// A finished regiment, squadron or special force of the side
+/// `is_alliance` travelling into `system` (Completed, EnrouteActive, its
+/// container the system): the defenses icon's walks hold it, and its own
+/// Move refuses while it travels (`FUN_004f9860` code 4;
+/// `DeliveryState::surface_arrival_pending` for one with no product).
+#[must_use]
+pub fn surface_arrival_pending(world: &GameWorld, system: SystemKey, is_alliance: bool) -> bool {
+    world.products.travelling().any(|(product, _)| {
+        product.container == Container::System(system)
+            && product.is_alliance == is_alliance
+            && matches!(
+                product.kind,
+                BuildableKind::Troop(_)
+                    | BuildableKind::Fighter(_)
+                    | BuildableKind::SpecialForce(_)
+            )
+    })
+}
+
 /// `FUN_00487cc0` for an unfinished unit's Move (`0x201`): it asks when
 /// the first member's container is a system blockaded (`+0x88` bit
 /// `0x20`) and held by the member's side. An unfinished ship stands in a
