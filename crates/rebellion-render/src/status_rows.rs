@@ -3848,6 +3848,20 @@ mod tests {
                 ("Maintenance Cost:", "0"),
             ]
         );
+        // The regiment stands at its container's system only.
+        let elsewhere = system(
+            &mut world,
+            "Talus",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        assert!(status_view(
+            states.sources(&world),
+            StatusObject::PendingTroop {
+                system: elsewhere,
+                class,
+            }
+        )
+        .is_none());
         states.manufacturing = ManufacturingState::new();
         rebellion_core::products::reconcile(&mut world, &states.manufacturing);
         assert!(status_view(states.sources(&world), pending).is_none());
