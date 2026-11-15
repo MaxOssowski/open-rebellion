@@ -403,8 +403,9 @@ holds, never the live character's place:
 
 port: `CopyPlace` (`personnel_finder.rs`): Fleet opens the system's Fleet
 window with the copied fleet chosen (the copy entry, not the character in
-it); System opens the Defenses window (a copy keeps no mission key, so
-never the Missions window); Nowhere opens nothing, and the Finder closes.
+it); System opens the Defenses window, or the Missions window (without a
+chosen mission) for a copy on a mission that was not hidden when copied
+(`CharacterCopyState`); Nowhere opens nothing, and the Finder closes.
 
 ### Characters on missions (traced 2026-11-14)
 
@@ -413,12 +414,23 @@ A character on a mission at a system has the system as its container
 follows the system's copy like any character on the planet. port: a member
 at its mission's target has `current_system` set
 (`missions.rs`), so `object_views::character_copies` already copies it at
-that system. Not ported: the copy's state words (" ( On Mission ) ",
-" ( Enroute ) "), the Missions window on Display, and a character seen
-leaving for an unseen system, whose copy the original freezes en route in
-its destination (`FUN_00556390`): the port's copy is left in no place by
-the origin's live rebuild ("Location Unknown"), while the destination's
-extras keep it as a traveller. No A0 capture shows that row.
+that system.
+
+State words of a copy (`FUN_00465bb0`, only when the copy has a ship or
+system container): `+0xac` bit 0 Captured (`0x8746`), else a mission key
+`+0x68` naming a mission object (`0x50..0x7f`) On Mission (`0x8745`), else
+`+0x94` Injured (`0x8747`), else `+0x50` bit 4 Enroute (`0x8744`). A
+character seen leaving for a system the side does not see is frozen in
+hyperspace in its destination (`FUN_00556390` makes the destination its
+container; `FUN_004f9a60` freezes the copy with bit 4 set), so its row reads
+"Name - Destination ( Enroute ) " and Display takes the system branch.
+
+port (save v122): `object_views::CharacterCopyState` keeps On Mission (not
+for a captive), the mission's hidden flag and Enroute, taken from the live
+character when the copy is taken; a character the side saw leave for an
+unseen system (`advance_extras`' travellers) gets a copy in the destination
+with Enroute. Not kept: Captured, Injured and the command word. No A0
+capture shows a copied On Mission or Enroute row yet.
 
 ## Open
 

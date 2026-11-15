@@ -8055,6 +8055,9 @@ async fn main() {
                                 CopyPlace::System(system) => {
                                     Some((system, FinderTarget::Defenses))
                                 }
+                                CopyPlace::Missions(system) => {
+                                    Some((system, FinderTarget::MissionsWindow))
+                                }
                             }
                         }
                     });
@@ -8118,6 +8121,24 @@ async fn main() {
                                         &mission_state,
                                         system,
                                         member,
+                                    );
+                                }
+                            }
+                            FinderTarget::MissionsWindow => {
+                                if let Some(point) = sector_window_state.quadrant_window_point(
+                                    &world,
+                                    cockpit_layout,
+                                    system,
+                                    rebellion_render::quadrant_icons::Quadrant::Missions,
+                                ) {
+                                    missions_window_state.open(
+                                        &world,
+                                        fog_state,
+                                        &mission_state,
+                                        system,
+                                        point,
+                                        cockpit_state.faction,
+                                        cockpit_layout,
                                     );
                                 }
                             }
@@ -12012,6 +12033,8 @@ enum FinderTarget {
     CopiedFleet(rebellion_render::fleet_window::FleetWindowEntry),
     /// The Missions window (kind 11) showing the member's mission.
     Missions(rebellion_core::missions::MissionMember),
+    /// The Missions window (kind 11) choosing nothing.
+    MissionsWindow,
 }
 
 /// Carry out what the Message Index asks: the Advice speed hold

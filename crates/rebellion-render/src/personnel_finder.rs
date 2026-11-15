@@ -234,9 +234,12 @@ pub enum CopyPlace {
     /// Aboard a ship of a copied fleet: that system's Fleet window with the
     /// copy chosen (kind 4).
     Fleet(crate::fleet_window::FleetWindowEntry),
-    /// On a copied system: its Defenses window (kind 10). port: a copy
-    /// keeps no mission key, so never the Missions window.
+    /// On a copied system: its Defenses window (kind 10).
     System(SystemKey),
+    /// On a copied system on a mission that is not hidden: its Missions
+    /// window (kind 11). port: the window opens without choosing the
+    /// mission, as the copy keeps no mission key.
+    Missions(SystemKey),
     /// In no ship or system: nothing opens, though the Finder closes
     /// (`FUN_00429440` leaves its target system null and returns 1;
     /// `FUN_00464890` case `0xc9` closes after it).
@@ -523,12 +526,38 @@ pub fn character_rows_travelling(
                     .clone()
                     .or_else(|| at.map(|system| world.systems[system].name.clone()))
                     .unwrap_or_else(|| "Location Unknown".to_owned());
-                // port: a copy keeps no state or command word.
-                copy_text = Some(format!("{} - {place}", character.name));
+                // The copy's state word, On Mission before Enroute, only
+                // with a place (FUN_00465bb0 jumps past the words without
+                // one). port: the copy keeps no Captured, Injured or command
+                // word.
+                let state = world.object_views.character_state(player, character.dat_id);
+                let word = if state.on_mission {
+                    Some("On Mission")
+                } else if state.enroute {
+                    Some("Enroute")
+                } else {
+                    None
+                };
+                let mut text = format!("{} - {place}", character.name);
+                if let (Some(word), Some(_)) = (word, at) {
+                    text.push_str(&format!(" ( {word} ) "));
+                }
+                copy_text = Some(text);
                 copy_place = Some(match at {
                     None => CopyPlace::Nowhere,
                     Some(system) => copied_fleet(world, player, system, character.dat_id)
-                        .map_or(CopyPlace::System(system), CopyPlace::Fleet),
+                        .map_or_else(
+                            || {
+                                // FUN_00429440's system branch: the copy's
+                                // mission, unless hidden (FUN_00520b70).
+                                if state.on_mission && !state.hidden_mission {
+                                    CopyPlace::Missions(system)
+                                } else {
+                                    CopyPlace::System(system)
+                                }
+                            },
+                            CopyPlace::Fleet,
+                        ),
                 });
             } else {
                 let Some(system) = copied.get(&character.dat_id) else {
@@ -2001,6 +2030,85 @@ mod tests {
             [
                 PersonnelFinderAction::OpenCopy(CopyPlace::Nowhere),
                 PersonnelFinderAction::OpenCopy(CopyPlace::Nowhere),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_copied_rows_state_word_is_on_mission_before_enroute_and_only_with_a_place() {
+        // FUN_00465bb0 on the side's copy: "On Mission" (0x8745) from the
+        // copy's mission key, else "Enroute" (0x8744) from +0x50 bit 4, in
+        // " ( " and " ) "; a copy in no ship or system jumps past the words
+        // (0x465cb5) and reads "Location Unknown" alone. FUN_00429440 opens
+        // the Missions window for a copy on a mission that is not hidden
+        // (FUN_00520b70), else the Defenses window.
+        use rebellion_core::object_views::{CharacterCopy, CharacterCopyState, SystemView};
+        let mut world = GameWorld::default();
+        let kuat = add_system(&mut world, "Kuat");
+        world.systems[kuat].control = ControlKind::Controlled(Faction::Empire);
+        let id = world.systems[kuat].dat_id;
+        let view = SystemView::of(&world, &world.systems[kuat], false);
+        world.object_views.alliance_systems.insert(id, view);
+        let mut add = |world: &mut GameWorld, raw: u32, name: &str, at: Option<DatId>| {
+            world.characters.insert(Character {
+                dat_id: DatId::new(raw),
+                name: name.into(),
+                is_alliance: false,
+                is_empire: true,
+                ..default_character()
+            });
+            world.object_views.alliance_characters.insert(
+                DatId::new(raw),
+                CharacterCopy {
+                    system: at,
+                    ship: None,
+                },
+            );
+        };
+        add(&mut world, 0x3000_0021, "Ardus Kaine", Some(id));
+        add(&mut world, 0x3000_0022, "Bevel Lemelisk", Some(id));
+        add(&mut world, 0x3000_0023, "Crix Madine", Some(id));
+        add(&mut world, 0x3000_0024, "Dodd", None);
+        add(&mut world, 0x3000_0025, "Eryn", Some(id));
+        let states = &mut world.object_views.alliance_character_states;
+        let state = |on_mission, hidden_mission, enroute| CharacterCopyState {
+            on_mission,
+            hidden_mission,
+            enroute,
+        };
+        states.insert(DatId::new(0x3000_0021), state(true, false, true));
+        states.insert(DatId::new(0x3000_0022), state(false, false, true));
+        states.insert(DatId::new(0x3000_0023), state(true, true, false));
+        states.insert(DatId::new(0x3000_0024), state(false, false, true));
+        let rows = character_rows(
+            &world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Imperial,
+        );
+        let texts: Vec<_> = rows.iter().map(PersonnelFinderRow::display_name).collect();
+        assert_eq!(
+            texts,
+            [
+                "Ardus Kaine - Kuat ( On Mission ) ",
+                "Bevel Lemelisk - Kuat ( Enroute ) ",
+                "Crix Madine - Kuat ( On Mission ) ",
+                "Dodd - Location Unknown",
+                "Eryn - Kuat",
+            ]
+        );
+        let actions: Vec<_> = rows
+            .iter()
+            .map(|row| action_for_row(row, &world, PersonnelTab::Imperial))
+            .collect();
+        assert_eq!(
+            actions,
+            [
+                PersonnelFinderAction::OpenCopy(CopyPlace::Missions(kuat)),
+                PersonnelFinderAction::OpenCopy(CopyPlace::System(kuat)),
+                PersonnelFinderAction::OpenCopy(CopyPlace::System(kuat)),
+                PersonnelFinderAction::OpenCopy(CopyPlace::Nowhere),
+                PersonnelFinderAction::OpenCopy(CopyPlace::System(kuat)),
             ]
         );
     }
