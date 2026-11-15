@@ -69,6 +69,11 @@ pub struct Product {
 pub struct Products {
     last_id: u64,
     items: Vec<Product>,
+    /// The finished products still travelling from their yard to their
+    /// container, by id, with the day each arrives (`+0x50` Completed and
+    /// EnrouteActive, `+0x44` DestinationCount; `FUN_0052bee0`). It stays
+    /// the last field: a v124 save gains an empty one (save v125).
+    trips: Vec<(u64, u64)>,
 }
 
 impl Products {
@@ -104,8 +109,27 @@ impl Products {
         self.in_fleet(fleet).next().is_some()
     }
 
+    /// The finished products travelling to their containers, with the day
+    /// each arrives.
+    pub fn travelling(&self) -> impl Iterator<Item = (&Product, u64)> {
+        self.trips
+            .iter()
+            .filter_map(|&(id, day)| self.get(id).map(|product| (product, day)))
+    }
+
+    /// The day product `id` arrives, while it travels finished to its
+    /// container; none while it is being built.
+    #[must_use]
+    pub fn arrival(&self, id: u64) -> Option<u64> {
+        self.trips
+            .iter()
+            .find(|&&(trip, _)| trip == id)
+            .map(|&(_, day)| day)
+    }
+
     fn take(&mut self, id: u64) -> Option<Product> {
         let at = self.items.iter().position(|product| product.id == id)?;
+        self.trips.retain(|&(trip, _)| trip != id);
         Some(self.items.remove(at))
     }
 }
@@ -291,11 +315,13 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
         manufacturing.queues().keys().copied().collect();
     keys.sort_by_key(|&(system, area)| (system, area as u8));
 
-    // Products of a queue that no longer exists.
+    // Products of a queue that no longer exists. A product on its trip
+    // has left its queue (FUN_0052bee0 completed it).
     let orphans: Vec<u64> = world
         .products
         .items
         .iter()
+        .filter(|product| world.products.arrival(product.id).is_none())
         .filter(|product| !keys.contains(&(product.yard, ProductionArea::of(product.kind))))
         .map(|product| product.id)
         .collect();
@@ -320,6 +346,7 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
             .items
             .iter()
             .filter(|p| p.yard == yard && ProductionArea::of(p.kind) == area)
+            .filter(|p| world.products.arrival(p.id).is_none())
             .map(|p| p.id)
             .collect();
         let same = |product: &Product, item: &QueueItem| {
@@ -386,8 +413,13 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
 pub struct Settled {
     /// Products finished where they stand.
     pub completions: Vec<CompletionEvent>,
-    /// Products finished away from their container, which travel to it.
+    /// Units with no product, finished away from their destination,
+    /// which travel there as deliveries.
     pub departures: Vec<Departure>,
+    /// Products finished away from their container: each stays in it,
+    /// travelling until its arrival ([`Products::arrival`]); listed here
+    /// for the departure's message.
+    pub trips: Vec<Departure>,
 }
 
 /// The oldest product of `yard` matching a finished `kind` and `name`.
@@ -401,7 +433,12 @@ fn finished(
         .products
         .items
         .iter()
-        .find(|p| p.yard == yard && p.kind == kind && &p.name == name)
+        .find(|p| {
+            p.yard == yard
+                && p.kind == kind
+                && &p.name == name
+                && world.products.arrival(p.id).is_none()
+        })
         .map(|p| p.id)
 }
 
@@ -425,7 +462,30 @@ pub fn settle(
                   name: Option<String>,
                   fallback: SystemKey,
                   out: &mut Settled| {
-        let product = finished(world, yard, kind, &name).and_then(|id| world.products.take(id));
+        let id = finished(world, yard, kind, &name);
+        // FUN_0052bee0: a product whose container stands away from its
+        // yard is Completed and EnrouteActive in that container; it
+        // completes there on arrival (FUN_004fba10 -> FUN_00556620).
+        if let Some(id) = id {
+            let product = world.products.get(id).cloned();
+            if let Some(product) = product {
+                if let Some(at) = container_system(world, product.container) {
+                    if at != yard {
+                        let days = crate::delivery::transit_days(world, kind, yard, at);
+                        world.products.trips.push((id, tick + u64::from(days)));
+                        out.trips.push(Departure {
+                            origin: yard,
+                            destination: at,
+                            tick,
+                            kind,
+                            name,
+                        });
+                        return;
+                    }
+                }
+            }
+        }
+        let product = id.and_then(|id| world.products.take(id));
         let (at, fleet) = match &product {
             Some(product) => (
                 container_system(world, product.container).unwrap_or(fallback),
@@ -445,8 +505,6 @@ pub fn settle(
                 fleet,
             });
         } else {
-            // port: the delivery does not name the fleet; a staged spare
-            // left empty stays the spare, so the ship arrives in it.
             out.departures.push(Departure {
                 origin: yard,
                 destination: at,
@@ -494,6 +552,68 @@ pub fn settle_advance(
     );
     advance.completions = settled.completions;
     advance.departures = settled.departures;
+    advance.trips = settled.trips;
+}
+
+/// What the day's arrivals of finished products give the caller.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Arrived {
+    /// Products that reached their container, as completions there.
+    pub completions: Vec<CompletionEvent>,
+    /// Products whose container's system is gone: they go on as
+    /// deliveries from there, which reroute (`crate::delivery`,
+    /// `FUN_004f8710` sets Autorouting).
+    pub departures: Vec<Departure>,
+}
+
+/// The arrival (event `0x387` -> `FUN_004fba10` -> `FUN_00556620`): each
+/// finished product whose trip ends by `now` clears EnrouteActive and is
+/// usable in its container. port: one that stands in a fleet completes
+/// wherever the fleet is that day.
+pub fn arrive(world: &mut GameWorld, now: u64) -> Arrived {
+    let mut out = Arrived::default();
+    let due: Vec<(u64, u64)> = world
+        .products
+        .trips
+        .iter()
+        .copied()
+        .filter(|&(_, day)| day <= now)
+        .collect();
+    for (id, day) in due {
+        let Some(product) = world.products.take(id) else {
+            continue;
+        };
+        let at = container_system(world, product.container);
+        let fleet = match product.container {
+            Container::Fleet(fleet) => Some(fleet),
+            Container::System(_) => None,
+        };
+        match at {
+            Some(at) if world.systems.get(at).is_some_and(|s| !s.is_destroyed) => {
+                out.completions.push(CompletionEvent {
+                    system: at,
+                    tick: day,
+                    kind: product.kind,
+                    name: product.name,
+                    fleet,
+                });
+            }
+            _ => {
+                let from = at.unwrap_or(product.target);
+                out.departures.push(Departure {
+                    origin: from,
+                    destination: from,
+                    tick: day,
+                    kind: product.kind,
+                    name: product.name,
+                });
+                if let Some(fleet) = fleet {
+                    drop_if_emptied(world, Container::Fleet(fleet));
+                }
+            }
+        }
+    }
+    out
 }
 
 /// Move: an unfinished unit is not Deployed, so not mobile (slot `+0x38`),
@@ -501,7 +621,8 @@ pub fn settle_advance(
 /// (`unfinished-products.md`, "Moving an unfinished squadron or
 /// regiment"). Its completion then starts the trip from its yard.
 pub fn move_to(world: &mut GameWorld, id: u64, container: Container) -> bool {
-    if container_system(world, container).is_none() {
+    // An object en route takes no order (FUN_004f9860).
+    if container_system(world, container).is_none() || world.products.arrival(id).is_some() {
         return false;
     }
     let Some(index) = world.products.items.iter().position(|p| p.id == id) else {
@@ -530,7 +651,7 @@ pub fn move_to_target(
     let Some(product) = world.products.get(id).cloned() else {
         return false;
     };
-    if !world.systems.contains_key(system) {
+    if !world.systems.contains_key(system) || world.products.arrival(id).is_some() {
         return false;
     }
     let container = match (product.kind, fleet) {

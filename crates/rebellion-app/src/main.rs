@@ -3014,7 +3014,9 @@ async fn main() {
                     .get(key)
                     .map_or_else(|| "unknown".to_string(), |s| s.name.clone())
             };
-            for departure in &mfg_advance.departures {
+            // A product travelling in its container leaves as a delivery
+            // does (rebellion_core::products::settle).
+            for departure in mfg_advance.departures.iter().chain(&mfg_advance.trips) {
                 let origin = system_name(&world, departure.origin);
                 let destination = system_name(&world, departure.destination);
                 // Notification 0x107, Units Deployed (FUN_00497940): the
@@ -3050,9 +3052,16 @@ async fn main() {
                 #[cfg(not(target_arch = "wasm32"))]
                 audio_engine.play_sfx(SfxKind::BuildComplete, &audio_vol);
             }
+            // A finished product travelling in its container arrives there
+            // (event 0x387; rebellion_core::products::arrive).
+            let arrived = rebellion_core::products::arrive(
+                &mut world,
+                tick_events.last().map_or(clock.tick, |event| event.tick),
+            );
             delivery_state.depart(&world, &mfg_advance.departures);
+            delivery_state.depart(&world, &arrived.departures);
             let delivered = delivery_state.advance(&world, &tick_events);
-            for completion in &delivered.arrivals {
+            for completion in arrived.completions.iter().chain(&delivered.arrivals) {
                 rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
                 // Notification 0x105 clearing, Unit Arrival (FUN_004981c0).
                 let arrived_at = system_name(&world, completion.system);
@@ -10592,10 +10601,13 @@ fn team_menu_order(
 /// `+0x18` asks the product's side (`FUN_004f9860`); its vt74 asks nothing
 /// of Completed (A0 2026-11-15 "u-3": the unfinished TIE's Move white).
 fn product_move_enabled(world: &GameWorld, product: u64, is_alliance: bool) -> bool {
+    // FUN_004f9860 refuses an object en route (a finished product
+    // travelling to its container).
     world
         .products
         .get(product)
         .is_some_and(|value| value.is_alliance == is_alliance)
+        && world.products.arrival(product).is_none()
 }
 
 /// Where a window selection's squadrons stand: a Fleet window squadron's

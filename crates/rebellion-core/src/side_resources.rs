@@ -200,6 +200,13 @@ pub fn maintenance_totals(
             upkeep += product_cost(delivery.kind);
         }
     }
+    // So is a finished product travelling inside its container
+    // (crate::products), out of its queue by then.
+    for (product, _) in world.products.travelling() {
+        if Some(product.is_alliance) == is_alliance {
+            upkeep += product_cost(product.kind);
+        }
+    }
 
     MaintenanceTotals {
         mine_capacity: mines * FACILITY_CAPACITY,
@@ -550,6 +557,50 @@ mod tests {
             |_| false,
         );
         assert_eq!(empire.upkeep, 0);
+    }
+
+    #[test]
+    fn a_finished_product_travelling_in_its_container_is_charged() {
+        // FUN_0052bee0 completes the product in its container, en route;
+        // it is still existing, so FUN_0052fff0 counts it though its queue
+        // let it go.
+        let mut world = GameWorld::default();
+        let yard = system(&mut world, ControlKind::Controlled(Faction::Alliance));
+        let target = system(&mut world, ControlKind::Controlled(Faction::Alliance));
+        world.systems[target].x = 400;
+        let wing = world.fighter_classes.insert(FighterClass {
+            maintenance_cost: 4,
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(
+            yard,
+            QueueItem::new(BuildableKind::Fighter(wing), 10).delivered_to(target),
+        );
+        crate::products::reconcile(&mut world, &manufacturing);
+        let charged = |world: &GameWorld, manufacturing: &ManufacturingState| {
+            maintenance_totals(world, manufacturing, &[], Faction::Alliance, |_| false).upkeep
+        };
+        assert_eq!(charged(&world, &manufacturing), 4);
+        crate::products::settle(
+            &mut world,
+            Vec::new(),
+            vec![crate::manufacturing::Departure {
+                origin: yard,
+                destination: target,
+                tick: 1,
+                kind: BuildableKind::Fighter(wing),
+                name: None,
+            }],
+        );
+        let manufacturing = ManufacturingState::new();
+        assert_eq!(world.products.travelling().count(), 1);
+        assert_eq!(charged(&world, &manufacturing), 4);
+        assert_eq!(
+            maintenance_totals(&world, &manufacturing, &[], Faction::Empire, |_| false).upkeep,
+            0
+        );
     }
 
     #[test]

@@ -211,7 +211,16 @@ pub fn run_simulation_tick(
         states.combat_cooldowns.remove(&completion.system);
     }
     // Remote products travel, then complete at their destination (F-030).
+    // A finished product travelling in its container arrives there
+    // (event 0x387; rebellion_core::products::arrive); one whose system is
+    // gone goes on as a delivery.
+    let arrived = rebellion_core::products::arrive(world, current_tick);
+    integrator.apply_build_completions(world, &arrived.completions);
+    for completion in &arrived.completions {
+        states.combat_cooldowns.remove(&completion.system);
+    }
     states.deliveries.depart(world, &mfg_advance.departures);
+    states.deliveries.depart(world, &arrived.departures);
     let delivered = states.deliveries.advance(world, tick_events);
     integrator.apply_build_completions(world, &delivered.arrivals);
     integrator.apply_deliveries_lost(world, &delivered.lost);

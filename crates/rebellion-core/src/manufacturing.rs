@@ -622,6 +622,9 @@ pub struct ManufacturingAdvance {
     /// Completed items bound for another system; `crate::delivery` times
     /// their travel and completes them there on arrival.
     pub departures: Vec<Departure>,
+    /// Completed products that travel inside their container
+    /// (`crate::products::settle`), for their departure messages only.
+    pub trips: Vec<Departure>,
 }
 
 /// A completed item leaving its building system for its destination.

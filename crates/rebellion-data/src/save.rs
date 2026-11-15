@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 124;
+pub const SAVE_VERSION: u32 = 125;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -113,7 +113,11 @@ pub const V122: u32 = 122;
 /// its last field.
 pub const V123: u32 = 123;
 
-/// Whether a save of `version` loads (the current one, or v116 to v123
+/// v124: the save whose products lack their trips (`Products::trips`), the
+/// products' last field.
+pub const V124: u32 = 124;
+
+/// Whether a save of `version` loads (the current one, or v116 to v124
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -215,6 +219,8 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         body.extend(bincode::serialize(
             &rebellion_core::products::Products::default(),
         )?);
+    } else if version == V124 {
+        body.extend(bincode::serialize(&Vec::<(u64, u64)>::new())?);
     }
     Ok(body)
 }
@@ -394,6 +400,10 @@ fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFinger
     if let serde_json::Value::Object(fields) = &mut canonical_state {
         if version <= V123 {
             fields.remove("products");
+        } else if version == V124 {
+            if let Some(serde_json::Value::Object(products)) = fields.get_mut("products") {
+                products.remove("trips");
+            }
         }
         if version == MIGRATED_VERSION {
             fields.remove("object_views");
@@ -1037,6 +1047,7 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V124,
             V123,
             V122,
             V121,
@@ -1155,6 +1166,8 @@ pub mod wasm_impl {
             versioned_meta_key(V122, slot),
             versioned_slot_key(V123, slot),
             versioned_meta_key(V123, slot),
+            versioned_slot_key(V124, slot),
+            versioned_meta_key(V124, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1184,6 +1197,7 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V124,
             V123,
             V122,
             V121,
@@ -1736,6 +1750,18 @@ mod tests {
         bincode::serialize(&CommandsTail::default()).unwrap().len() + products_tail()
     }
 
+    /// `state` written as a v124 file: products without trips. `state`
+    /// has none travelling.
+    fn write_v124(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.products.travelling().count(), 0);
+        write_old(saves_dir, state, V124, trips_tail())
+    }
+
+    /// The length of the empty trips v125 added.
+    fn trips_tail() -> usize {
+        bincode::serialize(&Vec::<(u64, u64)>::new()).unwrap().len()
+    }
+
     /// The length of the empty products v124 added.
     fn products_tail() -> usize {
         bincode::serialize(&rebellion_core::products::Products::default())
@@ -2028,6 +2054,38 @@ mod tests {
         assert_eq!(
             fingerprint_as(&state, V121).unwrap(),
             fingerprint_as(&loaded, V121).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v124_save_keeps_its_products_with_no_trips() {
+        // v125 adds the products' trips (a finished product travelling in
+        // its container, FUN_0052bee0); a v124 save had none.
+        use rebellion_core::manufacturing::{BuildableKind, QueueItem};
+        let saves_dir = tmp_dir("v124_migration");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let wing = state
+            .world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass::default());
+        state
+            .manufacturing
+            .enqueue(system, QueueItem::new(BuildableKind::Fighter(wing), 10));
+        rebellion_core::products::reconcile(&mut state.world, &state.manufacturing);
+        state.products = state.world.products.clone();
+        write_v124(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v124 save migrates");
+        assert_eq!(loaded.world.products, state.products);
+        assert_eq!(loaded.world.products.all().len(), 1);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V124).unwrap(),
+            fingerprint_as(&loaded, V124).unwrap()
         );
     }
 

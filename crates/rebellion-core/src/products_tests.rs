@@ -252,9 +252,13 @@ fn a_product_moved_away_from_its_yard_travels_there_when_finished() {
         }],
         Vec::new(),
     );
+    // It stays in its container, Completed and EnrouteActive, until the
+    // trip's arrival (FUN_0052bee0 changes no container; +0x44 is the
+    // arrival day); no delivery leaves.
     assert!(settled.completions.is_empty());
+    assert!(settled.departures.is_empty());
     assert_eq!(
-        settled.departures,
+        settled.trips,
         vec![Departure {
             origin: s.yard,
             destination: s.there,
@@ -263,6 +267,114 @@ fn a_product_moved_away_from_its_yard_travels_there_when_finished() {
             name: None,
         }]
     );
+    let days = u64::from(crate::delivery::transit_days(
+        &s.world,
+        BuildableKind::Fighter(s.tie),
+        s.yard,
+        s.there,
+    ));
+    assert!(days > 0);
+    assert_eq!(s.world.products.arrival(id), Some(12 + days));
+    assert_eq!(
+        s.world.products.all()[0].container,
+        Container::System(s.there)
+    );
+    // The queue let go of it: reconciling keeps it.
+    s.manufacturing.stop(s.yard, ProductionArea::Shipyard);
+    reconcile(&mut s.world, &s.manufacturing);
+    assert!(s.world.products.get(id).is_some());
+    // The day before its arrival nothing happens; on the day it completes
+    // in its container (event 0x387 -> FUN_004fba10 -> FUN_00556620).
+    assert_eq!(arrive(&mut s.world, 11 + days), Arrived::default());
+    let arrived = arrive(&mut s.world, 12 + days);
+    assert_eq!(
+        arrived.completions,
+        vec![CompletionEvent {
+            system: s.there,
+            tick: 12 + days,
+            kind: BuildableKind::Fighter(s.tie),
+            name: None,
+            fleet: None,
+        }]
+    );
+    assert!(s.world.products.all().is_empty());
+    assert_eq!(s.world.products.arrival(id), None);
+}
+
+#[test]
+fn a_ship_finished_away_from_its_yard_arrives_in_its_fleet() {
+    let mut s = setup();
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5)
+            .ordered(&mut s.world)
+            .delivered_to(s.there),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let spare = s.only_fleet();
+    let name = s.world.products.all()[0].name.clone();
+    let settled = settle(
+        &mut s.world,
+        Vec::new(),
+        vec![Departure {
+            origin: s.yard,
+            destination: s.there,
+            tick: 3,
+            kind: BuildableKind::CapitalShip(s.carrack),
+            name: name.clone(),
+        }],
+    );
+    assert!(settled.departures.is_empty());
+    assert_eq!(settled.trips.len(), 1);
+    // A second ship of the same name finishing does not take it.
+    assert_eq!(
+        settle(
+            &mut s.world,
+            Vec::new(),
+            vec![Departure {
+                origin: s.yard,
+                destination: s.there,
+                tick: 4,
+                kind: BuildableKind::CapitalShip(s.carrack),
+                name: name.clone(),
+            }],
+        )
+        .departures
+        .len(),
+        1
+    );
+    let arrived = arrive(&mut s.world, 1_000);
+    assert_eq!(arrived.completions.len(), 1);
+    assert_eq!(arrived.completions[0].fleet, Some(spare));
+    assert_eq!(arrived.completions[0].system, s.there);
+}
+
+#[test]
+fn a_product_arriving_at_a_destroyed_system_goes_on_as_a_delivery() {
+    // FUN_004f8710: an EnrouteActive child of a destroyed system is not
+    // destroyed but set Autorouting (crate::delivery reroutes it).
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    let id = s.world.products.all()[0].id;
+    assert!(move_to(&mut s.world, id, Container::System(s.there)));
+    settle(
+        &mut s.world,
+        vec![CompletionEvent {
+            system: s.yard,
+            tick: 1,
+            kind: BuildableKind::Fighter(s.tie),
+            name: None,
+            fleet: None,
+        }],
+        Vec::new(),
+    );
+    s.world.systems[s.there].is_destroyed = true;
+    let arrived = arrive(&mut s.world, 1_000);
+    assert!(arrived.completions.is_empty());
+    assert_eq!(arrived.departures.len(), 1);
+    assert_eq!(arrived.departures[0].origin, s.there);
+    assert_eq!(arrived.departures[0].destination, s.there);
+    assert!(s.world.products.all().is_empty());
 }
 
 #[test]
@@ -544,6 +656,7 @@ fn a_finished_unit_settles_its_own_product() {
         }],
         newly_idle: Vec::new(),
         departures: Vec::new(),
+        trips: Vec::new(),
     };
     settle_advance(&mut s.world, &mut advance);
     let left: Vec<(u64, SystemKey)> = s
@@ -583,6 +696,7 @@ fn a_departure_settles_where_its_product_stands() {
         completions: Vec::new(),
         newly_idle: Vec::new(),
         departures: vec![departure.clone()],
+        trips: Vec::new(),
     };
     settle_advance(&mut s.world, &mut advance);
     assert!(advance.departures.is_empty());
@@ -678,4 +792,28 @@ fn a_moved_unfinished_ship_skips_a_fleet_of_the_other_side_and_keeps_its_place_i
     assert!(!s.world.fleets[spare].is_alliance);
     let after: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
     assert_eq!(after, ids);
+}
+
+#[test]
+fn a_product_on_its_trip_takes_no_move() {
+    // FUN_004f9860 refuses an object en route.
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    let id = s.world.products.all()[0].id;
+    assert!(move_to(&mut s.world, id, Container::System(s.there)));
+    settle(
+        &mut s.world,
+        vec![CompletionEvent {
+            system: s.yard,
+            tick: 1,
+            kind: BuildableKind::Fighter(s.tie),
+            name: None,
+            fleet: None,
+        }],
+        Vec::new(),
+    );
+    assert!(s.world.products.arrival(id).is_some());
+    assert!(!move_to(&mut s.world, id, Container::System(s.yard)));
+    assert!(!move_to_target(&mut s.world, id, s.yard, None));
+    assert_eq!(s.world.products.travelling().count(), 1);
 }
