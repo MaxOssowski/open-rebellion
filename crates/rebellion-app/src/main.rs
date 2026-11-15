@@ -2971,6 +2971,12 @@ async fn main() {
             for completion in &mfg_advance.completions {
                 // Apply the built item to the game world (ships, facilities, troops).
                 rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
+                // A regiment or special force built aboard boards its fleet.
+                rebellion_core::products::board(
+                    &mut world,
+                    &mut troop_transport_state,
+                    std::slice::from_ref(completion),
+                );
                 let sys_name = world
                     .systems
                     .get(completion.system)
@@ -3063,6 +3069,12 @@ async fn main() {
             let delivered = delivery_state.advance(&world, &tick_events);
             for completion in arrived.completions.iter().chain(&delivered.arrivals) {
                 rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
+                // A regiment or special force built aboard boards its fleet.
+                rebellion_core::products::board(
+                    &mut world,
+                    &mut troop_transport_state,
+                    std::slice::from_ref(completion),
+                );
                 // Notification 0x105 clearing, Unit Arrival (FUN_004981c0).
                 let arrived_at = system_name(&world, completion.system);
                 let (title, text) = rebellion_render::story_messages::arrival_texts(
@@ -13179,7 +13191,13 @@ fn apply_panel_action(
         } => {
             for product in products {
                 let moved =
-                    rebellion_core::products::move_to_target(world, product, system, fleet);
+                    rebellion_core::products::move_to_target(
+                        world,
+                        product,
+                        system,
+                        fleet,
+                        fleet.map_or(0, |fleet| troop_transport_state.carried_count(fleet)),
+                    );
                 macroquad::logging::info!(
                     "[interface] command=0x201 product={product} moved={moved}"
                 );

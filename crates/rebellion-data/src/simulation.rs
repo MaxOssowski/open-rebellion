@@ -206,6 +206,7 @@ pub fn run_simulation_tick(
     // from its yard (FUN_0052bee0; rebellion_core::products).
     rebellion_core::products::settle_advance(world, &mut mfg_advance);
     integrator.apply_build_completions(world, &mfg_advance.completions);
+    rebellion_core::products::board(world, &mut states.troop_transport, &mfg_advance.completions);
     integrator.apply_manufacturing_idle(world, &mfg_advance.newly_idle);
     for completion in &mfg_advance.completions {
         states.combat_cooldowns.remove(&completion.system);
@@ -216,6 +217,7 @@ pub fn run_simulation_tick(
     // gone goes on as a delivery.
     let arrived = rebellion_core::products::arrive(world, current_tick);
     integrator.apply_build_completions(world, &arrived.completions);
+    rebellion_core::products::board(world, &mut states.troop_transport, &arrived.completions);
     for completion in &arrived.completions {
         states.combat_cooldowns.remove(&completion.system);
     }

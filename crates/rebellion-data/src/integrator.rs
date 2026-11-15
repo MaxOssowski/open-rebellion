@@ -5031,6 +5031,48 @@ mod tests {
     }
 
     #[test]
+    fn a_squadron_finished_aboard_a_fleet_completes_on_its_ship() {
+        // Its product stood aboard (products::room_aboard, FUN_00552300);
+        // FUN_0052bee0 completes it there, on the ship with the most room
+        // (squadrons::seat_squadrons), not on the planet.
+        let mut world = GameWorld::default();
+        let here = add_system(&mut world, "Corellia");
+        let carrier = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            hull: 100,
+            fighter_capacity: 2,
+            ..Default::default()
+        });
+        let wing = world.fighter_classes.insert(rebellion_core::world::FighterClass::default());
+        let fleet = world.insert_fleet(Fleet {
+            location: here,
+            capital_ships: vec![ShipInstance::new(carrier, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[here].fleets.push(fleet);
+        world.number_ships();
+        apply_build_completion_inner(
+            &CompletionEvent {
+                system: here,
+                tick: 1,
+                kind: BuildableKind::Fighter(wing),
+                name: None,
+                fleet: Some(fleet),
+            },
+            &mut world,
+        );
+        assert!(world.systems[here].fighters.is_empty());
+        let entries = &world.fleets[fleet].fighters;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].count, 1);
+        assert_eq!(entries[0].carrier, Some(world.fleets[fleet].capital_ships[0].id));
+    }
+
+    #[test]
     fn a_completed_ship_keeps_the_name_its_order_gave_it() {
         // FUN_0052a140 creates the product at the order and FUN_00517760
         // names it then; completing it (FUN_0052b960) does not rename it.
@@ -6316,6 +6358,19 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                 return;
             }
             let is_alliance = world.fighter_classes[*class_key].is_alliance;
+            // A squadron built aboard a fleet completes there, on the ship
+            // with the most room (crate::products::room_aboard;
+            // squadrons::seat_squadrons, FUN_00552300).
+            if let Some(fleet) = completion.fleet.filter(|&fleet| {
+                world
+                    .fleets
+                    .get(fleet)
+                    .is_some_and(|value| value.location == sys_key)
+            }) {
+                rebellion_core::squadrons::add(&mut world.fleets[fleet].fighters, *class_key, 1);
+                rebellion_core::squadrons::seat_squadrons(world, fleet);
+                return;
+            }
             if let Some(sys) = world.systems.get_mut(sys_key) {
                 rebellion_core::squadrons::add(&mut sys.fighters, *class_key, 1);
                 // FUN_00508660: the squadron joins the system.

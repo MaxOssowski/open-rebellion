@@ -715,7 +715,7 @@ fn a_moved_unfinished_ship_goes_to_the_targets_spare_or_fleet() {
     s.order(BuildableKind::CapitalShip(s.carrack), 1);
     let old = s.only_fleet();
     let id = s.world.products.all()[0].id;
-    assert!(move_to_target(&mut s.world, id, s.there, None));
+    assert!(move_to_target(&mut s.world, id, s.there, None, 0));
     assert!(!s.world.fleets.contains_key(old));
     let new = s.only_fleet();
     assert_eq!(s.world.fleets[new].location, s.there);
@@ -731,13 +731,13 @@ fn a_moved_unfinished_ship_goes_to_the_targets_spare_or_fleet() {
         special_forces: Vec::new(),
     });
     s.world.systems[s.yard].fleets.push(listed);
-    assert!(move_to_target(&mut s.world, id, s.yard, Some(listed)));
+    assert!(move_to_target(&mut s.world, id, s.yard, Some(listed), 0));
     assert_eq!(s.world.products.in_fleet(listed).count(), 1);
     assert!(!s.world.fleets.contains_key(new));
     // To the system with a spare there, it joins the spare.
     s.world.set_ship_spare(s.there, false, listed);
     s.world.fleets[listed].location = s.there;
-    assert!(move_to_target(&mut s.world, id, s.there, None));
+    assert!(move_to_target(&mut s.world, id, s.there, None, 0));
     assert_eq!(s.world.products.in_fleet(listed).count(), 1);
 }
 
@@ -755,13 +755,13 @@ fn a_moved_unfinished_squadron_lands_on_the_system_and_refuses_a_fleet() {
         has_death_star: false,
         special_forces: Vec::new(),
     });
-    assert!(!move_to_target(&mut s.world, id, s.there, Some(fleet)));
-    assert!(move_to_target(&mut s.world, id, s.there, None));
+    assert!(!move_to_target(&mut s.world, id, s.there, Some(fleet), 0));
+    assert!(move_to_target(&mut s.world, id, s.there, None, 0));
     assert_eq!(
         s.world.products.all()[0].container,
         Container::System(s.there)
     );
-    assert!(!move_to_target(&mut s.world, 99, s.there, None));
+    assert!(!move_to_target(&mut s.world, 99, s.there, None, 0));
 }
 
 #[test]
@@ -782,7 +782,13 @@ fn a_moved_unfinished_ship_skips_a_fleet_of_the_other_side_and_keeps_its_place_i
         special_forces: Vec::new(),
     });
     s.world.systems[s.there].fleets.push(rebels);
-    assert!(move_to_target(&mut s.world, ids[1], s.there, Some(rebels)));
+    assert!(move_to_target(
+        &mut s.world,
+        ids[1],
+        s.there,
+        Some(rebels),
+        0
+    ));
     assert_eq!(s.world.products.in_fleet(rebels).count(), 0);
     let moved = s.world.products.get(ids[1]).unwrap().container;
     let Container::Fleet(spare) = moved else {
@@ -814,7 +820,7 @@ fn a_product_on_its_trip_takes_no_move() {
     );
     assert!(s.world.products.arrival(id).is_some());
     assert!(!move_to(&mut s.world, id, Container::System(s.yard)));
-    assert!(!move_to_target(&mut s.world, id, s.yard, None));
+    assert!(!move_to_target(&mut s.world, id, s.yard, None, 0));
     assert_eq!(s.world.products.travelling().count(), 1);
 }
 
@@ -843,7 +849,7 @@ fn a_ship_on_its_trip_takes_no_move_to_a_system_without_a_spare() {
         }],
     );
     let before = s.world.products.clone();
-    assert!(!move_to_target(&mut s.world, id, s.yard, None));
+    assert!(!move_to_target(&mut s.world, id, s.yard, None, 0));
     assert_eq!(s.world.products, before);
 }
 
@@ -937,8 +943,10 @@ fn an_unfinished_units_move_asks_only_out_of_its_sides_blockaded_system() {
         is_alliance: true,
         ..FighterClass::default()
     });
-    s.manufacturing
-        .enqueue(s.yard, QueueItem::new(BuildableKind::Fighter(alliance_wing), 5));
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::Fighter(alliance_wing), 5),
+    );
     reconcile(&mut s.world, &s.manufacturing);
     let other = s.world.products.all()[1].id;
     assert!(!move_asks(&s.world, &[other]));
@@ -954,4 +962,155 @@ fn an_unfinished_units_move_asks_only_out_of_its_sides_blockaded_system() {
         .id;
     assert!(!move_asks(&s.world, &[ship]));
     assert!(!move_asks(&s.world, &[]));
+}
+
+/// port: an Imperial fleet of one ship of `fighters` and `troops` capacity
+/// at the yard.
+fn carrier(s: &mut Setup, fighters: u32, troops: u32) -> FleetKey {
+    let class = s.world.capital_ship_classes.insert(CapitalShipClass {
+        is_alliance: false,
+        hull: 50,
+        fighter_capacity: fighters,
+        troop_capacity: troops,
+        ..CapitalShipClass::default()
+    });
+    let fleet = s.world.insert_fleet(Fleet {
+        location: s.yard,
+        capital_ships: vec![ShipInstance::new(class, 50, false)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    s.world.systems[s.yard].fleets.push(fleet);
+    fleet
+}
+
+#[test]
+fn an_unfinished_squadron_boards_a_fleet_with_room_and_not_one_without() {
+    // FUN_00552300 weighs a fleet target's usable ships; each ship's room
+    // (vt78, fighter capacity +0x26c less those aboard in mode 3) decides,
+    // and with none the leg refuses (0x27).
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 2);
+    let ids: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    let small = carrier(&mut s, 1, 0);
+    assert!(room_aboard(
+        &s.world,
+        small,
+        BuildableKind::Fighter(s.tie),
+        false,
+        0
+    ));
+    assert!(move_to_target(&mut s.world, ids[0], s.yard, Some(small), 0));
+    assert_eq!(
+        s.world.products.get(ids[0]).unwrap().container,
+        Container::Fleet(small)
+    );
+    // The one being built aboard takes the room.
+    assert!(!move_to_target(
+        &mut s.world,
+        ids[1],
+        s.yard,
+        Some(small),
+        0
+    ));
+    // The other side's fleet, or one with no usable ship, takes none.
+    assert!(!room_aboard(
+        &s.world,
+        small,
+        BuildableKind::Fighter(s.tie),
+        true,
+        0
+    ));
+    s.world.fleets[small].capital_ships[0].alive = false;
+    assert!(!room_aboard(
+        &s.world,
+        small,
+        BuildableKind::Fighter(s.tie),
+        false,
+        0
+    ));
+}
+
+#[test]
+fn an_unfinished_regiment_boards_a_fleet_with_troop_room() {
+    // As a squadron, against the troop capacity less the regiments carried
+    // and those being built aboard; a special force needs no room.
+    let mut s = setup();
+    let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+    let transport = carrier(&mut s, 0, 2);
+    assert!(room_aboard(&s.world, transport, regiment, false, 1));
+    assert!(!room_aboard(&s.world, transport, regiment, false, 2));
+    s.manufacturing.enqueue(s.yard, QueueItem::new(regiment, 5));
+    reconcile(&mut s.world, &s.manufacturing);
+    let id = s.world.products.all()[0].id;
+    assert!(move_to_target(&mut s.world, id, s.yard, Some(transport), 0));
+    assert!(!room_aboard(&s.world, transport, regiment, false, 1));
+    assert!(room_aboard(
+        &s.world,
+        transport,
+        BuildableKind::SpecialForce(DatId::new(0x3c00_0001)),
+        false,
+        9
+    ));
+    assert!(!room_aboard(
+        &s.world,
+        transport,
+        BuildableKind::CapitalShip(s.carrack),
+        false,
+        0
+    ));
+}
+
+#[test]
+fn a_regiment_or_special_force_finished_aboard_boards_its_fleet() {
+    // Completion puts the unit on its fleet's planet; it goes aboard as its
+    // product stood (TroopTransportState::embark; Fleet::special_forces).
+    let mut s = setup();
+    let fleet = carrier(&mut s, 0, 2);
+    let class = DatId::new(0x1000_0001);
+    let troop = s.world.troops.insert(crate::world::TroopUnit {
+        class_dat_id: class,
+        is_alliance: false,
+        regiment_strength: 100,
+    });
+    s.world.systems[s.yard].ground_units.push(troop);
+    let force_class = DatId::new(0x3c00_0001);
+    let unit = s
+        .world
+        .special_forces
+        .insert(crate::world::SpecialForceUnit {
+            class_dat_id: force_class,
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: false,
+        });
+    s.world.systems[s.yard].special_forces.push(unit);
+    let mut transport = crate::troop_transport::TroopTransportState::default();
+    let done = |kind| CompletionEvent {
+        system: s.yard,
+        tick: 1,
+        kind,
+        name: None,
+        fleet: Some(fleet),
+    };
+    board(
+        &mut s.world,
+        &mut transport,
+        &[
+            done(BuildableKind::Troop(class)),
+            done(BuildableKind::SpecialForce(force_class)),
+        ],
+    );
+    assert_eq!(transport.carried_count(fleet), 1);
+    assert!(!s.world.systems[s.yard].ground_units.contains(&troop));
+    assert_eq!(s.world.fleets[fleet].special_forces, vec![unit]);
+    assert!(!s.world.systems[s.yard].special_forces.contains(&unit));
+    // A completion with no fleet, or one standing elsewhere, boards nothing.
+    let mut elsewhere = done(BuildableKind::Troop(class));
+    elsewhere.system = s.there;
+    board(&mut s.world, &mut transport, &[elsewhere]);
+    assert_eq!(transport.carried_count(fleet), 1);
 }

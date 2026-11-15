@@ -704,9 +704,9 @@ pub fn move_to(world: &mut GameWorld, id: u64, container: Container) -> bool {
     true
 }
 
-/// A Move released on `system`, or on `fleet` there: a regiment or
-/// squadron goes to the system ([`move_to`]); a fleet target refuses it
-/// (port: the carrier pick for a product is not traced). hyp: an
+/// A Move released on `system`, or on `fleet` there: a regiment, squadron
+/// or special force goes to the system ([`move_to`]), or aboard the fleet
+/// when it has room ([`room_aboard`]). hyp: an
 /// unfinished capital ship goes into `fleet` when it is of its side, else
 /// into the side's spare at `system`, as an order for that system would
 /// place it (`FUN_00552300`); `FUN_00556390` moves it at once, not being
@@ -717,6 +717,7 @@ pub fn move_to_target(
     id: u64,
     system: SystemKey,
     fleet: Option<FleetKey>,
+    carried_regiments: usize,
 ) -> bool {
     let Some(product) = world.products.get(id).cloned() else {
         return false;
@@ -748,10 +749,124 @@ pub fn move_to_target(
                 return true;
             }
         }
-        (_, Some(_)) => return false,
+        (kind, Some(fleet)) => {
+            if !room_aboard(world, fleet, kind, product.is_alliance, carried_regiments) {
+                return false;
+            }
+            Container::Fleet(fleet)
+        }
         (_, None) => Container::System(system),
     };
     move_to(world, id, container)
+}
+
+/// Whether `fleet` takes one more unit of `kind` of the side `is_alliance`
+/// aboard. The planner (`FUN_00552300`) weighs a fleet target's usable
+/// ships (mode 1, `FUN_00502e30(fleet, 1)`) in its capacity table
+/// (`FUN_00550700`: each ship's `vt74`, then its room `vt78`), keeping the
+/// first with no refusal (`FUN_0054fbb0`); with none it refuses (`0x27`).
+/// A ship's room counts what is aboard in mode 3, unfinished units too
+/// (`abstract-battle.md`: slot `+0x23c`). So:
+/// - a squadron needs the fleet's fighter capacity (`+0x26c`) above the
+///   squadrons aboard and those being built aboard
+///   ([`crate::squadrons::fleet_room`]);
+/// - a regiment needs its troop capacity above the `carried_regiments`
+///   and those being built aboard;
+/// - a special force needs no room (people take none, `FUN_00552300`);
+/// - the fleet must be of the unit's side and have a usable ship: a
+///   staged spare has none.
+#[must_use]
+pub fn room_aboard(
+    world: &GameWorld,
+    fleet: FleetKey,
+    kind: BuildableKind,
+    is_alliance: bool,
+    carried_regiments: usize,
+) -> bool {
+    let Some(value) = world.fleets.get(fleet) else {
+        return false;
+    };
+    if value.is_alliance != is_alliance || !value.capital_ships.iter().any(|ship| ship.alive) {
+        return false;
+    }
+    let building = |family: fn(&BuildableKind) -> bool| {
+        world
+            .products
+            .in_fleet(fleet)
+            .filter(|product| family(&product.kind))
+            .count()
+    };
+    match kind {
+        BuildableKind::Fighter(_) => {
+            let room = crate::squadrons::fleet_room(world, fleet) as usize;
+            room > building(|kind| matches!(kind, BuildableKind::Fighter(_)))
+        }
+        BuildableKind::Troop(_) => {
+            let capacity = crate::troop_transport::TroopTransportState::fleet_capacity(world, fleet)
+                .unwrap_or(0) as usize;
+            capacity > carried_regiments + building(|kind| matches!(kind, BuildableKind::Troop(_)))
+        }
+        BuildableKind::SpecialForce(_) => true,
+        _ => false,
+    }
+}
+
+/// A regiment or special force finished aboard a fleet boards it: the
+/// completion put it on the fleet's planet (`crate::world`'s lists, the
+/// integrator), and it goes aboard as its product was
+/// (`TroopTransportState::embark`; a special force onto
+/// `Fleet::special_forces`). A squadron the integrator seats itself.
+pub fn board(
+    world: &mut GameWorld,
+    transport: &mut crate::troop_transport::TroopTransportState,
+    completions: &[CompletionEvent],
+) {
+    for completion in completions {
+        let Some(fleet) = completion.fleet else {
+            continue;
+        };
+        if !world
+            .fleets
+            .get(fleet)
+            .is_some_and(|value| value.location == completion.system)
+        {
+            continue;
+        }
+        match completion.kind {
+            BuildableKind::Troop(class) => {
+                let troop = world.systems.get(completion.system).and_then(|system| {
+                    system.ground_units.iter().rev().copied().find(|&key| {
+                        world
+                            .troops
+                            .get(key)
+                            .is_some_and(|t| t.class_dat_id == class)
+                    })
+                });
+                if let Some(troop) = troop {
+                    let _ = transport.embark(world, fleet, &[troop]);
+                }
+            }
+            BuildableKind::SpecialForce(class) => {
+                let unit = world.systems.get(completion.system).and_then(|system| {
+                    system.special_forces.iter().rev().copied().find(|&key| {
+                        world
+                            .special_forces
+                            .get(key)
+                            .is_some_and(|unit| unit.class_dat_id == class)
+                    })
+                });
+                if let Some(unit) = unit {
+                    if let Some(system) = world.systems.get_mut(completion.system) {
+                        system.special_forces.retain(|&key| key != unit);
+                    }
+                    if let Some(value) = world.fleets.get_mut(fleet) {
+                        value.special_forces.push(unit);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]
