@@ -195,3 +195,58 @@ open.
 deliveries en route. In the original a product en route is Existing and
 costs maintenance (`FUN_0052fff0` sums every object with bit 6). Fixed in
 Stage A.
+
+## Stage B (2026-11-15)
+
+Ported in `rebellion_core::products` (save v124):
+
+- Each ordered ship, squadron, regiment or special force is a `Product`
+  record in its container from the order on: a ship in the side's bit-1
+  spare at the target, the others in the target system.
+- Two ways the port differs in form, not in what the walks see:
+  - The record stands in for the original's Existing-not-Completed object.
+    The port's object lists keep only finished units, so its mode-1 walks
+    (battle, Retreat, carriers, fleet speed) skip products as the
+    original's do. The mode-3 consumers read the records: the Defenses
+    window rows, the Fleet window's Capital Ships tab, the fleet icon and
+    the Status windows.
+  - A spare holding only unfinished ships is *staged*: it is numbered at
+    once, and `movement::listed_fleets` lists it, but it is not in
+    `System::fleets`, so blockades and battles ignore it (A0 "u-" run 2).
+    Its first finished ship lists it.
+- **Placement.** `products::reconcile` runs after every panel action, at
+  the manufacturing step and before the day's views:
+  - it places new orders' units;
+  - it drops replaced, stopped or cancelled ones, with a spare they empty
+    (A0 "u-3");
+  - it follows a Destination change.
+- **Completion.** `products::settle` finishes a product in its container.
+  A ship completes in its own fleet. A product away from its yard travels
+  from the yard to it.
+- **Moves.**
+  - A moving fleet carries its products.
+  - A Move of an unfinished squadron or regiment puts it in the released
+    system at once.
+  - hyp: an unfinished ship goes into a released fleet of its side, else
+    into the released system's spare.
+- **Menus and Status.**
+  - Move is white and Scrap grey for an unfinished squadron, regiment or
+    ship.
+  - An unfinished ship's Status reads "Under Construction" over the
+    side's grid.
+- Maintenance still counts the queue, which equals the products.
+
+Still port deviations:
+
+- **Ship menu.** An unfinished ship's Rename is grey (A0 white).
+- **Fleet window.** The left list's tree does not list an unfinished
+  ship, and its drag is not ported.
+- **Moves.** A squadron or regiment released on a Fleet window is
+  refused, and Confirmed Move asks nothing.
+- **Fleet icon.** A staged spare takes no icon Move or Scrap.
+- **Trips.** A finished product on its trip is a delivery, not a member
+  of its container. Its staged spare waits empty and invisible until the
+  ship arrives.
+- **Facilities** keep their queue-built rows.
+- **Death Star.** The unfinished Death Star's part in a battle is not
+  ported.

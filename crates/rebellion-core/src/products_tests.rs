@@ -649,3 +649,33 @@ fn a_moved_unfinished_squadron_lands_on_the_system_and_refuses_a_fleet() {
     );
     assert!(!move_to_target(&mut s.world, 99, s.there, None));
 }
+
+#[test]
+fn a_moved_unfinished_ship_skips_a_fleet_of_the_other_side_and_keeps_its_place_in_order() {
+    // hyp: a released fleet takes the ship only when it is of its side;
+    // otherwise the ship goes to the system's spare. The products stay in
+    // order of creation.
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 3);
+    let ids: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    let rebels = s.world.insert_fleet(Fleet {
+        location: s.there,
+        capital_ships: Vec::new(),
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    s.world.systems[s.there].fleets.push(rebels);
+    assert!(move_to_target(&mut s.world, ids[1], s.there, Some(rebels)));
+    assert_eq!(s.world.products.in_fleet(rebels).count(), 0);
+    let moved = s.world.products.get(ids[1]).unwrap().container;
+    let Container::Fleet(spare) = moved else {
+        panic!("{moved:?}");
+    };
+    assert_eq!(s.world.fleets[spare].location, s.there);
+    assert!(!s.world.fleets[spare].is_alliance);
+    let after: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    assert_eq!(after, ids);
+}

@@ -98,6 +98,8 @@ Ported:
     or 11572.   - A defense facility shows the Defense Facility Status, with Status
     "Under Construction" or "Enroute" and its ETA first.
 - **port:**
-  - the Move rows of an unfinished squadron or regiment are grey, where
-    A0 offers them for the squadron, because the unit is a queue entry;
   - a squadron or regiment en route is not listed.
+- 2026-11-15 (Stage B, `unfinished-products.md`): the regiment and
+  squadron rows come from their products, and their Move rows are white
+  (A0 pending-facility/24, 2026-11-15 "u-3"); a Move puts the product in
+  the released system at once.
