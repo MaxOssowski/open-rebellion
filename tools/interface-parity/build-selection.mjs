@@ -1048,7 +1048,8 @@ async function pendingSquadronCase(page, faction, directory, source) {
   await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
     null, { timeout: 10_000 });
   const regimentMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
-  assert.deepEqual(regimentMenu.row_states, [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true],
+  // An unfinished regiment's Move is white too (A0 2026-11-15 "u-3").
+  assert.deepEqual(regimentMenu.row_states, [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true],
     ["Status", true], ["Scrap", false]], JSON.stringify(regimentMenu));
   await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
   const regimentRow = (regimentMenu.height - 2) / regimentMenu.rows;
@@ -1075,8 +1076,9 @@ async function pendingSquadronCase(page, faction, directory, source) {
     null, { timeout: 10_000 });
   const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
   fs.writeFileSync(path.join(directory, "pending-squadron-menu.png"), await page.screenshot({ animations: "disabled" }));
-  // port: Move and Confirmed Move are grey, where A0 /24 offers them.
-  assert.deepEqual(menu.row_states, [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true],
+  // Move and Confirmed Move are white, as A0 pending-facility/24 and
+  // 2026-11-15 "u-3" offer them (the squadron is a product in the system).
+  assert.deepEqual(menu.row_states, [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true],
     ["Status", true], ["Scrap", false]], JSON.stringify(menu));
   result.menu = menu.row_states;
 
