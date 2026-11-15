@@ -877,3 +877,38 @@ fn renaming_an_unfinished_ship_renames_its_queued_unit_too() {
     );
     assert!(!rename(&mut s.world, &mut s.manufacturing, 99, "X".into()));
 }
+
+#[test]
+fn a_rename_finds_its_unit_in_its_own_yards_queue() {
+    // The product's place counts only its own manager's units.
+    let mut s = setup();
+    let other_yard = system(&mut s.world, 400);
+    let other = QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5).ordered(&mut s.world);
+    s.manufacturing.enqueue(other_yard, other);
+    reconcile(&mut s.world, &s.manufacturing);
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let mine = s
+        .world
+        .products
+        .all()
+        .iter()
+        .find(|p| p.yard == s.yard)
+        .unwrap()
+        .id;
+    assert!(rename(
+        &mut s.world,
+        &mut s.manufacturing,
+        mine,
+        "Liberty".into()
+    ));
+    let names = |yard| {
+        s.manufacturing
+            .queue(yard, ProductionArea::Shipyard)
+            .unwrap()
+            .items()[0]
+            .name
+            .clone()
+    };
+    assert_eq!(names(s.yard).as_deref(), Some("Liberty"));
+    assert_ne!(names(other_yard).as_deref(), Some("Liberty"));
+}

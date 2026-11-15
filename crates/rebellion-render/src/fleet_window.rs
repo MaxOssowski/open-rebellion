@@ -8931,6 +8931,28 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn an_unnamed_unfinished_ship_is_renamed_from_its_class_name() {
+        // FUN_004f6270: no name of its own, the class's.
+        use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 1);
+        world.set_ship_spare(system, true, fleet);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(system, QueueItem::new(BuildableKind::CapitalShip(class), 5));
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let product = world.products.all()[0].id;
+        let entry = FleetWindowEntry::Product { fleet, product };
+        let mut state = opened(&world, system);
+        assert!(state.expand(system, fleet));
+        assert!(state.begin_rename(&world, system, entry));
+        assert_eq!(
+            state.windows[0].rename.as_ref().unwrap().text,
+            world.capital_ship_classes[class].name
+        );
+    }
+
+    #[test]
     fn the_rename_field_shows_the_selected_name_black_where_the_name_was() {
         // A0 menus3/41 and 46: the field opens on the name line, the whole
         // name selected black on white; a ship's in the right list's name
