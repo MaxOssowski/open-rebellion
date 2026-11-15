@@ -115,6 +115,8 @@ pub struct MoveConfirmation {
     /// The fleet the move joins, when it was released on a Fleet window
     /// (`ghidra/notes/fleet-join-split.md`).
     pub join: Option<FleetKey>,
+    /// Unfinished units (`rebellion_core::products`) the Move carries.
+    pub products: Vec<u64>,
     /// One `(name, days)` line per moving object (`FUN_0053c2e0`).
     pub lines: Vec<(String, u32)>,
 }
@@ -213,6 +215,7 @@ pub enum MoveConfirmationAction {
         troops: Vec<TroopKey>,
         squadrons: Vec<(FighterKey, SquadronPlace)>,
         ships: Option<ShipTeam>,
+        products: Vec<u64>,
         destination: SystemKey,
         join: Option<FleetKey>,
     },
@@ -299,6 +302,7 @@ impl MoveConfirmationState {
                 troops: window.troops,
                 squadrons: window.squadrons,
                 ships: window.ships,
+                products: window.products,
                 destination: window.destination,
                 join: window.join,
             }
@@ -420,6 +424,7 @@ mod tests {
             blockaded: false,
             destination: SystemKey::default(),
             join: None,
+            products: Vec::new(),
             lines: vec![("Red Fleet".into(), 12)],
         }
     }
@@ -465,6 +470,7 @@ mod tests {
             order: ConfirmedOrder::Retire,
             fleets: Vec::new(),
             characters: vec![han],
+            products: Vec::new(),
             lines: vec![("Han Solo".into(), 0), ("Chewbacca".into(), 0)],
             ..confirmation(MissionFaction::Alliance)
         };
@@ -504,6 +510,7 @@ mod tests {
             troops: Vec::new(),
             squadrons: Vec::new(),
             ships: None,
+            products: Vec::new(),
             lines: vec![("Stormtrooper Regiment".into(), 0)],
             ..confirmation(MissionFaction::Empire)
         };
@@ -543,6 +550,7 @@ mod tests {
         let window = MoveConfirmation {
             order: ConfirmedOrder::Stop { area },
             destination: system,
+            products: Vec::new(),
             lines: vec![("Imperial Army Regiment".into(), 3)],
             ..confirmation(MissionFaction::Empire)
         };
@@ -711,6 +719,7 @@ mod tests {
                 troops: Vec::new(),
                 squadrons: Vec::new(),
             ships: None,
+                products: Vec::new(),
                 destination: SystemKey::default(),
                 join: None,
             })
@@ -727,6 +736,7 @@ mod tests {
         let mut window = MoveConfirmation {
             order: ConfirmedOrder::MoveHeadquarters,
             fleets: Vec::new(),
+            products: Vec::new(),
             lines: vec![("Alliance Headquarters".into(), 7)],
             destination,
             ..confirmation(MissionFaction::Alliance)
@@ -795,6 +805,26 @@ mod tests {
             action,
             Some(MoveConfirmationAction::Confirm { troops, fleets, .. })
                 if troops == [troop] && fleets.is_empty()
+        ));
+    }
+
+    #[test]
+    fn the_checkmark_carries_an_unfinished_units_confirmed_move() {
+        // FUN_00487cc0 asks for every 0x202, an unfinished unit's too; the
+        // checkmark resubmits it (FUN_0041ce20(order, 1)).
+        let mut state = MoveConfirmationState::default();
+        state.open(MoveConfirmation {
+            fleets: Vec::new(),
+            products: vec![7],
+            ..confirmation(MissionFaction::Alliance)
+        });
+
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+
+        assert!(matches!(
+            action,
+            Some(MoveConfirmationAction::Confirm { products, fleets, .. })
+                if products == [7] && fleets.is_empty()
         ));
     }
 
@@ -869,6 +899,7 @@ mod tests {
         let mut state = MoveConfirmationState::default();
         state.open(MoveConfirmation {
             fleets: team.clone(),
+            products: Vec::new(),
             lines: vec![("Fleet 1".into(), 3), ("Fleet 2".into(), 4)],
             ..confirmation(MissionFaction::Alliance)
         });

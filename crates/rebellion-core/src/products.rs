@@ -616,6 +616,25 @@ pub fn arrive(world: &mut GameWorld, now: u64) -> Arrived {
     out
 }
 
+/// `FUN_00487cc0` for an unfinished unit's Move (`0x201`): it asks when
+/// the first member's container is a system blockaded (`+0x88` bit
+/// `0x20`) and held by the member's side. An unfinished ship stands in a
+/// fleet, so its Move never asks. (A Confirmed Move, `0x202`, always asks.)
+#[must_use]
+pub fn move_asks(world: &GameWorld, products: &[u64]) -> bool {
+    let Some(first) = products.first().and_then(|&id| world.products.get(id)) else {
+        return false;
+    };
+    let Container::System(system) = first.container else {
+        return false;
+    };
+    world.systems.get(system).is_some_and(|value| {
+        crate::blockade::BlockadeSystem::system_is_blockaded(world, value)
+            && GameWorld::facility_holder(value.control)
+                == Some(crate::dat::Faction::of_alliance(first.is_alliance))
+    })
+}
+
 /// Rename (`0x203`, `FUN_00429350`) an unfinished unit: its name
 /// (`+0x34`) changes, and with it its queued unit's, which names the
 /// finished object (A0 2026-11-15 "u-2": the unfinished Carrack's Rename

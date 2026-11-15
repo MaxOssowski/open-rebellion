@@ -7411,6 +7411,7 @@ async fn main() {
                                             blockaded: false,
                                             destination: SystemKey::default(),
                                             join: None,
+                                            products: Vec::new(),
                                             lines: vec![(name, 0)],
                                         });
                                     }
@@ -7462,6 +7463,7 @@ async fn main() {
                                         })
                                         .collect();
                                     move_confirmation_state.open(MoveConfirmation {
+                                        products: Vec::new(),
                                         order: ConfirmedOrder::Scrap,
                                         faction: player_faction,
                                         fleets: Vec::new(),
@@ -7533,6 +7535,7 @@ async fn main() {
                                     blockaded: false,
                                     destination: SystemKey::default(),
                                     join: None,
+                                    products: Vec::new(),
                                     lines: Vec::new(),
                                 });
                             }
@@ -7778,6 +7781,7 @@ async fn main() {
                                     blockaded: false,
                                     destination: system,
                                     join: None,
+                                    products: Vec::new(),
                                     lines: vec![(name, u32::try_from(count).unwrap_or(u32::MAX))],
                                 });
                             }
@@ -8451,10 +8455,20 @@ async fn main() {
                         troops,
                         squadrons,
                         ships,
+                        products,
                         destination,
                         join,
                     }) = answer
                     {
+                        // An unfinished unit's 0x202 is its Move again
+                        // (FUN_0041ce20(order, 1); products::move_to_target).
+                        if !products.is_empty() {
+                            panel_actions.push(PanelAction::MoveProducts {
+                                products: products.clone(),
+                                system: destination,
+                                fleet: join,
+                            });
+                        }
                         // FUN_0041ce20(order, 1): a ship's 0x202 is its Move
                         // again: onto the fleet, or out to the system.
                         if let Some(ShipTeam {
@@ -8874,7 +8888,7 @@ async fn main() {
                                 // Confirmed Move asks nothing (no trip, so
                                 // no days to list).
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::ProductMove { products, .. },
+                                    order: TargetOrder::ProductMove { products, confirmed },
                                     target,
                                 }) => {
                                     let (system, fleet) = match target {
@@ -8883,11 +8897,25 @@ async fn main() {
                                             (system, Some(fleet))
                                         }
                                     };
-                                    panel_actions.push(PanelAction::MoveProducts {
-                                        products,
-                                        system,
-                                        fleet,
-                                    });
+                                    // FUN_00487cc0: 0x202 always asks; 0x201
+                                    // asks when the first member stands in a
+                                    // blockaded system of its side.
+                                    let blockaded = rebellion_core::products::move_asks(&world, &products);
+                                    if confirmed || blockaded {
+                                        move_confirmation_state.open(product_confirmation(
+                                            &world,
+                                            player_faction,
+                                            products,
+                                            (system, fleet),
+                                            blockaded,
+                                        ));
+                                    } else {
+                                        panel_actions.push(PanelAction::MoveProducts {
+                                            products,
+                                            system,
+                                            fleet,
+                                        });
+                                    }
                                 }
                                 // A regiment's 0x201 against the release
                                 // window's +0x70 (FUN_004a3130 for a Fleet
@@ -10632,6 +10660,57 @@ fn team_menu_order(
     }
 }
 
+/// The confirmation (`FUN_0049a350`) an unfinished unit's Move opens: one
+/// line per unit, its name and its days. hyp: the days are 0, the unit
+/// having no trip (`FUN_00556390` moves it at once).
+fn product_confirmation(
+    world: &GameWorld,
+    faction: MissionFaction,
+    products: Vec<u64>,
+    (destination, join): (SystemKey, Option<rebellion_core::ids::FleetKey>),
+    blockaded: bool,
+) -> MoveConfirmation {
+    let lines = products
+        .iter()
+        .filter_map(|&id| world.products.get(id))
+        .map(|product| {
+            let name = product.name.clone().or_else(|| match product.kind {
+                rebellion_core::manufacturing::BuildableKind::CapitalShip(class) => world
+                    .capital_ship_classes
+                    .get(class)
+                    .map(|value| value.name.clone()),
+                rebellion_core::manufacturing::BuildableKind::Fighter(class) => {
+                    world.fighter_classes.get(class).map(|value| value.name.clone())
+                }
+                rebellion_core::manufacturing::BuildableKind::Troop(class)
+                | rebellion_core::manufacturing::BuildableKind::SpecialForce(class) => world
+                    .buildable_classes
+                    .get(&class)
+                    .map(|value| value.name.clone()),
+                _ => None,
+            });
+            (name.unwrap_or_default(), 0)
+        })
+        .collect();
+    MoveConfirmation {
+        order: ConfirmedOrder::Move,
+        faction,
+        fleets: Vec::new(),
+        characters: Vec::new(),
+        special_forces: Vec::new(),
+        troops: Vec::new(),
+        squadrons: Vec::new(),
+        ships: None,
+        missions: Vec::new(),
+        scrap: Vec::new(),
+        blockaded,
+        destination,
+        join,
+        products,
+        lines,
+    }
+}
+
 /// An unfinished regiment's or squadron's Move (`0x201`): the order's
 /// `+0x18` asks the product's side (`FUN_004f9860`); its vt74 asks nothing
 /// of Completed (A0 2026-11-15 "u-3": the unfinished TIE's Move white).
@@ -10709,6 +10788,7 @@ fn team_confirmation(
 ) -> Option<Result<MoveConfirmation, &'static str>> {
     let is_alliance = faction == MissionFaction::Alliance;
     let confirmation = |order, characters, special_forces, scrap, lines| MoveConfirmation {
+        products: Vec::new(),
         order,
         faction,
         fleets: Vec::new(),
@@ -11011,6 +11091,7 @@ fn issue_team_move(
         lines.len()
     );
     move_confirmation_state.open(MoveConfirmation {
+        products: Vec::new(),
         order: ConfirmedOrder::Move,
         faction: context.faction,
         fleets: Vec::new(),
@@ -11171,6 +11252,7 @@ fn issue_fleet_move(
         })
         .collect();
     move_confirmation_state.open(MoveConfirmation {
+        products: Vec::new(),
         order: ConfirmedOrder::Move,
         faction: context.faction,
         fleets: fleets.to_vec(),
@@ -11242,6 +11324,7 @@ fn confirm_character_move(
         blockaded,
         destination: system,
         join: fleet,
+        products: Vec::new(),
         lines: vec![(c.name.clone(), days)],
     });
 }
@@ -11284,6 +11367,7 @@ fn confirm_ship_move(
     };
     macroquad::logging::info!("[interface] ship_move confirm days={days}");
     move_confirmation_state.open(MoveConfirmation {
+        products: Vec::new(),
         order: ConfirmedOrder::Move,
         faction,
         fleets: Vec::new(),
@@ -11389,6 +11473,7 @@ fn confirm_troop_move(
         blockaded,
         destination: system,
         join,
+        products: Vec::new(),
         lines: vec![(name, days)],
     });
 }
@@ -11459,6 +11544,7 @@ fn order_headquarters_move(
         blockaded,
         destination,
         join: None,
+        products: Vec::new(),
         lines: vec![(name, days)],
     });
 }
@@ -11520,6 +11606,7 @@ fn confirm_squadron_move(
         blockaded,
         destination: target.system(),
         join,
+        products: Vec::new(),
         lines: vec![(name, days)],
     });
 }
@@ -11805,6 +11892,7 @@ fn confirm_special_force_move(
         blockaded,
         destination: system,
         join: fleet,
+        products: Vec::new(),
         lines: vec![(name, days)],
     });
 }

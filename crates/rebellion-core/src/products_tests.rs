@@ -912,3 +912,46 @@ fn a_rename_finds_its_unit_in_its_own_yards_queue() {
     assert_eq!(names(s.yard).as_deref(), Some("Liberty"));
     assert_ne!(names(other_yard).as_deref(), Some("Liberty"));
 }
+
+#[test]
+fn an_unfinished_units_move_asks_only_out_of_its_sides_blockaded_system() {
+    // FUN_00487cc0, case 0x201: the first member's container is a system
+    // with +0x88 bit 0x20 (blockaded) and the member's side.
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    let squadron = s.world.products.all()[0].id;
+    assert!(!move_asks(&s.world, &[squadron]));
+    let enemy = s.world.insert_fleet(Fleet {
+        location: s.yard,
+        capital_ships: vec![ShipInstance::new(s.carrack, 50, true)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    s.world.systems[s.yard].fleets.push(enemy);
+    assert!(move_asks(&s.world, &[squadron]));
+    // An Alliance unit at the Empire's blockaded system does not ask.
+    let alliance_wing = s.world.fighter_classes.insert(FighterClass {
+        is_alliance: true,
+        ..FighterClass::default()
+    });
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(BuildableKind::Fighter(alliance_wing), 5));
+    reconcile(&mut s.world, &s.manufacturing);
+    let other = s.world.products.all()[1].id;
+    assert!(!move_asks(&s.world, &[other]));
+    // A ship stands in a fleet.
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let ship = s
+        .world
+        .products
+        .all()
+        .iter()
+        .find(|p| matches!(p.kind, BuildableKind::CapitalShip(_)))
+        .unwrap()
+        .id;
+    assert!(!move_asks(&s.world, &[ship]));
+    assert!(!move_asks(&s.world, &[]));
+}
