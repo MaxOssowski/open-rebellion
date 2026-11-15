@@ -1206,3 +1206,45 @@ fn a_regiment_or_squadron_on_its_trip_into_a_system_is_pending_there() {
     assert!(!surface_arrival_pending(&s.world, s.there, true));
     assert!(!surface_arrival_pending(&s.world, s.yard, false));
 }
+
+#[test]
+fn the_current_ship_product_is_the_yards_oldest_still_being_built() {
+    // FUN_00509670(system, 0): the system's ship manager; its ProductKey
+    // (+0x74) is the first queued unit not yet completed.
+    let mut s = setup();
+    let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+    s.manufacturing.enqueue(s.yard, QueueItem::new(regiment, 5));
+    let other_yard = system(&mut s.world, 400);
+    s.manufacturing
+        .enqueue(other_yard, QueueItem::new(BuildableKind::Fighter(s.tie), 5));
+    reconcile(&mut s.world, &s.manufacturing);
+    assert!(current_ship_product(&s.world, s.yard).is_none());
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::Fighter(s.tie), 5).delivered_to(s.there),
+    );
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let first = current_ship_product(&s.world, s.yard).unwrap();
+    assert_eq!(first.kind, BuildableKind::Fighter(s.tie));
+    assert_eq!(first.yard, s.yard);
+    // Finished and on its trip, it is no longer the current product.
+    settle(
+        &mut s.world,
+        Vec::new(),
+        vec![Departure {
+            origin: s.yard,
+            destination: s.there,
+            tick: 1,
+            kind: BuildableKind::Fighter(s.tie),
+            name: None,
+        }],
+    );
+    assert_eq!(
+        current_ship_product(&s.world, s.yard).unwrap().kind,
+        BuildableKind::CapitalShip(s.carrack)
+    );
+}

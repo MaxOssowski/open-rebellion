@@ -2346,6 +2346,14 @@ mod tests {
         }
         crate::products::reconcile(&mut world, &manufacturing);
         let ids: Vec<u64> = world.products.all().iter().map(|p| p.id).collect();
+        // The roll budget counts the two unfinished facilities.
+        let mut state = UprisingState::default();
+        state.next_disaster_tick = Some(1);
+        let rich = usize::from(world.systems[system].raw_materials)
+            + usize::from(world.systems[system].total_energy)
+            + 1
+            + 2;
+        assert!(UprisingSystem::roll_budget(&state, &world, 1) >= world.systems.len() + 2 + rich);
         // Pick, one energy check (fails), the mine (fails), the unfinished
         // refinery (passes), the unfinished battery (fails).
         let rolls = [0.0, d(5), d(10), d(0), d(10)];
@@ -2360,6 +2368,14 @@ mod tests {
         };
         assert!(destroyed.is_empty());
         assert_eq!(lost_products, &[ids[0]]);
+        // The battery is checked in the defense walk, after the refinery.
+        let both = [0.0, d(5), d(10), d(0), d(0)];
+        let UprisingEvent::Disaster { lost_products, .. } =
+            resolve_disaster(&world, 1, &mut Rolls::new(&both)).expect("a disaster")
+        else {
+            panic!("a disaster");
+        };
+        assert_eq!(lost_products, vec![ids[0], ids[1]]);
         assert!(crate::products::destroy(&mut world, &mut manufacturing, ids[0]));
         apply_uprising_event(&mut world, &event);
         assert_eq!(world.systems[system].production_facilities, vec![mine]);
