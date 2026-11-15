@@ -180,13 +180,19 @@ fn is_alliance_of(world: &GameWorld, kind: BuildableKind, yard: SystemKey) -> bo
             .fighter_classes
             .get(class)
             .is_some_and(|c| c.is_alliance),
-        _ => {
-            world
-                .systems
-                .get(yard)
-                .and_then(|system| GameWorld::facility_holder(system.control))
-                == Some(crate::dat::Faction::Alliance)
+        BuildableKind::Troop(class) | BuildableKind::SpecialForce(class) => {
+            world.buildable_classes.get(&class).map_or_else(
+                || {
+                    world
+                        .systems
+                        .get(yard)
+                        .and_then(|system| GameWorld::facility_holder(system.control))
+                        == Some(crate::dat::Faction::Alliance)
+                },
+                |class| class.is_alliance,
+            )
         }
+        _ => false,
     }
 }
 
@@ -281,12 +287,8 @@ fn remove(world: &mut GameWorld, id: u64) -> Option<Product> {
 ///
 /// Idempotent; queues are taken in key order so the ids are deterministic.
 pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
-    let mut keys: Vec<(SystemKey, ProductionArea)> = manufacturing
-        .queues()
-        .keys()
-        .copied()
-        .filter(|&(_, area)| area != ProductionArea::ConstructionYard)
-        .collect();
+    let mut keys: Vec<(SystemKey, ProductionArea)> =
+        manufacturing.queues().keys().copied().collect();
     keys.sort_by_key(|&(system, area)| (system, area as u8));
 
     // Products of a queue that no longer exists.

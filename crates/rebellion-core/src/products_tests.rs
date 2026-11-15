@@ -278,3 +278,317 @@ fn a_moving_fleet_carries_its_unfinished_ships() {
     let product = &s.world.products.all()[0];
     assert_eq!(container_system(&s.world, product.container), Some(s.there));
 }
+
+#[test]
+fn a_facility_order_makes_no_product() {
+    // port: facilities keep their queue-built pages (unfinished-facility.md).
+    let mut s = setup();
+    let build = crate::manufacturing::FacilityBuild {
+        class: DatId::new(0x2c00_0001),
+        is_alliance: false,
+    };
+    s.order(BuildableKind::ProductionFacility(build), 1);
+    assert!(s.world.products.all().is_empty());
+    assert!(s.world.fleets.is_empty());
+}
+
+#[test]
+fn a_products_side_is_its_class_side() {
+    // FUN_004f7d50 creates the product with its order's side; the port
+    // reads the class's (CAPSHPSD, FIGHTSD, TROOPSD sides).
+    let mut s = setup();
+    let wing = s.world.fighter_classes.insert(FighterClass {
+        is_alliance: true,
+        ..FighterClass::default()
+    });
+    let regiment = DatId::new(0x1000_0001);
+    s.world.buildable_classes.insert(
+        regiment,
+        crate::world::BuildableClass {
+            is_alliance: true,
+            ..crate::world::BuildableClass::default()
+        },
+    );
+    let stormtroopers = DatId::new(0x1000_0002);
+    s.order(BuildableKind::Fighter(wing), 1);
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(BuildableKind::Troop(regiment), 5));
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::Troop(stormtroopers), 5),
+    );
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let sides: Vec<(BuildableKind, bool)> = s
+        .world
+        .products
+        .all()
+        .iter()
+        .map(|p| (p.kind, p.is_alliance))
+        .collect();
+    assert!(sides.contains(&(BuildableKind::Fighter(wing), true)));
+    assert!(sides.contains(&(BuildableKind::Troop(regiment), true)));
+    // A class without a record takes its yard's holder (the Empire here).
+    assert!(sides.contains(&(BuildableKind::Troop(stormtroopers), false)));
+    assert!(sides.contains(&(BuildableKind::CapitalShip(s.carrack), false)));
+}
+
+#[test]
+fn a_later_order_joins_the_sides_staged_spare_and_the_other_side_gets_its_own() {
+    // The bit-1 spare is per side (FUN_005097d0 with the order's side).
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let spare = s.only_fleet();
+    let other_yard = system(&mut s.world, 400);
+    s.manufacturing.enqueue(
+        other_yard,
+        QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5).delivered_to(s.yard),
+    );
+    let rebel = s.world.capital_ship_classes.insert(CapitalShipClass {
+        is_alliance: true,
+        ..CapitalShipClass::default()
+    });
+    s.manufacturing.enqueue(
+        s.there,
+        QueueItem::new(BuildableKind::CapitalShip(rebel), 5).delivered_to(s.yard),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.products.in_fleet(spare).count(), 2);
+    assert_eq!(s.world.fleets.len(), 2);
+    let rebels: Vec<FleetKey> = s
+        .world
+        .fleets
+        .iter()
+        .filter(|(_, f)| f.is_alliance)
+        .map(|(k, _)| k)
+        .collect();
+    assert_eq!(rebels.len(), 1);
+    assert_eq!(s.world.fleets[rebels[0]].location, s.yard);
+    assert_eq!(staged_fleets_at(&s.world, s.yard).len(), 2);
+    assert!(staged_fleets_at(&s.world, s.there).is_empty());
+}
+
+#[test]
+fn a_listed_fleet_holding_a_product_is_not_staged() {
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let spare = s.only_fleet();
+    s.world.systems[s.yard].fleets.push(spare);
+    assert!(!is_staged(&s.world, spare));
+    assert!(staged_fleets_at(&s.world, s.yard).is_empty());
+}
+
+#[test]
+fn a_spare_elsewhere_is_not_reused() {
+    // The spare is the target system's own (FUN_005097d0 on the target).
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let spare = s.only_fleet();
+    s.world.fleets[spare].location = s.there;
+    s.manufacturing.enqueue(
+        s.there,
+        QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5).delivered_to(s.yard),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.fleets.len(), 2);
+}
+
+#[test]
+fn a_staged_spare_holding_anything_else_stays_when_its_products_go() {
+    // Only a spare left with nothing goes (A0 2026-11-15 "u-3").
+    for strip in 0..6 {
+        let mut s = setup();
+        s.order(BuildableKind::CapitalShip(s.carrack), 1);
+        let spare = s.only_fleet();
+        let carrack = s.carrack;
+        let tie = s.tie;
+        match strip {
+            0 => s.world.fleets[spare]
+                .capital_ships
+                .push(ShipInstance::new(carrack, 50, false)),
+            1 => s.world.fleets[spare]
+                .fighters
+                .push(crate::world::FighterEntry {
+                    class: tie,
+                    count: 1,
+                    carrier: None,
+                }),
+            2 => s.world.fleets[spare]
+                .special_forces
+                .push(crate::ids::SpecialForceKey::default()),
+            3 => s.world.fleets[spare].has_death_star = true,
+            4 => s.world.fleets[spare]
+                .characters
+                .push(crate::ids::CharacterKey::default()),
+            _ => s.world.systems[s.yard].fleets.push(spare),
+        }
+        s.manufacturing.stop(s.yard, ProductionArea::Shipyard);
+        reconcile(&mut s.world, &s.manufacturing);
+        assert!(s.world.fleets.contains_key(spare), "case {strip}");
+    }
+}
+
+#[test]
+fn a_ship_order_leaves_the_yards_regiment_products_alone() {
+    // Each area's manager scraps only its own products (FUN_0052a2c0).
+    let mut s = setup();
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0001)), 5),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let regiment = s.world.products.all()[0].id;
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    assert!(s.world.products.get(regiment).is_some());
+}
+
+#[test]
+fn reordering_the_same_class_replaces_the_named_product() {
+    // FUN_00529ab0 scraps the queued products and FUN_0052a140 creates new
+    // ones, named with the next numbers (QueueItem::ordered).
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let first = s.world.products.all()[0].id;
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    assert_eq!(s.world.products.all().len(), 1);
+    assert_ne!(s.world.products.all()[0].id, first);
+}
+
+#[test]
+fn a_cancelled_last_unit_drops_only_its_product() {
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 2);
+    let first = s.world.products.all()[0].id;
+    s.manufacturing
+        .queue_mut(s.yard, ProductionArea::Shipyard)
+        .cancel(1);
+    reconcile(&mut s.world, &s.manufacturing);
+    let ids: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    assert_eq!(ids, vec![first]);
+}
+
+#[test]
+fn a_destination_change_moves_ships_to_the_new_spare_in_id_order() {
+    // FUN_0052a380 reparents every queued product; each ship goes to the
+    // new target's spare, and the emptied one goes.
+    let mut s = setup();
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(BuildableKind::Fighter(s.tie), 5));
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::CapitalShip(s.carrack), 5),
+    );
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(BuildableKind::Fighter(s.tie), 5));
+    reconcile(&mut s.world, &s.manufacturing);
+    let old = s.only_fleet();
+    s.manufacturing
+        .set_destination(s.yard, ProductionArea::Shipyard, s.there);
+    reconcile(&mut s.world, &s.manufacturing);
+    assert!(!s.world.fleets.contains_key(old));
+    let new = s.only_fleet();
+    assert_eq!(s.world.fleets[new].location, s.there);
+    let all: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    assert_eq!(all, vec![1, 2, 3]);
+}
+
+#[test]
+fn a_product_whose_fleet_is_gone_is_placed_again() {
+    // port: a product left with no container goes back to its target's
+    // spare; one whose fleet stands is left alone.
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let gone = s.only_fleet();
+    s.world.fleets.remove(gone);
+    reconcile(&mut s.world, &s.manufacturing);
+    let again = s.only_fleet();
+    assert_ne!(again, gone);
+    assert_eq!(s.world.products.in_fleet(again).count(), 1);
+    let before = s.world.products.clone();
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.products, before);
+}
+
+#[test]
+fn a_finished_unit_settles_its_own_product() {
+    // FUN_0052b960 completes the manager's current product; the port finds
+    // it by yard, kind and name.
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    let other_yard = system(&mut s.world, 400);
+    s.manufacturing
+        .enqueue(other_yard, QueueItem::new(BuildableKind::Fighter(s.tie), 5));
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0001)), 5),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let before: Vec<(u64, SystemKey)> = s
+        .world
+        .products
+        .all()
+        .iter()
+        .map(|p| (p.id, p.yard))
+        .collect();
+    let mut advance = crate::manufacturing::ManufacturingAdvance {
+        completions: vec![CompletionEvent {
+            system: other_yard,
+            tick: 3,
+            kind: BuildableKind::Fighter(s.tie),
+            name: None,
+            fleet: None,
+        }],
+        newly_idle: Vec::new(),
+        departures: Vec::new(),
+    };
+    settle_advance(&mut s.world, &mut advance);
+    let left: Vec<(u64, SystemKey)> = s
+        .world
+        .products
+        .all()
+        .iter()
+        .map(|p| (p.id, p.yard))
+        .collect();
+    let gone: Vec<_> = before.iter().filter(|p| !left.contains(p)).collect();
+    assert_eq!(gone.len(), 1);
+    assert_eq!(gone[0].1, other_yard);
+    assert_eq!(advance.completions.len(), 1);
+    assert_eq!(advance.completions[0].system, other_yard);
+}
+
+#[test]
+fn a_departure_settles_where_its_product_stands() {
+    // A product moved to its yard's own system finishes there; one left at
+    // its target travels there (FUN_0052bee0).
+    let mut s = setup();
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::Fighter(s.tie), 5).delivered_to(s.there),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let id = s.world.products.all()[0].id;
+    assert!(move_to(&mut s.world, id, Container::System(s.yard)));
+    let departure = Departure {
+        origin: s.yard,
+        destination: s.there,
+        tick: 4,
+        kind: BuildableKind::Fighter(s.tie),
+        name: None,
+    };
+    let mut advance = crate::manufacturing::ManufacturingAdvance {
+        completions: Vec::new(),
+        newly_idle: Vec::new(),
+        departures: vec![departure.clone()],
+    };
+    settle_advance(&mut s.world, &mut advance);
+    assert!(advance.departures.is_empty());
+    assert_eq!(advance.completions[0].system, s.yard);
+    // With no product, the departure passes through.
+    let settled = settle(&mut s.world, Vec::new(), vec![departure.clone()]);
+    assert_eq!(settled.departures, vec![departure]);
+    assert!(!move_to(&mut s.world, 99, Container::System(s.yard)));
+}
