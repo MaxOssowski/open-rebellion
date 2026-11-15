@@ -31,11 +31,10 @@ pub(crate) struct DropDown {
     pub width: f32,
     pub item_height: f32,
     pub visible: usize,
-    /// Whether the black fill also covers the column right of the white
-    /// frame: Build Selection's list does (A0 build-selection4/08), Create
-    /// Mission's kind list does not (A0 kinds/31-needa-00, 2026-11-15-
-    /// partial-cells/rescue-kinds-list-one-item-d763: the dialog's ground
-    /// at x 234, while the row under the frame, y 291, is black in both).
+    /// Whether the popup is black to its edges under tiles that repeat
+    /// across it (Build Selection, A0 build-selection4/08); else one column
+    /// of tiles on black of its own size (Create Mission's kind list, A0
+    /// kinds/31-needa-00).
     pub black_edge: bool,
 }
 
@@ -99,20 +98,32 @@ pub(crate) fn draw(
     let popup = at(drop.x, drop.top, drop.width, height);
     let list = drop.list();
     let list_rect = at(list.0, list.1, list.2, list.3);
-    let edge = if drop.black_edge { 0.0 } else { 1.0 };
-    painter.rect_filled(
-        at(drop.x, drop.top, drop.width - edge, height),
-        0.0,
-        egui::Color32::BLACK,
-    );
+    // Build Selection's popup is black to its edges under a tiled ground
+    // (A0 build-selection4/08). Create Mission's kind list lays one column
+    // of the 195-wide tile, its rows down to the popup's last row, on black
+    // of its own size only: A0 kinds/31-needa-00 and 2026-11-15-partial-
+    // cells/rescue-kinds-list-one-item-d763 show the dialog's ground in the
+    // strip right of it (x 230..234 above and below the list) and the
+    // tile's row 55 on the popup's last row, y 291.
+    let ground = if drop.black_edge {
+        at(drop.x, drop.top, drop.width, height)
+    } else {
+        at(drop.x, drop.top, drop.width.min(TILE.0), height)
+    };
+    painter.rect_filled(ground, 0.0, egui::Color32::BLACK);
     let inside =
         painter.with_clip_rect(painter.clip_rect().intersect(at(drop.x, drop.top, drop.width - 1.0, height - 1.0)));
+    let tiles = if drop.black_edge {
+        inside.clone()
+    } else {
+        painter.with_clip_rect(painter.clip_rect().intersect(ground))
+    };
     let mut ty = 0.0;
     while ty < height {
         let mut tx = 0.0;
         while tx < drop.width {
             crate::mission_dialog::paint(
-                &inside,
+                &tiles,
                 &ctx,
                 cache,
                 BACKGROUND,
@@ -120,6 +131,9 @@ pub(crate) fn draw(
                 scale,
             );
             tx += TILE.0;
+            if !drop.black_edge {
+                break;
+            }
         }
         ty += TILE.1;
     }
@@ -138,7 +152,9 @@ pub(crate) fn draw(
         list.3,
         content,
         *scroll,
-    );
+    )
+    // FUN_0060d020: the popup's own height is the bar's page.
+    .with_page(height);
     let (bx, by, bw, bh) = bar.rect();
     let bar_rect = at(bx, by, bw, bh);
     let response = ui.interact(popup, id, egui::Sense::click());
@@ -151,7 +167,7 @@ pub(crate) fn draw(
         paint_item(&items, cache, index, at(list.0, top, drop.width, drop.item_height));
     }
     if bar.visible() {
-        *scroll = crate::list_scroll_bar::ui_bar(
+        *scroll = crate::list_scroll_bar::ui_bar_paged(
             ui,
             cache,
             frame,
@@ -162,6 +178,7 @@ pub(crate) fn draw(
             *scroll,
             hold,
             STEP,
+            height,
         );
     }
     let mut outcome = Outcome::default();

@@ -655,11 +655,10 @@ async function inspect(server, source, faction, scenario, executable) {
       const icon = kindIcon.at;
       rescueA0.leia_kind_icon = leia(icon.x, icon.y, icon.x + 130, icon.y + 64);
       rescueA0.leia_buttons = leia(30, 320, 230, 352);
-      // Open (not asserted): A0 shows three black pixels at the portrait's
-      // top-left corner (57..58, 212..213) where the port's key (the
-      // bitmap's first pixel) makes them transparent; FUN_0042c3b0's key
-      // for a portrait is untraced.
-      rescueA0.leia_portrait = leia(60, 214, 216, 290);
+      // The box but the tip of A0's pointer, which rests on "Target"
+      // (black and white at (55..66, 210..213); the other two Rescue
+      // captures show the box's ground there).
+      rescueA0.leia_portrait = leia(50, 214, 216, 290) + leia(67, 211, 216, 214);
       rescueA0.leia_target_frame = leia(28, 192, 60, 300);
       const flowOpen = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
       rescueA0.target = flowOpen.target_character;
@@ -672,12 +671,11 @@ async function inspect(server, source, faction, scenario, executable) {
       fs.writeFileSync(path.join(directory, "rescue-kind-list.png"), PNG.sync.write(listed));
       const list = regionOf(listed, a0("rescue-kinds-list-one-item-d763-OBJ-11-C013.png"));
       // The item's icon left of the bar, the frame and the dialog's ground
-      // at x 234 and y 291 outside it. Open (not asserted): the one-item
-      // thumb ends 5 pixels short of A0's (FUN_00609ae0's 5-pixel margin
-      // for content that fills the list; the drop-down's own range is
-      // untraced).
+      // at x 234 and y 291 outside it, and the bar: its thumb 94 high, the
+      // popup's 117-pixel page over a range of 118 (FUN_0060d020,
+      // FUN_00609ae0, FUN_0060fb80).
       rescueA0.list_icon = list(35, 203, 218, 291);
-      rescueA0.list_edge = list(233, 175, 236, 289) + list(120, 289, 218, 292);
+      rescueA0.list_edge = list(229, 175, 236, 291) + list(35, 289, 236, 292);
       rescueA0.list_bar = list(218, 175, 236, 292);
       // Choosing the row closes the list (rescue-chosen-list-closed-d763).
       await press(135, 250);
@@ -713,9 +711,9 @@ async function inspect(server, source, faction, scenario, executable) {
       // (the accepted text deviation) and A0's pointer are left out.
       assert.deepEqual(
         [rescueA0.leia_kind_icon, rescueA0.leia_buttons, rescueA0.leia_portrait, rescueA0.list_icon + rescueA0.list_edge,
-          rescueA0.closed_kind_icon, rescueA0.agents_headers, rescueA0.agents_portrait,
+          rescueA0.list_bar, rescueA0.closed_kind_icon, rescueA0.agents_headers, rescueA0.agents_portrait,
           rescueA0.agents_buttons],
-        [0, 0, 0, 0, 0, 0, 0, 0], JSON.stringify(rescueA0));
+        [0, 0, 0, 0, 0, 0, 0, 0, 0], JSON.stringify(rescueA0));
       assert.equal(rescueA0.target, "Leia Organa");
       // Begin Mission files the Rescue on Leia and closes the dialog.
       assert.deepEqual(rescueA0.launched, [["Rescue", "Leia Organa", null]], JSON.stringify(rescueA0));

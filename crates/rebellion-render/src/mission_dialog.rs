@@ -1961,13 +1961,14 @@ mod tests {
     }
 
     #[test]
-    fn the_kind_list_paints_no_black_right_of_its_frame() {
+    fn the_kind_list_paints_black_only_under_its_tile_column() {
         // A0 kinds/31-needa-00 and 2026-11-15-partial-cells/rescue-kinds-
         // list-one-item-d763 (sha256 df49db0d184e): the white frame's right
-        // column is x 233 and its bottom row y 290; the column at x 234
-        // keeps the dialog's ground, the row at y 291 is black. (Build
-        // Selection's list keeps a black column right of its frame, A0
-        // build-selection4/08.)
+        // column is x 233 and its bottom row y 290; right of the 195-wide
+        // tile (x 230..234 outside the list and bar) the dialog's ground
+        // shows, and the popup's last row y 291 is the tile's row 55
+        // (black but for x 38, 39, 58, 88, 89). (Build Selection's popup is
+        // black to its edges, A0 build-selection4/08.)
         let (world, _, mut state) = dialog_in_world(1);
         click(&world, &mut state, (133.0, 183.0));
         let layout = layout(1.0);
@@ -2000,9 +2001,51 @@ mod tests {
             fills,
             [egui::Rect::from_min_size(
                 egui::pos2(35.0, 175.0),
-                egui::vec2(199.0, 117.0)
+                egui::vec2(195.0, 117.0)
             )]
         );
+    }
+
+    #[test]
+    fn the_one_kind_lists_thumb_ends_a_row_above_the_track_end() {
+        // FUN_0060d020 gives the bar the popup's 117-pixel page over a range
+        // of 118 (FUN_00609ae0): a 94-high thumb from y 186, its bottom cap
+        // at 274 (A0 2026-11-15-partial-cells/rescue-kinds-list-one-item-
+        // d763, sha256 df49db0d184e, and kinds/31-needa-00: the cap's last
+        // row at 279).
+        let (world, team, _) = dialog_in_world(1);
+        let mut state = MissionDialogState::default();
+        assert!(state.open(
+            MissionFaction::Alliance,
+            SystemKey::default(),
+            team,
+            vec![MissionKind::Rescue],
+        ));
+        click(&world, &mut state, (133.0, 183.0));
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        for _ in 0..2 {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            });
+        }
+        let origin = dialog_rect(layout).min;
+        let art = crate::status_window::BAR_ART;
+        let at = |id| {
+            crate::fleet_window::tests::PAINTED.with(|painted| {
+                painted
+                    .borrow()
+                    .iter()
+                    .filter(|(painted, _)| *painted == id)
+                    .map(|(_, pos)| pos.y - origin.y)
+                    .collect::<Vec<_>>()
+            })
+        };
+        assert_eq!(at(art.top), [186.0]);
+        assert_eq!(at(art.bottom), [274.0]);
     }
 
     #[test]
@@ -2035,12 +2078,10 @@ mod tests {
         });
         assert_eq!(
             tiles,
-            [
-                egui::pos2(35.0, 175.0),
-                egui::pos2(230.0, 175.0),
-                egui::pos2(35.0, 236.0),
-                egui::pos2(230.0, 236.0)
-            ]
+            // One column: A0 kinds/31-needa-00 and rescue-kinds-list-one-
+            // item-d763 show the dialog's ground at (230..232, 176), where a
+            // second column's row 1 would be black.
+            [egui::pos2(35.0, 175.0), egui::pos2(35.0, 236.0)]
         );
         let frames: Vec<egui::Rect> = output
             .unwrap()

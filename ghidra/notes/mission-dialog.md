@@ -156,6 +156,35 @@ item (command `0xbba`, notification `0x29b`) selects it through
 `FUN_0060f640` with base ids `0x299a` (the drop-down) and `0x29fc` (agents and
 decoys). STRATEGY holds 10749..10751 but not 10650 or 10748.
 
+### The drop-down's bar and ground (traced 2026-11-15)
+
+- **Page.** `FUN_0060d020` (WM_CREATE) calls `FUN_0060a490(list, ..,
+  h, 0, h, 1, ..)` with the popup's own height `h` (117), not the list's
+  (113). `FUN_00609ae0` then sets the range (`FUN_0060a670` ->
+  `FUN_0060b590`, bar `+0xdc`) to the content plus its 5-pixel margin, 118
+  for one 113-pixel item. `FUN_0060fb80` (the bar's thumb rect) takes
+  `(last - first) * track / range` (bar `+0xe4 - +0xe0`, `+0xdc`) and
+  places it at `(track - thumb) * first / (range - page)`, held inside the
+  track. One kind: 117 * 95 / 118 = 94, so the thumb's bottom cap ends one
+  row above the down arrow. A0 kinds/31-needa-00 and 2026-11-15-partial-
+  cells/rescue-kinds-list-one-item-d763 (sha256 df49db0d184e): the thumb
+  spans y 186..279 of the dialog. port: `ScrollBar::with_page`,
+  `list_scroll_bar::ui_bar_paged`.
+- **Ground.** In both captures the popup's ground is one column of STRATEGY
+  10598 (195 wide), its two rows reaching the popup's last row (y 291 is
+  the tile's row 55); the 5-pixel strip right of it shows the dialog's
+  ground outside the list and bar (x 230..232 at y 176, x 230..233 at y
+  291, x 234). The white frame is at x 35 and 233, y 175 and 290. Build
+  Selection's popup is black to its edges (A0 build-selection4/08). port:
+  `selection_list::DropDown::black_edge`.
+- **The three black pixels at the target box's (55..66, 210..213)** in
+  A0 rescue-dialog-han-on-leia-fleet90-d1428 are the tip of A0's pointer,
+  which rests on "Target"; the other two Rescue captures show the box's
+  ground there. `FUN_0042c3b0` fills a picture's buffer with the image's
+  own key index (`FUN_005fcfe0(.., *(byte *)(image + 8))`), lays no
+  backdrop under a portrait (`param_4` = 1), and blits the image keyed
+  over it (`FUN_005fd0f0`); the port's keyed portrait matches A0 there.
+
 ## Refusal
 
 A refused order shows no text: the side's advisor droid reacts.

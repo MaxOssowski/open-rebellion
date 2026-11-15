@@ -105,6 +105,9 @@ pub struct ScrollBar {
     pub max: f32,
     /// The first visible pixel, within `0..=max`.
     first: f32,
+    /// The bar's page, the thumb's share of the range: the list's height
+    /// unless the owner gives another ([`ScrollBar::with_page`]).
+    page: f32,
 }
 
 /// A part of the bar under the pointer.
@@ -146,7 +149,16 @@ impl ScrollBar {
             view,
             max,
             first: first.clamp(0.0, max),
+            page: view,
         }
+    }
+
+    /// The bar with `page` as its page (the drop-down's popup height,
+    /// `FUN_0060d020`).
+    #[must_use]
+    pub fn with_page(mut self, page: f32) -> Self {
+        self.page = page;
+        self
     }
 
     /// `FUN_0060b5d0`: the bar shows unless the whole range is in view.
@@ -164,8 +176,9 @@ impl ScrollBar {
         (self.view - 2.0 * ARROW_HEIGHT).max(0.0)
     }
 
-    /// The thumb's top and height (`FUN_0060fca0`): the visible share of
-    /// the track, at least 12, placed by `first` over the rest.
+    /// The thumb's top and height (`FUN_0060fb80`): the page's share of
+    /// the track, at least 12, placed by `first` over the range less the
+    /// page and held inside the track.
     #[must_use]
     pub fn thumb(&self) -> (f32, f32) {
         let track = self.track();
@@ -173,13 +186,18 @@ impl ScrollBar {
         if self.max <= 0.0 {
             return (top, track);
         }
-        let height = (self.view * track / self.total())
+        let height = (self.page * track / self.total())
             .floor()
             .max(MIN_THUMB)
             .min(track);
-        // `first` stays within `0..=max` ([`ScrollBar::new`]), so the
-        // offset stays within the track.
-        let offset = ((track - height) * self.first / self.max).floor();
+        let rest = self.total() - self.page;
+        let offset = if rest > 0.0 {
+            ((track - height) * self.first / rest)
+                .floor()
+                .min(track - height)
+        } else {
+            0.0
+        };
         (top + offset, height)
     }
 
@@ -426,6 +444,29 @@ pub fn ui_bar(
     hold: &mut Option<Hold>,
     step: f32,
 ) -> f32 {
+    ui_bar_paged(
+        ui, cache, frame, scale, art, list, content, first, hold, step, list.3,
+    )
+}
+
+/// [`ui_bar`] with the bar's own `page` ([`ScrollBar::with_page`]).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The window, its art cache, the list and the bar's state."
+)]
+pub fn ui_bar_paged(
+    ui: &egui_macroquad::egui::Ui,
+    cache: &mut crate::bmp_cache::BmpCache,
+    frame: egui_macroquad::egui::Rect,
+    scale: f32,
+    art: BarArt,
+    list: (f32, f32, f32, f32),
+    content: f32,
+    first: f32,
+    hold: &mut Option<Hold>,
+    step: f32,
+    page: f32,
+) -> f32 {
     use egui_macroquad::egui;
     let (pointer, pressed, down, released, now) = ui.input(|input| {
         (
@@ -439,7 +480,8 @@ pub fn ui_bar(
     let at = pointer.map_or((-1.0, -1.0), |point| {
         ((point.x - frame.min.x) / scale, (point.y - frame.min.y) / scale)
     });
-    let bar_at = |first| ScrollBar::new(art, list.0, list.1, list.2, list.3, content, first);
+    let bar_at =
+        |first| ScrollBar::new(art, list.0, list.1, list.2, list.3, content, first).with_page(page);
     let first = update(
         &bar_at(first),
         hold,
@@ -576,6 +618,30 @@ mod tests {
         // A long list's thumb keeps 12 (`if (iVar1 < 0xd) iVar1 = 0xc`).
         let long = ScrollBar::new(RESULTS_ART, 0.0, 0.0, 100.0, 166.0, 7000.0, 0.0);
         assert_eq!(long.thumb().1, 12.0);
+    }
+
+    #[test]
+    fn a_drop_downs_thumb_takes_the_popups_height_as_its_page() {
+        // FUN_0060d020 (the drop-down popup's WM_CREATE) makes the list
+        // (2, 2) in, h - 4 high, and passes the popup's own height h as the
+        // bar's page (FUN_0060a490(.., h, 0, h, ..)); FUN_00609ae0 then sets
+        // the range to the content plus its 5-pixel margin. FUN_0060fb80:
+        // thumb = page * track / range. Create Mission's one-kind list:
+        // list 113 high, popup 117, range 118, track 95, thumb 117 * 95 /
+        // 118 = 94, as A0 2026-11-15-partial-cells/rescue-kinds-list-one-
+        // item-d763 (sha256 df49db0d184e) and kinds/31-needa-00 show (y 186
+        // to 279 of the dialog).
+        let one =
+            ScrollBar::new(RESULTS_ART, 37.0, 177.0, 196.0, 113.0, 113.0, 0.0).with_page(117.0);
+        assert!(one.visible());
+        assert_eq!(one.thumb(), (186.0, 94.0));
+        // Scrolled to its end the thumb's top moves (track - thumb) * first
+        // / (range - page): here 1 * 5 / 1, held inside the track.
+        let end =
+            ScrollBar::new(RESULTS_ART, 37.0, 177.0, 196.0, 113.0, 113.0, 5.0).with_page(117.0);
+        assert_eq!(end.thumb(), (187.0, 94.0));
+        // Without a page of its own a bar's page is its list's height.
+        assert_eq!(results_bar(0.0).with_page(166.0), results_bar(0.0));
     }
 
     #[test]
