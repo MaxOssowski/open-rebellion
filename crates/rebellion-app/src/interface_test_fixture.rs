@@ -6490,6 +6490,7 @@ pub fn foiled_missions(
             target_system: chandrila,
             end_code: 7,
             tick: 0,
+            returning_to: None,
         },
         // A0 empire-clean/02-day83-enemy-foiled-chandrila (a new Easy
         // Empire game): the Alliance's Espionage at Chandrila, foiled, as
@@ -6502,6 +6503,7 @@ pub fn foiled_missions(
             target_system: chandrila,
             end_code: 7,
             tick: 0,
+            returning_to: None,
         },
     ]
 }

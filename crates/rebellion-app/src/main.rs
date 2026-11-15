@@ -13471,10 +13471,14 @@ fn push_foiled_missions(
             .and_then(|character| world.characters.get(character))
             .filter(|leader| !leader.is_killed);
         if let (true, Some(leader)) = (matches!(ended.end_code, 3..=5), leader) {
+            let returning = ended
+                .returning_to
+                .and_then(|place| return_place_name(world, place));
             if let Some((title, text)) = rebellion_render::story_messages::mission_foiled_texts(
                 (&leader.name, leader.is_major),
                 mission,
                 &target.name,
+                returning.as_deref(),
                 texts,
             ) {
                 log.push(filed(
@@ -18382,6 +18386,7 @@ mod character_health_tests {
             target_system: averam,
             end_code,
             tick: 43,
+            returning_to: None,
         };
         let mut log = MessageLog::new();
         push_foiled_missions(
@@ -18442,6 +18447,29 @@ mod character_health_tests {
         assert_eq!(messages[1].title.as_deref(), Some("Enemy Mission Foiled"));
         assert_eq!(messages[1].audience, RailAudience::Empire);
         assert_eq!(messages[2].title.as_deref(), Some("Enemy Mission Foiled"));
+        // FUN_00491500 ends every report on where the personnel return
+        // (0x70e6 with the members' place): A0 2026-11-15-partial-cells/
+        // r2-msg-rescue-mission-foiled-pzob-d1188 (sha256 7a9bc30025d8)
+        // reads "The Rescue mission to Pzob has been foiled by opposing
+        // forces." over "Personnel are returning to Yavin.".
+        let texts = {
+            let mut texts = texts;
+            texts.insert(0x70e6, "\nPersonnel are returning to {1:1}.".to_owned());
+            texts
+        };
+        let home = |end_code| MissionEnded {
+            returning_to: Some(rebellion_core::missions::ReturnPlace::System(averam)),
+            ..led(end_code)
+        };
+        let mut log = MessageLog::new();
+        push_foiled_missions(&mut log, &world, &[home(4)], &texts);
+        assert_eq!(
+            log.messages()[0].text,
+            format!(
+                "The Espionage mission to Averam has been foiled by opposing forces.  \nPersonnel are returning to {}.",
+                world.systems[averam].name
+            )
+        );
         world.characters[agent].mark_killed();
         let mut log = MessageLog::new();
         push_foiled_missions(&mut log, &world, &[led(4)], &texts);

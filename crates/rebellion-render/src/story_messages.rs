@@ -1685,12 +1685,18 @@ pub fn personnel_arrive_texts(
 /// it `0x7148` "{1:1} Mission Foiled" over `0x7149` "My {2:1} mission to
 /// {3:1} has been foiled by opposing forces.", any other `0x714a` "{2:1}
 /// Mission Foiled" over `0x714b`; the leader, the mission and its target
-/// substitute in that order. Returns the title and body.
+/// substitute in that order. The body then ends, as every report of
+/// `FUN_00491500` does, on `0x70e6` "\nPersonnel are returning to {1:1}."
+/// with the place its member walk finds (A0 2026-11-15-partial-cells/
+/// r2-msg-rescue-mission-foiled-pzob-d1188: "Personnel are returning to
+/// Yavin."). port: with no such place the original's `0x70e7` is left out.
+/// Returns the title and body.
 #[must_use]
 pub fn mission_foiled_texts(
     leader: (&str, bool),
     mission: &str,
     target: &str,
+    returning: Option<&str>,
     texts: &HashMap<u16, String>,
 ) -> Option<(String, String)> {
     let (name, major) = leader;
@@ -1704,10 +1710,14 @@ pub fn mission_foiled_texts(
     } else {
         (0x714a, 0x714b)
     };
-    Some((
-        fill_message_text(texts.get(&title)?, &parameters),
-        fill_message_text(texts.get(&body)?, &parameters),
-    ))
+    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    if let Some(place) = returning {
+        text.push_str(&fill_message_text(
+            texts.get(&0x70e6)?,
+            &[MessageParameter::Named { name: place }],
+        ));
+    }
+    Some((fill_message_text(texts.get(&title)?, &parameters), text))
 }
 
 /// An enemy mission foiled (`FUN_00491500`, notification `0x1f1`):
@@ -3429,21 +3439,27 @@ mod tests {
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
         assert_eq!(
-            mission_foiled_texts(("Han Solo", true), "Espionage", "Averam", &texts),
+            mission_foiled_texts(("Han Solo", true), "Espionage", "Averam", None, &texts),
             Some((
                 "Han Solo Mission Foiled".into(),
                 "My Espionage mission to Averam has been foiled by opposing forces.  ".into()
             ))
         );
         assert_eq!(
-            mission_foiled_texts(("Agent", false), "Espionage", "Averam", &texts),
+            mission_foiled_texts(("Agent", false), "Espionage", "Averam", None, &texts),
             Some((
                 "Espionage Mission Foiled".into(),
                 "The Espionage mission to Averam has been foiled by opposing forces.  ".into()
             ))
         );
         assert_eq!(
-            mission_foiled_texts(("Agent", false), "Espionage", "Averam", &HashMap::new()),
+            mission_foiled_texts(
+                ("Agent", false),
+                "Espionage",
+                "Averam",
+                None,
+                &HashMap::new()
+            ),
             None
         );
     }

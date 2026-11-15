@@ -3309,6 +3309,9 @@ pub struct MissionEnded {
     /// the validator's reason.
     pub end_code: u8,
     pub tick: u64,
+    /// Where the personnel return (`FUN_00491500` ends every report on
+    /// `0x70e6` with the place its member walk finds, `local_9c`).
+    pub returning_to: Option<ReturnPlace>,
 }
 
 /// What one [`MissionSystem::advance`] produced.
@@ -3647,6 +3650,7 @@ impl MissionSystem {
             target_system: mission.target_system,
             end_code: mission.end_code,
             tick: now,
+            returning_to: returning_to(mission, world),
         });
         let hidden = MissionKind::Return
             .record_id()
@@ -6902,6 +6906,11 @@ mod tests {
         assert!(state.is_empty());
         assert_eq!(advance.ended.len(), 1);
         assert_eq!(advance.ended[0].end_code, 2);
+        // FUN_00491500's 0x70e6 names where the members are (local_9c).
+        assert_eq!(
+            advance.ended[0].returning_to,
+            Some(ReturnPlace::System(here))
+        );
         assert!(advance
             .effects
             .contains(&MissionEffect::MemberAvailable { member: agent }));
