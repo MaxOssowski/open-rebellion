@@ -704,7 +704,7 @@
         {
           "id": "PRE-03-C009",
           "requirement": "music slider",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
@@ -717,13 +717,13 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-volume-sliders/README.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's transfer (floor(2000*log10(v/100)) hundredths of a dB) gives the amplitude v/100 within 0.12%, the port's linear gain; the value persists across a reload like the registry's MusicVolume (rebellion_data::settings, game-options.mjs). The audible level is not measured against A0. 2026-11-11 b181: the music slider follows FUN_00406b80/FUN_00407180 (floor(2000*log10(v/100)) hundredths of a dB, reopened as floor(100*10^(vol/2000))), the thumb moves as Class_0066e010_vt14, music starts full (FUN_004173c0); game-options.mjs passes with A0 tooltip captures. Loudness not measured against A0. 2026-11-12: game-options.mjs on Linux, 0 of 201491 pixels off A0 200-options; audible level not recorded against A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's transfer (floor(2000*log10(v/100)) hundredths of a dB) gives the amplitude v/100 within 0.12%, the port's linear gain; the value persists across a reload like the registry's MusicVolume (rebellion_data::settings, game-options.mjs). The audible level is not measured against A0. 2026-11-11 b181: the music slider follows FUN_00406b80/FUN_00407180 (floor(2000*log10(v/100)) hundredths of a dB, reopened as floor(100*10^(vol/2000))), the thumb moves as Class_0066e010_vt14, music starts full (FUN_004173c0); game-options.mjs passes with A0 tooltip captures. Loudness not measured against A0. 2026-11-12: game-options.mjs on Linux, 0 of 201491 pixels off A0 200-options; audible level not recorded against A0. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio pre03-c009-music-volume.wav 21f8b967582e, track 303): gains at slider clicks 2/25/50/75/97 percent are -34.66/-12.74/-6.65/-3.15/-1.05 dB; the port's transfer (floor(2000*log10(p/100)), FUN_00416360/FUN_004173c0) predicts them within 0.13 dB after the constant -0.75 dB guest offset.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-03-C010",
           "requirement": "sound slider",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
@@ -737,8 +737,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-status-bar-volume/README.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer as the music slider; persisted like the registry's Volume (rebellion_data::settings). The audible level is not measured against A0. 2026-11-11 b181: the effects slider follows the same transfer and thumb rules (FUN_00416360). The port's own volume strip, absent from the original, is removed. 2026-11-12: game-options.mjs on Linux, 0 of 201491 pixels off A0 200-options; audible level not recorded against A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer as the music slider; persisted like the registry's Volume (rebellion_data::settings). The audible level is not measured against A0. 2026-11-11 b181: the effects slider follows the same transfer and thumb rules (FUN_00416360). The port's own volume strip, absent from the original, is removed. 2026-11-12: game-options.mjs on Linux, 0 of 201491 pixels off A0 200-options; audible level not recorded against A0. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio tac01-c012-corellia-take-command.wav 32afdc629e0b, battle effects): gains at 25/50/75/max are -12.74/-6.34/-3.15/~-1.0 dB, the music transfer within 0.3 dB; effects ignore Music Off, as in the port. The minimum step is noise-limited (-30.8..-26.7 dB against an expected -34.7 dB).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-03-C011",
@@ -985,15 +985,15 @@
         {
           "id": "PRE-05-C004",
           "requirement": "narration",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
             "ghidra/notes/advisor-briefing.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-briefing-droid/README.md"
           ],
-          "note": "Voices from albrief/embrief DLLs with their lengths are asserted in briefing.mjs (Linux); audibility and timing not compared with A0. 2026-11-12: voice gaps dated from A0 droid frames are asserted within 0.3 s + 2% (9 Alliance, 14 Empire); the first voice's gap and the sound itself are not compared (needs an A0 audio recording with a clock). b197: the first voice gap is now asserted against A0 too (briefing.mjs); the sound itself still has no A0 audio recording.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Voices from albrief/embrief DLLs with their lengths are asserted in briefing.mjs (Linux); audibility and timing not compared with A0. 2026-11-12: voice gaps dated from A0 droid frames are asserted within 0.3 s + 2% (9 Alliance, 14 Empire); the first voice's gap and the sound itself are not compared (needs an A0 audio recording with a clock). b197: the first voice gap is now asserted against A0 too (briefing.mjs); the sound itself still has no A0 audio recording. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio pre05-c004-alliance-briefing.wav a2ba2475692d): all 16 voices of message 0x29 (ALBRIEF 1155, 1220-1226, 1157-1161, 1163, 1164, 1168) play in order, each its WAVE by cross-correlation (NCC 0.90-0.99) at constant gain; each next voice starts 0.09-0.42 s after the previous one's last sample. The first gap's 9.15 s in the frame dating comes from the VM's audio underrun (1155 lost 1.26 s), so the port's 9.57 s follows the rule. Empire (2a4ffc7e107e): 14 of 16 EMBRIEF voices found, onset gaps within 0.4 s of the frame dates.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-05-C005",
@@ -3056,7 +3056,7 @@
         {
           "id": "CMD-07-C005",
           "requirement": "normal message",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
@@ -3064,8 +3064,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-event-clips/"
           ],
-          "note": "Scheduled messages play their clips and voices (FUN_004c0a60); the briefing matches the SquakeNet narration frames; events and reactions play in the browser gates.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Scheduled messages play their clips and voices (FUN_004c0a60); the briefing matches the SquakeNet narration frames; events and reactions play in the browser gates. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio cmd07-alliance-idle-day2.wav 6135271b1509): advice clips ALSPRITE 1204, 1206, 1206, 1219 (C3POACT 0x45, 0x48, 0x48, 0x47; event 0x2a pick FUN_004c4430) at 300-sub-tick intervals, NCC 0.83-1.00, as the port schedules them.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-07-C006",
@@ -3082,26 +3082,26 @@
         {
           "id": "CMD-07-C007",
           "requirement": "speaking",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-reactions/"
           ],
-          "note": "Clip voices play from the briefing and sprite DLLs (briefing.mjs, agent-objectives.mjs).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Clip voices play from the briefing and sprite DLLs (briefing.mjs, agent-objectives.mjs). 2026-11-15 A0 audio: the advisor voices are the sprite DLL WAVEs (ALSPRITE/EMSPRITE, .artifacts/a0-vm/2026-11-15-audio cmd07-* files) and the briefing voices the ALBRIEF/EMBRIEF WAVEs (pre05-* files), identified by cross-correlation, as the port routes them.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-07-C008",
           "requirement": "gesture",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-quip-clips/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-sub-ticks/"
           ],
-          "note": "Quips (op 0x13) after fifty quiet sub-ticks, checked in the browser.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Quips (op 0x13) after fifty quiet sub-ticks, checked in the browser. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio cmd07-empire-idle-medium.wav c524b1356e29): the ~75 s sounds are event 0x2a advice clips (EMSPRITE 1206, 1219, 1205, 1205) every 300 sub-ticks (FUN_00439bc0; 75.15 s, a sub-tick ~0.251 s at every speed; the port's 75.0 s). The quip WAVEs 22001-22006 are 0.1 s of silence, so quips are silent in A0 too; the droid gestures 12-14 s after a clip fit the 50-sub-tick quip. The six kind-1 advices were used up, as in the port's list rule.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-07-C009",
@@ -3137,7 +3137,7 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-clip-preemption/"
           ],
-          "note": "A new clip stops the playing one (FUN_00472930); a skip flushes both players and cuts the voice (briefing.mjs).",
+          "note": "A new clip stops the playing one (FUN_00472930); a skip flushes both players and cuts the voice (briefing.mjs). 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio cmd07-c011-preempt-attempt.wav 9af84b4bb048): the clips that cut each other are STRATEGY.DLL WAVE 1122, the displayed message's sound (FUN_0048b2e0 +0x30 = 0x461/0x462), restarting on each next-message press; only the last plays out. Port gap: the port plays no STRATEGY.DLL message sounds.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9120,7 +9120,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-tactical-voice-announcer/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-tactical-sound-events/"
           ],
-          "note": "A0 audio capture: no score after Take Command (FUN_00417640), voice lines 15001/15131/15124 matched by correlation, WAVE bank routed in production-tactical-audio-routing; 0x11d is not played yet and order voices were never listened to in the VM.",
+          "note": "A0 audio capture: no score after Take Command (FUN_00417640), voice lines 15001/15131/15124 matched by correlation, WAVE bank routed in production-tactical-audio-routing; 0x11d is not played yet and order voices were never listened to in the VM. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio tac01-c012-corellia-take-command.wav 32afdc629e0b): the continuous battle sound is a dense stream of one-shot effects (TACTICAL 13057 event 0x17, 13061 event 0x1b, fighter lasers 13012/13013/13015, 13034, STRATEGY 1118 and 621), not the score; routing follows the effects slider. Port gap: events 0x14..0x1c (WAVEs 13054-13062) and the STRATEGY WAVEs are not played in battle.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
