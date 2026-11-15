@@ -7147,15 +7147,15 @@
         {
           "id": "OBJ-11-C013",
           "requirement": "Rescue",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Rescue is a dialog kind (mission_dialog.rs kind_name). Rescue-only dialog dispatched in the Arch Chromium 153 run. No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs rescue (fixture 58) offers Rescue, icons 3089/7185 at (70, 86), both sides on Linux; no A0 of the dialog for this kind. 2026-11-13 A0 (a0-vm/2026-11-13-mission-dialogs/20-26, Alliance day 266): dropping a Mission (Han, Luke) on the captive Leia in Imperial Coruscant's Defenses window opens nothing; General Needa there offers Abduction only. The static trace (FUN_005422f0 → FUN_0054c590 → FUN_00592aa0/FUN_0056adb0) offers Rescue for that target, so the refusal comes from state the trace cannot read (the side's own copy of the captive, FUN_004f2d10); the port's Rescue rule is kept. A positive A0 Rescue case is still missing.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Rescue is a dialog kind (mission_dialog.rs kind_name). Rescue-only dialog dispatched in the Arch Chromium 153 run. No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs rescue (fixture 58) offers Rescue, icons 3089/7185 at (70, 86), both sides on Linux; no A0 of the dialog for this kind. 2026-11-13 A0 (a0-vm/2026-11-13-mission-dialogs/20-26, Alliance day 266): dropping a Mission (Han, Luke) on the captive Leia in Imperial Coruscant's Defenses window opens nothing; General Needa there offers Abduction only. The static trace (FUN_005422f0 → FUN_0054c590 → FUN_00592aa0/FUN_0056adb0) offers Rescue for that target, so the refusal comes from state the trace cannot read (the side's own copy of the captive, FUN_004f2d10); the port's Rescue rule is kept. A positive A0 Rescue case is still missing. Batch b221 (2026-11-15): positive A0 Rescue cases (.artifacts/a0-vm/2026-11-15-partial-cells: Han on Orrimaarko 01abc68aa901, Han on Leia 44c8c052b951, Chewbacca+Wedge on Mon Mothma b467d0e92bac): a captive own character seen live offers Rescue alone. mission-dialog.mjs's Alliance rescue (Han, captive Leia) matches A0 0 px in the kind icon, buttons, Leia's portrait (new, FUN_0042c3b0), the one-kind list with its bar (page = popup height, FUN_0060d020/FUN_0060fb80) and tile column, the agents page, and the launch (fc76a97a15e3); the Mission Report, 'Rescue Mission Foiled' (now with 'Personnel are returning to ...', FUN_00491500 0x70e6) match word for word. Names are the accepted text deviation.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-11-C014",
