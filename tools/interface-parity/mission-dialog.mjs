@@ -597,6 +597,31 @@ async function inspect(server, source, faction, scenario, executable) {
       kindIcon = await kindIconCheck(page, scenario, faction, origin, opened, directory);
       comparisons.push(kindIcon);
     }
+    // OBJ-11-C013: A0 2026-11-15-partial-cells/rescue-dialog-han-on-
+    // orrimaarko-d763 (sha256 01abc68aa901; an Alliance game, the dialog at
+    // (168, 38)) opens on Rescue: its kind icon at the same place and the
+    // three bottom buttons every pixel A0's. The target's portrait and name
+    // differ (the fixture's prisoner is not Orrimaarko).
+    if (scenario.name === "rescue" && faction.name === "alliance" && kindIcon) {
+      const a0Path = path.join(root,
+        ".artifacts/a0-vm/2026-11-15-partial-cells/rescue-dialog-han-on-orrimaarko-d763-OBJ-11-C013.png");
+      if (fs.existsSync(a0Path)) {
+        const a0Dialog = cropDialog(fs.readFileSync(a0Path), origin);
+        const region = (x0, y0, x1, y1) => {
+          let differing = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const at = (y * opened.width + x) * 4;
+              if ([0, 1, 2].some((c) => opened.data[at + c] !== a0Dialog.data[at + c])) differing += 1;
+            }
+          }
+          return differing;
+        };
+        const { x, y } = kindIcon.at;
+        comparisons.push({ label: "a0-rescue-kind-icon", different_pixels: region(x, y, x + 130, y + 64) });
+        comparisons.push({ label: "a0-rescue-buttons", different_pixels: region(30, 320, 230, 352) });
+      }
+    }
     let cancelled = null;
     if (targeting) {
       comparisons.push(targeting.cursorCheck);

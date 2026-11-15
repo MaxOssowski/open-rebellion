@@ -182,6 +182,11 @@ async function run(browser, base, faction) {
     // Punisher ( Captured )"; fleet2/umgul-fleet1-ships: "Corellian
     // Corvette 1"). Both sides (OBJ-12-C009; the fixture recruits up to
     // eight of the side's characters).
+    // A0 2026-11-15-partial-cells (an Alliance game) reads the same words
+    // and spacing: "Leia Organa - Yaga Minor ( Captured )", "Mon Mothma -
+    // Plunderer ( Captured )", "Chewbacca - Ghorman ( Injured )",
+    // "Orrimaarko - Killed" (r2-...-d1239 0be4236024ec, r3-...-d1258
+    // e43a12aa38b1, r4-...-d795 9fbd1ee50231).
     const captured = shown.rows.filter((row) => / - .+ \( Captured \) $/.test(row));
     assert.equal(captured.length, 1, JSON.stringify(shown.rows));
     assert.match(captured[0], / - [A-Za-z][A-Za-z -]* \d+ \( Captured \) $/, captured[0]);
