@@ -2663,7 +2663,8 @@ fn right_items(
                     contents: 0,
                     damaged: false,
                     captive: false,
-                    en_route: false,
+                    // Finished, it travels to the fleet (bit 4).
+                    en_route: world.products.arrival(product.id).is_some(),
                     object: Some(ItemObject::Product(product.id)),
                 })
             }))
@@ -4252,10 +4253,14 @@ fn draw_fleet_window(
                             // else 0x2d34 (11572) (A0 2026-11-15 "u-2": the
                             // Carrack on the Empire's green grid).
                             let unfinished = match item.object {
-                                Some(ItemObject::Product(product)) => world
-                                    .products
-                                    .get(product)
-                                    .map(|value| unfinished_mini_mark(value.is_alliance)),
+                                Some(ItemObject::Product(product))
+                                    if world.products.arrival(product).is_none() =>
+                                {
+                                    world
+                                        .products
+                                        .get(product)
+                                        .map(|value| unfinished_mini_mark(value.is_alliance))
+                                }
                                 _ => None,
                             };
                             for (source, id) in marks

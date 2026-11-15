@@ -350,6 +350,16 @@ fn row_marks(
             _ => Vec::new(),
         };
         return match arrival {
+            // A finished regiment or squadron travelling to the planet
+            // (bit 4) takes its craft's en route mark over its backdrop,
+            // no unfinished one (A0 2026-11-11-regiment-en-route/00).
+            Some(_) if matches!(kind, BuildableKind::Troop(_) | BuildableKind::Fighter(_)) => {
+                let object = match kind {
+                    BuildableKind::Troop(class) => crate::fleet_window::MiniObject::Regiment(class),
+                    _ => crate::fleet_window::MiniObject::Craft,
+                };
+                crate::fleet_window::mini_marks(object, row.mini, true, false)
+            }
             Some(_) => vec![(DllSource::Strategy, 11_509)],
             None => backdrop
                 .into_iter()
@@ -1213,7 +1223,13 @@ fn pending_rows(
     let queued = world
         .products
         .in_system(system)
-        .map(|product| (product.kind, None, Some(product.id)))
+        .map(|product| {
+            (
+                product.kind,
+                world.products.arrival(product.id),
+                Some(product.id),
+            )
+        })
         .chain(
             crate::manufacturing_window::pending_units(production.manufacturing, system)
                 .filter(|&kind| !rebellion_core::products::is_tracked(kind))

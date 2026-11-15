@@ -1932,14 +1932,22 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                 class.hull.cast_signed(),
                 product.is_alliance,
             );
+            // Finished and travelling to its fleet: "Enroute" and its ETA
+            // (FUN_004fd2b0), with the en route mark instead.
+            let arrival = world.products.arrival(product.id);
             let mut rows = vec![
                 row("Class:", class.name.clone()),
                 row("Fleet:", fleet_label(world, fleet).unwrap_or_default()),
-                row("Status:", unfinished_status(None).to_owned()),
+                row("Status:", unfinished_status(arrival).to_owned()),
             ];
+            eta(&mut rows, arrival);
             class_rows(world, class, &ship, [0, 0, 0], &mut rows);
             StatusView {
-                marks: vec![unfinished_mark(product.is_alliance)],
+                marks: if arrival.is_some() {
+                    craft_marks(portrait, true, false)
+                } else {
+                    vec![unfinished_mark(product.is_alliance)]
+                },
                 ..view(
                     "Capital Ship Status",
                     side_index(product.is_alliance),
@@ -1952,17 +1960,20 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         StatusObject::PendingTroop { system, class } => {
             // The regiment stands where its product does (a Move may
             // have carried it).
-            let queued = world
+            let product = world
                 .products
                 .in_system(system)
-                .any(|product| product.kind == BuildableKind::Troop(class));
-            if !queued {
-                return None;
-            }
+                .find(|product| product.kind == BuildableKind::Troop(class))?;
+            // Finished and on its way (bits 2 and 4): FUN_00445280 writes
+            // "Enroute" and the ETA, over the en route mark.
+            let arrival = world.products.arrival(product.id);
             let alliance = world.buildable_classes.get(&class)?.is_alliance;
             let portrait = picture(troop_mini(class).map(|(mini, _)| mini));
-            let mut marks = regiment_marks(portrait, class, false);
-            marks.push(unfinished_mark(alliance));
+            let mut marks = regiment_marks(portrait, class, arrival.is_some());
+            if arrival.is_none() {
+                marks.push(unfinished_mark(alliance));
+            }
+            let status = if arrival.is_some() { "Enroute" } else { "Training" };
             StatusView {
                 marks,
                 ..view(
@@ -1970,7 +1981,7 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                     side_index(alliance),
                     portrait,
                     class_name(world, class),
-                    regiment_rows(world, class, system_name(world, system), "Training", None),
+                    regiment_rows(world, class, system_name(world, system), status, arrival),
                 )
             }
         }
@@ -3953,6 +3964,40 @@ mod tests {
         assert!(read.contains(&("Hull Value:", "1000:1000")));
         assert!(status_view(states.sources(&world), StatusObject::PendingShip { product: 99 })
             .is_none());
+        // Finished away from its yard, it travels in its fleet: FUN_0044a470
+        // writes 34628 "Enroute", then FUN_004fd2b0's ETA, over the craft's
+        // en route mark.
+        let fleet_at = world.fleets[fleet].location;
+        let elsewhere = system(
+            &mut world,
+            "Kuat",
+            ControlKind::Controlled(Faction::Empire),
+        );
+        world.systems[elsewhere].x = 300;
+        world.fleets[fleet].location = elsewhere;
+        let name = world.products.all()[0].name.clone();
+        rebellion_core::products::settle(
+            &mut world,
+            vec![rebellion_core::manufacturing::CompletionEvent {
+                system: fleet_at,
+                tick: 7,
+                kind: BuildableKind::CapitalShip(carrack),
+                name,
+                fleet: None,
+            }],
+            Vec::new(),
+        );
+        let arrival = world.products.arrival(product).unwrap();
+        let view = status_view(
+            states.sources(&world),
+            StatusObject::PendingShip { product },
+        )
+        .unwrap();
+        let read = rows(&view.rows);
+        let eta = format!("Day {arrival}");
+        assert_eq!(read[2], ("Status:", "Enroute"));
+        assert_eq!(read[3], ("ETA Destination:", eta.as_str()));
+        assert!(!view.marks.contains(&(DllSource::Strategy, 11_573)));
     }
 
     #[test]
