@@ -1171,6 +1171,17 @@ pub fn original_encyclopedia_object(
                 CAPITAL_SHIP_FAMILY,
             ));
         }
+        MenuObject::PendingShip { product } => {
+            let rebellion_core::manufacturing::BuildableKind::CapitalShip(class) =
+                world.products.get(product)?.kind
+            else {
+                return None;
+            };
+            return Some(class_entry(
+                world.capital_ship_classes.get(class)?.dat_id,
+                CAPITAL_SHIP_FAMILY,
+            ));
+        }
         MenuObject::Fighter { fleet, index } => {
             let entry = world.fleets.get(fleet)?.fighters.get(index)?;
             return Some(class_entry(

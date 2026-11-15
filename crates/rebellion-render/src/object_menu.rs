@@ -160,6 +160,9 @@ pub enum MenuObject {
         class: rebellion_core::ids::DatId,
         product: Option<u64>,
     },
+    /// An unfinished capital ship in a Fleet window, by its product
+    /// (`rebellion_core::products`; `0x14..0x1b`, `+0x50` bit 2 clear).
+    PendingShip { product: u64 },
     /// A Missions window's mission, by its id (`0x50..0x7f`): the window's
     /// slot 22 (`FUN_004a0400`) gives the left list's selected missions to
     /// the menu (A0 missionstatus/02: Encyclopedia, Status, Abort).
@@ -190,6 +193,7 @@ impl MenuObject {
             | Self::PendingFighter { .. }
             | Self::TravellingFighter { .. }
             | Self::PendingTroop { .. }
+            | Self::PendingShip { .. }
             | Self::Mission(_) => None,
         }
     }
@@ -226,6 +230,7 @@ impl MenuObject {
             | Self::PendingFighter { .. }
             | Self::TravellingFighter { .. }
             | Self::PendingTroop { .. }
+            | Self::PendingShip { .. }
             | Self::Mission(_) => None,
         }
     }
@@ -260,6 +265,11 @@ impl MenuObject {
                 })
                 .into_iter()
                 .collect(),
+            // A spare holding only unfinished ships takes no Scrap (A0
+            // 2026-11-15 "u-2": Fleet 4's Scrap grey).
+            Self::Fleet(fleet) if rebellion_core::products::is_staged(world, fleet) => {
+                Vec::new()
+            }
             other => other.scrap_target().into_iter().collect(),
         }
     }
@@ -306,6 +316,7 @@ impl MenuObject {
             Self::PendingTroop { system, class, .. } => {
                 Some(StatusObject::PendingTroop { system, class })
             }
+            Self::PendingShip { product } => Some(StatusObject::PendingShip { product }),
             Self::Mission(id) => Some(StatusObject::Mission(id)),
             Self::SystemIcon { .. } => None,
         }
@@ -673,6 +684,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
     let character = matches!(selection, Some(MenuObject::Character(_)));
     let special_force = matches!(selection, Some(MenuObject::SpecialForce(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
+    // An unfinished ship keeps Move and Confirmed Move (A0 2026-11-15
+    // "u-2": white), not Create Fleet or Rename (port: grey) or Scrap.
+    let pending_ship = matches!(selection, Some(MenuObject::PendingShip { .. }));
     let producer = matches!(selection, Some(MenuObject::Producer { .. }));
     // The facility icon's Reserved acts on every manager of the system
     // (FUN_00512700 kind 4 -> FUN_0052c170), a band's on its own.
@@ -704,7 +718,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             | MenuObject::PendingTroop { .. }
             | MenuObject::ViewedTroop { .. },
         ) => &[MOVE, CONFIRMED_MOVE, SCRAP],
-        Some(MenuObject::Ship { .. }) => &[MOVE, CONFIRMED_MOVE, SCRAP, RENAME, CREATE_FLEET],
+        Some(MenuObject::Ship { .. } | MenuObject::PendingShip { .. }) => {
+            &[MOVE, CONFIRMED_MOVE, SCRAP, RENAME, CREATE_FLEET]
+        }
         Some(MenuObject::SystemIcon { quadrant, .. }) => match quadrant {
             Quadrant::System => &[SCRAP, DESTINATION, RESERVED],
             Quadrant::Defenses => &[MOVE, CONFIRMED_MOVE, SCRAP],
@@ -766,7 +782,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (special_force && gates.special_force_move)
                         || (fleet && gates.fleet_move)
                         || (troop && gates.troop_move)
-                        || (ship && gates.ship_move)
+                        || ((ship || pending_ship) && gates.ship_move)
                         || (squadron && gates.squadron_move)
                         || (headquarters && gates.headquarters_move)
                         || (defenses && gates.defenses_move)
@@ -784,7 +800,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 // Move.
                 ObjectMenuCommand::ConfirmedMove => {
                     (fleet && gates.fleet_move)
-                        || (ship && gates.ship_move)
+                        || ((ship || pending_ship) && gates.ship_move)
                         || (troop && gates.troop_move)
                         || (squadron && gates.squadron_move)
                         || (character && gates.character_move)
@@ -2388,6 +2404,43 @@ mod tests {
     }
 
     #[test]
+    fn an_unfinished_ship_keeps_move_and_greys_create_fleet_rename_and_scrap() {
+        // A0 2026-11-15 "u-2-carrack-unfinished-menu": Move and Confirmed
+        // Move white, Create Fleet grey, Scrap grey. port: Rename grey too
+        // (A0 white; a product's rename is not ported).
+        let pending = MenuObject::PendingShip { product: 4 };
+        // Its Scrap names no target, so the scrap gate is shut.
+        assert_eq!(pending.scrap_target(), None);
+        let gates = OrderGates {
+            ship_move: true,
+            rename: true,
+            ..MISSION_GATE
+        };
+        let rows = object_menu_rows(Some(pending), gates);
+        assert_eq!(
+            labels(&rows),
+            [
+                "Move",
+                "Confirmed Move",
+                "Create Fleet",
+                "Rename",
+                "Encyclopedia",
+                "Status",
+                "Scrap"
+            ]
+        );
+        assert_eq!(
+            enabled(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+        );
+        assert_eq!(pending.mission_member(), None);
+        assert_eq!(
+            pending.status_object(),
+            Some(StatusObject::PendingShip { product: 4 })
+        );
+    }
+
+    #[test]
     fn a_squadron_in_hyperspace_greys_its_move_rows_and_scrap() {
         // FUN_00502fe0's list, as for a squadron on the planet; an object in
         // hyperspace takes no order (FUN_004f9860), so Move, Confirmed Move
@@ -2609,6 +2662,57 @@ mod tests {
         assert_eq!(
             Quadrant::ALL.map(Quadrant::kind),
             [4, 8, 0x10, 0x40]
+        );
+    }
+
+    #[test]
+    fn a_spare_holding_only_an_unfinished_ship_takes_no_scrap() {
+        // A0 2026-11-15 "u-2-fleet4-only-unfinished-menu": Scrap grey.
+        use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let mut world = rebellion_core::world::GameWorld::default();
+        let system = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Corellia".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: Vec::new(),
+            ground_units: Vec::new(),
+            special_forces: Vec::new(),
+            defense_facilities: Vec::new(),
+            manufacturing_facilities: Vec::new(),
+            production_facilities: Vec::new(),
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Controlled(
+                rebellion_core::dat::Faction::Empire,
+            ),
+        });
+        let carrack = world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass::default());
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(system, QueueItem::new(BuildableKind::CapitalShip(carrack), 5));
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let spare = world.fleets.keys().next().unwrap();
+        let movement = rebellion_core::movement::MovementState::new();
+        let empire = rebellion_core::dat::Faction::Empire;
+        assert!(MenuObject::Fleet(spare)
+            .scrap_team(&movement, &world, empire)
+            .is_empty());
+        world.systems[system].fleets.push(spare);
+        assert_eq!(
+            MenuObject::Fleet(spare).scrap_team(&movement, &world, empire),
+            [ScrapTarget::Fleet(spare)]
         );
     }
 

@@ -7589,7 +7589,8 @@ async fn main() {
                                 | MenuObject::PendingFighter {
                                     product: Some(product),
                                     ..
-                                },
+                                }
+                                | MenuObject::PendingShip { product },
                             ),
                         )) => {
                             targeting = Some(Targeting::new(TargetOrder::ProductMove {
@@ -8822,24 +8823,25 @@ async fn main() {
                                 },
                                 // An unfinished unit's 0x201: FUN_00556390
                                 // moves an object that is not mobile at
-                                // once. port: Confirmed Move asks nothing
-                                // (no trip, so no days to list), and a
-                                // Fleet window is refused (the planner's
-                                // carrier pick for a product is untraced).
+                                // once (products::move_to_target). port:
+                                // Confirmed Move asks nothing (no trip, so
+                                // no days to list).
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::ProductMove { products, .. },
                                     target,
-                                }) => match target {
-                                    ReleaseTarget::System(system) => {
-                                        panel_actions
-                                            .push(PanelAction::MoveProducts { products, system });
-                                    }
-                                    ReleaseTarget::Fleet { .. } => {
-                                        macroquad::logging::info!(
-                                            "[interface] command=0x201 product status=refused reason=fleet"
-                                        );
-                                    }
-                                },
+                                }) => {
+                                    let (system, fleet) = match target {
+                                        ReleaseTarget::System(system) => (system, None),
+                                        ReleaseTarget::Fleet { fleet, system } => {
+                                            (system, Some(fleet))
+                                        }
+                                    };
+                                    panel_actions.push(PanelAction::MoveProducts {
+                                        products,
+                                        system,
+                                        fleet,
+                                    });
+                                }
                                 // A regiment's 0x201 against the release
                                 // window's +0x70 (FUN_004a3130 for a Fleet
                                 // window), boarding, landing or travelling.
@@ -11889,8 +11891,12 @@ fn order_gates(
             }) => product_move_enabled(world, product, is_alliance),
             _ => false,
         },
-        // FUN_004f9860: the ship's fleet is the player's and in orbit.
+        // FUN_004f9860: the ship's fleet is the player's and in orbit. An
+        // unfinished ship's: it is the player's (A0 2026-11-15 "u-2").
         ship_move: match selection {
+            Some(MenuObject::PendingShip { product }) => {
+                product_move_enabled(world, product, is_alliance)
+            }
             Some(MenuObject::Ship { fleet, index, .. }) => {
                 fleet_move_enabled(movement_state, world, fleet, is_alliance)
                     && world
@@ -13017,13 +13023,14 @@ fn apply_panel_action(
         }
         // A special force's Move: the Move mission 0x41000001 with the unit
         // as its team, as a character's.
-        PanelAction::MoveProducts { products, system } => {
+        PanelAction::MoveProducts {
+            products,
+            system,
+            fleet,
+        } => {
             for product in products {
-                let moved = rebellion_core::products::move_to(
-                    world,
-                    product,
-                    rebellion_core::products::Container::System(system),
-                );
+                let moved =
+                    rebellion_core::products::move_to_target(world, product, system, fleet);
                 macroquad::logging::info!(
                     "[interface] command=0x201 product={product} moved={moved}"
                 );

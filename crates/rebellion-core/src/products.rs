@@ -513,6 +513,56 @@ pub fn move_to(world: &mut GameWorld, id: u64, container: Container) -> bool {
     true
 }
 
+/// A Move released on `system`, or on `fleet` there: a regiment or
+/// squadron goes to the system ([`move_to`]); a fleet target refuses it
+/// (port: the carrier pick for a product is not traced). hyp: an
+/// unfinished capital ship goes into `fleet` when it is of its side, else
+/// into the side's spare at `system`, as an order for that system would
+/// place it (`FUN_00552300`); `FUN_00556390` moves it at once, not being
+/// Deployed. A0 2026-11-15 "u-2" shows its Move white; where it goes was
+/// not captured.
+pub fn move_to_target(
+    world: &mut GameWorld,
+    id: u64,
+    system: SystemKey,
+    fleet: Option<FleetKey>,
+) -> bool {
+    let Some(product) = world.products.get(id).cloned() else {
+        return false;
+    };
+    if !world.systems.contains_key(system) {
+        return false;
+    }
+    let container = match (product.kind, fleet) {
+        (BuildableKind::CapitalShip(_), Some(fleet))
+            if world
+                .fleets
+                .get(fleet)
+                .is_some_and(|f| f.is_alliance == product.is_alliance) =>
+        {
+            Container::Fleet(fleet)
+        }
+        (BuildableKind::CapitalShip(_), _) => {
+            if let Some(spare) = spare_at(world, system, product.is_alliance) {
+                Container::Fleet(spare)
+            } else {
+                // The old spare goes first when this empties it.
+                let Some(mut moving) = world.products.take(id) else {
+                    return false;
+                };
+                drop_if_emptied(world, moving.container);
+                moving.container = place(world, moving.kind, system, moving.is_alliance);
+                let at = world.products.items.partition_point(|p| p.id < id);
+                world.products.items.insert(at, moving);
+                return true;
+            }
+        }
+        (_, Some(_)) => return false,
+        (_, None) => Container::System(system),
+    };
+    move_to(world, id, container)
+}
+
 #[cfg(test)]
 #[path = "products_tests.rs"]
 mod tests;

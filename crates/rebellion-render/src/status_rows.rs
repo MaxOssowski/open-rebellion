@@ -109,6 +109,9 @@ pub enum StatusObject {
     /// `0x10..0x13`, `FUN_00445280`: a regiment of `class` in training for
     /// `system`.
     PendingTroop { system: SystemKey, class: DatId },
+    /// `0x14..0x1b`, `FUN_00446fd0`: an unfinished capital ship, by its
+    /// product (`rebellion_core::products`).
+    PendingShip { product: u64 },
     /// `0x1c..0x1f`, `FUN_004444c0`: a squadron of `class` being built for
     /// `system`'s planet.
     PendingFighter {
@@ -807,6 +810,27 @@ pub fn ship_rows(
         row("Status:", moving_status(arrival.is_some())),
     ];
     eta(&mut rows, arrival);
+    let embarked = [
+        aboard(&capacities(|c| c.fighter_capacity), position, squadrons) as usize
+            + incoming_squadrons,
+        aboard(&capacities(|c| c.troop_capacity), position, regiments) as usize
+            + incoming_regiments,
+        personnel,
+    ];
+    class_rows(world, class, ship, embarked, &mut rows);
+    Some(rows)
+}
+
+/// The Capital Ship Status rows after Status and its ETA (`FUN_00446fd0`):
+/// maintenance, capacity, the `embarked` squadrons, regiments and
+/// personnel, and `ship`'s ratings against its class.
+fn class_rows(
+    world: &GameWorld,
+    class: &CapitalShipClass,
+    ship: &rebellion_core::world::ShipInstance,
+    embarked: [usize; 3],
+    rows: &mut Vec<StatusRow>,
+) {
     use rebellion_core::ship_condition as condition;
     use rebellion_core::world::Subsystem;
     let rating = |value, subsystem| condition::rating(world, value, class, ship, subsystem);
@@ -818,17 +842,13 @@ pub fn ship_rows(
         heading("Embarked:"),
         row(
             "Fighter Squadrons:",
-            (aboard(&capacities(|c| c.fighter_capacity), position, squadrons) as usize
-                + incoming_squadrons)
-                .to_string(),
+            embarked[0].to_string(),
         ),
         row(
             "Trooper Regiments:",
-            (aboard(&capacities(|c| c.troop_capacity), position, regiments) as usize
-                + incoming_regiments)
-                .to_string(),
+            embarked[1].to_string(),
         ),
-        row("Personnel:", personnel.to_string()),
+        row("Personnel:", embarked[2].to_string()),
         row("Ship Damaged:", yes_no(damaged(ship, class))),
         row(
             "Hyperdrive Rating:",
@@ -904,7 +924,6 @@ pub fn ship_rows(
             row("Laser Cannon:", rating(laser, Subsystem::Weapon).to_string()),
         ]);
     }
-    Some(rows)
 }
 
 /// The Fighter Squadron Status rows (`FUN_004444c0`), for the fleet's
@@ -1894,9 +1913,49 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         }
         // FUN_00445280 on a regiment not yet completed: 34673 "Training",
         // its backdrop and 11571 / 11573 (FUN_0042c3b0).
+        // FUN_00446fd0 on an unfinished ship: Status 34647 "Under
+        // Construction" (bit 2 clear), its picture over the side's grid
+        // (A0 2026-11-15 "u-2-carrack-status": Fleet 4, Under Construction,
+        // Maintenance Cost 24, Hull 1000:1000).
+        StatusObject::PendingShip { product } => {
+            let product = world.products.get(product)?;
+            let BuildableKind::CapitalShip(class_key) = product.kind else {
+                return None;
+            };
+            let rebellion_core::products::Container::Fleet(fleet) = product.container else {
+                return None;
+            };
+            let class = world.capital_ship_classes.get(class_key)?;
+            let portrait = picture(capital_ship_mini_id(class.dat_id));
+            let ship = rebellion_core::world::ShipInstance::new(
+                class_key,
+                class.hull.cast_signed(),
+                product.is_alliance,
+            );
+            let mut rows = vec![
+                row("Class:", class.name.clone()),
+                row("Fleet:", fleet_label(world, fleet).unwrap_or_default()),
+                row("Status:", unfinished_status(None).to_owned()),
+            ];
+            class_rows(world, class, &ship, [0, 0, 0], &mut rows);
+            StatusView {
+                marks: vec![unfinished_mark(product.is_alliance)],
+                ..view(
+                    "Capital Ship Status",
+                    side_index(product.is_alliance),
+                    portrait,
+                    product.name.clone().unwrap_or_else(|| class.name.clone()),
+                    rows,
+                )
+            }
+        }
         StatusObject::PendingTroop { system, class } => {
-            let queued = crate::manufacturing_window::pending_units(sources.manufacturing, system)
-                .any(|kind| kind == BuildableKind::Troop(class));
+            // The regiment stands where its product does (a Move may
+            // have carried it).
+            let queued = world
+                .products
+                .in_system(system)
+                .any(|product| product.kind == BuildableKind::Troop(class));
             if !queued {
                 return None;
             }
@@ -1918,8 +1977,10 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         // FUN_004444c0 on a squadron not yet completed: the planet
         // squadron's rows (A0 pending-facility/25) over 11571 / 11573.
         StatusObject::PendingFighter { system, class } => {
-            let queued = crate::manufacturing_window::pending_units(sources.manufacturing, system)
-                .any(|kind| kind == BuildableKind::Fighter(class));
+            let queued = world
+                .products
+                .in_system(system)
+                .any(|product| product.kind == BuildableKind::Fighter(class));
             if !queued {
                 return None;
             }
@@ -3753,6 +3814,7 @@ mod tests {
         states
             .manufacturing
             .enqueue(here, QueueItem::new(BuildableKind::Troop(class), 5));
+        rebellion_core::products::reconcile(&mut world, &states.manufacturing);
         let pending = StatusObject::PendingTroop {
             system: here,
             class,
@@ -3773,6 +3835,7 @@ mod tests {
             ]
         );
         states.manufacturing = ManufacturingState::new();
+        rebellion_core::products::reconcile(&mut world, &states.manufacturing);
         assert!(status_view(states.sources(&world), pending).is_none());
     }
 
@@ -3807,6 +3870,7 @@ mod tests {
                 .manufacturing
                 .enqueue(here, QueueItem::new(BuildableKind::Fighter(fighter), 5));
         }
+        rebellion_core::products::reconcile(&mut world, &states.manufacturing);
         let pending = |class| StatusObject::PendingFighter {
             system: here,
             class,
@@ -3829,8 +3893,66 @@ mod tests {
         states
             .manufacturing
             .enqueue(here, QueueItem::new(BuildableKind::Fighter(tie), 5));
+        rebellion_core::products::reconcile(&mut world, &states.manufacturing);
         assert!(status_view(states.sources(&world), pending(awing)).is_none());
         assert!(status_view(states.sources(&world), pending(tie)).is_some());
+    }
+
+    #[test]
+    fn an_unfinished_ship_reads_under_construction_in_its_fleet_over_its_mark() {
+        // FUN_00446fd0 on a ship not yet completed: FUN_0044a470 writes
+        // 34647 "Under Construction" (bit 2 clear). A0 2026-11-15
+        // "u-2-carrack-status": Fleet 4, Under Construction, Maintenance
+        // Cost 24, Hull 1000:1000, the picture over the Empire's grid
+        // (FUN_0042c3b0: 11573 for side 2).
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Corellia",
+            ControlKind::Controlled(Faction::Empire),
+        );
+        let carrack = world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass {
+                dat_id: DatId::new(0x1400_0010),
+                name: "Carrack Light Cruiser".into(),
+                is_alliance: false,
+                is_empire: true,
+                hull: 1000,
+                maintenance_cost: 24,
+                ..Default::default()
+            });
+        let mut states = States::new();
+        states.manufacturing.enqueue(
+            here,
+            QueueItem::new(BuildableKind::CapitalShip(carrack), 5).ordered(&mut world),
+        );
+        rebellion_core::products::reconcile(&mut world, &states.manufacturing);
+        let product = world.products.all()[0].id;
+        let view = status_view(
+            states.sources(&world),
+            StatusObject::PendingShip { product },
+        )
+        .unwrap();
+        assert_eq!(view.title, "Capital Ship Status");
+        assert_eq!(view.name, "Carrack Light Cruiser 1");
+        assert_eq!(view.side, 1);
+        assert_eq!(view.marks, [(DllSource::Strategy, 11_573)]);
+        let fleet = world.fleets.keys().next().unwrap();
+        let fleet_name = world.fleet_name(fleet).unwrap().to_owned();
+        let read = rows(&view.rows);
+        assert_eq!(
+            read[..4],
+            [
+                ("Class:", "Carrack Light Cruiser"),
+                ("Fleet:", fleet_name.as_str()),
+                ("Status:", "Under Construction"),
+                ("Maintenance Cost:", "24"),
+            ]
+        );
+        assert!(read.contains(&("Hull Value:", "1000:1000")));
+        assert!(status_view(states.sources(&world), StatusObject::PendingShip { product: 99 })
+            .is_none());
     }
 
     #[test]

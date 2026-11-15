@@ -592,3 +592,60 @@ fn a_departure_settles_where_its_product_stands() {
     assert_eq!(settled.departures, vec![departure]);
     assert!(!move_to(&mut s.world, 99, Container::System(s.yard)));
 }
+
+#[test]
+fn a_moved_unfinished_ship_goes_to_the_targets_spare_or_fleet() {
+    // hyp: FUN_00556390 reparents a ship that is not Deployed at once, into
+    // the container the planner gives the target (FUN_00552300).
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let old = s.only_fleet();
+    let id = s.world.products.all()[0].id;
+    assert!(move_to_target(&mut s.world, id, s.there, None));
+    assert!(!s.world.fleets.contains_key(old));
+    let new = s.only_fleet();
+    assert_eq!(s.world.fleets[new].location, s.there);
+    assert!(is_staged(&s.world, new));
+
+    let listed = s.world.insert_fleet(Fleet {
+        location: s.yard,
+        capital_ships: vec![ShipInstance::new(s.carrack, 50, false)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    s.world.systems[s.yard].fleets.push(listed);
+    assert!(move_to_target(&mut s.world, id, s.yard, Some(listed)));
+    assert_eq!(s.world.products.in_fleet(listed).count(), 1);
+    assert!(!s.world.fleets.contains_key(new));
+    // To the system with a spare there, it joins the spare.
+    s.world.set_ship_spare(s.there, false, listed);
+    s.world.fleets[listed].location = s.there;
+    assert!(move_to_target(&mut s.world, id, s.there, None));
+    assert_eq!(s.world.products.in_fleet(listed).count(), 1);
+}
+
+#[test]
+fn a_moved_unfinished_squadron_lands_on_the_system_and_refuses_a_fleet() {
+    let mut s = setup();
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    let id = s.world.products.all()[0].id;
+    let fleet = s.world.insert_fleet(Fleet {
+        location: s.there,
+        capital_ships: Vec::new(),
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    assert!(!move_to_target(&mut s.world, id, s.there, Some(fleet)));
+    assert!(move_to_target(&mut s.world, id, s.there, None));
+    assert_eq!(
+        s.world.products.all()[0].container,
+        Container::System(s.there)
+    );
+    assert!(!move_to_target(&mut s.world, 99, s.there, None));
+}

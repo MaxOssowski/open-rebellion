@@ -480,6 +480,13 @@ pub(crate) fn mini_marks(
     marks
 }
 
+/// The unfinished mark `FUN_0042c3b0(.., 0, 1)` lays under a mini whose
+/// object is not completed (`+0x50` bit 2 clear): STRATEGY `0x2d32`
+/// (11570) for side 1, else `0x2d34` (11572).
+pub(crate) const fn unfinished_mini_mark(side_one: bool) -> (DllSource, u32) {
+    (DllSource::Strategy, if side_one { 11_570 } else { 11_572 })
+}
+
 /// A craft's GOKRES portrait (`FUN_0042c3b0(.., 1, ..)`: `class & 0xfff`),
 /// its mini less `0x4000`.
 const fn ship_portrait(mini: u32) -> u32 {
@@ -719,7 +726,10 @@ fn right_drop(
                 confirmed,
             }]
         }
-        ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } => Vec::new(),
+        // port: an unfinished ship's drag is not ported; its menu's Move is.
+        ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } | ItemObject::Product(_) => {
+            Vec::new()
+        }
     }
 }
 
@@ -1068,6 +1078,10 @@ enum ItemObject {
     /// A Personnel tab special force (`FUN_00536da0(ship, 3)` lists them
     /// with the characters).
     SpecialForce(rebellion_core::ids::SpecialForceKey),
+    /// An unfinished capital ship of the fleet, by its product
+    /// (`rebellion_core::products`): `FUN_004a6be0` walks the ships in
+    /// mode 3 (Existing), so it lists (A0 2026-11-15 "u-2").
+    Product(u64),
 }
 
 impl ItemObject {
@@ -1096,6 +1110,7 @@ impl ItemObject {
                 index,
                 roster,
             },
+            Self::Product(product) => MenuObject::PendingShip { product },
         }
     }
 }
@@ -2452,7 +2467,8 @@ fn right_target(world: &GameWorld, items: &[RightItem], index: usize) -> Option<
         Some(ItemObject::SpecialForce(key)) => {
             Some(ItemTarget::Object(MissionTarget::SpecialForce(key)))
         }
-        Some(ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. }) | None => None,
+        Some(ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } | ItemObject::Product(_))
+        | None => None,
     })
 }
 
@@ -2632,6 +2648,25 @@ fn right_items(
                     roster,
                 }),
             })
+            .chain(world.products.in_fleet(fleet).filter_map(|product| {
+                let rebellion_core::manufacturing::BuildableKind::CapitalShip(class) =
+                    product.kind
+                else {
+                    return None;
+                };
+                let class = world.capital_ship_classes.get(class)?;
+                Some(RightItem {
+                    mini: capital_ship_mini_id(class.dat_id),
+                    kind: MiniObject::Craft,
+                    label: product.name.clone().unwrap_or_else(|| class.name.clone()),
+                    no_hyperdrive: false,
+                    contents: 0,
+                    damaged: false,
+                    captive: false,
+                    en_route: false,
+                    object: Some(ItemObject::Product(product.id)),
+                })
+            }))
             .collect(),
         // port: the port keeps squadrons as counts per class. Squadrons on
         // their way into the fleet by Move follow its own: FUN_00556390
@@ -4212,8 +4247,20 @@ fn draw_fleet_window(
                                 item.damaged,
                             );
                             let captive = item.captive.then(|| captive_mark(mini));
+                            // FUN_0042c3b0 lays the unfinished mark last
+                            // under the mini: 0x2d32 (11570) for side 1,
+                            // else 0x2d34 (11572) (A0 2026-11-15 "u-2": the
+                            // Carrack on the Empire's green grid).
+                            let unfinished = match item.object {
+                                Some(ItemObject::Product(product)) => world
+                                    .products
+                                    .get(product)
+                                    .map(|value| unfinished_mini_mark(value.is_alliance)),
+                                _ => None,
+                            };
                             for (source, id) in marks
                                 .into_iter()
+                                .chain(unfinished)
                                 .chain(std::iter::once((DllSource::Gokres, mini)))
                                 .chain(captive)
                             {
@@ -9244,6 +9291,44 @@ pub(crate) mod tests {
         );
         assert!(world.rename_ship(fleet, 0, "Liberty"));
         assert_eq!(labels(&world), ["Liberty"]);
+    }
+
+    #[test]
+    fn an_unfinished_ship_lists_after_its_fleets_ships_on_the_sides_grid() {
+        // FUN_004a6be0 walks the fleet's ships in mode 3 (Existing), so a
+        // ship being built lists; FUN_0042c3b0 lays 0x2d32 (11570, side 1)
+        // or 0x2d34 (11572) under its mini. A0 2026-11-15 "u-2": Fleet 4
+        // lists "Carrack Light Cruiser 1" on the Empire's green grid.
+        use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 1);
+        world.set_ship_spare(system, true, fleet);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(
+            system,
+            QueueItem::new(BuildableKind::CapitalShip(class), 5).ordered(&mut world),
+        );
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let product = world.products.all()[0].id;
+        let transport = TroopTransportState::default();
+        let items = right_items(
+            &world,
+            &transport,
+            &[],
+            Some(FleetWindowEntry::Fleet(fleet)),
+            FleetWindowTab::CapitalShips,
+        );
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[1].object, Some(ItemObject::Product(product)));
+        assert_eq!(items[1].label, world.products.all()[0].name.clone().unwrap());
+        assert_eq!(items[1].mini, items[0].mini);
+        assert_eq!(
+            ItemObject::Product(product).menu_object(),
+            MenuObject::PendingShip { product }
+        );
+        assert_eq!(unfinished_mini_mark(true), (DllSource::Strategy, 11_570));
+        assert_eq!(unfinished_mini_mark(false), (DllSource::Strategy, 11_572));
     }
 
     #[test]
