@@ -1041,6 +1041,8 @@ fn an_unfinished_regiment_boards_a_fleet_with_troop_room() {
     let mut s = setup();
     let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
     let transport = carrier(&mut s, 0, 2);
+    // Another side's fleet takes none, room or not.
+    assert!(!room_aboard(&s.world, transport, regiment, true, 0));
     assert!(room_aboard(&s.world, transport, regiment, false, 1));
     assert!(!room_aboard(&s.world, transport, regiment, false, 2));
     s.manufacturing.enqueue(s.yard, QueueItem::new(regiment, 5));
