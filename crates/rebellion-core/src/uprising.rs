@@ -210,6 +210,10 @@ pub enum UprisingEvent {
         total_energy: u8,
         raw_materials: u8,
         destroyed: Vec<FacilityRef>,
+        /// The unfinished facilities it destroyed (`crate::products`), for
+        /// the caller to take from their queues
+        /// (`crate::products::destroy`).
+        lost_products: Vec<u64>,
     },
 }
 
@@ -368,12 +372,19 @@ impl UprisingSystem {
         let disaster = if state.next_disaster_tick.is_none() {
             1
         } else if due(state.next_disaster_tick) {
-            let richest = world.systems.values().map(|sys| {
+            // The unfinished facilities standing there are checked too
+            // (crate::products).
+            let richest = world.systems.iter().map(|(key, sys)| {
                 usize::from(sys.raw_materials)
                     + usize::from(sys.total_energy)
                     + sys.defense_facilities.len()
                     + sys.manufacturing_facilities.len()
                     + sys.production_facilities.len()
+                    + world
+                        .products
+                        .in_system(key)
+                        .filter(|product| crate::products::is_facility(product.kind))
+                        .count()
             });
             2 + richest.max().unwrap_or(0)
         } else {
@@ -963,18 +974,37 @@ fn resolve_disaster(world: &GameWorld, tick: u64, rolls: &mut Rolls<'_>) -> Opti
 
     // Every facility not en route (+0x50 bit 4, GameObjEnrouteNotif), both
     // sides: manufacturing and production (0x28..0x2f) first, then defense
-    // (0x22..0x27), each lost with GNPRTB 7716 percent (reason 0xb). The port
-    // has no en-route facility: a facility joins a system list on completion.
+    // (0x22..0x27), each lost with GNPRTB 7716 percent (reason 0xb). The
+    // walks are mode 3 (FUN_0053b6e0(sys, 3), FUN_00526fd0(sys, 3)), so an
+    // unfinished facility standing here is hit too (crate::products).
+    // hyp: in each walk the unfinished ones, made later, come after the
+    // built ones (a system's children sit by object key, FUN_005f5100). A
+    // facility travelling here is a delivery in the port, not here.
     let chance = param(GNPRTB_DISASTER_FACILITY_CHANCE);
     let all = facilities(world, sys, None);
     let (defense, others): (Vec<FacilityRef>, Vec<FacilityRef>) = all
         .into_iter()
         .partition(|f| matches!(f, FacilityRef::Defense(_)));
-    let destroyed = others
-        .into_iter()
-        .chain(defense)
-        .filter(|_| rolls.chance(chance))
-        .collect();
+    let unfinished = |defense: bool| -> Vec<u64> {
+        world
+            .products
+            .in_system(system)
+            .filter(|product| world.products.arrival(product.id).is_none())
+            .filter(|product| match product.kind {
+                crate::manufacturing::BuildableKind::DefenseFacility(_) => defense,
+                crate::manufacturing::BuildableKind::ManufacturingFacility(_)
+                | crate::manufacturing::BuildableKind::ProductionFacility(_) => !defense,
+                _ => false,
+            })
+            .map(|product| product.id)
+            .collect()
+    };
+    let mut destroyed = Vec::new();
+    let mut lost_products = Vec::new();
+    for (built, building) in [(others, unfinished(false)), (defense, unfinished(true))] {
+        destroyed.extend(built.into_iter().filter(|_| rolls.chance(chance)));
+        lost_products.extend(building.into_iter().filter(|_| rolls.chance(chance)));
+    }
 
     Some(UprisingEvent::Disaster {
         system,
@@ -982,6 +1012,7 @@ fn resolve_disaster(world: &GameWorld, tick: u64, rolls: &mut Rolls<'_>) -> Opti
         total_energy: u8::try_from(energy.max(0)).unwrap_or(u8::MAX),
         raw_materials: u8::try_from(raw.max(0)).unwrap_or(u8::MAX),
         destroyed,
+        lost_products,
     })
 }
 
@@ -2159,6 +2190,7 @@ mod tests {
                 total_energy: 0,
                 raw_materials: 0,
                 destroyed: vec![FacilityRef::Production(ours), FacilityRef::Defense(theirs)],
+                lost_products: Vec::new(),
             }]
         );
         // The next disaster is 1 + rand(0..=399) ticks later.
@@ -2286,6 +2318,52 @@ mod tests {
         assert!(world.systems[system].manufacturing_facilities.is_empty());
         assert!(!world.manufacturing_facilities.contains_key(shipyard));
         assert_eq!(world.systems[system].production_facilities, vec![mine]);
+    }
+
+    #[test]
+    fn a_disaster_can_destroy_an_unfinished_facility_after_the_built_ones() {
+        // FUN_00511930 walks the facilities in mode 3 (FUN_0053b6e0(sys,
+        // 3), FUN_00526fd0(sys, 3)), so an unfinished one standing in the
+        // system is checked too, after the built ones of its walk (hyp:
+        // made later, it sits later by key).
+        use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, QueueItem};
+        let (mut world, system) = world_with(Faction::Alliance, 0.5);
+        world.systems[system].raw_materials = 0;
+        world.systems[system].total_energy = 1;
+        let mine = add_mine(&mut world, system, true);
+        let mut manufacturing = ManufacturingState::new();
+        for raw in [0x2d00_0002, 0x2200_0001] {
+            let build = FacilityBuild {
+                class: DatId::new(raw),
+                is_alliance: true,
+            };
+            let kind = if raw == 0x2200_0001 {
+                BuildableKind::DefenseFacility(build)
+            } else {
+                BuildableKind::ProductionFacility(build)
+            };
+            manufacturing.enqueue(system, QueueItem::new(kind, 5));
+        }
+        crate::products::reconcile(&mut world, &manufacturing);
+        let ids: Vec<u64> = world.products.all().iter().map(|p| p.id).collect();
+        // Pick, one energy check (fails), the mine (fails), the unfinished
+        // refinery (passes), the unfinished battery (fails).
+        let rolls = [0.0, d(5), d(10), d(0), d(10)];
+        let event = resolve_disaster(&world, 1, &mut Rolls::new(&rolls)).expect("a disaster");
+        let UprisingEvent::Disaster {
+            destroyed,
+            lost_products,
+            ..
+        } = &event
+        else {
+            panic!("{event:?}");
+        };
+        assert!(destroyed.is_empty());
+        assert_eq!(lost_products, &[ids[0]]);
+        assert!(crate::products::destroy(&mut world, &mut manufacturing, ids[0]));
+        apply_uprising_event(&mut world, &event);
+        assert_eq!(world.systems[system].production_facilities, vec![mine]);
+        assert_eq!(world.products.all().len(), 1);
     }
 
     #[test]

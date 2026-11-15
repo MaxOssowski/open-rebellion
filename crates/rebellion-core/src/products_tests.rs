@@ -392,16 +392,80 @@ fn a_moving_fleet_carries_its_unfinished_ships() {
 }
 
 #[test]
-fn a_facility_order_makes_no_product() {
-    // port: facilities keep their queue-built pages (unfinished-facility.md).
+fn a_facility_order_places_an_unfinished_facility_in_its_system() {
+    // A facility ordered from a construction yard is an object from the
+    // start, standing on its destination's facility page, not completed
+    // (unfinished-facility.md; A0 pending-facility/11).
     let mut s = setup();
     let build = crate::manufacturing::FacilityBuild {
         class: DatId::new(0x2c00_0001),
         is_alliance: false,
     };
     s.order(BuildableKind::ProductionFacility(build), 1);
-    assert!(s.world.products.all().is_empty());
     assert!(s.world.fleets.is_empty());
+    let held: Vec<&Product> = s.world.products.in_system(s.yard).collect();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].kind, BuildableKind::ProductionFacility(build));
+    assert!(is_facility(held[0].kind));
+    assert!(!is_facility(BuildableKind::Fighter(s.tie)));
+}
+
+#[test]
+fn a_facility_finished_away_from_its_yard_still_travels_as_a_delivery() {
+    // port: its trip stays a delivery, which the facility pages and the
+    // slot count read.
+    let mut s = setup();
+    let build = crate::manufacturing::FacilityBuild {
+        class: DatId::new(0x2c00_0001),
+        is_alliance: false,
+    };
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::ProductionFacility(build), 5).delivered_to(s.there),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let departure = Departure {
+        origin: s.yard,
+        destination: s.there,
+        tick: 1,
+        kind: BuildableKind::ProductionFacility(build),
+        name: None,
+    };
+    let settled = settle(&mut s.world, Vec::new(), vec![departure.clone()]);
+    assert_eq!(settled.departures, vec![departure]);
+    assert!(settled.trips.is_empty());
+    assert!(s.world.products.all().is_empty());
+}
+
+#[test]
+fn a_destroyed_unfinished_facility_leaves_its_queue() {
+    // FUN_00511930 destroys a facility of the system in mode 3, an
+    // unfinished one too; its manager loses the unit.
+    let mut s = setup();
+    let build = |raw| {
+        BuildableKind::ProductionFacility(crate::manufacturing::FacilityBuild {
+            class: DatId::new(raw),
+            is_alliance: false,
+        })
+    };
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(build(0x2c00_0001), 5));
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(build(0x2d00_0002), 5));
+    reconcile(&mut s.world, &s.manufacturing);
+    let ids: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    assert!(destroy(&mut s.world, &mut s.manufacturing, ids[1]));
+    let queue = s
+        .manufacturing
+        .queue(s.yard, ProductionArea::ConstructionYard)
+        .unwrap();
+    assert_eq!(queue.len(), 1);
+    assert_eq!(queue.items()[0].kind, build(0x2c00_0001));
+    let before = s.world.products.clone();
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.products, before);
+    assert_eq!(s.world.products.all().len(), 1);
+    assert!(!destroy(&mut s.world, &mut s.manufacturing, ids[1]));
 }
 
 #[test]

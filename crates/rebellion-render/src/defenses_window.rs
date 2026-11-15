@@ -2982,7 +2982,7 @@ mod tests {
     fn the_empires_unfinished_unit_takes_its_sides_mark() {
         // FUN_0042c3b0: 0x2d34 (11572) when +0x24's side bits are not 1.
         use rebellion_core::manufacturing::{FacilityBuild, QueueItem};
-        let (world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
         let mut manufacturing = ManufacturingState::default();
         manufacturing.enqueue(
             system,
@@ -2994,6 +2994,7 @@ mod tests {
                 5,
             ),
         );
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
         let deliveries = DeliveryState::default();
         let production = DefensesProduction {
             manufacturing: &manufacturing,

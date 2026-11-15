@@ -696,6 +696,15 @@ pub fn run_simulation_tick(
         &uprising_rolls,
     );
     integrator.apply_uprising_events(world, &uprising_events);
+    // The disaster's unfinished facilities leave their queues
+    // (FUN_00511930 walks mode 3; rebellion_core::products::destroy).
+    for event in &uprising_events {
+        if let rebellion_core::uprising::UprisingEvent::Disaster { lost_products, .. } = event {
+            for &id in lost_products {
+                rebellion_core::products::destroy(world, &mut states.manufacturing, id);
+            }
+        }
+    }
 
     // ── 9b. Informants: each held system's timer 0x38e ──────────────────
     let informant_rolls = take_rolls(rebellion_core::informant::InformantSystem::roll_budget(

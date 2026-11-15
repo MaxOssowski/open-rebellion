@@ -3460,6 +3460,7 @@ mod tests {
                 total_energy: 2,
                 raw_materials: 1,
                 destroyed: vec![],
+                lost_products: Vec::new(),
             }],
         );
         assert_eq!(world.systems[system].total_energy, 2);

@@ -4420,6 +4420,15 @@ async fn main() {
                 &tick_events,
                 &uprising_rolls,
             );
+            // The disaster's unfinished facilities leave their queues
+            // (FUN_00511930 walks mode 3; rebellion_core::products::destroy).
+            for event in &uprising_events {
+                if let rebellion_core::uprising::UprisingEvent::Disaster { lost_products, .. } = event {
+                    for &id in lost_products {
+                        rebellion_core::products::destroy(&mut world, &mut mfg_state, id);
+                    }
+                }
+            }
             // ── Injury recovery: each healing character's timer 0x388 ───────
             for heal in &rebellion_core::healing::HealingSystem::advance(
                 &mut healing_state,
@@ -18876,6 +18885,7 @@ mod a0_message_text_tests {
                 total_energy: 0,
                 raw_materials: 0,
                 destroyed: Vec::new(),
+                lost_products: Vec::new(),
             }),
             MessageRail::Resource
         );

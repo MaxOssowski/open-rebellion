@@ -137,12 +137,17 @@ impl Products {
 /// Whether `kind` is a unit this module keeps as a product.
 #[must_use]
 pub const fn is_tracked(kind: BuildableKind) -> bool {
+    // A facility too: it stands in its destination's facility list from
+    // the order on, not yet completed (`unfinished-facility.md`).
     matches!(
         kind,
         BuildableKind::CapitalShip(_)
             | BuildableKind::Fighter(_)
             | BuildableKind::Troop(_)
             | BuildableKind::SpecialForce(_)
+            | BuildableKind::DefenseFacility(_)
+            | BuildableKind::ManufacturingFacility(_)
+            | BuildableKind::ProductionFacility(_)
     )
 }
 
@@ -470,7 +475,9 @@ pub fn settle(
             let product = world.products.get(id).cloned();
             if let Some(product) = product {
                 if let Some(at) = container_system(world, product.container) {
-                    if at != yard {
+                    // port: a facility's trip stays a delivery, which
+                    // its pages and the slot count read.
+                    if at != yard && !is_facility(kind) {
                         let days = crate::delivery::transit_days(world, kind, yard, at);
                         world.products.trips.push((id, tick + u64::from(days)));
                         out.trips.push(Departure {
@@ -666,6 +673,61 @@ pub fn move_asks(world: &GameWorld, products: &[u64]) -> bool {
     })
 }
 
+/// Whether `kind` is a facility (families `0x20..0x2f`).
+#[must_use]
+pub const fn is_facility(kind: BuildableKind) -> bool {
+    matches!(
+        kind,
+        BuildableKind::DefenseFacility(_)
+            | BuildableKind::ManufacturingFacility(_)
+            | BuildableKind::ProductionFacility(_)
+    )
+}
+
+/// The queued unit product `id` stands for: its yard, area and index.
+fn queue_index(
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    id: u64,
+) -> Option<(SystemKey, ProductionArea, usize)> {
+    if world.products.arrival(id).is_some() {
+        return None;
+    }
+    let product = world.products.get(id)?;
+    let area = ProductionArea::of(product.kind);
+    // Its place among the queue's units this module keeps.
+    let ordinal = world
+        .products
+        .items
+        .iter()
+        .filter(|p| p.yard == product.yard && ProductionArea::of(p.kind) == area)
+        .filter(|p| world.products.arrival(p.id).is_none())
+        .position(|p| p.id == id)?;
+    let index = manufacturing.queue(product.yard, area).and_then(|queue| {
+        queue
+            .items()
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| is_tracked(item.kind))
+            .nth(ordinal)
+            .map(|(index, _)| index)
+    })?;
+    Some((product.yard, area, index))
+}
+
+/// An unfinished unit destroyed where it stands (the disaster
+/// `FUN_00511930` walks a system's facilities in mode 3, unfinished ones
+/// too): it leaves its manager's queue and the world.
+pub fn destroy(world: &mut GameWorld, manufacturing: &mut ManufacturingState, id: u64) -> bool {
+    let Some((yard, area, index)) = queue_index(world, manufacturing, id) else {
+        return false;
+    };
+    if manufacturing.queue_mut(yard, area).cancel(index).is_none() {
+        return false;
+    }
+    remove(world, id).is_some()
+}
+
 /// Rename (`0x203`, `FUN_00429350`) an unfinished unit: its name
 /// (`+0x34`) changes, and with it its queued unit's, which names the
 /// finished object (A0 2026-11-15 "u-2": the unfinished Carrack's Rename
@@ -676,37 +738,11 @@ pub fn rename(
     id: u64,
     name: String,
 ) -> bool {
-    if world.products.arrival(id).is_some() {
-        return false;
-    }
-    let Some(product) = world.products.get(id).cloned() else {
-        return false;
-    };
-    let area = ProductionArea::of(product.kind);
-    // Its place among the queue's units this module keeps.
-    let Some(ordinal) = world
-        .products
-        .items
-        .iter()
-        .filter(|p| p.yard == product.yard && ProductionArea::of(p.kind) == area)
-        .filter(|p| world.products.arrival(p.id).is_none())
-        .position(|p| p.id == id)
-    else {
-        return false;
-    };
-    let Some(index) = manufacturing.queue(product.yard, area).and_then(|queue| {
-        queue
-            .items()
-            .iter()
-            .enumerate()
-            .filter(|(_, item)| is_tracked(item.kind))
-            .nth(ordinal)
-            .map(|(index, _)| index)
-    }) else {
+    let Some((yard, area, index)) = queue_index(world, manufacturing, id) else {
         return false;
     };
     if !manufacturing
-        .queue_mut(product.yard, area)
+        .queue_mut(yard, area)
         .rename(index, name.clone())
     {
         return false;
