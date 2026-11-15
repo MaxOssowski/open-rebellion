@@ -656,7 +656,9 @@ async function inspect(server, source, faction, scenario, executable) {
       rescueA0.leia_kind_icon = leia(icon.x, icon.y, icon.x + 130, icon.y + 64);
       rescueA0.leia_buttons = leia(30, 320, 230, 352);
       // Open (not asserted): A0 shows three black pixels at the portrait's
-      // top-left corner (57..58, 212..213) where the port keys the bitmap.
+      // top-left corner (57..58, 212..213) where the port's key (the
+      // bitmap's first pixel) makes them transparent; FUN_0042c3b0's key
+      // for a portrait is untraced.
       rescueA0.leia_portrait = leia(60, 214, 216, 290);
       rescueA0.leia_target_frame = leia(28, 192, 60, 300);
       const flowOpen = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
@@ -669,11 +671,13 @@ async function inspect(server, source, faction, scenario, executable) {
       const listed = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
       fs.writeFileSync(path.join(directory, "rescue-kind-list.png"), PNG.sync.write(listed));
       const list = regionOf(listed, a0("rescue-kinds-list-one-item-d763-OBJ-11-C013.png"));
-      // The item's icon left of the bar. Open (not asserted): the list's
-      // right column x 234 and bottom row y 291 are black in the port, the
-      // dialog's ground in A0, and the one-item thumb ends 4 pixels short of
-      // A0's.
+      // The item's icon left of the bar, the frame and the dialog's ground
+      // at x 234 and y 291 outside it. Open (not asserted): the one-item
+      // thumb ends 5 pixels short of A0's (FUN_00609ae0's 5-pixel margin
+      // for content that fills the list; the drop-down's own range is
+      // untraced).
       rescueA0.list_icon = list(35, 203, 218, 291);
+      rescueA0.list_edge = list(233, 175, 236, 289) + list(120, 289, 218, 292);
       rescueA0.list_bar = list(218, 175, 236, 292);
       // Choosing the row closes the list (rescue-chosen-list-closed-d763).
       await press(135, 250);
@@ -708,7 +712,7 @@ async function inspect(server, source, faction, scenario, executable) {
       // page's headers, Han's mini and buttons every pixel A0's; the names
       // (the accepted text deviation) and A0's pointer are left out.
       assert.deepEqual(
-        [rescueA0.leia_kind_icon, rescueA0.leia_buttons, rescueA0.leia_portrait, rescueA0.list_icon,
+        [rescueA0.leia_kind_icon, rescueA0.leia_buttons, rescueA0.leia_portrait, rescueA0.list_icon + rescueA0.list_edge,
           rescueA0.closed_kind_icon, rescueA0.agents_headers, rescueA0.agents_portrait,
           rescueA0.agents_buttons],
         [0, 0, 0, 0, 0, 0, 0, 0], JSON.stringify(rescueA0));

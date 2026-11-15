@@ -103,6 +103,7 @@ const CLASS_LIST: crate::selection_list::DropDown = crate::selection_list::DropD
     width: 195.0,
     item_height: 70.0,
     visible: 2,
+    black_edge: true,
 };
 /// The shown class's name in the list: the item's `+0x60`
 /// (`FUN_00437880`), gray (A0 manufacturing/24).

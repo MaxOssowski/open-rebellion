@@ -997,6 +997,7 @@ pub fn draw_mission_dialog(
                     width: w,
                     item_height: h,
                     visible: 1,
+                    black_edge: false,
                 };
                 let kinds = dialog.kinds.clone();
                 let (shown, faction) = (dialog.kind, dialog.faction);
@@ -1957,6 +1958,51 @@ mod tests {
         let centre = (espionage.1 + espionage.2) / 2.0;
         assert!((centre - (origin.x + 37.0 + 100.0)).abs() < 8.0, "{espionage:?}");
         assert!(!lines.iter().any(|row| row.3.contains("Recruitment")), "{lines:?}");
+    }
+
+    #[test]
+    fn the_kind_list_paints_no_black_right_of_its_frame() {
+        // A0 kinds/31-needa-00 and 2026-11-15-partial-cells/rescue-kinds-
+        // list-one-item-d763 (sha256 df49db0d184e): the white frame's right
+        // column is x 233 and its bottom row y 290; the column at x 234
+        // keeps the dialog's ground, the row at y 291 is black. (Build
+        // Selection's list keeps a black column right of its frame, A0
+        // build-selection4/08.)
+        let (world, _, mut state) = dialog_in_world(1);
+        click(&world, &mut state, (133.0, 183.0));
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut output = None;
+        for _ in 0..2 {
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            }));
+        }
+        let origin = dialog_rect(layout).min;
+        let fills: Vec<egui::Rect> = output
+            .unwrap()
+            .shapes
+            .into_iter()
+            .filter_map(|clipped| match clipped.shape {
+                egui::Shape::Rect(rect)
+                    if rect.fill.a() > 0
+                        && [rect.fill.r(), rect.fill.g(), rect.fill.b()] == [0, 0, 0]
+                        && rect.rect.min.y >= origin.y + 170.0 =>
+                {
+                    Some(rect.rect.translate(-origin.to_vec2()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            fills,
+            [egui::Rect::from_min_size(
+                egui::pos2(35.0, 175.0),
+                egui::vec2(199.0, 117.0)
+            )]
+        );
     }
 
     #[test]

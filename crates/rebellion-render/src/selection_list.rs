@@ -31,6 +31,12 @@ pub(crate) struct DropDown {
     pub width: f32,
     pub item_height: f32,
     pub visible: usize,
+    /// Whether the black fill also covers the column right of the white
+    /// frame: Build Selection's list does (A0 build-selection4/08), Create
+    /// Mission's kind list does not (A0 kinds/31-needa-00, 2026-11-15-
+    /// partial-cells/rescue-kinds-list-one-item-d763: the dialog's ground
+    /// at x 234, while the row under the frame, y 291, is black in both).
+    pub black_edge: bool,
 }
 
 impl DropDown {
@@ -93,7 +99,12 @@ pub(crate) fn draw(
     let popup = at(drop.x, drop.top, drop.width, height);
     let list = drop.list();
     let list_rect = at(list.0, list.1, list.2, list.3);
-    painter.rect_filled(popup, 0.0, egui::Color32::BLACK);
+    let edge = if drop.black_edge { 0.0 } else { 1.0 };
+    painter.rect_filled(
+        at(drop.x, drop.top, drop.width - edge, height),
+        0.0,
+        egui::Color32::BLACK,
+    );
     let inside =
         painter.with_clip_rect(painter.clip_rect().intersect(at(drop.x, drop.top, drop.width - 1.0, height - 1.0)));
     let mut ty = 0.0;
