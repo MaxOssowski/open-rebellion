@@ -51,6 +51,16 @@ const FLEET_WINDOW_EMPTY = 84;
 const FLEET_WINDOW_YAVIN = 85;
 const FLEET_WINDOW_DESTINATION = 86;
 const FLEET_WINDOW_BLOCKADE = 87;
+// Scenario::UnfinishedShipMini (127) and UnfinishedShipEnroute (128).
+const UNFINISHED_SHIP_MINI = 128;
+const UNFINISHED_SHIP_ENROUTE = 129;
+// Scenario::FleetLoadUnfinished (129).
+const FLEET_LOAD_UNFINISHED = 130;
+// `--a0-products=DIR` (.artifacts/a0-vm/2026-11-15-partial-cells): A0's
+// run "m-" (unfinished products, Empire).
+const a0ProductsDir = process.argv.find((arg) => arg.startsWith("--a0-products="))?.slice(15)
+  ?? [path.join(root, ".artifacts/a0-vm/2026-11-15-partial-cells")]
+    .find((dir) => fs.existsSync(path.join(dir, "m-1-fleet4-window-left-list-not-expanded-carrack-3-right-d31.png")));
 const A0_BLOCKADE_CEILINGS = { ships: 1950, fighters: 950, troops: 2350, personnel: 850 };
 const A0_DESTINATION_CEILINGS = { ships: 2150, fighters: 1150, troops: 2550, personnel: 1050 };
 const A0_CONFIRM_DIALOG_CEILING = 1700;
@@ -614,6 +624,22 @@ async function compareTabsWithA0(page, directory, name, a0File, ceilings, origin
   return checks;
 }
 
+// The Fleet window at `origin`, settled, against A0's capture `file`
+// (its sha256 starting `hash`): the window box `[x0, y0, x1, y1]`
+// (inclusive) must not differ.
+async function unfinishedMiniCase(page, directory, label, file, hash, origin, [x0, y0, x1, y1]) {
+  await stableWindow(page, origin, directory, label);
+  const port = await screen(page, directory, `${label}-port`);
+  const a0Path = a0ProductsDir && path.join(a0ProductsDir, file);
+  if (!a0Path || !fs.existsSync(a0Path)) return { a0: null };
+  const bytes = fs.readFileSync(a0Path);
+  assert.ok(sha256(bytes).startsWith(hash), `${file} is not A0's capture ${hash}`);
+  const mini = differing(port, PNG.sync.read(bytes),
+    [origin.x + x0, origin.y + y0, origin.x + x1, origin.y + y1]);
+  assert.equal(mini.differing, 0, `${label}: the mini differs from A0 ${JSON.stringify(mini)}`);
+  return { a0: file, mini };
+}
+
 // A blockaded system in its sector window (CMD-03 "blockaded"). A0
 // fleet4/bortras-blockade-ships (day 120, blockaded) against
 // 2026-10-28-nav/sector-b (day 103, not yet): at Bortras only Fleet 8's
@@ -988,6 +1014,31 @@ const cases = [
       const troops = await openTroopsTab(page, loaded);
       assert.deepEqual(troops.counts, [1, setup.capacity]);
       await shot(page, directory, "drag-loaded");
+      return { opened, loaded, troops };
+    },
+  },
+  {
+    name: "drag-load-unfinished",
+    code: FLEET_LOAD_UNFINISHED,
+    // A0 2026-11-15 "m-5" (Talus, day 62..64): the unfinished regiment's
+    // row dragged out of the Defenses window and released on Fleet 3 in
+    // the Fleet window leaves the planet; the fleet's regiments tab lists
+    // it (FUN_00504c40 walks mode 3). The living regiment stays put.
+    async run(page, faction, setup, directory) {
+      assert.ok(setup.pending_item, "the Defenses window lists the unfinished regiment second");
+      const opened = await openFleetWindow(page, setup);
+      assert.equal(opened.products_on_planet, 1);
+      assert.equal(opened.products_aboard, 0);
+      await selectFleet(page, opened);
+      await dragItem(page, point(setup.pending_item), point(opened.fleet_entry));
+      const loaded = await until(page, "the unfinished regiment boards the fleet",
+        (o) => o.products_aboard === 1 && o.products_on_planet === 0);
+      assert.equal(loaded.aboard, false, "the living regiment stays on the planet");
+      assert.equal(loaded.troop_system_dat_id, setup.primary_dat_id);
+      assert.equal(loaded.confirmation_open, false);
+      assert.equal(loaded.enabled[2], true, "the Troops tab lights with the unfinished regiment aboard");
+      const troops = await openTroopsTab(page, loaded);
+      await shot(page, directory, "drag-loaded-unfinished");
       return { opened, loaded, troops };
     },
   },
@@ -2864,6 +2915,33 @@ const cases = [
     run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-selonia",
       a0Fleet2Dir && ((tab) => path.join(a0Fleet2Dir, `selonia-fleet4-${tab}.png`)),
       { ships: 2100, fighters: 1900, troops: 1550, personnel: 1450 }),
+  },
+  {
+    name: "a0-unfinished-mini",
+    code: UNFINISHED_SHIP_MINI,
+    factions: ["empire"],
+    standalone: true,
+    // A0 run "m-" day 31 (sha256 d59ff334, zoom 0cfff471): Corfai's Fleet
+    // window at (174, 91), the spare holding only the unfinished Carrack
+    // Light Cruiser; its mini over the Empire's grid (FUN_0042c3b0 bit 2
+    // clear) must match A0 pixel for pixel. The label below (the ship's
+    // number and Liberation's glyphs) is left out.
+    run: (page, faction, setup, directory) => unfinishedMiniCase(page, directory, "a0-unfinished-mini",
+      "m-1-fleet4-window-left-list-not-expanded-carrack-3-right-d31.png", "d59ff334",
+      { x: 174, y: 91 }, [126, 126, 194, 160]),
+  },
+  {
+    name: "a0-unfinished-enroute",
+    code: UNFINISHED_SHIP_ENROUTE,
+    factions: ["empire"],
+    standalone: true,
+    // A0 run "m-" day 115 (sha256 0d4174bd): the Carrack finished at
+    // Corfai while in Talus's Fleet 3, on its trip there (FUN_0052bee0):
+    // the third row's mini with the en route glow and no grid, at (180,
+    // 91), must match A0 pixel for pixel.
+    run: (page, faction, setup, directory) => unfinishedMiniCase(page, directory, "a0-unfinished-enroute",
+      "m-4-carrack-completed-in-fleet3-at-talus-grid-gone-d115.png", "0d4174bd",
+      { x: 180, y: 91 }, [126, 226, 194, 262]),
   },
   {
     name: "a0-empty",

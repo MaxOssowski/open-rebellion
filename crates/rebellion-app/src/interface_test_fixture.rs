@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 127;
+const SCENARIO_COUNT: u8 = 130;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -494,6 +494,18 @@ pub enum Scenario {
     /// Unknown" (d91 1b8818d8). The live objects are out of the player's
     /// sight.
     PersonnelCopied = 126,
+    /// A0 2026-11-15 "m-1" (d31, sha256 d59ff334): the Empire's Fleet
+    /// window over Corfai, the yard's spare holding only the unfinished
+    /// Carrack Light Cruiser, its mini over the side's grid.
+    UnfinishedShipMini = 127,
+    /// A0 2026-11-15 "m-4" (d115, sha256 0d4174bd): the Carrack finished
+    /// at Corfai while it stood in Talus's Fleet 3, on its trip there: the
+    /// en route mark, no grid.
+    UnfinishedShipEnroute = 128,
+    /// As `FleetLoad`, with a regiment of the regiment's class also
+    /// ordered at the primary system: it waits unfinished on the planet,
+    /// the Defenses window's second row (A0 2026-11-15 "m-5").
+    FleetLoadUnfinished = 129,
 }
 
 impl Scenario {
@@ -626,6 +638,9 @@ impl Scenario {
             124 => Self::QuadrantsStaleSeeEverything,
             125 => Self::EnemyRegimentAtRest,
             126 => Self::PersonnelCopied,
+            127 => Self::UnfinishedShipMini,
+            128 => Self::UnfinishedShipEnroute,
+            129 => Self::FleetLoadUnfinished,
             _ => return None,
         })
     }
@@ -655,6 +670,7 @@ impl Scenario {
                 | Self::ProductionDestination
                 | Self::FleetArrivals
                 | Self::FleetJoinEnroute
+                | Self::FleetLoadUnfinished
         )
     }
 
@@ -1270,6 +1286,19 @@ pub fn apply(
                 send_member_aboard(request, world, missions, fleet);
             }
         }
+        if request.scenario == Scenario::FleetLoadUnfinished {
+            if let Some(regiment) = loading_regiment(world, primary) {
+                let class = world.troops[regiment].class_dat_id;
+                manufacturing.enqueue(
+                    primary,
+                    rebellion_core::manufacturing::QueueItem::new(
+                        rebellion_core::manufacturing::BuildableKind::Troop(class),
+                        12,
+                    ),
+                );
+                rebellion_core::products::reconcile(world, manufacturing);
+            }
+        }
     }
     if request.scenario == Scenario::FleetWindowA0 {
         place_kimanan(request, world, cockpit, movement, troop_transport, fleets);
@@ -1344,6 +1373,19 @@ pub fn apply(
     if request.scenario == Scenario::FleetWindowDestination {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
         send_to_qat(request, world, cockpit, movement, fleets);
+    }
+    if matches!(
+        request.scenario,
+        Scenario::UnfinishedShipMini | Scenario::UnfinishedShipEnroute
+    ) {
+        place_unfinished_ship(
+            request,
+            world,
+            manufacturing,
+            cockpit,
+            fleets,
+            request.scenario == Scenario::UnfinishedShipEnroute,
+        );
     }
     if request.scenario == Scenario::FleetWindowEmpty {
         if let Some(umgul) = clear_for_a0(world, "Umgul") {
@@ -2969,6 +3011,93 @@ fn clear_for_a0(world: &mut GameWorld, name: &str) -> Option<SystemKey> {
     value.ground_units.clear();
     value.special_forces.clear();
     Some(here)
+}
+
+/// The `UnfinishedShipMini` and `UnfinishedShipEnroute` scenarios: A0
+/// 2026-11-15 run "m-" (Empire, Small galaxy). A Carrack Light Cruiser is
+/// ordered at Corfai, so it waits unfinished in the yard's spare
+/// (`rebellion_core::products`), and the Fleet window opens over Corfai
+/// where A0's lay (174, 91). With `enroute`, the Carrack is moved into a
+/// fleet of two Imperial ships at Talus and finishes at Corfai: it stays
+/// there on its trip (`FUN_0052bee0`), and the window opens over Talus at
+/// (180, 91).
+fn place_unfinished_ship(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    manufacturing: &mut ManufacturingState,
+    cockpit: &CockpitState,
+    fleets: &mut FleetWindowState,
+    enroute: bool,
+) {
+    use rebellion_core::manufacturing::{BuildableKind, QueueItem};
+    let Some(corfai) = clear_for_a0(world, "Corfai") else {
+        return;
+    };
+    world.systems[corfai].control = ControlKind::Controlled(Faction::Empire);
+    let class = |world: &GameWorld, name: &str| {
+        world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, value)| !value.is_alliance && value.name == name)
+            .map(|(key, _)| key)
+    };
+    let Some(carrack) = class(world, "Carrack Light Cruiser") else {
+        return;
+    };
+    manufacturing.enqueue(
+        corfai,
+        QueueItem::new(BuildableKind::CapitalShip(carrack), 104).ordered(world),
+    );
+    rebellion_core::products::reconcile(world, manufacturing);
+    rebellion_core::products::number_new_spares(world);
+    let layout = cockpit.layout_for(640.0, 480.0);
+    let Some(product) = world.products.all().first().cloned() else {
+        return;
+    };
+    if !enroute {
+        let rebellion_core::products::Container::Fleet(spare) = product.container else {
+            return;
+        };
+        fleets.open(world, corfai, (174, 91), request.faction, layout);
+        fleets.select(corfai, FleetWindowEntry::Fleet(spare));
+        return;
+    }
+    let Some(talus) = clear_for_a0(world, "Talus") else {
+        return;
+    };
+    world.systems[talus].control = ControlKind::Controlled(Faction::Empire);
+    let ships: Vec<ShipInstance> = ["Imperial Dreadnaught", "Galleon"]
+        .iter()
+        .filter_map(|name| class(world, name))
+        .map(|key| ShipInstance::new(key, world.capital_ship_classes[key].hull.cast_signed(), false))
+        .collect();
+    let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+        location: talus,
+        capital_ships: ships,
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.systems[talus].fleets.push(fleet);
+    rebellion_core::products::move_to_target(world, product.id, talus, Some(fleet), 0);
+    // The order's last point at Corfai: finished away from its container.
+    *manufacturing = ManufacturingState::new();
+    rebellion_core::products::settle(
+        world,
+        vec![rebellion_core::manufacturing::CompletionEvent {
+            system: corfai,
+            // Far ahead, so the trip outlasts the gate whatever the clock.
+            tick: 100_000,
+            kind: BuildableKind::CapitalShip(carrack),
+            name: product.name.clone(),
+            fleet: None,
+        }],
+        Vec::new(),
+    );
+    fleets.open(world, talus, (180, 91), request.faction, layout);
+    fleets.select(talus, FleetWindowEntry::Fleet(fleet));
 }
 
 /// The `FleetWindowSelonia` scenario: A0's Fleets 1 and 4 at Selonia, and
@@ -7583,6 +7712,9 @@ struct FixtureFleetLoadSetup {
     /// The first cell on the Defenses window's page: the regiment, or in
     /// the squadron variant the first squadron.
     troop_item: Option<(f32, f32)>,
+    /// The page's second cell: the unfinished regiment in the
+    /// `FleetLoadUnfinished` variant.
+    pending_item: Option<(f32, f32)>,
     /// The Defenses window's centre: a move released anywhere on it targets
     /// its system (`+0x70`, `FUN_004aa470`).
     defenses_window: (f32, f32),
@@ -7620,6 +7752,9 @@ fn fleet_load_setup(
             .map(screen_center),
         troop_item: defenses
             .cell_screen_rect(layout, primary, 0)
+            .map(screen_center),
+        pending_item: defenses
+            .cell_screen_rect(layout, primary, 1)
             .map(screen_center),
         defenses_window: screen_center(defenses.screen_rect(layout, subject)?),
         primary_planet: screen_center(sectors.planet_screen_rect(world, layout, primary)?),
@@ -7689,6 +7824,10 @@ struct FleetLoadObservation {
     first_item: Option<(f32, f32)>,
     aboard: bool,
     cargo: usize,
+    /// Unfinished units (`rebellion_core::products`) aboard the fleet and
+    /// on the primary planet.
+    products_aboard: usize,
+    products_on_planet: usize,
     troop_system_dat_id: Option<u32>,
     /// The system the fleet stands at.
     fleet_system_dat_id: Option<u32>,
@@ -7913,6 +8052,8 @@ fn fleet_load_observation(
             .map(screen_center),
         aboard: transport.cargo(fleet).contains(&regiment),
         cargo: transport.carried_count(fleet),
+        products_aboard: world.products.in_fleet(fleet).count(),
+        products_on_planet: world.products.in_system(primary).count(),
         troop_system_dat_id: regiment_system(world, regiment)
             .and_then(|system| world.systems.get(system))
             .map(|system| system.dat_id.raw()),
@@ -10619,6 +10760,56 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_unfinished_ship_scenarios_open_its_fleet_unfinished_then_on_its_trip() {
+        // A0 2026-11-15 "m-1" and "m-4" (the scenarios' docs).
+        let setup = |world: &mut GameWorld| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (corfai, talus, other) = (keys.next().unwrap(), keys.next().unwrap(), keys.next().unwrap());
+            world.systems[corfai].name = "Corfai".into();
+            world.systems[talus].name = "Talus".into();
+            world.systems[talus].sector = world.systems[corfai].sector;
+            world.systems[other].sector = world.systems[corfai].sector;
+            for (index, name) in ["Carrack Light Cruiser", "Imperial Dreadnaught", "Galleon"].iter().enumerate() {
+                world.capital_ship_classes.insert(rebellion_core::world::CapitalShipClass {
+                    dat_id: rebellion_core::ids::DatId::new(0x1400_0100 + index as u32),
+                    name: (*name).into(),
+                    is_alliance: false,
+                    hull: 100,
+                    ..Default::default()
+                });
+            }
+        };
+        let request = request(Scenario::UnfinishedShipMini, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, setup);
+        let world = &applied.world;
+        let corfai = world.systems.keys().next().unwrap();
+        let product = &world.products.all()[0];
+        let rebellion_core::products::Container::Fleet(spare) = product.container else {
+            panic!("the Carrack waits in a fleet");
+        };
+        assert_eq!(world.fleets[spare].location, corfai);
+        assert!(world.products.arrival(product.id).is_none());
+        assert!(applied.fleets.is_open(corfai));
+        assert_eq!(
+            applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), corfai).map(|rect| rect.min),
+            Some(egui_macroquad::egui::pos2(174.0, 91.0))
+        );
+
+        let request = super::tests::request(Scenario::UnfinishedShipEnroute, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, setup);
+        let world = &applied.world;
+        let talus = world.systems.keys().nth(1).unwrap();
+        let product = &world.products.all()[0];
+        let rebellion_core::products::Container::Fleet(fleet) = product.container else {
+            panic!("the Carrack stands in a fleet");
+        };
+        assert_eq!(world.fleets[fleet].location, talus);
+        assert_eq!(world.fleets[fleet].capital_ships.len(), 2);
+        assert!(world.products.arrival(product.id).is_some());
+        assert!(applied.fleets.is_open(talus));
+    }
+
     // The primary's room in the two refusing Build Selection scenarios
     // (FUN_005385f0 -> FUN_00551a20 -> FUN_00507750): over maintenance it
     // keeps a free energy slot and raw deposit, so a mine and a refinery,
@@ -11801,6 +11992,33 @@ mod tests {
                 setup.fighter_room,
                 rebellion_core::squadrons::fleet_room(world, fleet)
             );
+        }
+    }
+
+    // A0 2026-11-15 "m-5": the regiment ordered at Talus waited on the
+    // planet, beside the living one, before its drop onto Fleet 3.
+    #[test]
+    fn the_unfinished_load_scenario_orders_a_regiment_that_waits_on_the_planet() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::FleetLoadUnfinished, faction);
+            let applied = apply_to_loading_world(request);
+            let world = &applied.world;
+            let here = world.systems.keys().next().unwrap();
+            let fleet = world.fleets.keys().next().unwrap();
+            let regiment = loading_regiment(world, here).unwrap();
+            let products: Vec<_> = world.products.in_system(here).collect();
+            assert_eq!(products.len(), 1, "{faction:?}");
+            assert_eq!(
+                products[0].kind,
+                rebellion_core::manufacturing::BuildableKind::Troop(world.troops[regiment].class_dat_id)
+            );
+            assert_eq!(world.products.in_fleet(fleet).count(), 0);
+            let layout = CockpitState::new(faction).layout_for(640.0, 480.0);
+            let setup =
+                fleet_load_setup(request, world, &applied.sectors, &applied.defenses).unwrap();
+            assert!(applied
+                .defenses
+                .contains_screen_point(layout, setup.pending_item.unwrap()));
         }
     }
 
@@ -13988,6 +14206,7 @@ mod tests {
                 Scenario::QuadrantsStale,
                 Scenario::QuadrantsStaleSeeEverything,
                 Scenario::EnemyRegimentAtRest,
+                Scenario::FleetLoadUnfinished,
             ]
         );
     }
