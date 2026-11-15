@@ -1984,6 +1984,24 @@ async fn main() {
                 msg_log.push(message);
             }
         }
+        // Facility Lost (event 0x303, FUN_00497690), filed as a lost
+        // delivery is, and first, so it lists last on the Manufacturing rail.
+        if let Some((kind, system)) = interface_test_fixture::lost_facility(request, &world) {
+            if let Some((title, text)) = rebellion_render::story_messages::facility_lost_texts(
+                &world,
+                kind,
+                &world.systems[system].name,
+                &message_texts,
+            ) {
+                msg_log.push(filed(
+                    GameMessage::at_system(0, text, MessageCategory::Manufacturing, system)
+                        .with_title(title)
+                        .with_advisor_event(3),
+                    MessageRail::Manufacturing,
+                    Some(RailAudience::side(player_faction == MissionFaction::Alliance)),
+                ));
+            }
+        }
         // Filed first, so it lists last on the Manufacturing rail.
         if let Some((tech, level)) = interface_test_fixture::researched_class(request, &world) {
             if let Some(message) = research_complete_message(&world, true, tech, level, 0, &message_texts) {

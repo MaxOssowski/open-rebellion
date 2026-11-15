@@ -171,37 +171,40 @@ async function run(browser, base, faction) {
     assert.equal(busy.length, 1, JSON.stringify(shown.rows));
     assert.equal(travelling.length, 1, JSON.stringify(shown.rows));
     assert.equal(commanding.length, 1, JSON.stringify(shown.rows));
-    // The Empire's fixture has only the three characters the states take.
-    if (faction.name === "alliance") assert.ok(available.length > 0, JSON.stringify(shown.rows));
+    assert.ok(available.length > 0, JSON.stringify(shown.rows));
+    // With no container FUN_00465bb0 keeps "Location Unknown" alone, past
+    // the state and command words (0x465cb5 -> 0x46606f).
+    assert.ok(!shown.rows.some((row) => /Location Unknown \(/.test(row)), JSON.stringify(shown.rows));
     // The traveller names its destination, not where it left from.
     assert.ok(!travelling[0].includes("Location Unknown"), travelling[0]);
     // A captive aboard names the ship it rides, numbered by its class, and
     // " ( Captured ) " (A0 personnel-captured/finder-day628: "Jan Dodonna -
     // Punisher ( Captured )"; fleet2/umgul-fleet1-ships: "Corellian
-    // Corvette 1"). The Empire's fixture has no fourth character.
+    // Corvette 1"). Both sides (OBJ-12-C009; the fixture recruits up to
+    // eight of the side's characters).
     const captured = shown.rows.filter((row) => / - .+ \( Captured \) $/.test(row));
-    if (faction.name === "alliance") {
-      assert.equal(captured.length, 1, JSON.stringify(shown.rows));
-      assert.match(captured[0], / - [A-Za-z][A-Za-z -]* \d+ \( Captured \) $/, captured[0]);
-      assert.ok(!/ - Fleet \d+ /.test(captured[0]), captured[0]);
-    }
+    assert.equal(captured.length, 1, JSON.stringify(shown.rows));
+    assert.match(captured[0], / - [A-Za-z][A-Za-z -]* \d+ \( Captured \) $/, captured[0]);
+    assert.ok(!/ - Fleet \d+ /.test(captured[0]), captured[0]);
     // An injured free character reads " ( Injured ) " (FUN_00465bb0,
     // 0x8747 on +0x94; A0 health-2026-11-09/07-personnel-finder-wedge-
-    // injured-day954: "Wedge Antilles - Averam ( Injured )"). The Empire's
-    // fixture has no fifth character.
+    // injured-day954: "Wedge Antilles - Averam ( Injured )").
     const injured = shown.rows.filter((row) => / - [^()]+ \( Injured \) $/.test(row));
-    if (faction.name === "alliance") assert.equal(injured.length, 1, JSON.stringify(shown.rows));
+    assert.equal(injured.length, 1, JSON.stringify(shown.rows));
     // A dead character reads "Name - Killed", with no place and no state
     // (FUN_00465bb0's destroyed branch, 0x8798; Steam guide guide-023:
-    // "Ackbar - Killed"; no A0 capture yet). The Empire's fixture has no
-    // sixth character.
+    // "Ackbar - Killed"; no A0 capture yet), OBJ-12-C010.
     const killed = shown.rows.filter((row) => / - Killed$/.test(row));
-    if (faction.name === "alliance") {
-      assert.equal(killed.length, 1, JSON.stringify(shown.rows));
-      assert.match(killed[0], /^[A-Za-z][A-Za-z' -]* - Killed$/, killed[0]);
-    } else {
-      assert.equal(killed.length, 0, JSON.stringify(shown.rows));
-    }
+    assert.equal(killed.length, 1, JSON.stringify(shown.rows));
+    assert.match(killed[0], /^[A-Za-z][A-Za-z' -]* - Killed$/, killed[0]);
+    // A retired character reads "Name - Retired" (destruction reason
+    // 0x14..0x16, 0x8799; FUN_00534c00), and one in an abode names the abode
+    // alone, with no state word (container family 0x98..0x9f), OBJ-03-C011.
+    const retired = shown.rows.filter((row) => / - Retired$/.test(row));
+    assert.equal(retired.length, 1, JSON.stringify(shown.rows));
+    assert.match(retired[0], /^[A-Za-z][A-Za-z' -]* - Retired$/, retired[0]);
+    const resting = shown.rows.filter((row) => shown.abodes.some((abode) => row.endsWith(` - ${abode}`)));
+    assert.equal(resting.length, 1, JSON.stringify([shown.rows, shown.abodes]));
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("characters");

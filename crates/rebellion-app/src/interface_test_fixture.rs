@@ -1441,13 +1441,65 @@ pub fn apply(
         }
     }
     if request.scenario == Scenario::PersonnelStates {
-        let own: Vec<_> = world
+        // The side's recruited characters first, then others it recruits
+        // here, up to eight: the Empire's galaxy starts with three.
+        let mut ranked: Vec<_> = world
             .characters
             .iter()
-            .filter(|(_, character)| character.is_alliance == player_is_alliance && character.recruited)
-            .map(|(key, _)| key)
-            .take(6)
+            .filter(|(_, character)| {
+                character.is_alliance == player_is_alliance && !character.is_killed
+            })
+            .map(|(key, character)| (!character.recruited, key))
             .collect();
+        ranked.sort();
+        let own: Vec<_> = ranked.into_iter().map(|(_, key)| key).take(8).collect();
+        // One recruited here and standing nowhere stands on a system of
+        // the side's, as a recruit does.
+        let home = world
+            .systems
+            .iter()
+            .find(|(_, value)| value.control.is_controlled_by(player_control))
+            .map_or(primary, |(key, _)| key);
+        for &key in &own {
+            let character = &mut world.characters[key];
+            character.recruited = true;
+            if character.current_system.is_none()
+                && character.current_fleet.is_none()
+                && character.current_abode.is_none()
+            {
+                character.current_system = Some(home);
+            }
+        }
+        // An eighth character, where the side has one, rests in an abode:
+        // its row names the abode alone, with no state word
+        // (FUN_00465bb0, container family 0x98..0x9f).
+        if let (Some(&resting), Some(abode)) = (own.get(7), world.abodes.keys().next()) {
+            let character = &mut world.characters[resting];
+            character.current_abode = Some(abode);
+            character.current_system = None;
+            character.current_fleet = None;
+            character.ship = None;
+            character.on_mission = false;
+            character.is_captive = false;
+            character.injury = 0;
+            character.command = rebellion_core::character_command::CommandKind::None;
+            for fleet in world.fleets.values_mut() {
+                fleet.characters.retain(|&key| key != resting);
+            }
+        }
+        // A seventh character, where the side has one, retired: its row
+        // reads "Name - Retired" (FUN_00465bb0, destruction reason
+        // 0x14..0x16, word 0x8799; FUN_00534c00).
+        if let Some(&retired) = own.get(6) {
+            let character = &mut world.characters[retired];
+            character.mark_killed();
+            character.is_retired = true;
+            character.current_abode = None;
+            character.ship = None;
+            for fleet in world.fleets.values_mut() {
+                fleet.characters.retain(|&key| key != retired);
+            }
+        }
         // A sixth character, where the side has one, is dead: its row reads
         // "Name - Killed" (FUN_00465bb0, destroyed bit +0x50 bit 3, word
         // 0x8798; Steam guide guide-023: "Ackbar - Killed"). It stands
@@ -3516,10 +3568,17 @@ pub fn emit_personnel_finder(
         /// Imperial).
         tab: &'static str,
         tabs: [(f32, f32); 2],
+        /// The galaxy's abode names, for a row that names one alone.
+        abodes: Vec<String>,
     }
     let bytes = serde_json::to_vec(&Report {
         status: "personnel-finder",
         rows,
+        abodes: world
+            .abodes
+            .values()
+            .map(|abode| abode.name.clone())
+            .collect(),
         tab: if alliance_tab { "alliance" } else { "imperial" },
         tabs: tabs.map(|point| (point.x, point.y)),
     })
@@ -6038,6 +6097,41 @@ pub fn researched_class(
     (rebellion_render::story_messages::research_complete_class(world, true, tech, level)
         == Some(nebulon.dat_id))
     .then_some((tech, level))
+}
+
+/// The event-message scenario's Facility Lost for each reader (event
+/// `0x303`, `FUN_00497690`, TEXTSTRA `0x70b0` / `0x70b1`, OBJ-09-C008): a
+/// Mine of the reader's side that could not be deployed to the side's
+/// first system, filed on the Manufacturing rail as the app files a lost
+/// delivery. No A0 capture.
+#[must_use]
+pub fn lost_facility(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<(
+    rebellion_core::manufacturing::BuildableKind,
+    rebellion_core::ids::SystemKey,
+)> {
+    if request.scenario != Scenario::EventMessages {
+        return None;
+    }
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let side = Faction::of_alliance(alliance);
+    let system = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.control.is_controlled_by(side))
+        .map(|(key, _)| key)?;
+    Some((
+        rebellion_core::manufacturing::BuildableKind::ProductionFacility(
+            rebellion_core::manufacturing::FacilityBuild {
+                // PRODFCSD 1, the Mine.
+                class: rebellion_core::ids::DatId::new(0x2c00_0001),
+                is_alliance: alliance,
+            },
+        ),
+        system,
+    ))
 }
 
 /// The event-message scenario's fleet arrival for the Alliance reader
@@ -13645,6 +13739,55 @@ mod tests {
                 "Veers - System ( On Mission ) ",
             ]
         );
+    }
+
+    // FUN_00465bb0: destruction reason 0x14..0x16 reads "Retired" (0x8799,
+    // a Retire order, FUN_00534c00); a character in an abode (container
+    // family 0x98..0x9f) names the abode alone. The Empire's galaxy
+    // recruits few characters, so the scenario recruits up to eight.
+    #[test]
+    fn the_personnel_states_scenario_retires_its_seventh_and_rests_its_eighth_in_an_abode() {
+        let names = [
+            "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight",
+        ];
+        let applied = apply_to_loading_world_with(
+            request(Scenario::PersonnelStates, CockpitFaction::Alliance),
+            |world| {
+                world.characters.clear();
+                let here = world.systems.keys().next().unwrap();
+                for (index, name) in names.into_iter().enumerate() {
+                    world.characters.insert(rebellion_core::world::Character {
+                        name: name.into(),
+                        is_alliance: true,
+                        // The last ones are not recruited yet.
+                        recruited: index < 5,
+                        current_system: Some(here),
+                        ..Default::default()
+                    });
+                }
+                world.abodes.insert(rebellion_core::world::Abode {
+                    dat_id: rebellion_core::ids::DatId::new(0x9800_0001),
+                    name: "Dagobah".into(),
+                    side: Faction::Neutral,
+                    special_forces: Vec::new(),
+                });
+            },
+        );
+        let world = &applied.world;
+        assert!(world.characters.values().all(|c| c.recruited));
+        let fog = rebellion_core::fog::FogState::new(Faction::Alliance);
+        let mut finder = rebellion_render::personnel_finder::PersonnelFinderState::default();
+        finder.open(CockpitFaction::Alliance);
+        let texts = finder.shown_character_rows(world, &fog).unwrap();
+        assert!(
+            texts.iter().any(|text| text == "Seven - Retired"),
+            "{texts:?}"
+        );
+        assert!(
+            texts.iter().any(|text| text == "Eight - Dagobah"),
+            "{texts:?}"
+        );
+        assert!(texts.iter().any(|text| text == "Six - Killed"), "{texts:?}");
     }
 
     #[test]

@@ -257,6 +257,30 @@ async function run(browser, base, faction) {
     assert.ok(asking >= 0, JSON.stringify(again.rows));
     const showMessage = [again.window_left + (faction.byte === 1 ? 0x1a7 + 16 : 0x1aa + 22),
       again.window_top + (faction.byte === 1 ? 0x5d + 15 : 0x59 + 20)];
+    // Facility Lost (event 0x303, FUN_00497690; OBJ-09-C008), on the
+    // Manufacturing list shown: chosen and displayed, it reads TEXTSTRA
+    // 0x70b0 "Facility Lost" over 0x70b1 "New {1:1} could not be deployed
+    // to {2:1}.  The facility has been scrapped.", naming the fixture's
+    // Mine and the side's system. No A0 capture.
+    let facilityLost = null;
+    const checkFacilityLost = async (label) => {
+      const list = await report(page);
+      const index = list.rows.indexOf("Facility Lost");
+      assert.ok(index >= 0, JSON.stringify(list.rows));
+      await click(page, await shown(index));
+      await click(page, showMessage);
+      const lost = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Facility Lost", "Display Message shows Facility Lost");
+      assert.match(lost.viewing_text,
+        /^New Mine could not be deployed to [A-Z][A-Za-z' -]*\.  The facility has been scrapped\.$/,
+        JSON.stringify(lost));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot(label);
+      facilityLost = { title: lost.viewing_title, text: lost.viewing_text };
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Manufacturing list after Facility Lost");
+    };
     await click(page, await shown(asking));
     await click(page, showMessage);
     const viewing = await waitReport(page, (value) => value.mode === "single",
@@ -781,6 +805,7 @@ async function run(browser, base, faction) {
             JSON.stringify(shortChecksE));
           await click(page, showMessage);
           await waitReport(page, (value) => value.mode === "list", "the Empire's Manufacturing list again");
+          await checkFacilityLost("facility-lost-empire");
         }
         // Back to Mission Messages (0x7c at the window's (150, 64)) for the
         // report's Display below.
@@ -1767,6 +1792,7 @@ async function run(browser, base, faction) {
         await click(page, showMessage);
         await waitReport(page, (value) => value.mode === "list", "the Manufacturing list after Research Complete");
       }
+      if (faction.byte === 1) await checkFacilityLost("facility-lost-alliance");
       await click(page, [conflictList.window_left + 365 - 62, conflictList.window_top + 113 - 49]);
       await waitReport(page, (value) => value.mode === "list"
         && value.rows[0]?.startsWith("Assault on Coruscant"), "the Conflict list again");
@@ -2226,7 +2252,7 @@ async function run(browser, base, faction) {
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
       encyclopedia: opening[0], research_encyclopedia: researchEncyclopedia, dagobah: dagobahChecks,
-      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, shots };
+      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, facility_lost: facilityLost, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
