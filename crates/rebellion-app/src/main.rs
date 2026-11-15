@@ -2954,6 +2954,7 @@ async fn main() {
             // A manager with no yard left scraps its queue; yards in a
             // system in uprising or under blockade are suspended.
             scrap_yardless_queues(&world, &mut mfg_state);
+            rebellion_core::products::number_new_spares(&mut world);
             rebellion_core::products::reconcile(&mut world, &mfg_state);
             let suspended = suspended_systems(&blockade_state, &uprising_state);
             // Each yard cycle takes one refined material and ends with one

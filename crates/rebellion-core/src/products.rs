@@ -265,7 +265,9 @@ fn place(
     if let Some(fleet) = spare_at(world, target, is_alliance) {
         return Container::Fleet(fleet);
     }
-    let fleet = world.insert_fleet(Fleet {
+    // Unnumbered for now: the spare is numbered when the 0x300 handler
+    // runs in the next tick (number_new_spares).
+    let fleet = world.insert_fleet_unnamed(Fleet {
         location: target,
         capital_ships: Vec::new(),
         fighters: Vec::new(),
@@ -276,6 +278,40 @@ fn place(
     });
     world.set_ship_spare(target, is_alliance, fleet);
     Container::Fleet(fleet)
+}
+
+/// The `0x300` handler (`Event300_GameObjExistingChanged_Handle`,
+/// `FUN_005140c0`) runs in the tick after the order: the product's
+/// Existing change makes its spare real (`FUN_004fe630`) and numbers it
+/// (`FUN_00517760`). Until then the spare bears the record's "Fleet", as
+/// the band names it right after the order (A0 2026-11-15 "m-1": "Destination:
+/// Fleet" on day 11; "m-2": "Fleet 4" by day 15; A0 66 likewise).
+pub fn number_new_spares(world: &mut GameWorld) {
+    let mut fleets: Vec<FleetKey> = Vec::new();
+    for product in &world.products.items {
+        if let Container::Fleet(fleet) = product.container {
+            if !fleets.contains(&fleet) && !world.fleet_is_named(fleet) {
+                fleets.push(fleet);
+            }
+        }
+    }
+    fleets.sort_by_key(|&fleet| world.fleet_serial(fleet));
+    for fleet in fleets {
+        world.name_new_fleet(fleet);
+    }
+}
+
+/// The container holding `system`'s current ship product: the ship
+/// manager's DeploymentKey (`+0x78`, `FUN_0052ac40`: the product's
+/// container), which the band names (`FUN_004591b0`). It follows the
+/// product: A0 2026-11-15 "m-2": "Destination: Fleet 3" once the Carrack
+/// was dropped on Fleet 3.
+#[must_use]
+pub fn deployment_fleet(world: &GameWorld, system: SystemKey) -> Option<FleetKey> {
+    match current_ship_product(world, system)?.container {
+        Container::Fleet(fleet) => Some(fleet),
+        Container::System(_) => None,
+    }
 }
 
 /// A staged fleet left with nothing goes (A0 2026-11-15 "u-3": the
@@ -768,6 +804,23 @@ pub fn move_to(world: &mut GameWorld, id: u64, container: Container) -> bool {
     let old = world.products.items[index].container;
     world.products.items[index].container = container;
     drop_if_emptied(world, old);
+    true
+}
+
+/// The Move of a staged spare (its only members unfinished): it is not
+/// mobile (`FUN_004fda10`), so `FUN_00556390` changes its container at
+/// once, with no trip, carrying its products; leaving, it stops being its
+/// system's spare (`FUN_004ff570`). A0 2026-11-15 "m-2": the spare holding
+/// the unfinished Carrack moved to Talus; the build stayed at Corfai,
+/// naming it.
+pub fn relocate_staged(world: &mut GameWorld, fleet: FleetKey, destination: SystemKey) -> bool {
+    if !is_staged(world, fleet) || !world.systems.contains_key(destination) {
+        return false;
+    }
+    if let Some(value) = world.fleets.get_mut(fleet) {
+        value.location = destination;
+    }
+    world.forget_ship_spare(fleet);
     true
 }
 

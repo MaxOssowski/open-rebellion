@@ -2156,11 +2156,24 @@ impl GameWorld {
     }
 
     pub fn insert_fleet(&mut self, fleet: Fleet) -> FleetKey {
+        let key = self.insert_fleet_unnamed(fleet);
+        self.name_new_fleet(key);
+        key
+    }
+
+    /// [`Self::insert_fleet`] without its name: it bears the record's
+    /// "Fleet" until [`Self::name_new_fleet`] numbers it.
+    pub fn insert_fleet_unnamed(&mut self, fleet: Fleet) -> FleetKey {
         let key = self.fleets.insert(fleet);
         self.fleet_names.last_serial += 1;
         self.fleet_names.serials.insert(key, self.fleet_names.last_serial);
-        self.name_new_fleet(key);
         key
+    }
+
+    /// Whether `fleet` has a name of its own (numbered, banked or given).
+    #[must_use]
+    pub fn fleet_is_named(&self, fleet: FleetKey) -> bool {
+        self.fleet_names.names.contains_key(fleet)
     }
 
     /// `fleet`'s place in creation order; 0 for a fleet inserted without

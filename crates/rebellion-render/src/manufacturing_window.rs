@@ -192,8 +192,10 @@ pub fn band(
             // destination system's bit-1 spare, "Fleet" until its first ship
             // numbers it (FUN_0052ac40; ghidra/notes/ship-deployment-fleet.md;
             // A0 2026-11-11-icon-menu-topic/66, then "Fleet 4").
-            let fleet = world
-                .ship_spare(destination_system, class.is_alliance)
+            // The current product's own container when it has one
+            // (rebellion_core::products::deployment_fleet), else the spare.
+            let fleet = rebellion_core::products::deployment_fleet(world, system)
+                .or_else(|| world.ship_spare(destination_system, class.is_alliance))
                 .and_then(|fleet| world.fleet_name(fleet))
                 .unwrap_or(rebellion_core::world::FLEET_RECORD_NAME);
             destination = format!("Destination: {fleet}");

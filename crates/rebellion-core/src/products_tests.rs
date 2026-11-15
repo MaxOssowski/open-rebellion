@@ -84,7 +84,7 @@ impl Setup {
 }
 
 #[test]
-fn an_ordered_ship_waits_unfinished_in_a_new_numbered_spare_outside_the_system_list() {
+fn an_ordered_ship_waits_unfinished_in_a_new_spare_outside_the_system_list_numbered_next_tick() {
     // FUN_0052a140 creates the product at the order, Existing and not
     // Completed (FUN_004f7d50(.., 1, 0)), in the target's bit-1 spare
     // (FUN_00552300 -> FUN_005097d0). A0 2026-11-15 run "u-2": a fleet
@@ -97,10 +97,18 @@ fn an_ordered_ship_waits_unfinished_in_a_new_numbered_spare_outside_the_system_l
     assert!(!s.world.systems[s.yard].fleets.contains(&fleet));
     assert!(is_staged(&s.world, fleet));
     assert_eq!(staged_fleets_at(&s.world, s.yard), vec![fleet]);
+    // Unnumbered until the next tick's 0x300 handler numbers it (A0
+    // 2026-11-15 "m-1": "Destination: Fleet" on the order day; "m-2":
+    // "Fleet 4" by day 15).
+    assert_eq!(s.world.fleet_name(fleet), Some("Fleet"));
+    number_new_spares(&mut s.world);
     assert!(s
         .world
         .fleet_name(fleet)
         .is_some_and(|name| name.starts_with("Fleet ")));
+    let named = s.world.fleet_name(fleet).map(str::to_owned);
+    number_new_spares(&mut s.world);
+    assert_eq!(s.world.fleet_name(fleet).map(str::to_owned), named);
     let held: Vec<&Product> = s.world.products.in_fleet(fleet).collect();
     assert_eq!(held.len(), 1);
     assert_eq!(held[0].kind, BuildableKind::CapitalShip(s.carrack));
@@ -1247,4 +1255,76 @@ fn the_current_ship_product_is_the_yards_oldest_still_being_built() {
         current_ship_product(&s.world, s.yard).unwrap().kind,
         BuildableKind::CapitalShip(s.carrack)
     );
+}
+
+#[test]
+fn a_staged_spare_moves_at_once_carrying_its_unfinished_ship() {
+    // A0 2026-11-15 "m-2": the spare holding only the unfinished Carrack
+    // took a Move to Talus; the ship stayed under construction and the
+    // build stayed at Corfai, naming it. Not mobile (FUN_004fda10),
+    // FUN_00556390 moves it at once; leaving, it is no spare
+    // (FUN_004ff570).
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let spare = s.only_fleet();
+    let mut movement = crate::movement::MovementState::new();
+    assert!(crate::movement::fleet_move_enabled(
+        &movement, &s.world, spare, false
+    ));
+    let departure = crate::movement::begin_faction_fleet_transit(
+        &mut movement,
+        &mut s.world,
+        spare,
+        s.there,
+        false,
+    )
+    .expect("the move is accepted");
+    assert_eq!(departure.transit_ticks, 0);
+    assert!(!movement.is_in_transit(spare));
+    assert_eq!(s.world.fleets[spare].location, s.there);
+    assert!(is_staged(&s.world, spare));
+    assert_eq!(staged_fleets_at(&s.world, s.there), vec![spare]);
+    assert!(staged_fleets_at(&s.world, s.yard).is_empty());
+    assert_eq!(s.world.ship_spare(s.yard, false), None);
+    assert_eq!(spare_at(&s.world, s.yard, false), None);
+    let product = &s.world.products.all()[0];
+    assert_eq!(container_system(&s.world, product.container), Some(s.there));
+    assert_eq!(deployment_fleet(&s.world, s.yard), Some(spare));
+    // The queue keeps it there.
+    let before = s.world.products.clone();
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.products, before);
+    // A fleet with ships still needs its hyperdrive; a listed one is no
+    // staged spare.
+    assert!(relocate_staged(&mut s.world, spare, s.yard));
+    assert!(relocate_staged(&mut s.world, spare, s.there));
+    s.world.systems[s.there].fleets.push(spare);
+    assert!(!relocate_staged(&mut s.world, spare, s.yard));
+}
+
+#[test]
+fn the_band_names_the_container_its_current_product_was_dropped_in() {
+    // A0 2026-11-15 "m-3": the Carrack dropped on Fleet 3 left Fleet 4,
+    // which went, and the band read "Destination: Fleet 3" (the
+    // DeploymentKey is the product's container, FUN_0052ac40).
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let spare = s.only_fleet();
+    let id = s.world.products.all()[0].id;
+    assert_eq!(deployment_fleet(&s.world, s.yard), Some(spare));
+    let other = s.world.insert_fleet(Fleet {
+        location: s.yard,
+        capital_ships: vec![ShipInstance::new(s.carrack, 50, false)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    s.world.systems[s.yard].fleets.push(other);
+    assert!(move_to_target(&mut s.world, id, s.yard, Some(other), 0));
+    assert!(!s.world.fleets.contains_key(spare));
+    assert_eq!(deployment_fleet(&s.world, s.yard), Some(other));
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    assert_eq!(deployment_fleet(&s.world, s.yard), None);
 }

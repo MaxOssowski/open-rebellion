@@ -554,7 +554,10 @@ pub fn validate_fleet_dispatch(
     if value.location == destination {
         return Err(FleetDispatchError::AlreadyAtDestination);
     }
-    if fleet_speed(value, world).is_none() {
+    // A staged spare (only unfinished ships) is not mobile (FUN_004fda10),
+    // and FUN_00556390 moves it at once with no hyperspace leg (A0
+    // 2026-11-15 "m-2": its Move to Talus accepted).
+    if fleet_speed(value, world).is_none() && !crate::products::is_staged(world, fleet) {
         return Err(FleetDispatchError::NoHyperdrive);
     }
     Ok(())
@@ -581,10 +584,6 @@ pub fn system_side_fleets(
                 .fleets
                 .get(*fleet)
                 .is_some_and(|value| value.is_alliance == expected_is_alliance)
-                // port: a staged spare (only unfinished ships) takes no
-                // icon order; what its Move does is untraced
-                // (unfinished-products.md, "Open").
-                && !crate::products::is_staged(world, *fleet)
         })
         .collect()
 }
@@ -681,6 +680,16 @@ pub fn begin_faction_fleet_transit(
         .ok_or(FleetDispatchError::MissingFleet)?;
     let origin = value.location;
     let is_alliance = value.is_alliance;
+    if crate::products::is_staged(world, fleet) {
+        crate::products::relocate_staged(world, fleet, destination);
+        return Ok(AppliedDeparture {
+            fleet,
+            origin,
+            destination,
+            transit_ticks: 0,
+            is_alliance,
+        });
+    }
     let transit_ticks = fleet_transit_ticks(value, world, origin, destination)
         .ok_or(FleetDispatchError::NoHyperdrive)?;
     if !begin_fleet_transit(state, world, fleet, destination, transit_ticks) {
