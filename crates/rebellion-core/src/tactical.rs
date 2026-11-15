@@ -4389,6 +4389,53 @@ impl BattleSession {
                     destroyed: false,
                     action_committed: false,
                 })
+            })
+            .or_else(|| {
+                // FUN_0040b0e0 (0x40b4c9..0x40b551): with each fleet at the
+                // system, the system's ship manager (FUN_00509670(system,
+                // 0)) gives its current product (FUN_0040d760); a Death
+                // Star (0x18..0x1b) not Completed (+0x50 bit 2) goes to
+                // FUN_0040bcd0, which passes "not Completed" to
+                // FUN_00595ef0 -> FUN_005af4e0 as +0x74: the unfinished
+                // Death Star stands in the battle, not operational
+                // (FUN_005ba420), drawn as 5020. port: one Death Star per
+                // battle; a fleet's finished one comes first.
+                let product = crate::products::current_ship_product(world, system)?;
+                let crate::manufacturing::BuildableKind::CapitalShip(class) = product.kind else {
+                    return None;
+                };
+                if !world
+                    .capital_ship_classes
+                    .get(class)
+                    .is_some_and(crate::world::CapitalShipClass::is_death_star)
+                {
+                    return None;
+                }
+                let is_attacker = attackers.iter().any(|&fleet| {
+                    world
+                        .fleets
+                        .get(fleet)
+                        .is_some_and(|value| value.is_alliance == product.is_alliance)
+                });
+                Some(TacticalDeathStar {
+                    resource: DEATH_STAR_TACTICAL_RESOURCE,
+                    is_attacker,
+                    is_alliance: product.is_alliance,
+                    source_position: TacticalWorldPosition {
+                        x: 0.0,
+                        y: 0.0,
+                        z: if product.is_alliance {
+                            source_layout.outer_negative_z
+                        } else {
+                            source_layout.outer_positive_z
+                        },
+                    },
+                    hull: ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
+                    laser_charge: ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
+                    shielded,
+                    destroyed: true,
+                    action_committed: false,
+                })
             });
 
         // The original Tactical Display opens with the battle paused. The

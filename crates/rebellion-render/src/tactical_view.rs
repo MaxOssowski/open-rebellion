@@ -9108,6 +9108,27 @@ fn draw_battle_alert_text(
 }
 
 /// The alert list's content in pixels: its 40-high rows.
+/// The battle's unfinished Death Star: the current product of `system`'s
+/// ship manager when it is a Death Star still being built and a fleet
+/// stands at the system (`FUN_0040b0e0`, 0x40b4c9..0x40b551).
+fn unfinished_death_star(
+    world: &GameWorld,
+    system: SystemKey,
+) -> Option<&rebellion_core::products::Product> {
+    if world.systems.get(system)?.fleets.is_empty() {
+        return None;
+    }
+    let product = rebellion_core::products::current_ship_product(world, system)?;
+    let rebellion_core::manufacturing::BuildableKind::CapitalShip(class) = product.kind else {
+        return None;
+    };
+    world
+        .capital_ship_classes
+        .get(class)
+        .is_some_and(rebellion_core::world::CapitalShipClass::is_death_star)
+        .then_some(product)
+}
+
 fn alert_list_content(rows: usize) -> f32 {
     rows as f32 * ALERT_LIST_ROW
 }
@@ -9409,6 +9430,33 @@ fn battle_alert_rows(
                         .filter_map(|&key| world.characters.get(key))
                         .map(|value| character(value, true)),
                 );
+            }
+            // The unfinished Death Star the system's ship manager builds
+            // stands in the battle (FUN_0040b0e0 0x40b4d2 -> FUN_0040bcd0,
+            // BattleSession::new_for_fleets), its mini over the unfinished
+            // mark (FUN_0042c3b0: 0x2d32 / 0x2d34). port: after the side's
+            // fleets.
+            if let Some(product) = unfinished_death_star(world, system)
+                .filter(|product| product.is_alliance == alliance)
+            {
+                let mini = crate::minis::capital_ship_mini_id(rebellion_core::ids::DatId::new(
+                    rebellion_core::world::DEATH_STAR_CLASS_ID,
+                ));
+                let mut entry = row(
+                    product.name.clone().unwrap_or_else(|| "Death Star".to_owned()),
+                    AlertFont::Bold,
+                    MiniObject::Craft,
+                    mini,
+                    false,
+                    false,
+                );
+                if let Some(last) = entry.picture.pop() {
+                    entry
+                        .picture
+                        .push(crate::fleet_window::unfinished_mini_mark(product.is_alliance));
+                    entry.picture.push(last);
+                }
+                rows.push(entry);
             }
             let planet: Vec<AlertRow> = place
                 .fighters
@@ -13745,6 +13793,39 @@ mod tests {
             texts,
             ["Imperial Forces", name.as_str(), "Deyer", "TIE Fighter"]
         );
+        // The unfinished Death Star the system's yard builds stands in the
+        // battle (FUN_0040b0e0 0x40b4d2 -> FUN_0040bcd0): its row follows
+        // the Empire's fleets, its mini over the unfinished mark 0x2d34.
+        use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let death_star = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
+            is_empire: true,
+            ..Default::default()
+        });
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(system, QueueItem::new(BuildableKind::CapitalShip(death_star), 10));
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::Forces { alliance: false },
+        );
+        let texts: Vec<&str> = rows.iter().map(|row| row.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            ["Imperial Forces", name.as_str(), "Death Star", "Deyer", "TIE Fighter"]
+        );
+        assert!(rows[2]
+            .picture
+            .contains(&(DllSource::Strategy, 11_572)));
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::Forces { alliance: true },
+        );
+        assert!(rows.iter().all(|row| row.text != "Death Star"));
     }
 
     // FUN_00450770 lists each ship's own squadrons (FUN_005039d0) right

@@ -4576,6 +4576,42 @@ mod tests {
     }
 
     #[test]
+    fn an_unfinished_death_star_of_the_systems_yard_stands_in_its_battle() {
+        // FUN_0040b0e0 0x40b4c9..0x40b551: the system's ship manager's
+        // current product (FUN_00509670(system, 0), FUN_0040d760), a Death
+        // Star (0x18..0x1b) not Completed, goes to FUN_0040bcd0, which
+        // passes "not Completed" as +0x74 (FUN_00595ef0 -> FUN_005af4e0):
+        // present, not operational (FUN_005ba420).
+        use crate::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
+        let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
+        let death_star = world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                dat_id: crate::ids::DatId::new(crate::world::DEATH_STAR_CLASS_ID),
+                is_empire: true,
+                ..Default::default()
+            });
+        assert!(world.capital_ship_classes[death_star].is_death_star());
+        let session = |world: &GameWorld| BattleSession::new(world, battle, alliance, empire, true, 0, 1);
+        assert!(session(&world).death_star.is_none());
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(battle, QueueItem::new(BuildableKind::CapitalShip(death_star), 10));
+        crate::products::reconcile(&mut world, &manufacturing);
+        let star = session(&world).death_star.expect("the unfinished Death Star");
+        assert!(star.destroyed);
+        assert!(!star.operational());
+        assert!(!star.is_alliance);
+        // The Empire defends here (its fleet is the defender).
+        assert!(!star.is_attacker);
+        // Another class building there brings none.
+        let mut manufacturing = ManufacturingState::new();
+        let other = world.fleets[empire].capital_ships[0].class;
+        manufacturing.enqueue(battle, QueueItem::new(BuildableKind::CapitalShip(other), 10));
+        crate::products::reconcile(&mut world, &manufacturing);
+        assert!(session(&world).death_star.is_none());
+    }
+
+    #[test]
     fn a_sides_fleets_at_the_system_follow_its_lead_fleet() {
         // FUN_0040c780 (FUN_004ffe70): every fleet of the side fights.
         let (mut world, [battle, ..], alliance, empire) = withdrawal_world();

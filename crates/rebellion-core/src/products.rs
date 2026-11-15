@@ -635,6 +635,18 @@ pub fn surface_arrival_pending(world: &GameWorld, system: SystemKey, is_alliance
     })
 }
 
+/// The current product of `system`'s ship manager (`FUN_00509670(system,
+/// 0)`, its ProductKey `+0x74`): the oldest of its products still being
+/// built, wherever it stands.
+#[must_use]
+pub fn current_ship_product(world: &GameWorld, system: SystemKey) -> Option<&Product> {
+    world.products.items.iter().find(|product| {
+        product.yard == system
+            && ProductionArea::of(product.kind) == ProductionArea::Shipyard
+            && world.products.arrival(product.id).is_none()
+    })
+}
+
 /// `FUN_00487cc0` for an unfinished unit's Move (`0x201`): it asks when
 /// the first member's container is a system blockaded (`+0x88` bit
 /// `0x20`) and held by the member's side. An unfinished ship stands in a
