@@ -37,11 +37,12 @@ the design, and what must be settled first.
    | Retreat output 3, the unit's own check | fleet | none (a fleet with an Existing member is Completed; a spare skips the check) | same |
    | Retreat output 3, `FUN_005513a0`'s mode-4 walk | 4 | the member's `0x20` only marks it as no container in the capacity table; the candidate is not refused (Stage A) | same |
    | Fleet Usable / mobile / speed | 3, Completed only | ignored | same for mixed fleets; a fleet of only unfinished ships cannot exist in the port |
-   | Capital ship as its own mover (`CapShip_vt74`) | object | refused `0x20` | n/a (not an object) |
+   | A ship as a container (`CapShip_vt74`, called on the objects at a destination) | object | refused `0x20`: it carries nothing | same (port carriers are finished ships) |
+   | Unfinished ship's or its fleet's Move (A0 `u-2-*`) | object | white; the effect is open (see the note) | n/a (not an object) |
    | Squadron/regiment Move | object | allowed; it changes container at once, with no trip (`FUN_00556390`, not Deployed) | differs: grey (Stage B) |
    | Fleet window lists (`FUN_004a3340`) | 3 | listed with mark 11570/11572 | differs: ships not listed |
    | Defenses window pages | 3 | listed | same (`DefensesItem::Pending`) |
-   | Fleet icon (`FUN_004feea0(.., 3)`) | 3 | a spare with only unfinished ships shows the icon (hyp) | differs |
+   | Fleet icon (`FUN_004feea0(.., 3)`) | 3 | a spare with only unfinished ships shows the icon and is numbered at once (A0 `u-2`) | differs |
    | Maintenance (`FUN_0052fff0`) | bit 6 | costs from the order, and while en route | same since Stage A (deliveries en route now cost) |
    | Enemy's view copy (`FUN_004f9a60`) | object | frozen | n/a |
 
@@ -101,9 +102,10 @@ squadron or regiment. Retreat output 3 is not one of them (Stage A).
 5. **Consumers.** In order: maintenance (count Existing, so deliveries en
    route cost), the Fleet window and fleet icon (mode 3, marks
    11570/11572), the unfinished Death Star in battle (`FUN_0040b0e0`
-   `0x40b4d2`), the capital-ship mover refusal, squadron/regiment Move
-   enabled while unfinished, scrap of an unfinished product (refund rule
-   to trace), then Retreat output 3 once `FUN_005513a0` is settled.
+   `0x40b4d2`), unfinished ships never chosen as carriers, Move enabled
+   for an unfinished ship, fleet, squadron or regiment (A0 `u-2`, `u-3`),
+   Scrap grey until completion. Retreat output 3 needs no change
+   (Stage A).
 6. **Save.** Bump `SAVE_VERSION` to 124 with a migration that, for each
    queue item, creates its unfinished member in the planned container and
    records the identity in the item, and turns each `Delivery` into a
@@ -161,13 +163,31 @@ Turning the row white would offer an order that cannot carry out the
 original's effect. It goes into Stage B, where the product is a system
 member.
 
-**Still for A0** (four steps): order a capital ship at a system with no
-fleet of the side; check:
-1. the fleet icon appears;
-2. the Fleet window lists the ship with the red grid;
-3. the maintenance monitor rises at the order;
-4. a battle there before completion leaves the ship out of the forces
-   list.
+**A0 run "u-"** (`.artifacts/a0-vm/2026-11-15-partial-cells/README.md`,
+summarised in the note) answered the four checks:
+1. the fleet icon appears, and the spare is "Fleet 4" at once;
+2. the Fleet window lists the ship over the side's grid, and Status reads
+   "Under Construction";
+3. maintenance drops at Confirm, as the port already charges queued
+   items;
+4. with only the unfinished Carrack there, the Alliance took Corellia with
+   no battle alert.
+
+It also showed:
+- an unfinished ship, its fleet and an unfinished squadron all keep Move
+  and Confirmed Move white, with Scrap grey until completion;
+- a second order at the same yard replaces the first, and the spare goes
+  with it (the port already replaces the area's queue).
+
+The first trace's "a capital ship refuses a Move while unfinished" was a
+misreading: `CapShip_vt74` is the container check. Stage B therefore also
+enables Move for an unfinished ship and its fleet. What that Move does is
+open.
+
+**Stage B additions from A0:**
+- removing the spare when its only products are replaced or scrapped;
+- the band's one-day lag in naming the new fleet;
+- Status "Under Construction" for a ship. A squadron has no Status row.
 
 ## Small finding outside the architecture
 

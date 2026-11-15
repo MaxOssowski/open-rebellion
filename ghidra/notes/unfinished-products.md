@@ -73,9 +73,9 @@ only.
 | Retreat, the destination (output 3) | `FUN_005545e0` -> `FUN_005571c0` -> the unit's `vt74`. For a fleet, `Fleet_vt74` (`FUN_004fe0d0`) passes "check Completed" only when `(+0x58 & 6) == 0` (not a spare); a capital ship (`CapShip_vt74`, `FUN_00500ac0`) always passes it. `FUN_00553410` then posts `0x20` for a clear Completed bit. | The unit is the fleet, whose own Completed bit is set by `FUN_004fe630` once it holds any Existing member, and which is skipped when it is a spare. So a fleet's unfinished members do not raise `0x20` through the unit check, and the candidate walk does not either ("Settled", below). |
 | Fleet Usable (`Fleet_vt84`, `FUN_004fe540`) | members mode 3, needs one Completed and not EnrouteActive | Not counted toward Usable. |
 | Fleet mobile (`Fleet_vt38`, `FUN_004fda10`) and speed (`FUN_004fd900`) | members mode 3, Completed and not EnrouteActive | Not counted: a fleet of only unfinished ships cannot move; a mixed fleet moves at its finished ships' speed. |
-| Capital ship as a mover (`CapShip_vt74`) | the ship itself | Refused, code `0x20`. Squadrons and regiments do not call `FUN_00553410` through `vt74` (its only `vt74` callers are Fleet, CapShip and System), matching A0 `pending-facility/24-awing-menu`: an unfinished A-wing's Move is white. |
+| A ship as a container (`CapShip_vt74`) | the ship, as a candidate container in `FUN_00550700` | Refused with `0x20`: an unfinished ship carries no squadron, regiment or person. Corrected 2026-11-15: `vt74` is the "may this object take a child of that family" check, called on the objects at a destination ("Settled", below), not a check of the mover. The first version of this note read it as "a capital ship refuses a Move while unfinished"; A0 `u-2-carrack-unfinished-menu-move-white-scrap-grey-d511` shows the unfinished Carrack's Move and Confirmed Move white, and no refusal of the mover was traced. |
 | Fleet window lists (`FUN_004a3340`) | fleets `FUN_004ffe70(system, 3)`; ships `FUN_00502db0(fleet, 3)`; tabs: squadrons `FUN_005039d0(ship, 3)`, regiments `FUN_00504c40(ship, 3)`, people `FUN_00536da0(ship, 3)` (`fleet-window.md`) | Yes: listed, with the unfinished mark over the mini (`FUN_0042c3b0`: 11570 side 1, 11572 otherwise). |
-| Fleet icon in a sector window (`FUN_004feea0(system, side, 3)`) | fleets mode 3 | Yes: a spare that holds only unfinished ships is Existing, so the icon shows. hyp, not seen in A0. |
+| Fleet icon in a sector window (`FUN_004feea0(system, side, 3)`) | fleets mode 3 | Yes: a spare that holds only unfinished ships is Existing, so the icon shows (A0 `u-2-corellia-fleet-icon-appears-after-order-d511`). |
 | Maintenance (`FUN_0052fff0`) | every object of the side with `+0x50` bit 6 (`side-resource-monitors.md`) | Yes: it costs maintenance from the order. A product en route (Completed, Existing) also costs. |
 | Status window (`FUN_0044a470` and the fleet/ship rows, `status-window.md`) | the object | "Under Construction" (34647) while Completed is clear. |
 | The enemy's view copy (`FUN_004f9a60`) | the object | The owner's copy is always live. The other side's copy is live only with the side's seen bit **and** Completed **and** not en route, so the enemy's copy of an unfinished product stays frozen (`per-side-object-views.md`). |
@@ -164,13 +164,48 @@ completion starts the trip from the yard to that container. Their
 `vt74` does not test Completed (only Fleet, CapShip and System call
 `FUN_00553410`), which is why A0 `pending-facility/24` shows Move white.
 
+## A0, run "u-" (2026-11-15, Empire game, Corellia)
+
+`.artifacts/a0-vm/2026-11-15-partial-cells/README.md`, section Run "u-":
+- **Maintenance** is charged at Confirm: a Carrack (24) took the room from
+  69 to 45 at once, a TIE from 20 to 17. With the room below the cost,
+  every Build Selection value reads n/a and Confirm is grey
+  (`u-build-selection-carrack-na-confirm-grey-maint20-d510`).
+- **The fleet.** Right after a Carrack order at a system with no Imperial
+  fleet, a fleet icon appears and the system window lists "Fleet 4" (day
+  511). So the `0x300` handler makes the spare real and numbers it at
+  once. The band reads "Destination: Fleet" on the order day and
+  "Destination: Fleet 4" the next day; the band's text lags a day.
+- **The Fleet window** lists "Carrack Light Cruiser 1" with its mini on
+  the side's grid (green for the Empire, 11573 against 11571). Its Status
+  reads Status "Under Construction" and Maintenance Cost 24.
+- **Menus.**
+  - The unfinished Carrack: Move and Confirmed Move white, Create Fleet
+    grey, Scrap grey.
+  - Fleet 4, which holds only the Carrack: Move white, Scrap grey.
+  - The unfinished TIE on the planet: Move white, Scrap grey. Its Status
+    reads "Attached: Corellia" with no Status row.
+  - After the TIE completes (day 520, 12 days, no dialog), Scrap is white
+    and the grid is gone.
+- **A second order replaces the first.** A TIE order at the same yard
+  replaced the Carrack order. The Carrack, Fleet 4 and its icon went, and
+  the Carrack's 24 maintenance came back (`FUN_00529ab0`; the port's
+  `ManufacturingState::build_units` already replaces the area's queue).
+- **Battle.** With only Fleet 4 (the unfinished Carrack) at Corellia, the
+  Alliance blockaded and took the system with no battle alert (run 2,
+  days 509..550). This fits the mode-1 battle walks.
+
 ## Open
 
-- Whether `0x300` numbers a spare at once (A0 66 read "Destination: Fleet"
-  right after the order, then "Fleet 4" after completion).
-- Where a battle is triggered and whether a spare holding only unfinished
-  ships counts as presence (`FUN_00512280`, `FUN_005124c0`).
-- The A0 checks in the design README.
+- What the Move of an unfinished capital ship, or of a fleet holding only
+  unfinished ships, does. `FUN_00556390` reparents an object that is not
+  mobile at once. A ship is not Deployed until it completes, and the fleet
+  is not mobile (`FUN_004fda10`). The route check of a fleet with speed 0
+  (`move-order.md`) may refuse first. To settle with A0: move such a
+  Carrack or fleet to another system and see where it is the next day.
+- Whether a spare holding only unfinished ships counts as presence when a
+  battle is triggered (`FUN_00512280`, `FUN_005124c0`). A0 run 2 shows no
+  battle, but the trigger was not traced.
 
 ## Read
 
