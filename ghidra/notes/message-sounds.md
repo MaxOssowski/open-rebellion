@@ -96,8 +96,16 @@ The base constructor `FUN_004c4d90` zeroes both. Builders that set `+0x30`
 - `FUN_0048b6e0` and `FUN_0048e3c0` test Luke's (`FUN_004f3e50`) bit 3,
   not a side record's.
 - No port counterpart, so no sound: `FUN_00498e90` (the other side's
-  message, multiplayer), `FUN_0049a350` (the order confirmation, whose
-  window `FUN_0044f180` plays nothing), `FUN_00499de0` (repaired / full
-  strength, `0x7040..0x7043`), `FUN_0048ae40` (Recruitment Done,
-  `0x7210`), `FUN_00491500` codes 6..10 and `0xc`, and a Research
-  mission's report (`0x47f`; the port has no Research mission).
+  message, multiplayer, out of scope) and `FUN_0049a350` (the order
+  confirmation, whose window `FUN_0044f180` plays nothing).
+- Ported 2026-11-16 with their texts, pictures, rails and triggers:
+  `FUN_0048ae40` Recruitment Done (class `0x65b0f8`: mask `0x10`, kind 8;
+  posted when a Recruitment takes the side's last pool character,
+  `FUN_0055fc80` -> `FUN_0052f590`), `FUN_00499de0` Capital Ship
+  Repaired (class `0x65bb88`: kind 3, mask `0x80` for a ship; posted
+  when a repair clears the ship's damage), `FUN_00491500` codes 6..10
+  and `0xc` (Mission Failed / Aborted from the leader, `0x412 + (side !=
+  1)` with the portrait), and the Research missions' reports (family
+  `0x53`: picture `0x3f9`, `0x47f`). port: Squadron at Full Strength
+  (`0x7040` / `0x7042`) has its texts and sound but no trigger, as the
+  port's squadrons keep no strength below full.

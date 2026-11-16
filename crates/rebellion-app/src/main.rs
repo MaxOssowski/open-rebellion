@@ -2098,6 +2098,20 @@ async fn main() {
             &interface_test_fixture::personnel_arrivals(request, &world),
             &message_texts,
         );
+        // Recruitment Done (FUN_0048ae40) and Capital Ship Repaired
+        // (FUN_00499de0), for the player's side.
+        if let Some(alliance) = interface_test_fixture::recruitment_done(request) {
+            if let Some(message) =
+                rebellion_render::story_messages::recruitment_done_message(alliance, 0, &message_texts)
+            {
+                msg_log.push(message);
+            }
+        }
+        if let Some((fleet, index)) = interface_test_fixture::repaired_ship(request, &world) {
+            if let Some(message) = ship_repaired_message(&world, fleet, index, 0, &message_texts) {
+                msg_log.push(message);
+            }
+        }
         // A0 uprising-clean/test-day795-umgul-near-uprising: the reader's
         // own Umgul near uprising, filed before the joins so it lists
         // under them.
@@ -4495,10 +4509,24 @@ async fn main() {
                     ..
                 } = evt
                 {
+                    let was_damaged = ship_damaged(&world, *fleet, *ship_index);
                     if let Some(f) = world.fleets.get_mut(*fleet) {
                         if let Some(ship) = f.capital_ships.get_mut(*ship_index) {
                             ship.hull_current = *hull_after;
                             ship.subsystem_hits = *hits_after;
+                        }
+                    }
+                    // The damage flag clearing posts 0x106: Capital Ship
+                    // Repaired (FUN_00499de0).
+                    if was_damaged == Some(true) && ship_damaged(&world, *fleet, *ship_index) == Some(false) {
+                        if let Some(message) = ship_repaired_message(
+                            &world,
+                            *fleet,
+                            *ship_index,
+                            tick_events.last().map_or(0, |event| event.tick),
+                            &message_texts,
+                        ) {
+                            msg_log.push(message);
                         }
                     }
                 }
@@ -14034,6 +14062,57 @@ fn push_foiled_missions(
                 ));
             }
         }
+        // Codes 6..10 and 0xc: the target not found, the system changed
+        // sides, no research facilities (FUN_00491500), over the side's
+        // background with the leader's portrait.
+        if let (true, Some(leader)) = (matches!(ended.end_code, 6..=10 | 0xc), leader) {
+            let returning = ended
+                .returning_to
+                .and_then(|place| return_place_name(world, place));
+            // Code 8: joined a side (system +0x24 bits 6..7), else neutral.
+            let joined = match target.control.faction() {
+                Some(Faction::Alliance) => Some(true),
+                Some(Faction::Empire) => Some(false),
+                Some(Faction::Neutral) | None => None,
+            };
+            if let Some((title, text)) = rebellion_render::story_messages::mission_failed_texts(
+                ended.end_code,
+                ended.kind.research_tech().is_some(),
+                (&leader.name, leader.is_major),
+                mission,
+                &target.name,
+                joined,
+                returning.as_deref(),
+                texts,
+            ) {
+                log.push(filed(
+                    GameMessage::at_system(
+                        ended.tick,
+                        text,
+                        MessageCategory::Mission,
+                        ended.target_system,
+                    )
+                    .with_title(title)
+                    .with_picture(pictures::side(
+                        pictures::reader(own_is_alliance),
+                        ended
+                            .character
+                            .and_then(|character| pictures::portrait_key(world, character)),
+                    ))
+                    .with_sounds(MessageSounds::mission_failed(
+                        own_is_alliance,
+                        leader.dat_id.index(),
+                        leader.dagobah_completed,
+                    ))
+                    .with_advisor_event(rebellion_render::story_messages::speaker_event(
+                        world,
+                        ended.character,
+                    )),
+                    MessageRail::Mission,
+                    Some(RailAudience::side(own_is_alliance)),
+                ));
+            }
+        }
         let Some((title, text)) =
             rebellion_render::story_messages::enemy_mission_foiled_texts(mission, &target.name, texts)
         else {
@@ -14546,6 +14625,47 @@ fn saboteurs_strike_message(
     ))
 }
 
+/// Whether `fleet`'s ship at `index` is damaged (`+0x50` bit `0x200`,
+/// `status_rows::damaged`); None for no such ship.
+fn ship_damaged(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<bool> {
+    let ship = world.fleets.get(fleet)?.capital_ships.get(index)?;
+    let class = world.capital_ship_classes.get(ship.class)?;
+    Some(rebellion_render::status_rows::damaged(ship, class))
+}
+
+/// Notification `0x106` with the damage flag cleared, Capital Ship
+/// Repaired (`FUN_00499de0`, class `0x65bb88`): TEXTSTRA `0x7041` /
+/// `0x7043` naming the ship and its fleet, to the ship's side on the Fleet
+/// rail (`+0x34` = `0x80`), the ship's own picture (`FUN_004c5000`),
+/// advisor event 8, sound `0x45e`. Kind 3 (`FUN_005a6730`): Display goes to
+/// the fleet's system.
+fn ship_repaired_message(
+    world: &GameWorld,
+    fleet: FleetKey,
+    index: usize,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let value = world.fleets.get(fleet)?;
+    let ship = value.capital_ships.get(index)?;
+    let class = world.capital_ship_classes.get(ship.class)?;
+    let name = ship.name.clone().unwrap_or_else(|| class.name.clone());
+    let container = rebellion_render::system_window::fleet_label(world, fleet).unwrap_or_default();
+    let (title, text) = rebellion_render::story_messages::repaired_texts(&name, &container, false, texts)?;
+    Some(filed(
+        GameMessage::at_system(tick, text, MessageCategory::Combat, value.location)
+            .with_title(title)
+            .with_picture_if(pictures::deployed(
+                world,
+                rebellion_core::manufacturing::BuildableKind::CapitalShip(ship.class),
+            ))
+            .with_sounds(MessageSounds::repaired(false, value.is_alliance))
+            .with_advisor_event(8),
+        MessageRail::Fleet,
+        Some(RailAudience::side(value.is_alliance)),
+    ))
+}
+
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
     continuing: bool,
@@ -14628,6 +14748,10 @@ fn apply_mission_result(
             MissionKind::Espionage => ReportedMission::Espionage,
             MissionKind::InciteUprising => ReportedMission::InciteUprising,
             MissionKind::SubdueUprising => ReportedMission::SubdueUprising,
+            // FUN_004927c0 case 0x53: picture 0x3f9, sound 0x47f.
+            MissionKind::ShipDesignResearch
+            | MissionKind::FacilityDesignResearch
+            | MissionKind::TroopTrainingResearch => ReportedMission::Research,
             _ => ReportedMission::Other,
         }
     };
@@ -14747,13 +14871,28 @@ fn apply_mission_result(
                 system,
                 faction,
                 pool_emptied,
-            } => rebellion_core::missions::recruit_character(
-                world,
-                *character,
-                *system,
-                *faction,
-                *pool_emptied,
-            ),
+            } => {
+                // FUN_0055fc80 -> FUN_0052f590: the side's RecruitmentDone
+                // turning on posts 0x12c, Recruitment Done (FUN_0048ae40).
+                let side: Faction = (*faction).into();
+                let done = *pool_emptied && !world.recruit_pool_empty(side);
+                rebellion_core::missions::recruit_character(
+                    world,
+                    *character,
+                    *system,
+                    *faction,
+                    *pool_emptied,
+                );
+                if done {
+                    if let Some(message) = rebellion_render::story_messages::recruitment_done_message(
+                        side == Faction::Alliance,
+                        result.tick,
+                        message_texts,
+                    ) {
+                        log.push(message);
+                    }
+                }
+            }
             MissionEffect::TargetSabotaged { target, system } => {
                 let victim = rebellion_core::missions::sabotage_victim(world, *target);
                 rebellion_core::missions::destroy_target(world, *target);

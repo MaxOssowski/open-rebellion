@@ -6920,6 +6920,59 @@ pub fn foiled_missions(
             returning_to: None,
         },
     ]
+    .into_iter()
+    .chain(own_failed_mission(request, world, chandrila))
+    .collect()
+}
+
+/// The player's own Espionage at Chandrila ended with code 6, its target
+/// not found (`FUN_00491500`: Mission Failed from its leader): Leia for
+/// the Alliance, Vader for the Empire.
+fn own_failed_mission(
+    request: FixtureRequest,
+    world: &GameWorld,
+    chandrila: SystemKey,
+) -> Option<rebellion_core::missions::MissionEnded> {
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let leader = world
+        .characters
+        .iter()
+        .find(|(_, c)| c.dat_id.index() == if alliance { 0x241 } else { 0x281 })
+        .map(|(key, _)| key)?;
+    Some(rebellion_core::missions::MissionEnded {
+        mission_id: u64::MAX - 5,
+        kind: MissionKind::Espionage,
+        faction: if alliance {
+            MissionFaction::Alliance
+        } else {
+            MissionFaction::Empire
+        },
+        character: Some(leader),
+        target_system: chandrila,
+        end_code: 6,
+        tick: 0,
+        returning_to: None,
+    })
+}
+
+/// The EventMessages scenario's Recruitment Done (`FUN_0048ae40`): the
+/// player's side, Alliance true.
+pub fn recruitment_done(request: FixtureRequest) -> Option<bool> {
+    (request.scenario == Scenario::EventMessages).then_some(request.faction == CockpitFaction::Alliance)
+}
+
+/// The EventMessages scenario's Capital Ship Repaired (`FUN_00499de0`): the
+/// player's first fleet with a ship, and that ship.
+pub fn repaired_ship(request: FixtureRequest, world: &GameWorld) -> Option<(FleetKey, usize)> {
+    if request.scenario != Scenario::EventMessages {
+        return None;
+    }
+    let alliance = request.faction == CockpitFaction::Alliance;
+    world
+        .fleets
+        .iter()
+        .find(|(_, fleet)| fleet.is_alliance == alliance && !fleet.capital_ships.is_empty())
+        .map(|(key, _)| (key, 0))
 }
 
 /// The event-message scenario's messages: one per report class whose

@@ -557,6 +557,25 @@ impl MessageSounds {
         Self::strategy(0x480).with_voice(character_voice(leader, dagobah, 3))
     }
 
+    /// The reader's own mission ended for its target or its system's side
+    /// (`FUN_00491500` codes 6..10, `0xc`): `0x47c + (side != 1)` and the
+    /// leader's failure voice.
+    #[must_use]
+    pub const fn mission_failed(alliance: bool, leader: u32, dagobah: bool) -> Self {
+        Self::by_side(0x47c, alliance).with_voice(character_voice(leader, dagobah, 3))
+    }
+
+    /// Capital Ship Repaired (`FUN_00499de0`): `0x45e`; Squadron at Full
+    /// Strength: `0x457 + (side != 1)`.
+    #[must_use]
+    pub const fn repaired(squadron: bool, alliance: bool) -> Self {
+        if squadron {
+            Self::by_side(0x457, alliance)
+        } else {
+            Self::strategy(0x45e)
+        }
+    }
+
     /// The other side's mission foiled (`FUN_00491500`): `0x47c + (side
     /// != 1)`.
     #[must_use]
@@ -807,6 +826,19 @@ mod tests {
         assert_eq!(MessageSounds::mission_foiled(VADER, false), sound(0x480, 0xfd));
         assert_eq!(MessageSounds::mission_foiled(LUKE, true), sound(0x480, 0xd5));
         assert_eq!(MessageSounds::enemy_mission_foiled(false), sound(0x47d, 0));
+        // The other own-side ends (codes 6..10, 0xc) keep 0x47c + (side !=
+        // 1) with the same failure voice (L217..256, L274).
+        assert_eq!(MessageSounds::mission_failed(false, VADER, false), sound(0x47d, 0xfd));
+        assert_eq!(MessageSounds::mission_failed(true, LUKE, false), sound(0x47c, 0xcb));
+        assert_eq!(MessageSounds::mission_failed(true, 0x2a0, false), sound(0x47c, 0));
+    }
+
+    #[test]
+    fn a_repaired_unit_plays_its_kinds_wave() {
+        // FUN_00499de0: a squadron 0x457 + (side != 1), a ship 0x45e.
+        assert_eq!(MessageSounds::repaired(true, true), sound(0x457, 0));
+        assert_eq!(MessageSounds::repaired(true, false), sound(0x458, 0));
+        assert_eq!(MessageSounds::repaired(false, false), sound(0x45e, 0));
     }
 
     #[test]

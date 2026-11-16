@@ -292,6 +292,57 @@ async function run(browser, base, faction) {
       await click(page, showMessage);
       await waitReport(page, (value) => value.mode === "list", "the Manufacturing list after Facility Lost");
     };
+    // Two of the classes ported 2026-11-16 on the Mission list, each
+    // displayed and back: Recruitment Done (FUN_0048ae40: 0x7210 / 0x7211
+    // over 0x412 + (side != 1), +0x30 0x47c + (side != 1), STRATEGY 1148 /
+    // 1149) and the player's Espionage at Chandrila ended with code 6
+    // (FUN_00491500: 0x7138 / 0x7139 then 0x70e7 from its major leader,
+    // Leia or Vader, over the side's background; 0x47c + (side != 1) and
+    // the leader's failure voice, Leia 0xdf (1337 / 1338), Vader 0xfd
+    // (1378), from the side's sprite DLL).
+    const portedChecks = {};
+    const displayRow = async (matches, label) => {
+      const list = await report(page);
+      const at = list.rows.findIndex(matches);
+      assert.ok(at >= 0, `${label}: ${JSON.stringify(list.rows)}`);
+      await click(page, await shown(at));
+      const mark = soundLines().length;
+      await click(page, showMessage);
+      const viewed = await waitReport(page, (value) => value.mode === "single" && matches(value.viewing_title ?? ""),
+        `Display Message shows ${label}`);
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot(label);
+      const played = await soundsAfter(mark, 1, `${label}'s display sounds`);
+      await frames(page, 10);
+      const all = soundLines().slice(mark);
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", `the list after ${label}`);
+      portedChecks[label] = { title: viewed.viewing_title, text: viewed.viewing_text,
+        background: viewed.viewing_background, sounds: all };
+      return { viewed, played: all };
+    };
+    {
+      const side = faction.byte === 1 ? 0 : 1;
+      const done = await displayRow((text) => text === "Recruitment Done", "recruitment-done");
+      assert.equal(done.viewed.viewing_text,
+        "We regret to report that there are no more candidates to be recruited.", JSON.stringify(done.viewed));
+      assert.equal(done.viewed.viewing_background, 0x412 + side, JSON.stringify(done.viewed));
+      assert.equal(done.played.length, 1, done.played.join("\n"));
+      assert.match(done.played[0], new RegExp(`directory=strategy-dll wave=${1148 + side} loaded=true`));
+      const failed = await displayRow((text) => text.endsWith(" Mission Failed"), "mission-failed");
+      assert.equal(failed.viewed.viewing_title, faction.byte === 1 ? "Leia Organa Mission Failed" : "Darth Vader Mission Failed",
+        JSON.stringify(failed.viewed));
+      assert.equal(failed.viewed.viewing_text,
+        "My Espionage Mission to Chandrila has failed because the target was not found at that location.  "
+        + "\nAll personnel assigned to the mission have failed to return.", JSON.stringify(failed.viewed));
+      assert.equal(failed.viewed.viewing_background, 0x412 + side, JSON.stringify(failed.viewed));
+      assert.equal(failed.played.length, 2, failed.played.join("\n"));
+      assert.match(failed.played[0], new RegExp(`directory=strategy-dll wave=${1148 + side} loaded=true`));
+      assert.match(failed.played[1], faction.byte === 1
+        ? /directory=alsprite-dll wave=133[78] loaded=true/ : /directory=emsprite-dll wave=1378 loaded=true/);
+      soundChecks.ported = portedChecks;
+    }
     await click(page, await shown(asking));
     const reportSounds = soundLines().length;
     await click(page, showMessage);

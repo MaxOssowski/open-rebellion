@@ -1765,6 +1765,139 @@ pub fn mission_foiled_texts(
     Some((fill_message_text(texts.get(&title)?, &parameters), text))
 }
 
+/// Recruitment Done (`FUN_0048ae40`, class `0x65b0f8`): notification
+/// `0x12c` with its argument set, once (`+100`), as the side's
+/// RecruitmentDone (`+0xb8`) turns on (`FUN_0052f590`, from
+/// `FUN_0055fc80` when a Recruitment takes the side's last pool
+/// character). TEXTSTRA `0x7210` / `0x7211`, no substitutions, on the
+/// side's background `0x412 + (side != 1)`; its sound `0x47c + (side !=
+/// 1)`. Its mask (`FUN_0048af30`) is `0x10`, the Mission rail; its kind
+/// (`FUN_0048ad30`) is 8, so Display stays grey.
+///
+/// hyp: only the recruiting side reads it (the side record's notification
+/// reaches that side's message class).
+#[must_use]
+pub fn recruitment_done_message(
+    alliance: bool,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let side = if alliance {
+        CockpitFaction::Alliance
+    } else {
+        CockpitFaction::Empire
+    };
+    Some(
+        GameMessage::new(tick, texts.get(&0x7211)?.clone(), MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::side(alliance))
+            .plain()
+            .with_title(texts.get(&0x7210)?.clone())
+            .with_picture(MessagePicture {
+                background: side_background(side),
+                foreground: None,
+            })
+            .with_sounds(MessageSounds::by_side(0x47c, alliance)),
+    )
+}
+
+/// Capital Ship Repaired / Squadron at Full Strength (`FUN_00499de0`,
+/// class `0x65bb88`): notification `0x106` with the damage flag cleared,
+/// for a capital ship (families `0x14..0x1b`) or a squadron (`0x1c..0x1f`)
+/// of the reader's side. A ship reads TEXTSTRA `0x7041` / `0x7043`, a
+/// squadron `0x7040` / `0x7042`; the unit is `{1:1}` and its container
+/// (the ship's fleet, a carried squadron's fleet, else its planet) `{2:1}`.
+/// Returns the title and body.
+#[must_use]
+pub fn repaired_texts(
+    unit: &str,
+    container: &str,
+    squadron: bool,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let (title, body) = if squadron {
+        (0x7040, 0x7042)
+    } else {
+        (0x7041, 0x7043)
+    };
+    let parameters = [
+        MessageParameter::Named { name: unit },
+        MessageParameter::Named { name: container },
+    ];
+    Some((
+        fill_message_text(texts.get(&title)?, &parameters),
+        fill_message_text(texts.get(&body)?, &parameters),
+    ))
+}
+
+/// A mission's own side told why it ended (`FUN_00491500`, notification
+/// `0x1f1`), for the end codes other than Mission Foiled's 3..5
+/// ([`mission_foiled_texts`]), from its leader: a major character (family
+/// `0x30..0x37`) speaks in the first person.
+///
+/// - 6, 7, 9, 10: the target was not found, `0x7138` / `0x7139`, else
+///   `0x713a` / `0x713b`; none for a Research mission (family `0x53`).
+/// - `0xc`: a Research mission only, no research facilities: `0x7138` /
+///   `0x713c`, else `0x713a` / `0x713d`.
+/// - 8: the system changed sides: `0x7140` over `0x7141` (joined `{4:1}`,
+///   the side `joined`) or `0x7144` (declared neutrality, `joined` None);
+///   else `0x7142` over `0x7143` or `0x7145`.
+///
+/// The leader, the mission and the target system substitute in that
+/// order. The body ends on `0x70e6` with the `returning` place, else
+/// `0x70e7`. Returns the title and body.
+#[must_use]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The end, the mission's names and the text table are all inputs."
+)]
+pub fn mission_failed_texts(
+    code: u8,
+    research: bool,
+    leader: (&str, bool),
+    mission: &str,
+    target: &str,
+    joined: Option<bool>,
+    returning: Option<&str>,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let (name, major) = leader;
+    let (title, body) = match code {
+        6 | 7 | 9 | 10 if !research => {
+            if major {
+                (0x7138, 0x7139)
+            } else {
+                (0x713a, 0x713b)
+            }
+        }
+        0xc if research => {
+            if major {
+                (0x7138, 0x713c)
+            } else {
+                (0x713a, 0x713d)
+            }
+        }
+        8 => match (major, joined.is_some()) {
+            (true, true) => (0x7140, 0x7141),
+            (true, false) => (0x7140, 0x7144),
+            (false, true) => (0x7142, 0x7143),
+            (false, false) => (0x7142, 0x7145),
+        },
+        _ => return None,
+    };
+    let parameters = [
+        MessageParameter::Named { name },
+        MessageParameter::Named { name: mission },
+        MessageParameter::Named { name: target },
+        side_parameter(joined.unwrap_or(true), texts),
+    ];
+    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    text.push_str(&match returning {
+        Some(place) => fill_message_text(texts.get(&0x70e6)?, &[MessageParameter::Named { name: place }]),
+        None => fill_message_text(texts.get(&0x70e7)?, &[]),
+    });
+    Some((fill_message_text(texts.get(&title)?, &parameters), text))
+}
+
 /// An enemy mission foiled (`FUN_00491500`, notification `0x1f1`):
 /// TEXTSTRA `0x713e` "Enemy Mission Foiled" and `0x713f` "An enemy {1:1}
 /// mission to {2:1} has been foiled by our forces.", the mission the first
@@ -2724,6 +2857,153 @@ mod tests {
         };
         assert_eq!(near(Faction::Alliance, true), sounds(0x452, 0));
         assert_eq!(near(Faction::Empire, false), sounds(0x453, 0));
+    }
+
+    #[test]
+    fn recruitment_done_tells_the_side_its_pool_is_empty() {
+        // FUN_0048ae40 (class 0x65b0f8, notification 0x12c with its
+        // argument set, once): TEXTSTRA 0x7210 / 0x7211, picture
+        // 0x412 + (side != 1), +0x30 0x47c + (side != 1); its mask
+        // FUN_0048af30 is 0x10 (Mission) and its kind FUN_0048ad30 is 8.
+        let texts = HashMap::from([
+            (0x7210, "Recruitment Done".to_owned()),
+            (
+                0x7211,
+                "We regret to report that there are no more candidates to be recruited.".to_owned(),
+            ),
+        ]);
+        let message = recruitment_done_message(false, 7, &texts).expect("a message");
+        assert_eq!(message.title.as_deref(), Some("Recruitment Done"));
+        assert_eq!(
+            message.text,
+            "We regret to report that there are no more candidates to be recruited."
+        );
+        assert_eq!(message.rail, Some(crate::message_log::MessageRail::Mission));
+        assert_eq!(message.audience, RailAudience::Empire);
+        assert!(message.plain);
+        assert_eq!(message.picture.map(|p| p.background), Some(0x413));
+        assert_eq!(message.sounds, MessageSounds::by_side(0x47c, false));
+        let alliance = recruitment_done_message(true, 7, &texts).unwrap();
+        assert_eq!(alliance.audience, RailAudience::Alliance);
+        assert_eq!(alliance.picture.map(|p| p.background), Some(0x412));
+        assert_eq!(alliance.sounds.strategy, 0x47c);
+        assert!(recruitment_done_message(true, 7, &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn a_repaired_ship_or_refilled_squadron_names_itself_and_its_container() {
+        // FUN_00499de0 (0x106 with the damage flag cleared): a capital
+        // ship 0x7041 / 0x7043, a squadron 0x7040 / 0x7042, the unit {1}
+        // and its container {2}.
+        let texts = HashMap::from([
+            (0x7040, "Squadron at Full Strength".to_owned()),
+            (0x7041, "Capital Ship Repaired".to_owned()),
+            (
+                0x7042,
+                "The {1:1} Squadron attached to {2:1} has replaced all fighters lost in combat."
+                    .to_owned(),
+            ),
+            (
+                0x7043,
+                "{1:1} attached to {2:1} has repaired all battle damage and is fully operational."
+                    .to_owned(),
+            ),
+        ]);
+        assert_eq!(
+            repaired_texts("Victory Destroyer 2", "Fleet 2", false, &texts),
+            Some((
+                "Capital Ship Repaired".to_owned(),
+                "Victory Destroyer 2 attached to Fleet 2 has repaired all battle damage and is fully operational."
+                    .to_owned()
+            ))
+        );
+        assert_eq!(
+            repaired_texts("TIE Fighter", "Fleet 2", true, &texts),
+            Some((
+                "Squadron at Full Strength".to_owned(),
+                "The TIE Fighter Squadron attached to Fleet 2 has replaced all fighters lost in combat."
+                    .to_owned()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_mission_ended_for_its_target_or_side_reports_from_its_leader() {
+        // FUN_00491500 codes 6, 7, 9, 10: 0x7138 / 0x7139 from a major
+        // leader, else 0x713a / 0x713b, none for a Research mission
+        // (family 0x53); 0xc only for Research: 0x7138 / 0x713c or
+        // 0x713a / 0x713d; 8: 0x7140 / 0x7141 (joined {4:1}) or 0x7144
+        // (neutral), else 0x7142 / 0x7143 or 0x7145. Each ends on 0x70e6
+        // with the returning place, else 0x70e7.
+        let texts = every_text_of([
+            (0x7138, "{1:1} Mission Failed"),
+            (0x7139, "My {2:1} Mission to {3:1} has failed because the target was not found at that location.  "),
+            (0x713a, "{2:1} Mission Failed"),
+            (0x713b, "The {2:1} Mission to {3:1} has failed because the target was not found at that location.  "),
+            (0x713c, "My {2:1} Mission to {3:1} has failed because we have no research facilities at that location."),
+            (0x713d, "The {2:1} Mission to {3:1} has failed because we have no research facilities at that location.  "),
+            (0x7140, "{1:1} Mission Aborted"),
+            (0x7141, "My {2:1} mission to {3:1} has been aborted because the system has joined the {4:1}.  "),
+            (0x7142, "{2:1} Mission Aborted."),
+            (0x7143, "The {2:1} mission to {3:1} has been aborted because the system has joined the {4:1}.  "),
+            (0x7144, "My {2:1} mission to {3:1} has been aborted because the system has declared neutrality."),
+            (0x7145, "The {2:1} mission to {3:1} has been aborted because the system has declared neutrality."),
+            (0x70e6, "\nPersonnel are returning to {1:1}."),
+            (0x70e7, "\nAll personnel assigned to the mission have failed to return."),
+            (0x4d50, "Alliance"),
+            (0x4d51, "Empire"),
+        ]);
+        let say = |code, research, major, joined: Option<bool>, returning| {
+            mission_failed_texts(
+                code,
+                research,
+                ("Leia Organa", major),
+                "Espionage",
+                "Kuat",
+                joined,
+                returning,
+                &texts,
+            )
+        };
+        assert_eq!(
+            say(6, false, true, None, Some("Yavin")),
+            Some((
+                "Leia Organa Mission Failed".to_owned(),
+                "My Espionage Mission to Kuat has failed because the target was not found at that location.  \nPersonnel are returning to Yavin."
+                    .to_owned()
+            ))
+        );
+        assert_eq!(
+            say(10, false, false, None, None).map(|m| m.0),
+            Some("Espionage Mission Failed".to_owned())
+        );
+        assert!(say(7, false, false, None, None)
+            .unwrap()
+            .1
+            .ends_with("\nAll personnel assigned to the mission have failed to return."));
+        assert_eq!(say(6, true, true, None, None), None);
+        assert_eq!(say(0xc, false, true, None, None), None);
+        assert_eq!(
+            say(0xc, true, true, None, None).unwrap().1,
+            "My Espionage Mission to Kuat has failed because we have no research facilities at that location.\nAll personnel assigned to the mission have failed to return."
+        );
+        assert!(say(0xc, true, false, None, None).unwrap().1.starts_with("The Espionage Mission to Kuat has failed because we have no research"));
+        assert_eq!(
+            say(8, false, true, Some(false), None).map(|m| m.0),
+            Some("Leia Organa Mission Aborted".to_owned())
+        );
+        assert!(say(8, false, true, Some(false), None).unwrap().1.starts_with("My Espionage mission to Kuat has been aborted because the system has joined the Empire."));
+        assert!(say(8, false, false, None, None).unwrap().1.starts_with("The Espionage mission to Kuat has been aborted because the system has declared neutrality."));
+        assert_eq!(say(8, false, false, Some(true), None).unwrap().0, "Espionage Mission Aborted.");
+        // Codes 3..5 are Mission Foiled ([`mission_foiled_texts`]); 0..2,
+        // 0xb and up post nothing here.
+        for code in [0, 1, 2, 3, 4, 5, 0xb, 0xd, 0xe, 0xf, 0x10] {
+            assert_eq!(say(code, false, true, None, None), None, "{code}");
+        }
+    }
+
+    fn every_text_of<const N: usize>(pairs: [(u16, &str); N]) -> HashMap<u16, String> {
+        pairs.into_iter().map(|(id, text)| (id, text.to_owned())).collect()
     }
 
     #[test]
