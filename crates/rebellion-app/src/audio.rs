@@ -357,6 +357,94 @@ impl TacticalEffectChannels {
     }
 }
 
+// ---------------------------------------------------------------------------
+// The missing-movie box's sound
+// ---------------------------------------------------------------------------
+
+/// The stop beep's sample rate (quad-snd mixes at 44100 Hz).
+pub const STOP_BEEP_RATE: u32 = 44_100;
+/// The stop beep's length in samples: 0.75 s.
+pub const STOP_BEEP_SAMPLES: usize = 33_075;
+/// The stop beep's loudest sample, well under full scale.
+pub const STOP_BEEP_PEAK: f32 = 0.45;
+/// The stop beep's two struck tones, highest first: (start in seconds,
+/// fundamental in Hz, decay time constant in seconds, weight).
+const STOP_BEEP_TONES: [(f32, f32, f32, f32); 2] =
+    [(0.0, 880.0, 0.09, 0.8), (0.11, 587.33, 0.17, 1.0)];
+/// Each tone's attack and the whole beep's closing fade, in seconds.
+const STOP_BEEP_ATTACK: f32 = 0.004;
+const STOP_BEEP_FADE: f32 = 0.03;
+
+/// The missing-movie box's sound: `FUN_005f6920` reaches `FUN_0060a9e0`,
+/// which calls `MessageBeep(0x10)` (`MB_ICONHAND`, the Windows "Critical
+/// Stop" sound) before its `MessageBoxA`. port: the port synthesizes its
+/// own stand-in instead of any Windows or game asset: two struck tones a
+/// fifth apart falling from A5 (880 Hz) to D5 (587.33 Hz) 110 ms later,
+/// each with a quiet octave partial, a 4 ms attack and an exponential
+/// decay (90 and 170 ms), 0.75 s long with a 30 ms closing fade, peaking
+/// at [`STOP_BEEP_PEAK`].
+#[must_use]
+pub fn stop_beep_samples() -> Vec<f32> {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "Sample indices stay far below 2^24."
+    )]
+    let raw: Vec<f32> = (0..STOP_BEEP_SAMPLES)
+        .map(|index| {
+            let t = index as f32 / STOP_BEEP_RATE as f32;
+            let end = STOP_BEEP_SAMPLES as f32 / STOP_BEEP_RATE as f32;
+            let fade = ((end - t) / STOP_BEEP_FADE).min(1.0);
+            let sum: f32 = STOP_BEEP_TONES
+                .iter()
+                .filter(|&&(start, ..)| t >= start)
+                .map(|&(start, hz, decay, weight)| {
+                    let local = t - start;
+                    let envelope = (local / STOP_BEEP_ATTACK).min(1.0) * (-local / decay).exp();
+                    let phase = std::f32::consts::TAU * hz * local;
+                    weight * envelope * (phase.sin() + 0.25 * (2.0 * phase).sin())
+                })
+                .sum();
+            sum * fade
+        })
+        .collect();
+    let loudest = raw
+        .iter()
+        .fold(0.0_f32, |max, sample| max.max(sample.abs()));
+    raw.into_iter()
+        .map(|sample| sample * STOP_BEEP_PEAK / loudest)
+        .collect()
+}
+
+/// [`stop_beep_samples`] as a mono 16-bit PCM WAVE, the form `Sound::load`
+/// takes on native and in the browser (`decodeAudioData`).
+#[must_use]
+pub fn stop_beep_wave() -> Vec<u8> {
+    let samples = stop_beep_samples();
+    let data_len = u32::try_from(samples.len() * 2).unwrap_or(u32::MAX);
+    let mut bytes = Vec::with_capacity(44 + samples.len() * 2);
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    bytes.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    bytes.extend_from_slice(&1u16.to_le_bytes()); // mono
+    bytes.extend_from_slice(&STOP_BEEP_RATE.to_le_bytes());
+    bytes.extend_from_slice(&(STOP_BEEP_RATE * 2).to_le_bytes());
+    bytes.extend_from_slice(&2u16.to_le_bytes()); // block align
+    bytes.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&data_len.to_le_bytes());
+    for sample in samples {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "Samples are bounded by STOP_BEEP_PEAK, inside i16."
+        )]
+        let value = (sample * f32::from(i16::MAX)).round() as i16;
+        bytes.extend_from_slice(&value.to_le_bytes());
+    }
+    bytes
+}
+
 /// A PCM WAVE's length: its `data` chunk over the `fmt ` chunk's byte rate.
 #[must_use]
 pub fn wave_duration_seconds(bytes: &[u8]) -> Option<f64> {
@@ -447,13 +535,20 @@ pub struct AudioEngine {
 
     /// Missing tracks already reported, keeping diagnostics bounded.
     missing_music_logged: HashSet<MusicTrack>,
+
+    /// The missing-movie box's synthesized stop beep ([`stop_beep_wave`]).
+    stop_beep: Sound,
 }
 
 impl AudioEngine {
     /// Create a new engine and initialise the `quad-snd` audio context.
     pub fn new() -> Self {
+        let ctx = AudioContext::new();
+        // Loaded at once: the browser decodes it before the first box.
+        let stop_beep = Sound::load(&ctx, &stop_beep_wave());
         AudioEngine {
-            ctx: AudioContext::new(),
+            ctx,
+            stop_beep,
             sfx: HashMap::new(),
             tactical_sfx: HashMap::new(),
             tactical_sfx_seconds: HashMap::new(),
@@ -794,6 +889,28 @@ impl AudioEngine {
         }
     }
 
+    /// Play the missing-movie box's stop beep once at the effects volume
+    /// (port: the stand-in for `MessageBeep(0x10)` in `FUN_0060a9e0`).
+    /// Returns whether it sounded: nothing plays with the effects silent.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "Audio gains are bounded values; the playback API takes f32."
+    )]
+    pub fn play_stop_beep(&mut self, vol_state: &AudioVolumeState) -> bool {
+        let vol = vol_state.effective_sfx_volume() as f32;
+        if vol <= 0.0 {
+            return false;
+        }
+        self.stop_beep.play(
+            &self.ctx,
+            quad_snd::PlaySoundParams {
+                looped: false,
+                volume: vol,
+            },
+        );
+        true
+    }
+
     /// Play one concrete original tactical event variant.
     #[expect(
         clippy::cast_possible_truncation,
@@ -1082,6 +1199,128 @@ mod tests {
         assert_eq!(update.started.len(), 1);
         assert!(!channels.try_hold_loop(0.1));
         assert!(channels.try_hold_loop(2.0));
+    }
+
+    // port: the stand-in for FUN_0060a9e0's MessageBeep(0x10) (reached
+    // from FUN_005f6920 when a movie cannot be opened) is our own
+    // synthesized sound, not a Windows or game asset.
+    #[test]
+    fn the_stop_beep_is_a_bounded_audible_three_quarter_second_fall() {
+        let samples = stop_beep_samples();
+        assert_eq!(samples.len(), STOP_BEEP_SAMPLES);
+        assert!(samples.iter().all(|sample| sample.is_finite()));
+        let loudest = samples.iter().fold(0.0_f32, |max, s| max.max(s.abs()));
+        assert!((loudest - STOP_BEEP_PEAK).abs() < 1e-6, "peak {loudest}");
+        // It starts and ends silent: no click at either edge.
+        assert!(samples[0].abs() < 1e-6);
+        assert!(samples[STOP_BEEP_SAMPLES - 1].abs() < 1e-3);
+        // The higher tone sounds first, alone; the lower one takes over
+        // 110 ms in: the first 100 ms cross zero more often per second
+        // than 200..300 ms (880 Hz against mostly 587 Hz).
+        let crossings = |range: std::ops::Range<usize>| {
+            samples[range]
+                .windows(2)
+                .filter(|pair| (pair[0] < 0.0) != (pair[1] < 0.0))
+                .count()
+        };
+        let rate = STOP_BEEP_RATE as usize;
+        let high = crossings(0..rate / 10);
+        let low = crossings(rate / 5..rate * 3 / 10);
+        assert!((170..=190).contains(&high), "first tone crossings {high}");
+        assert!((110..=130).contains(&low), "second tone crossings {low}");
+        // It decays: the last 100 ms are far quieter than the peak.
+        let tail = samples[STOP_BEEP_SAMPLES - rate / 10..]
+            .iter()
+            .fold(0.0_f32, |max, s| max.max(s.abs()));
+        assert!(tail < STOP_BEEP_PEAK / 20.0, "tail {tail}");
+        assert!(tail > 0.0);
+    }
+
+    #[test]
+    fn the_stop_beep_has_no_clicks_and_fades_out_over_its_last_30_ms() {
+        let samples = stop_beep_samples();
+        let rate = STOP_BEEP_RATE as usize;
+        let ms = |count: usize| count * rate / 1000;
+        // No jump between neighbours, where the second tone enters too:
+        // the steepest 880 Hz slope at this peak is about 0.05 a sample.
+        let steepest = samples
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(steepest < 0.08, "steepest step {steepest}");
+        let loudest = |range: std::ops::Range<usize>| {
+            samples[range]
+                .iter()
+                .fold(0.0_f32, |max, s| max.max(s.abs()))
+        };
+        let n = STOP_BEEP_SAMPLES;
+        // Before the fade only the 170 ms decay acts (50 ms: about 0.75).
+        let before_fade = loudest(n - ms(35)..n - ms(30));
+        let earlier = loudest(n - ms(85)..n - ms(80));
+        let ratio = before_fade / earlier;
+        assert!((0.6..0.9).contains(&ratio), "decay ratio {ratio}");
+        // The fade takes the last millisecond close to silence.
+        let last = loudest(n - ms(1)..n);
+        assert!(last < before_fade / 20.0, "last {last} against {before_fade}");
+    }
+
+    #[test]
+    fn the_stop_beeps_first_tone_carries_a_quarter_strength_octave() {
+        // The first 100 ms are the 880 Hz tone alone; its octave partial
+        // is in phase at a quarter of its strength.
+        let samples = stop_beep_samples();
+        let rate = STOP_BEEP_RATE as usize;
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "Sample indices stay far below 2^24."
+        )]
+        let projection = |hz: f32| {
+            samples[..rate / 10]
+                .iter()
+                .enumerate()
+                .map(|(index, sample)| {
+                    let t = index as f32 / STOP_BEEP_RATE as f32;
+                    sample * (std::f32::consts::TAU * hz * t).sin()
+                })
+                .sum::<f32>()
+        };
+        let ratio = projection(1760.0) / projection(880.0);
+        assert!((0.2..0.3).contains(&ratio), "octave ratio {ratio}");
+    }
+
+    #[test]
+    fn the_stop_beep_wave_is_mono_16_bit_pcm_of_the_same_length() {
+        let bytes = stop_beep_wave();
+        assert_eq!(&bytes[0..4], b"RIFF");
+        assert_eq!(
+            u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize,
+            bytes.len() - 8
+        );
+        assert_eq!(&bytes[8..16], b"WAVEfmt ");
+        // PCM, mono, 44100 Hz, 88200 bytes/s, block 2, 16 bits.
+        assert_eq!(&bytes[20..24], &[1, 0, 1, 0]);
+        assert_eq!(
+            u32::from_le_bytes(bytes[24..28].try_into().unwrap()),
+            44_100
+        );
+        assert_eq!(
+            u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+            88_200
+        );
+        assert_eq!(&bytes[32..36], &[2, 0, 16, 0]);
+        assert_eq!(bytes.len(), 44 + STOP_BEEP_SAMPLES * 2);
+        assert_eq!(wave_duration_seconds(&bytes), Some(0.75));
+        let samples = stop_beep_samples();
+        let pcm: Vec<i16> = bytes[44..]
+            .chunks_exact(2)
+            .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        let peak = pcm.iter().map(|&value| value.unsigned_abs()).max().unwrap();
+        assert_eq!(peak, 14_745, "0.45 of full scale");
+        for (index, (&value, &sample)) in pcm.iter().zip(&samples).enumerate().step_by(997) {
+            let want = (sample * 32_767.0).round();
+            assert!((f32::from(value) - want).abs() < 0.5, "sample {index}");
+        }
     }
 
     #[test]

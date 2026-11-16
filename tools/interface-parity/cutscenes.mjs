@@ -368,7 +368,9 @@ const CASES = {
   // a 300 by 149 box at (173, 171), flat title 166,202,240 on y 174..195,
   // white body, cream band 255,251,240 on y 275..317, OK's dark outline
   // (128,128,128) at x 380 and 454; 54 and 56: OK or Enter, the menu.
-  async "missing-movie-box"(page, shot) {
+  // FUN_0060a9e0 calls MessageBeep(0x10) before the box; port: a
+  // synthesized 0.75 s stop beep (audio::stop_beep_wave) sounds once.
+  async "missing-movie-box"(page, shot, log) {
     REFUSED.add("/data/video/005.webm");
     try {
       await waitStem(page, "000", "the logos play");
@@ -381,6 +383,15 @@ const CASES = {
       await waitFor(page, () => window.__openRebellionCutscene?.state === 3,
         "the credits movie fails to load");
       await page.waitForTimeout(1500);
+      const beepLogs = () => log.filter((line) => line.includes("[audio] movie_error_beep "));
+      const beeps = () => page.evaluate(() => window.__openRebellionStarts
+        .filter(({ seconds }) => Math.abs(seconds - 0.75) < 0.01));
+      assert.equal(beepLogs().length, 1, `one beep request: ${JSON.stringify(beepLogs())}`);
+      assert.match(beepLogs()[0],
+        /source=FUN_0060a9e0 message_beep=0x10 port=synthesized played=true muted=false/);
+      const played = await beeps();
+      assert.equal(played.length, 1, `one 0.75 s source started: ${JSON.stringify(played)}`);
+      assert.equal(played[0].state, 3, "it starts with the box open");
       const bytes = await page.screenshot({ path: undefined });
       await shot("box");
       const png = PNG.sync.read(bytes);
@@ -423,7 +434,9 @@ const CASES = {
       await waitFor(page, menuActive, "Enter answers the box and the menu shows again");
       await page.waitForTimeout(500);
       await shot("menu-after-enter");
-      return { frame: { left: L, right: R }, pixels: seen };
+      assert.equal(beepLogs().length, 1, "the beep is not asked for again");
+      assert.equal((await beeps()).length, 1, "the beep does not sound again");
+      return { frame: { left: L, right: R }, pixels: seen, beep: { log: beepLogs()[0], sources: played } };
     } finally {
       REFUSED.delete("/data/video/005.webm");
     }
@@ -489,8 +502,17 @@ async function run(browser, base, name) {
   page.on("pageerror", (error) => errors.push(String(error)));
   await page.addInitScript(() => {
     window.__openRebellionLoops = [];
+    // Every one-shot source started, with its length and the movie state
+    // (the missing-movie box's beep).
+    window.__openRebellionStarts = [];
     const start = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...rest) {
+      if (!this.loop) {
+        window.__openRebellionStarts.push({
+          seconds: this.buffer?.duration ?? null,
+          state: window.__openRebellionCutscene?.state ?? null,
+        });
+      }
       if (this.loop) {
         window.__openRebellionLoops.push({
           seconds: this.buffer?.duration ?? null,
@@ -519,7 +541,7 @@ async function run(browser, base, name) {
     assert.deepEqual(errors, [], errors.join("; "));
     return { name, status: "pass", checks, shots,
       cutscene_log: log.filter((line) => line.includes("[cutscene]") || line.includes("[main_menu]")
-        || line.includes("[audio] score")) };
+        || line.includes("[audio] score") || line.includes("[audio] movie_error_beep")) };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { name, status: "fail", error: String(error.stack || error), errors,

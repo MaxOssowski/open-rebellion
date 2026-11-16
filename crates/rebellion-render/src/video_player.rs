@@ -505,6 +505,9 @@ pub struct VideoPlayer {
     playing: Option<Backend>,
     error_box: Option<MovieErrorBox>,
     shown_path: String,
+    /// The box opened and its beep is not yet asked for
+    /// ([`VideoPlayer::take_box_beep`]).
+    box_beep_pending: bool,
 }
 
 impl VideoPlayer {
@@ -518,6 +521,7 @@ impl VideoPlayer {
             playing: Some(Backend::open(path, volume)?),
             error_box: None,
             shown_path: shown_path(path),
+            box_beep_pending: false,
         })
     }
 
@@ -532,6 +536,7 @@ impl VideoPlayer {
             playing: None,
             error_box: Some(MovieErrorBox::new(shown.clone())),
             shown_path: shown,
+            box_beep_pending: true,
         }
     }
 
@@ -546,6 +551,7 @@ impl VideoPlayer {
                 log_box(&self.shown_path);
                 self.playing = None;
                 self.error_box = Some(MovieErrorBox::new(self.shown_path.clone()));
+                self.box_beep_pending = true;
                 return;
             }
             playing.advance(dt);
@@ -575,6 +581,14 @@ impl VideoPlayer {
         }
     }
 
+    /// Whether the error box has just opened: true once per box, then
+    /// false. `FUN_0060a9e0` calls `MessageBeep(0x10)` before its
+    /// `MessageBoxA`; the caller plays the port's stand-in
+    /// (port: `rebellion-app` `audio::stop_beep_wave`).
+    pub fn take_box_beep(&mut self) -> bool {
+        std::mem::take(&mut self.box_beep_pending)
+    }
+
     /// The open error box, if the movie's file could not be opened.
     pub fn error_box_mut(&mut self) -> Option<&mut MovieErrorBox> {
         self.error_box.as_mut()
@@ -590,7 +604,8 @@ impl VideoPlayer {
     }
 }
 
-/// Log the box: `MessageBeep(0x10)` has no sound in the port (no asset).
+/// Log the box; its `MessageBeep(0x10)` is asked for by
+/// [`VideoPlayer::take_box_beep`].
 fn log_box(path: &str) {
     macroquad::logging::info!(
         "[cutscene] error_box path={path} caption={}",
@@ -622,6 +637,9 @@ mod wrapper_tests {
         // which FUN_00421790 handles as 0x402 (the natural end).
         let mut movie = VideoPlayer::unopened(Path::new("assets/references/ref-videos/105.webm"));
         assert!(!movie.is_finished());
+        // FUN_0060a9e0: MessageBeep(0x10) once, as the box opens.
+        assert!(movie.take_box_beep(), "the box asks for its beep");
+        assert!(!movie.take_box_beep(), "the beep is asked for once");
         movie.advance(10.0);
         movie.stop();
         assert!(!movie.is_finished(), "a skip does not answer the box");

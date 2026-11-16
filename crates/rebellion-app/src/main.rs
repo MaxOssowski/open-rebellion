@@ -5099,6 +5099,21 @@ async fn main() {
                     if let Some(caption) = story_caption.as_deref() {
                         draw_story_caption(caption);
                     }
+                    // FUN_005f6920 -> FUN_0060a9e0: MessageBeep(0x10) as the
+                    // box opens. port: a synthesized stop beep stands in
+                    // for the Windows sound (audio::stop_beep_wave).
+                    if player.take_box_beep() {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let played = audio_engine.play_stop_beep(&audio_vol);
+                        #[cfg(target_arch = "wasm32")]
+                        let played = browser_menu_audio
+                            .as_mut()
+                            .is_some_and(|engine| engine.play_stop_beep(&audio_vol));
+                        macroquad::logging::info!(
+                            "[audio] movie_error_beep source=FUN_0060a9e0 message_beep=0x10 port=synthesized played={played} muted={}",
+                            audio_vol.effective_sfx_volume() <= 0.0
+                        );
+                    }
                     answer_movie_error_box(player);
 
                     if player.is_finished() {
