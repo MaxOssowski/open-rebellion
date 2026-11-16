@@ -57,9 +57,17 @@ const QUADRANTS_FACILITY = 119;
 // everything" mode on.
 const QUADRANTS_STALE = 124;
 const QUADRANTS_STALE_SEE_EVERYTHING = 125;
+// QuadrantsHeadquartersFrozen (137): Quadrants with the Empire's copy of
+// the Alliance's headquarters system frozen while the headquarters stood
+// there; for the Alliance it is Quadrants.
+const QUADRANTS_HEADQUARTERS_FROZEN = 138;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
+  "2026-11-16-edited-saves/x-29-hqe-ds-corellian-duros-hq-mark-empire-view-d527.png":
+    "31eb3ec474724a6242ab2f68ec96cb374cef400d014e617f30f0692eeef6822b",
+  "2026-11-16-edited-saves/x-39-ehq2-churba-tokmia-hq-mark-empire-view-blockade-d45.png":
+    "ec787bc54c9e295006f56adfb2cf665f9c46e4cc63dd38dbe1395729f7c1be9b",
   "2026-11-16-partial-cells/v-17-sumitra-yavin-hq-mark-imperial-presence-d1268.png":
     "2d0316e721000c783d72837706813f353d9d80477538fd875cf6862cd29eb4c1",
   "2026-11-16-partial-cells/v-20-sumitra-yavin-imperial-no-hq-mark-d1716.png":
@@ -2513,6 +2521,35 @@ const cases = [
       assert.equal(checks.port_against_after, 0, JSON.stringify(checks));
       assert.ok(checks.before_against_after > 0, JSON.stringify(checks));
       return checks;
+    },
+  },
+  {
+    name: "headquarters-frozen",
+    scenario: QUADRANTS_HEADQUARTERS_FROZEN,
+    factions: ["empire"],
+    // OBJ-13-C002: FUN_0045bbb0 adds the HQ overlay (904) when the viewer's
+    // record of the system (FUN_004f3220, the side's table) holds a family
+    // 0x20..0x21 object (FUN_00526cf0), live or frozen. The Empire's copy
+    // here was frozen with the headquarters in it: 904 over the planet,
+    // every opaque pixel. A0 2026-11-16-edited-saves (Empire games; the
+    // saves carry a Death Star edit, the headquarters is not edited): x-29
+    // (31eb3ec4, day 527) shows 904 over Duros and x-39 (ec787bc5, day 45)
+    // over Tokmia under the Empire's blockade, both every opaque pixel.
+    async run(page, faction, setup, directory, source) {
+      const screen = await stableScreen(page, directory, "headquarters-frozen");
+      const icon = resource(source, 904);
+      const port = { id: 904, ...compareIcon(screen, setup.headquarters, icon, "headquarters-frozen", directory) };
+      assert.equal(port.different_pixels, 0, JSON.stringify(port));
+      const duros = a0Capture("2026-11-16-edited-saves/x-29-hqe-ds-corellian-duros-hq-mark-empire-view-d527.png");
+      const tokmia = a0Capture("2026-11-16-edited-saves/x-39-ehq2-churba-tokmia-hq-mark-empire-view-blockade-d45.png");
+      if (!duros || !tokmia) return { port, a0: null };
+      const a0 = {
+        duros: templateMatch(duros, icon, [240, 280], [220, 260]),
+        tokmia: templateMatch(tokmia, icon, [180, 220], [60, 100]),
+      };
+      assert.ok(a0.duros && a0.duros.different === 0 && a0.tokmia && a0.tokmia.different === 0,
+        JSON.stringify(a0));
+      return { port, a0 };
     },
   },
   {
