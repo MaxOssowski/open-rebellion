@@ -61,12 +61,25 @@ const TARGET_NAME: (f32, f32, f32) = (37.0, 294.0, 185.0);
 /// A list item's name color, unselected and selected (list `+0xd8`/`+0xdc`,
 /// `FUN_00607ea0`).
 const ITEM_TEXT: egui::Color32 = egui::Color32::from_rgb(0x78, 0x78, 0x78);
-/// A list item's name font: the original's font 10, as the Defenses
-/// window's list labels (A0 2026-11-15-partial-cells/rescue-agents-tab-
-/// han-d763, sha256 b667575fbb6b: "Han Solo" under his mini, as tall as
-/// the Defenses window's names).
-const ITEM_FONT: u16 = 10;
+/// A list item's name font: the regular 16-pixel cell, font 4 (13 ppem).
+/// A0 2026-11-16-partial-cells/r-3 (sha256 15244144bb9c) starts the
+/// Imperial Probe Droid's two lines 16 rows apart, and its glyphs, like
+/// "Han Solo" in 2026-11-15-partial-cells/rescue-agents-tab-han-d763
+/// (b667575fbb6b), are taller and thinner than the Defenses window's
+/// font 10.
+const ITEM_FONT: u16 = 4;
 const ITEM_TEXT_SELECTED: egui::Color32 = egui::Color32::WHITE;
+/// The width an item's name breaks within (`FUN_00601b80`, `DrawTextA`
+/// with `DT_WORDBREAK`): the item's. A0 r-3 breaks "Imperial Probe Droid"
+/// after "Probe", both lines centred on the item.
+const ITEM_TEXT_WIDTH: f32 = ITEM_SIZE.0;
+
+/// An item's name as `DT_WORDBREAK` lays it in [`ITEM_TEXT_WIDTH`].
+fn item_name_lines(name: &str) -> Vec<String> {
+    crate::theme::gdi_word_break(name, ITEM_TEXT_WIDTH, |line| {
+        crate::theme::gdi_pen_positions(ITEM_FONT, line).map_or(0.0, |(_, width)| width)
+    })
+}
 /// A mission kind's name color in the box and its drop-down: the box's
 /// `+0x94`, white (`FUN_0060bed0`, set again by `FUN_0046a9c0`), which
 /// `FUN_0060c210` draws the shown item's name in. The item's own `+0x60`
@@ -1148,18 +1161,23 @@ fn draw_list(
             ITEM_TEXT
         };
         let top = image.map_or(item.center().y, |rect| rect.max.y);
-        crate::theme::paint_gdi_text(
-            &list_painter,
-            egui::Rect::from_min_max(
-                egui::pos2(item.min.x, top),
-                egui::pos2(item.max.x, item.max.y),
-            ),
-            scale,
-            font,
-            &name,
-            color,
-            (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
-        );
+        let (ascent, descent) = crate::theme::original_font_metrics(font);
+        for (line, text) in item_name_lines(&name).iter().enumerate() {
+            #[expect(clippy::cast_precision_loss, reason = "A line or two.")]
+            let line_top = top + line as f32 * (ascent + descent) * scale;
+            crate::theme::paint_gdi_text(
+                &list_painter,
+                egui::Rect::from_min_max(
+                    egui::pos2(item.min.x, line_top),
+                    egui::pos2(item.max.x, item.max.y),
+                ),
+                scale,
+                font,
+                text,
+                color,
+                (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
+            );
+        }
         let clip = item.intersect(list);
         let response = ui.interact(
             clip,
@@ -1178,6 +1196,24 @@ fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_items_name_breaks_into_lines_within_its_text_width() {
+        // FUN_00601b80 draws an item's name with DrawTextA, DT_WORDBREAK:
+        // A0 2026-11-16-partial-cells/r-3 (sha256 15244144bb9c) shows the
+        // Imperial Probe Droid on the agents page as "Imperial Probe" over
+        // "Droid", each centred under the mini.
+        // Both lines in the regular 16-pixel cell (13 ppem), one cell
+        // apart: r-3's lines start 16 rows apart, as tall and thin as
+        // rescue-agents-tab-han-d763's "Han Solo" (b667575fbb6b).
+        assert_eq!(crate::theme::original_font_cell(ITEM_FONT), (16.0, false));
+        for (name, lines) in [
+            ("Imperial Probe Droid", vec!["Imperial Probe", "Droid"]),
+            ("Han Solo", vec!["Han Solo"]),
+        ] {
+            assert_eq!(item_name_lines(name), lines, "{name}");
+        }
+    }
     use rebellion_core::ids::SystemKey;
     use rebellion_core::world::Character;
 
@@ -1958,6 +1994,49 @@ mod tests {
         let centre = (espionage.1 + espionage.2) / 2.0;
         assert!((centre - (origin.x + 37.0 + 100.0)).abs() < 8.0, "{espionage:?}");
         assert!(!lines.iter().any(|row| row.3.contains("Recruitment")), "{lines:?}");
+    }
+
+    #[test]
+    fn the_agents_list_breaks_a_long_name_into_centred_lines_a_cell_apart() {
+        // A0 2026-11-16-partial-cells/r-3 (sha256 15244144bb9c): "Imperial
+        // Probe" over "Droid", the second line 16 rows (font 4's cell)
+        // below the first, both centred on the 107-wide item at (8, 95);
+        // drawn at scale 2.
+        let mut world = GameWorld::default();
+        let droid = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0005),
+                is_alliance: false,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        let mut state = open_with(vec![MissionMember::SpecialForce(droid)]);
+        click(&world, &mut state, (195.0, 36.0));
+        let layout = layout(2.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut output = None;
+        for _ in 0..2 {
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            }));
+        }
+        let lines = crate::theme::test_lines(&output.unwrap().shapes);
+        let line = |text: &str| {
+            lines
+                .iter()
+                .find(|line| line.text == text)
+                .unwrap_or_else(|| panic!("{text} in {:?}", lines.iter().map(|l| &l.text).collect::<Vec<_>>()))
+                .clone()
+        };
+        let (first, second) = (line("Imperial Probe"), line("Droid"));
+        assert_eq!(second.pen.y - first.pen.y, 16.0 * 2.0);
+        let centre = |line: &crate::theme::TestLine| line.pen.x + line.width / 2.0;
+        assert!((centre(&first) - centre(&second)).abs() <= 3.0, "{first:?} {second:?}");
+        let item = dialog_rect(layout).min.x + (8.0 + ITEM_SIZE.0 / 2.0) * 2.0;
+        assert!((centre(&first) - item).abs() <= 3.0, "{first:?} {item}");
     }
 
     #[test]

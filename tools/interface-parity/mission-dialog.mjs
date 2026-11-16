@@ -718,8 +718,126 @@ async function inspect(server, source, faction, scenario, executable) {
       // Begin Mission files the Rescue on Leia and closes the dialog.
       assert.deepEqual(rescueA0.launched, [["Rescue", "Leia Organa", null]], JSON.stringify(rescueA0));
     }
+    // OBJ-11-C011, the Empire's Reconnaissance against A0 2026-11-16-
+    // partial-cells (an Empire game, the dialog at (230, 40)): the Imperial
+    // Probe Droid sent from Coruscant to Chandrila. Pixels where the
+    // content matches: the kind icon and buttons (r-1, bc3b867a26e0), the
+    // one-kind list with its bar (r-2, ba025821d16d), the agents page
+    // (r-3, 15244144bb9c); then the check button files the mission and
+    // closes the dialog (r-4, r-5). The target planet and names differ
+    // (the fixture's target is not Chandrila); A0's pointer is left out.
+    let reconA0 = null;
+    const reconA0Dir = path.join(root, ".artifacts/a0-vm/2026-11-16-partial-cells");
+    if (scenario.name === "recon" && faction.name === "empire" && fs.existsSync(reconA0Dir)) {
+      const a0 = (file) => cropDialog(fs.readFileSync(path.join(reconA0Dir, file)), origin);
+      const regionOf = (port, reference, skip = () => false) => (x0, y0, x1, y1) => {
+        let differing = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            if (skip(x, y)) continue;
+            const at = (y * port.width + x) * 4;
+            if ([0, 1, 2].some((c) => port.data[at + c] !== reference.data[at + c])) differing += 1;
+          }
+        }
+        return differing;
+      };
+      const press = async (x, y) => {
+        await page.mouse.move(origin.x + x, origin.y + y);
+        await frames(page);
+        await page.mouse.down();
+        await frames(page);
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        await frames(page);
+      };
+      reconA0 = {};
+      const dialog = regionOf(opened, a0("r-1-create-mission-reconnaissance-probe-droid-chandrila-d142.png"));
+      const icon = kindIcon.at;
+      reconA0.kind_icon = dialog(icon.x, icon.y, icon.x + 130, icon.y + 64);
+      reconA0.buttons = dialog(30, 320, 230, 352);
+      reconA0.target_frame = dialog(28, 192, 60, 300) + dialog(216, 192, 236, 300);
+      // The kind list (Missions at (101, 174)): Reconnaissance alone.
+      // A0's pointer rests on the item's name at about (136..152, 186..210).
+      await press(101 + 32, 174 + 9);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      const listed = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
+      fs.writeFileSync(path.join(directory, "recon-kind-list.png"), PNG.sync.write(listed));
+      const pointer = (x, y) => x >= 134 && x < 154 && y >= 184 && y < 212;
+      const list = regionOf(listed, a0("r-2-kinds-list-reconnaissance-only-d144.png"), pointer);
+      reconA0.list_icon = list(35, 203, 218, 291);
+      reconA0.list_edge = list(229, 175, 236, 291) + list(35, 289, 236, 292);
+      reconA0.list_bar = list(218, 175, 236, 292);
+      // Choosing the row closes the list.
+      await press(135, 250);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      // The Agents tab (0x98 at (137, 20)): the droid listed, no decoy.
+      // A0's pointer stands on the tab at about (200..222, 40..64).
+      await press(137 + 58, 20 + 16);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      const agents = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
+      fs.writeFileSync(path.join(directory, "recon-agents.png"), PNG.sync.write(agents));
+      const a0Agents = a0("r-3-agents-tab-probe-droid-agent-no-decoy-d147.png");
+      const tabPointer = (x, y) => x >= 194 && x < 224 && y >= 33 && y < 66;
+      const tab = regionOf(agents, a0Agents, tabPointer);
+      // The tabs are recorded, not asserted: A0 repainted the switched
+      // tabs keyed, so their key pixels keep the old tab's art.
+      reconA0.agents_tabs = tab(0, 20, 259, 60);
+      reconA0.agents_headers = tab(0, 60, 259, 95);
+      reconA0.agents_mini = tab(28, 105, 95, 135);
+      // Both lists and the arrows but the droid's name, "Imperial Probe"
+      // over "Droid" (FUN_00601b80, DT_WORDBREAK), the text deviation.
+      const name = (x, y) => x >= 8 && x < 116 && y >= 136 && y < 170;
+      reconA0.agents_lists = regionOf(agents, a0Agents, name)(0, 95, 259, 318);
+      reconA0.agents_buttons = tab(30, 320, 230, 352);
+      // The name's lines: rows of the box with four or more grey ink
+      // pixels (the list's 0x78 grey, antialiased), as bands; r-3's are
+      // 138..147 and 154..163, font 4's 16-pixel cell apart.
+      const bands = (png) => {
+        const out = [];
+        for (let y = 136; y < 170; y += 1) {
+          let ink = 0;
+          for (let x = 8; x < 116; x += 1) {
+            const at = (y * png.width + x) * 4;
+            const [r, g, b] = [png.data[at], png.data[at + 1], png.data[at + 2]];
+            if (Math.max(r, g, b) - Math.min(r, g, b) <= 12 && r >= 70 && r <= 160) ink += 1;
+          }
+          if (ink < 4) continue;
+          // A row of a line can carry too little ink ("Droid"'s 156 in
+          // A0): a one-row gap stays inside the band.
+          if (out.length && out.at(-1)[1] >= y - 2) out.at(-1)[1] = y;
+          else out.push([y, y]);
+        }
+        return out;
+      };
+      reconA0.name_lines = { port: bands(agents), a0: bands(a0Agents) };
+      const flowAgents = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+      reconA0.flow = flowAgents;
+      // The check button (at (100, 320)) launches the mission (r-4, r-5).
+      await press(100 + 33, 320 + 16);
+      await page.waitForFunction(() => window.__openRebellionInterfaceMissionFlow?.dialog_open === false,
+        null, { timeout: 10_000 });
+      const launched = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+      reconA0.launched = launched.missions;
+      fs.writeFileSync(path.join(directory, "recon-launched-screen.png"),
+        await page.screenshot({ animations: "disabled" }));
+      console.log(JSON.stringify({ recon_a0: reconA0 }));
+      assert.deepEqual(
+        [reconA0.kind_icon, reconA0.buttons, reconA0.list_icon + reconA0.list_edge, reconA0.list_bar,
+          reconA0.agents_headers, reconA0.agents_mini, reconA0.agents_lists, reconA0.agents_buttons],
+        [0, 0, 0, 0, 0, 0, 0, 0], JSON.stringify(reconA0));
+      // Two lines, each band within two pixels of A0's.
+      const lines = reconA0.name_lines;
+      assert.ok(lines.port.length === lines.a0.length && lines.a0.length === 2
+        && lines.a0.every(([top, bottom], k) => Math.abs(top - lines.port[k][0]) <= 2
+          && Math.abs(bottom - lines.port[k][1]) <= 2), JSON.stringify(lines));
+      assert.equal(reconA0.launched.length, 1, JSON.stringify(reconA0));
+      assert.equal(reconA0.launched[0][0], "Reconnaissance", JSON.stringify(reconA0));
+    }
     let cancelled = null;
-    if (targeting && !rescueA0) {
+    if (targeting && !rescueA0 && !reconA0) {
       comparisons.push(targeting.cursorCheck);
       // Cancel (0x15, the right bottom button at (170, 320)) closes the
       // dialog and starts nothing (FUN_0046c3c0; A0 menus3/61, 62).
@@ -749,6 +867,7 @@ async function inspect(server, source, faction, scenario, executable) {
       ...(kindIcon ? { kind_icon: kindIcon } : {}),
       ...(kindList ? { kind_list: kindList } : {}),
       ...(rescueA0 ? { rescue_a0: rescueA0 } : {}),
+      ...(reconA0 ? { recon_a0: reconA0 } : {}),
       comparisons,
       requests,
       errors,

@@ -6644,10 +6644,12 @@ pub fn personnel_arrivals(
 /// The event-message scenario's mission results: the Emperor recruits
 /// Thrawn at Coruscant, then fails his Espionage at Chandrila, his team
 /// going home to Coruscant, as A0 mission-reports/ reports them to the
-/// Empire. The app files it through `apply_mission_result`.
+/// Empire; then an Imperial Probe Droid's Reconnaissance of Chandrila
+/// succeeds, as A0 2026-11-16-partial-cells/r-8, r-9 (OBJ-11-C011) report
+/// it. The app files them through `apply_mission_result`.
 pub fn mission_results(
     request: FixtureRequest,
-    world: &GameWorld,
+    world: &mut GameWorld,
 ) -> Vec<rebellion_core::missions::MissionResult> {
     if request.scenario != Scenario::EventMessages {
         return Vec::new();
@@ -6682,6 +6684,7 @@ pub fn mission_results(
         kind: MissionKind::Recruitment,
         faction: MissionFaction::Empire,
         character: Some(emperor),
+        lead_force: None,
         target_system: coruscant,
         target_character: None,
         target_object: None,
@@ -6694,12 +6697,37 @@ pub fn mission_results(
             pool_emptied: false,
         }],
     };
-    vec![recruited, rebellion_core::missions::MissionResult {
+    // SPECFCSD class 5, the Imperial Probe Droid, on its mission; its
+    // team has no character, so it leads the report (FUN_004927c0 +0x74).
+    let droid = world
+        .special_forces
+        .insert(rebellion_core::world::SpecialForceUnit {
+            class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0005),
+            is_alliance: false,
+            skills: [0; 8],
+            on_mission: true,
+        });
+    let recon = rebellion_core::missions::MissionResult {
+        mission_id: u64::MAX - 5,
+        tick: 0,
+        kind: MissionKind::Reconnaissance,
+        faction: MissionFaction::Empire,
+        character: None,
+        lead_force: Some(droid),
+        target_system: chandrila,
+        target_character: None,
+        target_object: None,
+        returning_to: Some(rebellion_core::missions::ReturnPlace::System(coruscant)),
+        outcome: rebellion_core::missions::MissionOutcome::Success,
+        effects: Vec::new(),
+    };
+    vec![recon, recruited, rebellion_core::missions::MissionResult {
         mission_id: u64::MAX - 1,
         tick: 0,
         kind: MissionKind::Espionage,
         faction: MissionFaction::Empire,
         character: Some(emperor),
+        lead_force: None,
         target_system: chandrila,
         target_character: None,
         target_object: None,

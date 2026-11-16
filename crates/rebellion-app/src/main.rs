@@ -2190,7 +2190,7 @@ async fn main() {
                 }
             }
         }
-        for result in interface_test_fixture::mission_results(request, &world) {
+        for result in interface_test_fixture::mission_results(request, &mut world) {
             apply_mission_result(
                 &result,
                 false,
@@ -14270,8 +14270,21 @@ fn report_names(
         matches!(effect, MissionEffect::CharacterKilled { character, .. }
             if Some(*character) == result.target_character)
     });
+    // FUN_004f2d10 resolves the leader +0x74 whatever its family: a team
+    // of special forces alone is led by its first.
+    let leader = name_of(result.character).or_else(|| {
+        result
+            .lead_force
+            .and_then(|force| {
+                rebellion_render::status_rows::object_name(
+                    world,
+                    rebellion_core::missions::MissionTarget::SpecialForce(force),
+                )
+            })
+            .map(|name| (name, false))
+    });
     (
-        name_of(result.character),
+        leader,
         result
             .target_object
             .and_then(|object| rebellion_render::status_rows::object_name(world, object))
@@ -14629,7 +14642,13 @@ fn apply_mission_result(
             leader.is_some_and(|c| c.dagobah_completed),
         )
     };
-    let picture = {
+    // A Recon led by a special force shows the force's own (case 0x54).
+    let force_picture = result
+        .lead_force
+        .filter(|_| result.kind == MissionKind::Reconnaissance)
+        .and_then(|force| world.special_forces.get(force))
+        .and_then(|force| pictures::special_force_report(force.class_dat_id));
+    let picture = force_picture.unwrap_or_else(|| {
         pictures::mission_report(
             reported,
             result.outcome == rebellion_core::missions::MissionOutcome::Success,
@@ -14638,7 +14657,7 @@ fn apply_mission_result(
                 .character
                 .and_then(|character| pictures::portrait_key(world, character)),
         )
-    };
+    });
     // The report's names, read before the effects.
     let (leader, target, recruit, target_killed) = report_names(world, result);
     let returning = result
@@ -18841,6 +18860,7 @@ mod character_health_tests {
             kind: MissionKind::Assassination,
             faction: MissionFaction::Alliance,
             character: Some(leia),
+            lead_force: None,
             target_system: Default::default(),
             target_character: Some(dodonna),
             target_object: None,
@@ -18878,6 +18898,50 @@ mod character_health_tests {
         assert_eq!(
             report_names(&world, &result),
             (None, Some("Jan Dodonna".into()), None, false)
+        );
+    }
+
+    #[test]
+    fn a_recon_led_by_a_special_force_names_the_force_as_its_leader() {
+        // FUN_004927c0 reads the leader +0x74 through FUN_004f2d10, which
+        // resolves a special force as well as a character; case 0x54
+        // reports only when it resolves. A0 2026-11-16-partial-cells/r-9
+        // (sha256 f519dea4) is the Imperial Probe Droid's report.
+        use rebellion_core::missions::{MissionOutcome, MissionResult};
+        let mut world = GameWorld::default();
+        let class = rebellion_core::ids::DatId::new(0x3c00_0005);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                name: "Imperial Probe Droid".into(),
+                ..Default::default()
+            },
+        );
+        let droid = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: class,
+                is_alliance: false,
+                skills: [0; 8],
+                on_mission: true,
+            });
+        let result = MissionResult {
+            mission_id: 1,
+            tick: 3,
+            kind: MissionKind::Reconnaissance,
+            faction: MissionFaction::Empire,
+            character: None,
+            lead_force: Some(droid),
+            target_system: Default::default(),
+            target_character: None,
+            target_object: None,
+            returning_to: None,
+            outcome: MissionOutcome::Success,
+            effects: Vec::new(),
+        };
+        assert_eq!(
+            report_names(&world, &result).0,
+            Some(("Imperial Probe Droid".into(), false))
         );
     }
 
@@ -19178,6 +19242,68 @@ mod a0_message_text_tests {
         let texts = rebellion_data::message_texts(&base);
         assert!(!texts.is_empty(), "no TEXTSTRA.DLL in {}", base.display());
         texts
+    }
+
+    // A0 2026-11-16-partial-cells/r-9 (sha256 f519dea42d7a, an Empire
+    // game, OBJ-11-C011): the Imperial Probe Droid's Recon Mission Report,
+    // FUN_004927c0 case 0x54 (0x70e8 over 0x70e9) then 0x70e6, word for
+    // word as A0 shows it.
+    #[test]
+    #[ignore = "needs the original data in data/base"]
+    fn the_shipped_texts_build_the_a0_probe_droid_recon_report() {
+        use rebellion_core::missions::{MissionOutcome, MissionResult};
+        use rebellion_render::story_messages as story;
+        let texts = shipped_texts();
+        let mut world = GameWorld::default();
+        let class = rebellion_core::ids::DatId::new(0x3c00_0005);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                name: "Imperial Probe Droid".into(),
+                ..Default::default()
+            },
+        );
+        let droid = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: class,
+                is_alliance: false,
+                skills: [0; 8],
+                on_mission: true,
+            });
+        let result = MissionResult {
+            mission_id: 1,
+            tick: 252,
+            kind: MissionKind::Reconnaissance,
+            faction: MissionFaction::Empire,
+            character: None,
+            lead_force: Some(droid),
+            target_system: Default::default(),
+            target_character: None,
+            target_object: None,
+            returning_to: None,
+            outcome: MissionOutcome::Success,
+            effects: Vec::new(),
+        };
+        // The system names are a_return_place_is_named_by_its_system's.
+        let (leader, target, _, killed) = report_names(&world, &result);
+        let facts = story::ReportFacts {
+            success: true,
+            leader: leader.as_ref().map(|(name, major)| (name.as_str(), *major)),
+            system: "Chandrila",
+            target: target.as_deref(),
+            target_killed: killed,
+            returning: Some("Coruscant"),
+            ..story::ReportFacts::default()
+        };
+        assert_eq!(
+            story::mission_report_texts(MissionKind::Reconnaissance, &facts, &texts),
+            Some((
+                "Recon Mission Report".to_owned(),
+                "The reconnaissance mission to Chandrila was successful.\n\nPersonnel are returning to Coruscant."
+                    .to_owned()
+            ))
+        );
     }
 
     // A0 2026-11-15-partial-cells (an Alliance game): each message's title

@@ -55,6 +55,14 @@ pub fn object(mini: u32) -> Option<MessagePicture> {
     mini.checked_sub(0x3000).map(background)
 }
 
+/// A Recon Mission Report led by a special force of class `class`
+/// (`FUN_004927c0` case `0x54`): `FUN_004c5000(leader)` over the report's
+/// picture, the class's own (its mini less `0x3000`).
+#[must_use]
+pub fn special_force_report(class: DatId) -> Option<MessagePicture> {
+    crate::system_window::special_force_mini(class).and_then(|(mini, _)| object(mini))
+}
+
 /// The EDATA file number of an object picture, from ENCYBMAP's string
 /// table: `FUN_0045f970` loads `EDATA.NNN` by the picture id when STRATEGY
 /// has no such bitmap. Facilities, regiments, special forces, fighters,
@@ -409,6 +417,24 @@ pub fn idle_yard(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_recon_led_by_the_probe_droid_shows_the_droids_picture() {
+        // FUN_004927c0 case 0x54 sets the report's picture +0x2e to
+        // FUN_004c5000(leader): the class picture (mini 17792 less 0x4000)
+        // plus 0x1000, 0x1580 (EDATA 29). A0 2026-11-16-partial-cells/r-9
+        // (sha256 f519dea42d7a) shows the probe droid by a lake there.
+        let probe = DatId::new(0x3c00_0005);
+        assert_eq!(
+            special_force_report(probe),
+            Some(MessagePicture {
+                background: 0x1580,
+                foreground: None,
+            })
+        );
+        assert_eq!(artwork_edata(0x1580), Some(29));
+        assert_eq!(special_force_report(DatId::new(0x3000_0001)), None);
+    }
     use CockpitFaction::{Alliance, Empire};
 
     fn ids(picture: MessagePicture) -> (u32, Option<u32>) {

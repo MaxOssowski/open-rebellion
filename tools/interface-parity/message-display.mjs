@@ -557,6 +557,48 @@ async function run(browser, base, faction) {
       }
       assert.equal(captureChecks.recruitment_picture_a0 ?? 0, 0, JSON.stringify(captureChecks));
 
+      // OBJ-11-C011: the Imperial Probe Droid's Reconnaissance of
+      // Chandrila (FUN_004927c0 case 0x54, the droid the leader +0x74):
+      // A0 2026-11-16-partial-cells/r-8 (sha256 338bc914a74e) lists "Recon
+      // Mission Report"; r-9 (f519dea42d7a) reads it word for word.
+      {
+        await click(page, showMessage);
+        const listedR = await waitReport(page, (value) => value.mode === "list", "the list for the recon report");
+        const reconRow = listedR.rows.findIndex((text) => text.startsWith("Recon Mission Report"));
+        assert.ok(reconRow >= 0, JSON.stringify(listedR.rows));
+        const at = await shown(reconRow);
+        await page.mouse.move(2, 2);
+        await frames(page, 3);
+        await shot("recon-report-row");
+        captureChecks.recon_row = { index: reconRow, at };
+        await click(page, at);
+        await click(page, showMessage);
+        const recon = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Recon Mission Report", "Display Message shows the recon report");
+        captureChecks.recon_text = recon.viewing_text;
+        assert.equal(recon.viewing_text,
+          "The reconnaissance mission to Chandrila was successful.\n\nPersonnel are returning to Coruscant.",
+          JSON.stringify(recon));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("recon-report");
+        // Case 0x54's picture is the droid's own (FUN_004c5000: 0x1580,
+        // EDATA 29), every pixel A0's at the window's (12, 33).
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/2026-11-16-partial-cells/r-9-recon-mission-report-chandrila-successful-d252.png")));
+        const screen = PNG.sync.read(await page.screenshot());
+        let differ = 0;
+        for (let y = 33; y < 233; y += 1) {
+          for (let x = 12; x < 412; x += 1) {
+            const i = ((recon.window_top + y) * 640 + recon.window_left + x) * 4;
+            if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[i + c])) differ += 1;
+          }
+        }
+        captureChecks.recon_picture_a0 = differ;
+        assert.equal(recon.viewing_background, 0x1580, JSON.stringify(recon));
+        assert.equal(differ, 0, JSON.stringify(captureChecks));
+      }
+
       // The Empire's Enemy Mission Foiled (A0 empire-clean/02-day83-enemy-
       // foiled-chandrila, a new Easy Empire game, the window at (125, 52)):
       // the Alliance's Espionage at Chandrila reads "An enemy Espionage

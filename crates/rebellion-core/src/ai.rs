@@ -10152,6 +10152,7 @@ mod tests {
             kind: MissionKind::ShipDesignResearch,
             faction: crate::missions::MissionFaction::Alliance,
             character: None,
+            lead_force: None,
             target_system: SystemKey::default(),
             target_character: None,
             target_object: None,

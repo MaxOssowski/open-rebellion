@@ -471,6 +471,19 @@ impl ActiveMission {
         self.team.iter().find_map(|member| member.character())
     }
 
+    /// The first special force of a team with no character, which leads
+    /// it in the report (`FUN_004927c0`'s `+0x74`).
+    #[must_use]
+    pub fn lead_force(&self) -> Option<SpecialForceKey> {
+        if self.lead_character().is_some() {
+            return None;
+        }
+        self.team.iter().find_map(|member| match member {
+            MissionMember::SpecialForce(key) => Some(*key),
+            MissionMember::Character(_) => None,
+        })
+    }
+
     /// Whether the mission waits on its members' transit (phase 4).
     #[must_use]
     pub fn in_transit(&self) -> bool {
@@ -2713,6 +2726,10 @@ pub struct MissionResult {
     /// The first team character (`ActiveMission::lead_character`), named in
     /// the mission's messages.
     pub character: Option<CharacterKey>,
+    /// The first special force when the team has no character: the
+    /// report's leader (`+0x74`), which `FUN_004927c0` resolves with
+    /// `FUN_004f2d10` whatever its family.
+    pub lead_force: Option<SpecialForceKey>,
     pub target_system: SystemKey,
     /// The target character (`+0x70`), named by the report
     /// (`FUN_004927c0`).
@@ -4682,6 +4699,7 @@ impl MissionSystem {
             kind: mission.kind,
             faction: mission.faction,
             character: mission.lead_character(),
+            lead_force: mission.lead_force(),
             target_system: target,
             target_character: mission.target_character,
             target_object: mission.target_object,
@@ -6785,6 +6803,50 @@ mod tests {
                 system: here,
                 faction: MissionFaction::Alliance,
             }));
+    }
+
+    #[test]
+    fn a_special_force_alone_leads_its_reconnaissance() {
+        // FUN_004927c0 resolves the mission's +0x74 leader with
+        // FUN_004f2d10 whatever its family, and case 0x54 reports only when
+        // it resolves: A0 2026-11-16-partial-cells/r-9 (sha256 f519dea4)
+        // shows the Recon Mission Report of the Imperial Probe Droid's
+        // mission to Chandrila, a team with no character.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        held_by(&mut world, here, crate::dat::Faction::Empire);
+        let droid = world
+            .special_forces
+            .insert(crate::world::SpecialForceUnit {
+                class_dat_id: crate::ids::DatId::new(0x3c00_0005),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: true,
+            });
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Reconnaissance,
+            vec![MissionMember::SpecialForce(droid)],
+            here,
+            None,
+        );
+
+        assert_eq!(result.character, None);
+        assert_eq!(result.lead_force, Some(droid));
+        let scout = agent_at(&mut world, here, true);
+        let led = phase_ten(
+            &world,
+            MissionKind::Reconnaissance,
+            vec![
+                MissionMember::SpecialForce(droid),
+                MissionMember::Character(scout),
+            ],
+            here,
+            None,
+        );
+        assert_eq!(led.character, Some(scout));
+        assert_eq!(led.lead_force, None);
     }
 
     #[test]
