@@ -14855,6 +14855,37 @@ fn squadron_full_strength_message(
     ))
 }
 
+/// A character's Force (`+0x8c`), 0 when it is gone.
+fn force_level(world: &GameWorld, character: CharacterKey) -> u32 {
+    world
+        .characters
+        .get(character)
+        .map_or(0, rebellion_core::world::Character::force_level)
+}
+
+/// File Force Growth (notification `0x1e1`, `FUN_0048ed80`) when a change
+/// moved the character's Force from `old` (`FUN_004ee0d0` posts it on every
+/// change of `+0x8c`).
+fn push_force_growth(
+    log: &mut MessageLog,
+    world: &GameWorld,
+    character: CharacterKey,
+    old: u32,
+    tick: u64,
+    message_texts: &std::collections::HashMap<u16, String>,
+) {
+    if let Some(message) = rebellion_render::story_messages::force_growth_message(
+        world,
+        character,
+        old,
+        force_level(world, character),
+        tick,
+        message_texts,
+    ) {
+        log.push(message);
+    }
+}
+
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
     continuing: bool,
@@ -14962,14 +14993,23 @@ fn apply_mission_result(
         .and_then(|force| world.special_forces.get(force))
         .and_then(|force| pictures::special_force_report(force.class_dat_id));
     let picture = force_picture.unwrap_or_else(|| {
-        pictures::mission_report(
+        let mut picture = pictures::mission_report(
             reported,
             result.outcome == rebellion_core::missions::MissionOutcome::Success,
             pictures::reader(result.faction == MissionFaction::Alliance),
             result
                 .character
                 .and_then(|character| pictures::portrait_key(world, character)),
-        )
+        );
+        // The leader's own picture (FUN_004c5000): Luke after Dagobah is
+        // the Jedi Knight's (A0 2026-11-16-edited-saves/x-59).
+        if let Some(own) = result
+            .character
+            .and_then(|character| pictures::report_leader_portrait(world, character))
+        {
+            picture.foreground = Some(own);
+        }
+        picture
     });
     // The report's names, read before the effects.
     let (leader, target, recruit, target_killed) = report_names(world, result);
@@ -15148,9 +15188,11 @@ fn apply_mission_result(
             // The detection's Force gains come with the advance
             // (`apply_advance_effects`); a result applies one the same way.
             MissionEffect::ForceExperienceGained { character, amount } => {
+                let old = force_level(world, *character);
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.add_force_experience(*amount);
                 }
+                push_force_growth(log, world, *character, old, result.tick, message_texts);
             }
             // The advance's effects (`apply_advance_effects`).
             MissionEffect::MemberEnteredAbode { member, abode } => {
@@ -15160,16 +15202,25 @@ fn apply_mission_result(
                 character,
                 force_gain,
             } => {
+                let old = force_level(world, *character);
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.add_force_experience(*force_gain);
                     c.dagobah_completed = true;
                 }
+                // Under the Jedi Knight's portrait, as A0
+                // alliance-game2/luke-force-growth (day 643) shows it.
+                push_force_growth(log, world, *character, old, result.tick, message_texts);
             }
-            // FUN_005712b0 -> FUN_004ee1d0: a Jedi Training gain.
+            // FUN_005712b0 -> FUN_004ee1d0: a Jedi Training gain. The new
+            // Force posts 0x1e1 before the mission's report (A0
+            // 2026-11-16-edited-saves/x-58 lists "Jan Dodonna Force Growth"
+            // under "Luke Skywalker Mission Report").
             MissionEffect::ForceTrainingGained { character, amount } => {
+                let old = force_level(world, *character);
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.add_force_training(*amount);
                 }
+                push_force_growth(log, world, *character, old, result.tick, message_texts);
             }
             // The encounter's keys and Luke's heritage, set by the mission
             // detection (`missions::apply_advance_effects`).

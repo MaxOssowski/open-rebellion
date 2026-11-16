@@ -140,12 +140,24 @@ pub fn story_message(
     texts: &HashMap<u16, String>,
     category: MessageCategory,
 ) -> GameMessage {
-    let mut message =
+    let message =
         GameMessage::new(tick, port_text, category).on_rail(STORY_RAIL, RailAudience::Both);
     let Some(class) = story_class(event_id) else {
         return message;
     };
     let subject = story_subject(world, class, actions).and_then(|key| world.characters.get(key));
+    class_message(message, class, subject, side, texts)
+}
+
+/// A story message of `class` about `subject`: its TEXTSTRA title and body,
+/// its picture, its advisor event and its sounds.
+fn class_message(
+    mut message: GameMessage,
+    class: StoryClass,
+    subject: Option<&rebellion_core::world::Character>,
+    side: CockpitFaction,
+    texts: &HashMap<u16, String>,
+) -> GameMessage {
     let parameters: Vec<MessageParameter<'_>> = subject
         .map(|character| MessageParameter::Character {
             name: &character.name,
@@ -193,6 +205,52 @@ pub fn story_message(
         .with_picture(picture)
         .with_advisor_event(event)
         .with_sounds(sounds)
+}
+
+/// Notification `0x1e1`, Force Growth (`FUN_0048ed80`), as the player reads
+/// it: a character's Force (`+0x8c`) changed from `old` to `new`. Every
+/// change of the Force goes through `FUN_004ee0d0`, which syncs the side
+/// views (`FUN_004f0220`) and so posts `0x1e1` (`FUN_004f1e00`, slot
+/// `+0x394`) with both values. `FUN_0048ed80` builds the message only for a
+/// character (family `0x30..=0x3b`) whose old and new Force are both above
+/// 0, and only for the reader of the character's own side (`+0x20` against
+/// `FUN_004edc80`), so it is filed for that side alone. A minor character (family above `0x37`) speaks as
+/// advisor event `0x15`. A0 2026-11-16-edited-saves/x-58, x-60: "Jan
+/// Dodonna Force Growth" after a Jedi Training ("My ranking is Trainee.").
+#[must_use]
+pub fn force_growth_message(
+    world: &GameWorld,
+    character: CharacterKey,
+    old: u32,
+    new: u32,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let subject = world.characters.get(character)?;
+    if old == 0 || new == 0 || old == new {
+        return None;
+    }
+    let alliance = subject.is_alliance;
+    let side = if alliance {
+        CockpitFaction::Alliance
+    } else {
+        CockpitFaction::Empire
+    };
+    let message = class_message(
+        GameMessage::new(tick, String::new(), MessageCategory::Event)
+            .on_rail(STORY_RAIL, RailAudience::side(alliance)),
+        StoryClass::ForceGrowth,
+        Some(subject),
+        side,
+        texts,
+    );
+    // FUN_0048ed80's +0x28: 0x15 for a minor character.
+    let message = if subject.is_major {
+        message
+    } else {
+        message.with_advisor_event(0x15)
+    };
+    Some(message)
 }
 
 /// Notification `0x221`, Luke Goes to Dagobah (`FUN_0048d190`): built for
@@ -5237,6 +5295,77 @@ mod tests {
             1065,
             None,
         );
+    }
+
+    #[test]
+    fn a_force_change_between_two_nonzero_levels_posts_force_growth_to_the_characters_side() {
+        // FUN_0048ed80 on notification 0x1e1 (FUN_004f1e00): old and new
+        // Force both above 0, for the reader of the character's own side;
+        // a minor character speaks as 0x15. A0 2026-11-16-edited-saves/x-60
+        // (Alliance, after a Jedi Training): "Jan Dodonna Force Growth" over
+        // "... My ranking is Trainee.", Dodonna's portrait on 0x412.
+        let mut world = GameWorld::default();
+        let dodonna = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(0x3a00_0300),
+            name: "Jan Dodonna".into(),
+            is_alliance: true,
+            force_base: 10,
+            force_training: 15,
+            ..Default::default()
+        });
+        let texts = HashMap::from([
+            (0x7180, "{1:1} Force Growth".to_owned()),
+            (0x7181, "New insights.  My ranking is {1:7}.".to_owned()),
+        ]);
+        let grown = force_growth_message(&world, dodonna, 10, 25, 7, &texts).expect("posted");
+        assert_eq!(grown.title.as_deref(), Some("Jan Dodonna Force Growth"));
+        assert_eq!(grown.text, "New insights.  My ranking is Trainee.");
+        assert_eq!(grown.tick, 7);
+        assert_eq!(grown.rail, Some(STORY_RAIL));
+        assert_eq!(grown.audience, RailAudience::Alliance);
+        assert_eq!(grown.advisor_event, [0x15, 0x15]);
+        // FUN_0048ed80: +0x30 0x47c for side 1, 0x47d for side 2.
+        assert_eq!(
+            grown.sounds,
+            MessageSounds::force_growth(true, world.characters[dodonna].dat_id.index(), false)
+        );
+        assert_eq!(
+            grown.picture,
+            Some(MessagePicture {
+                background: 0x412,
+                foreground: character_portrait_of(&world.characters[dodonna]),
+            })
+        );
+        for (old, new) in [(0, 25), (10, 0), (25, 25)] {
+            assert!(
+                force_growth_message(&world, dodonna, old, new, 7, &texts).is_none(),
+                "{old} -> {new}"
+            );
+        }
+        // An Imperial character's growth is the Empire's, on 0x413.
+        world.characters[dodonna].is_alliance = false;
+        world.characters[dodonna].is_empire = true;
+        let imperial = force_growth_message(&world, dodonna, 10, 25, 7, &texts).expect("posted");
+        assert_eq!(imperial.audience, RailAudience::Empire);
+        assert_eq!(
+            imperial.picture.map(|picture| picture.background),
+            Some(0x413)
+        );
+        assert_eq!(
+            imperial.sounds,
+            MessageSounds::force_growth(false, world.characters[dodonna].dat_id.index(), false)
+        );
+        assert_ne!(imperial.sounds, grown.sounds);
+        // A major character keeps its speaker event (Luke 0x16).
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(578),
+            name: "Luke Skywalker".into(),
+            is_major: true,
+            is_alliance: true,
+            ..Default::default()
+        });
+        let luke_grown = force_growth_message(&world, luke, 80, 81, 7, &texts).expect("posted");
+        assert_eq!(luke_grown.advisor_event, [0x16, 0x16]);
     }
 
     #[test]

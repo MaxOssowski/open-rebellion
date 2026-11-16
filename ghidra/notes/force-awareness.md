@@ -103,6 +103,32 @@ encounter, and by Jedi Training once someone of his side reaches Force
 `evidence/2026-10-18-jedi-training/`). The AI's Jedi Training planner is
 not read, so only the player sends it.
 
+## The Force Growth message (read 2026-11-16)
+
+Every write of the Force `+0x8c` goes through `FUN_004ee0d0` (`FUN_004eee40`,
+run by the base's hook `FUN_004f1700`; that a training gain reaches it too is
+A0's x-60 below, the training hook, slot `+0x324`, is not read). It syncs both side views
+(`FUN_004f0220`): for a view the side knows (`FUN_004fd3d0`, `FUN_004fd600`)
+it calls slot `+0x394`, `FUN_004f1e00`, which posts notification `0x1e1`
+(`CharacterForceNotif`) with the old and the new Force. `FUN_0048ed80` builds
+Force Growth (TEXTSTRA `0x7180` / `0x7181`, background `0x412` / `0x413`, the
+character's own picture `FUN_004c5000`) only when the character's family is
+`0x30..0x3b`, both values are above 0 (event `+0x24`, `+0x28`), and the
+reader (`+0x20`) is the character's side (`FUN_004edc80`). Its advisor event
+`+0x28` is the major character's (`0x16`..`0x1b`), or `0x15` for a minor
+one (family above `0x37`). So the discovery roll (from 0) posts nothing,
+and a Jedi Training gain, the Dagobah gain and an evade gain do.
+
+A0 2026-11-16-edited-saves/x-58..x-60 (Luke's Force edited to 100): after
+Luke's Jedi Training on Yavin, the index lists "Luke Skywalker Mission
+Report" above "Jan Dodonna Force Growth" (the report files after the gain's
+message), and Dodonna's reads "... My ranking is Trainee.".
+
+Ported 2026-11-16: `story_messages::force_growth_message`, posted by the
+app's `apply_mission_result` for a Jedi Training gain, the Dagobah gain and
+a result's evade gain. Open: the mission detection's evade gains applied
+with the advance (`missions::apply_advance_effects`) post none yet.
+
 ## Discovering others (timer `0x389`)
 
 - `DiscoveringForceUser` (`FUN_004ef070`) holds for a trainer

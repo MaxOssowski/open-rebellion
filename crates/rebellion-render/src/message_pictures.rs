@@ -346,6 +346,19 @@ pub fn mission_report(
     }
 }
 
+/// A Mission Report's leader portrait: `FUN_004927c0` sets `+0x2c` from
+/// `FUN_004c5000(leader)`, the object's own picture (vtable `+0x30`, `&
+/// 0xfff` + `0x1000`), so Luke after Dagobah shows the Jedi Knight's
+/// (`FUN_0056f550`), as A0 2026-11-16-edited-saves/x-59 (sha256 452ffaa7)
+/// shows over "My Jedi Training mission on Yavin was a success.".
+#[must_use]
+pub fn report_leader_portrait(world: &GameWorld, character: CharacterKey) -> Option<u32> {
+    world
+        .characters
+        .get(character)
+        .and_then(crate::story_messages::character_portrait_of)
+}
+
 /// The side a message for the Alliance, or for the Empire, is built for.
 #[must_use]
 pub const fn reader(is_alliance: bool) -> CockpitFaction {
@@ -699,6 +712,16 @@ mod tests {
         );
         assert_eq!(portrait_key(&world, rebel), Some((DatId::new(578), true)));
         assert_eq!(portrait_key(&world, CharacterKey::default()), None);
+
+        // FUN_004c5000: Luke's report shows his own picture, the Jedi
+        // Knight's 6224 after Dagobah (A0 2026-11-16-edited-saves/x-59).
+        assert_eq!(report_leader_portrait(&world, rebel), Some(6210));
+        world.characters[rebel].dagobah_completed = true;
+        assert_eq!(report_leader_portrait(&world, rebel), Some(6224));
+        assert_eq!(
+            report_leader_portrait(&world, CharacterKey::default()),
+            None
+        );
 
         assert_eq!(reader(true), Alliance);
         assert_eq!(reader(false), Empire);
