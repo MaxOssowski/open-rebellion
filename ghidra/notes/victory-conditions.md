@@ -141,3 +141,42 @@ Ported 2026-11-16: `AdvisorSchedule::victory_word` (slot `0x10`), and
 main.rs sets the ending only on a finished clip of kind 3
 (`ending_from_conditions_word`, `FUN_00425c90`). port: without the
 advisor's messages the ending still follows the victory check at once.
+
+## The clock after the word (read 2026-11-16, END-01-C003)
+
+The port's fixture (Empire win, Fast) showed MDATA.102 on day 1 and 108 on
+day 14, with three reaction messages before the speech; A0 shows one day.
+
+- The game-over bit stops the clock. `FUN_0041e390` (state machine case
+  0) asks `FUN_0051de80` on the scheduler (`DAT_006b2fcc`, disassembly
+  `0x41e3ac`..`0x41e3b3`), which returns `+0xc0` -> `+0x74 & 0x10000000`
+  (`0x51de8c`). `+0xc0` is a `FUN_00513240` object (`0x1b0` bytes, built
+  by `FUN_0051d6c0`), the galaxy class whose `+0x74` is this word
+  (`FUN_00513240` zeroes `+0x74`; `FUN_00513a50` makes the galaxies).
+  While the bit is set `FUN_0041e390` skips `FUN_0051dea0` and only runs
+  `FUN_0041db60` -> `FUN_0042db70`, and `FUN_0051dea0` itself raises
+  neither the sub-ticks `+0xc` nor the day `+0x10`. So the days and the
+  advisor's `DAT_006b28cc` (`FUN_004fcee0`) hold while the speech plays.
+- `FUN_0042db70` in that state posts `0x482(0, +0xa8)` once `+0xa8` is
+  set (the ending), and otherwise `WM_COMMAND 0x15e` (the targeting
+  cancel, `move-order.md`) unless `+0xac` is set; `FUN_0041d810`'s
+  `+0xac` only silences that cancel. It does not touch the clock.
+- The victory message does not pre-empt the queue. `FUN_004c0a60` walks
+  the ids from 1 and plays the first due one (zeroing every slot it
+  passes), so reactions with lower ids (Empire `0x30`, `0x31`, `0x3d` for
+  codes 1, 2, `0xd`) play before `0x54`; nothing clears the table or
+  `DAT_006b28bc` on the word (writers: `FUN_00439320`, `FUN_00439550`,
+  `FUN_00439ef0`, `FUN_004c0d00`, `FUN_004c2dd0`). With the sub-ticks
+  held, their "10 sub-ticks" never run out either.
+- The update itself (slot `0x18`, `FUN_00439bb0`) runs from the agent's
+  `Class_0065ad70_vt28` (`FUN_00486520`) only while the agent's `+0x5c`
+  notification list is empty (`FUN_00487f30`: `add ecx, 0x5c` then the
+  count `FUN_005f50e0`); one notification is delivered per call
+  (`FUN_004befe0`, `FUN_00488b50`). The port delivers a frame's codes
+  before the update; same order of play.
+
+Ported 2026-11-16: main.rs `galaxy_clock_runs` holds the clock while the
+word has `0x10000000`. hyp: A0's one extra day (45 to 46) is the day
+step that ran before the scheduler's galaxy got the word (the views sync
+it through `FUN_005322c0`); the port's word is set in the day step itself,
+so it shows none. Not measured.

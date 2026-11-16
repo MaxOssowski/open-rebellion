@@ -2996,7 +2996,11 @@ async fn main() {
 
         // ── Tick the clock (Galaxy mode only) ────────────────────────────────
         let galaxy_before_ticks = game_mode == GameMode::Galaxy;
-        let tick_events = if galaxy_clock_runs(&game_mode, tactical_state.battle_summary_open()) {
+        let tick_events = if galaxy_clock_runs(
+            &game_mode,
+            tactical_state.battle_summary_open(),
+            victory_state.conditions_word,
+        ) {
             clock.advance(dt)
         } else {
             vec![]
@@ -5013,10 +5017,11 @@ async fn main() {
                 // loss speech; the speech's last clip carries the game-over
                 // action (kind 3), and only that sets the ending's state
                 // (FUN_004c3060 -> FUN_0041d830 -> FUN_00425c90). So the
-                // galaxy runs on until the advisor's next idle end and the
-                // speech (A0 END-01-C003: day 45's MDATA.102, day 46, then
-                // MDATA.108). port: without the advisor's messages the end
-                // follows at once.
+                // ending waits for the advisor's next idle end and the
+                // speech, while the word's game-over bit holds the clock
+                // ([`galaxy_clock_runs`], FUN_0051de80; A0 END-01-C003: day
+                // 45's MDATA.102, day 46, then MDATA.108). port: without
+                // the advisor's messages the end follows at once.
                 if let Some(schedule) = advisor_schedule.as_mut() {
                     schedule.victory_word(victory_state.conditions_word, advisor_now(&clock));
                 } else {
@@ -16251,8 +16256,17 @@ fn battle_summary_mode(mode: &GameMode, summary_open: bool) -> GameMode {
 /// (`FUN_0041e320`). State `0xb` waits there until both players are done
 /// (`FUN_00436400`: `+0x38` = 3), which the summary's Close sets
 /// (`FUN_00470ea0` -> `FUN_0041ce80` -> `FUN_00487890`).
-fn galaxy_clock_runs(mode: &GameMode, summary_open: bool) -> bool {
-    *mode == GameMode::Galaxy && !summary_open
+///
+/// Nor once the victory conditions word says the game is over: the gate
+/// `FUN_0051de80` reads the scheduler's galaxy (`+0xc0`, a `FUN_00513240`
+/// object) word `+0x74` for `0x10000000`, and while it is set
+/// `FUN_0041e390` skips the sub-tick and `FUN_0051dea0` raises neither the
+/// sub-ticks `+0xc` nor the day `+0x10`. The advisor's victory speech
+/// (`FUN_004c0f10` / `FUN_004c3010`) then plays over a held galaxy.
+fn galaxy_clock_runs(mode: &GameMode, summary_open: bool, conditions_word: u32) -> bool {
+    *mode == GameMode::Galaxy
+        && !summary_open
+        && conditions_word & rebellion_core::victory::WORD_GAME_OVER == 0
 }
 
 /// The Battle Summary's destinations (`FUN_00470ea0`, vtable `0x65a300`):
@@ -16348,9 +16362,24 @@ mod tactical_ground_tests {
         // the day step (FUN_0051dea0), until state 0xc clears it
         // (FUN_0041e320); state 0xb waits for the summary's Close
         // (FUN_00470ea0 -> FUN_00487890 -> FUN_00436400).
-        assert!(galaxy_clock_runs(&GameMode::Galaxy, false));
-        assert!(!galaxy_clock_runs(&GameMode::Galaxy, true));
-        assert!(!galaxy_clock_runs(&GameMode::TacticalCombat, false));
+        assert!(galaxy_clock_runs(&GameMode::Galaxy, false, 0));
+        assert!(!galaxy_clock_runs(&GameMode::Galaxy, true, 0));
+        assert!(!galaxy_clock_runs(&GameMode::TacticalCombat, false, 0));
+    }
+
+    #[test]
+    fn the_galaxy_clock_stops_once_the_victory_word_says_the_game_is_over() {
+        // FUN_0041e390 runs the sub-tick only while FUN_0051de80 is 0, and
+        // FUN_0051dea0 checks it again: the scheduler's galaxy word +0x74
+        // with 0x10000000 (FUN_005180e0's game over) holds the sub-ticks and
+        // the day while the advisor's victory speech plays (END-01-C003).
+        use rebellion_core::victory::{WORD_EMPIRE_WINS, WORD_GAME_OVER, WORD_HQ_LOST};
+        assert!(galaxy_clock_runs(&GameMode::Galaxy, false, WORD_HQ_LOST));
+        assert!(!galaxy_clock_runs(
+            &GameMode::Galaxy,
+            false,
+            WORD_HQ_LOST | WORD_EMPIRE_WINS | WORD_GAME_OVER
+        ));
     }
 
     #[test]
