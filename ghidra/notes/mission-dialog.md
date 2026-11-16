@@ -129,6 +129,13 @@ The target art is a system's planet bitmap, `FUN_0045c970(FUN_00509610(system))`
 object's `FUN_0042c3b0(.., 1, 1)` portrait. It is centered in the 165 by 79
 box at (51, 211) by `(0xa5 - w) / 2 + 0x33`, `(0x4f - h) / 2 + 0xd3`.
 
+`FUN_0042c3b0`'s portrait (fourth argument 1) is GOKRES `(+0x30 & 0xfff)` for
+every family but `0x40..0x7f` (the side's `+0x4000` / `+0x5000` blocks) and
+`0x08..0x0f` (`0x28a0` / `0x28d2`), so a capital ship's or the Death Star's
+is its mini less `0x4000`: A0 2026-11-16-edited-saves/x-46 (eb45cb97) shows
+the Death Star target over GOKRES 1928 (mini 18312). Ported 2026-11-16
+(`mission_dialog::target_portrait`).
+
 ## Items
 
 Each agent or decoy item is 107 by 59. `FUN_0042c3b0(gokres, .., 0, 1)` draws

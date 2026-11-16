@@ -352,12 +352,38 @@ pub enum MissionDialogAction {
     Encyclopedia,
 }
 
-/// A character target's portrait: `FUN_0042c3b0(.., 1, 1)` draws GOKRES
+/// An object target's portrait: `FUN_0042c3b0(.., 1, 1)` draws GOKRES
 /// `(class +0x30 & 0xfff)`, the mini's id less `0x4000`
-/// (`fleet-window.md`, "En route marks"); `None` for any other target.
+/// (`fleet-window.md`, "En route marks"), for a character (family
+/// `0x30..0x3b`) and for a capital ship or the Death Star (no family the
+/// function treats apart, so its last branch, `+0x30 & 0xfff` for a
+/// portrait and `+ 0x4000` for a mini). A0 2026-11-16-edited-saves/x-46
+/// (eb45cb97): the Death Star target shows GOKRES 1928 (its mini 18312 less
+/// `0x4000`) in the box. `None` for any other target.
 fn target_portrait(world: &GameWorld, target: MissionTargetPick) -> Option<u32> {
-    let character = world.characters.get(target.character?)?;
-    character_picture(character)?.checked_sub(0x4000)
+    let mini = if let Some(character) = target.character {
+        character_picture(world.characters.get(character)?)?
+    } else {
+        let class = match target.object? {
+            MissionTarget::CapitalShip { class, .. } => class,
+            MissionTarget::DeathStar(fleet) => world
+                .fleets
+                .get(fleet)?
+                .capital_ships
+                .iter()
+                .filter(|ship| ship.alive)
+                .map(|ship| ship.class)
+                .find(|class| {
+                    world
+                        .capital_ship_classes
+                        .get(*class)
+                        .is_some_and(rebellion_core::world::CapitalShipClass::is_death_star)
+                })?,
+            _ => return None,
+        };
+        crate::minis::capital_ship_mini_id(world.capital_ship_classes.get(class)?.dat_id)?
+    };
+    mini.checked_sub(0x4000)
 }
 
 /// The name of an object target, `None` for a system target.
@@ -792,10 +818,11 @@ pub fn draw_mission_dialog(
                         KIND_TEXT,
                     );
                     // An object target shows its name over its picture: a
-                    // character its portrait (FUN_0042c3b0(.., 1, 1); A0
-                    // 2026-11-15-partial-cells/rescue-dialog-han-on-leia-
-                    // fleet90-d1428). port: other objects' pictures are not
-                    // drawn.
+                    // character or a capital ship its portrait
+                    // (FUN_0042c3b0(.., 1, 1); A0 2026-11-15-partial-cells/
+                    // rescue-dialog-han-on-leia-fleet90-d1428, 2026-11-16-
+                    // edited-saves/x-46). port: other objects' pictures are
+                    // not drawn.
                     if let Some(name) = object_target_name(world, dialog.target) {
                         if let Some(portrait) = target_portrait(world, dialog.target) {
                             // The 80-high portrait is clipped to the 79-high
@@ -1408,6 +1435,71 @@ mod tests {
         assert_eq!(target_portrait(&world, pick(leia)), Some(2_113));
         assert_eq!(target_portrait(&world, pick(luke)), Some(0x850));
         assert_eq!(target_portrait(&world, SystemKey::default().into()), None);
+    }
+
+    #[test]
+    fn a_death_star_or_capital_ship_target_shows_its_mini_less_0x4000() {
+        // FUN_0042c3b0(.., 1, 1)'s last branch: GOKRES (+0x30 & 0xfff), the
+        // mini less 0x4000. A0 2026-11-16-edited-saves/x-46 (eb45cb97): the
+        // Death Star target over GOKRES 1928 (mini 18312).
+        let mut world = GameWorld::default();
+        let death_star =
+            world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    dat_id: rebellion_core::ids::DatId::new(
+                        rebellion_core::world::DEATH_STAR_CLASS_ID,
+                    ),
+                    ..Default::default()
+                });
+        let corvette = world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass {
+                dat_id: rebellion_core::ids::DatId::new(69),
+                ..Default::default()
+            });
+        assert!(world.capital_ship_classes[death_star].is_death_star());
+        let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+            location: SystemKey::default(),
+            capital_ships: vec![
+                rebellion_core::world::ShipInstance::new(corvette, 100, true),
+                rebellion_core::world::ShipInstance::new(death_star, 100, true),
+            ],
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: false,
+            has_death_star: true,
+            special_forces: Vec::new(),
+        });
+        let object = |object| MissionTargetPick {
+            system: SystemKey::default(),
+            character: None,
+            object: Some(object),
+        };
+        assert_eq!(
+            target_portrait(&world, object(MissionTarget::DeathStar(fleet))),
+            Some(1928)
+        );
+        assert_eq!(
+            target_portrait(
+                &world,
+                object(MissionTarget::CapitalShip {
+                    fleet,
+                    class: corvette
+                })
+            ),
+            Some(crate::bmp_cache::resources::gokres::MINI_SHIP_CORELLIAN_CORVETTE - 0x4000)
+        );
+        assert_eq!(
+            target_portrait(
+                &world,
+                object(MissionTarget::Fighter {
+                    fleet,
+                    class: Default::default()
+                })
+            ),
+            None
+        );
     }
 
     #[test]
