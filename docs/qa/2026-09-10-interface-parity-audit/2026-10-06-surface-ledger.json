@@ -3137,7 +3137,7 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-clip-preemption/"
           ],
-          "note": "A new clip stops the playing one (FUN_00472930); a skip flushes both players and cuts the voice (briefing.mjs). 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio cmd07-c011-preempt-attempt.wav 9af84b4bb048): the clips that cut each other are STRATEGY.DLL WAVE 1122, the displayed message's sound (FUN_0048b2e0 +0x30 = 0x461/0x462), restarting on each next-message press; only the last plays out. Port gap: the port plays no STRATEGY.DLL message sounds. Batch b227 (2026-11-16): a displayed message now stops the previous display's sounds and plays its +0x30 STRATEGY.DLL and +0x32 sprite WAVEs (FUN_00469de0, FUN_0046a6e0); advice carries 1121/1122 (FUN_0048b2e0), asserted in agent-advice.mjs. About 35 other message builders' sounds (ghidra/notes/message-sounds.md) are not ported yet, so the cell stays partial.",
+          "note": "A new clip stops the playing one (FUN_00472930); a skip flushes both players and cuts the voice (briefing.mjs). 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio cmd07-c011-preempt-attempt.wav 9af84b4bb048): the clips that cut each other are STRATEGY.DLL WAVE 1122, the displayed message's sound (FUN_0048b2e0 +0x30 = 0x461/0x462), restarting on each next-message press; only the last plays out. Port gap: the port plays no STRATEGY.DLL message sounds. Batch b227 (2026-11-16): a displayed message now stops the previous display's sounds and plays its +0x30 STRATEGY.DLL and +0x32 sprite WAVEs (FUN_00469de0, FUN_0046a6e0); advice carries 1121/1122 (FUN_0048b2e0), asserted in agent-advice.mjs. About 35 other message builders' sounds (ghidra/notes/message-sounds.md) are not ported yet, so the cell stays partial. Batch b228 (2026-11-16): every message builder with a port counterpart now carries its +0x30/+0x32 sounds (ghidra/notes/message-sounds.md; voices from the sprite DLL RCDATA lists, FUN_004c4990); message-display.mjs asserts the Diplomacy report's 1150 + Leia's 1335 and the capture's 1100 on both sides. Builders without a port counterpart stay silent; preemption follows A0 (cmd07-c011).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4294,14 +4294,14 @@
         {
           "id": "CMD-11-C017",
           "requirement": "Assault and bombardment summary",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
             "crates/rebellion-render/src/tactical_view.rs"
           ],
-          "note": "FUN_0044c630's rail and category tips show in fleet-window.mjs's assault case on both sides (Linux); the port's invented unit-name tooltips are removed; no A0 capture. 2026-11-14: A0 2026-11-14-quadrants-status-known/41-46: the bombardment tips match FUN_0044c630's ids word for word; Close has no tip. Not pixel-compared, so the cell stays partial.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_0044c630's rail and category tips show in fleet-window.mjs's assault case on both sides (Linux); the port's invented unit-name tooltips are removed; no A0 capture. 2026-11-14: A0 2026-11-14-quadrants-status-known/41-46: the bombardment tips match FUN_0044c630's ids word for word; Close has no tip. Not pixel-compared, so the cell stays partial. Batch b228 (2026-11-16): fleet-window alliance/bombardment compares all ten tips with A0 44-tip-alliance-0..10 in window coordinates: left, top, 19 px height, frame, fill ring, borders match; Close shows no tip; widths differ by -2..+8 px (accepted text deviation). The A0 pointer sits 6 px off the hot spot the boxes imply (hyp: VM pointer offset).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-11-C018",
@@ -5903,14 +5903,14 @@
         {
           "id": "OBJ-06-C007",
           "requirement": "subsystems",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-ship-status-hits/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-ship-hit-counters/"
           ],
-          "note": "Subsystem hit terms (GNPRTB 2048, FUN_005010c0) are unit-tested; no A0 or browser check of a hit ship. 2026-11-15: A0 8bce5f1cbf27 shows a subsystem hit as 'Ship Damaged: Yes' with full hull 1800:1800 and Shield Recharge Rate 8:10, as the port counts subsystem hits; not yet compared in the browser.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Subsystem hit terms (GNPRTB 2048, FUN_005010c0) are unit-tested; no A0 or browser check of a hit ship. 2026-11-15: A0 8bce5f1cbf27 shows a subsystem hit as 'Ship Damaged: Yes' with full hull 1800:1800 and Shield Recharge Rate 8:10, as the port counts subsystem hits; not yet compared in the browser. Batch b228 (2026-11-16): status-window capital-ship-shield-hit (fixture ShipShieldHit) matches A0 2026-11-15-partial-cells e-vd2 (8bce5f1cbf27): 'Ship Damaged: Yes', Hull 1800:1800, Shield Recharge 8:10, title/class/name within 1 px, the picture 0 of 12546 px off (A0's en route mark excluded); both sides.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-06-C008",
@@ -9120,7 +9120,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-tactical-voice-announcer/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-tactical-sound-events/"
           ],
-          "note": "A0 audio capture: no score after Take Command (FUN_00417640), voice lines 15001/15131/15124 matched by correlation, WAVE bank routed in production-tactical-audio-routing; 0x11d is not played yet and order voices were never listened to in the VM. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio tac01-c012-corellia-take-command.wav 32afdc629e0b): the continuous battle sound is a dense stream of one-shot effects (TACTICAL 13057 event 0x17, 13061 event 0x1b, fighter lasers 13012/13013/13015, 13034, STRATEGY 1118 and 621), not the score; routing follows the effects slider. Port gap: events 0x14..0x1c (WAVEs 13054-13062) and the STRATEGY WAVEs are not played in battle.",
+          "note": "A0 audio capture: no score after Take Command (FUN_00417640), voice lines 15001/15131/15124 matched by correlation, WAVE bank routed in production-tactical-audio-routing; 0x11d is not played yet and order voices were never listened to in the VM. 2026-11-15 A0 audio (.artifacts/a0-vm/2026-11-15-audio tac01-c012-corellia-take-command.wav 32afdc629e0b): the continuous battle sound is a dense stream of one-shot effects (TACTICAL 13057 event 0x17, 13061 event 0x1b, fighter lasers 13012/13013/13015, 13034, STRATEGY 1118 and 621), not the score; routing follows the effects slider. Port gap: events 0x14..0x1c (WAVEs 13054-13062) and the STRATEGY WAVEs are not played in battle. Batch b228 (2026-11-16): tactical events 0x14-0x19, 0x1b, 0x1c and 0x1e are ported (ghidra/notes/tactical-sound-events-0x14-0x1c.md): the selection hum loops (FUN_005ba980(e,0) -> DSBPLAY_LOOPING) while a selection state is open and the battle runs, matching A0's 13057 restarting every 3.4 s; arrivals at Take Command (13064 at 0.95 s in A0), launches 0x1b and the beam 0x14. run.mjs production-tactical-audio-routing asserts the nine new waves load. The hum is not checked in the browser (the fixture battle stays paused), so the cell stays partial.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
