@@ -106,6 +106,8 @@ The base constructor `FUN_004c4d90` zeroes both. Builders that set `+0x30`
   when a repair clears the ship's damage), `FUN_00491500` codes 6..10
   and `0xc` (Mission Failed / Aborted from the leader, `0x412 + (side !=
   1)` with the portrait), and the Research missions' reports (family
-  `0x53`: picture `0x3f9`, `0x47f`). port: Squadron at Full Strength
-  (`0x7040` / `0x7042`) has its texts and sound but no trigger, as the
-  port's squadrons keep no strength below full.
+  `0x53`: picture `0x3f9`, `0x47f`). Squadron at Full Strength
+  (`0x7040` / `0x7042`, `0x457 + (side != 1)`, `+0x28` 9) followed the
+  same day with the squadrons' losses and their repair
+  (`squadron-strength.md`): posted when a repair fire takes a squadron's
+  losses to 0.

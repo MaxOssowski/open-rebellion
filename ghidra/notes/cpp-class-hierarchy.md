@@ -136,7 +136,7 @@ CRebObject (base)
 │   │   │
 │   │   └── CFighterSquadron
 │   │          Family bytes: 0x71-0x72 (shield absorb special path), 0x30-0x3b range
-│   │          +0x60  int   squad_size_current        — shares offset with hull_current
+│   │          +0x60  int   SquadSizeDamage (craft lost; squadron-strength.md)
 │   │          Virtual (override):
 │   │            +0x244 GetMaxSquadSize()             → error "Invalid_SquadSizeDamage_value_"
 │   │            +0x260 NotifySquadChanged(old,new,ctx)
@@ -245,7 +245,7 @@ Consolidated struct layout for the shared base. Fields confirmed across multiple
 | `+0x4c` | `uint` | detection_pending | FUN_0058a3f0 | set to 1 when undiscovered Jedi detected (context obj) |
 | `+0x50` | `uint` | status_flags | many | bit0=active, bit3=fighter_combat_eligible, bit12=special_disabled |
 | `+0x58` | `uint` | combat_phase_flags | FUN_00543b60-d20, space-combat.md | Phase state machine — see bitfield table below |
-| `+0x60` | `int`  | hull_current / squad_size_current | FUN_00501490, FUN_005032c0 | Polymorphic: hull for ships, size for squadrons |
+| `+0x60` | `int`  | HullValueDamage / SquadSizeDamage | FUN_00501490, FUN_005032c0 | Polymorphic damage: hull damage for ships, craft lost for squadrons (squadron-strength.md) |
 | `+0x64` | `uint` | shield_weapon_packed | FUN_00501510, FUN_005015a0 | bits 0-3: shield_recharge_alloc; bits 4-7: weapon_recharge_alloc |
 | `+0x66` | `short` | loyalty_base | FUN_005341a0 | Character only: base loyalty skill (0-100) |
 | `+0x78` | `byte` | capability_flags | FUN_005442f0, FUN_00544130, FUN_005445d0 | bit4=special_victory_eligible, bit6=disabled_a, bit7=alt_shield_path/disabled_b |

@@ -109,12 +109,11 @@ Zero hull removes the tactical object.
 
 ## Strategic return boundary
 
-The strategic world stores whole squadrons rather than partial craft. The
-return path counts each tactical squadron with positive hull, including a
+The return path counts each tactical squadron with positive hull, including a
 successfully recovered squadron, back into its original aggregate roster slot.
-Destroyed tactical squadrons do not return. Partial craft damage remains
-tactical-only because the current strategic schema has no partial-squadron
-field.
+Destroyed tactical squadrons do not return. Since 2026-11-16 a survivor keeps
+its lost craft as its losses (`+0x60`, `FUN_0040d260`), and enters the next
+battle with its current craft (`FUN_0040be90`): see `squadron-strength.md`.
 
 ## Remaining boundary
 

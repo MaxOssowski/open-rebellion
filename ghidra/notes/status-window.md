@@ -650,8 +650,10 @@ order:
   `detection`, `bombardment_defense`, `laser_cannon_attack_strength`,
   `ion_cannon_attack_strength`, `torpedoes`). Maintenance:
   `FighterClass::maintenance_cost`.
-- Losses (`+0x60`): port: no field. `FighterEntry` keeps a count of whole
-  squadrons, so every "current" equals its maximum.
+- Losses (`+0x60`): `FighterEntry::damage` (2026-11-16,
+  `squadron-strength.md`); each "current" is the maximum less the losses'
+  share. A planet's squadron is named by class, so its window shows the
+  first of the class.
 - Attached: the fleet holding the `FighterEntry`. A port squadron is not a
   separate object, so the window has to open on an entry (class within a
   fleet).
