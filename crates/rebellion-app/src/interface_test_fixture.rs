@@ -7,7 +7,7 @@ use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::economy::EconomyState;
 use rebellion_core::fog::FogState;
-use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
+use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::{
     available_kinds, MissionFaction, MissionKind, MissionMember, MissionState,
@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 135;
+const SCENARIO_COUNT: u8 = 138;
 
 
 extern "C" {
@@ -540,6 +540,26 @@ pub enum Scenario {
     /// game, day 634): Victory Destroyer 2 at Coruscant reads "Ship
     /// Damaged: No", Shield Recharge Rate 10:10 (OBJ-06-C012).
     ShipRepaired = 134,
+    /// OBJ-11-C010, as A0 2026-11-16-edited-saves/x-54..x-57 shows it (an
+    /// Alliance game, day 813, Luke's Force edited to 100): Luke Skywalker,
+    /// a Jedi Knight (MJCHARSD `is_jedi_trainer`, Force at GNPRTB 2581),
+    /// and Jan Dodonna, with some Force below his, both free on Yavin; the
+    /// mission dialog opened for the two on Yavin, as their Mission order
+    /// released on it would (`FUN_0042a320`), its first kind Jedi Training.
+    JediTrainingDialog = 135,
+    /// EVT-01-C015, as A0 2026-11-16-edited-saves/x-58..x-60 reads it: the
+    /// world of `JediTrainingDialog` with Luke's Jedi Training on Yavin
+    /// ended a success, Dodonna's Force grown from Novice to Trainee
+    /// (`FUN_005712b0`): "Jan Dodonna Force Growth" (0x1e1) and "Luke
+    /// Skywalker Mission Report" filed on the Mission rail, none opened.
+    JediTrainingMessages = 136,
+    /// OBJ-13-C002, as A0 2026-11-16-edited-saves/x-29 (an Empire game, day
+    /// 527: the HQ mark over Duros) and x-39 (Tokmia under the Empire's
+    /// blockade) show it: `Quadrants` with the Empire's copy of the
+    /// Alliance's headquarters system frozen while the headquarters stood
+    /// there (`FUN_004f9a60`); `FUN_0045bbb0` marks it from that copy
+    /// (`FUN_004f3220`, `FUN_00526cf0`). For the Alliance it is `Quadrants`.
+    QuadrantsHeadquartersFrozen = 137,
 }
 
 impl Scenario {
@@ -680,6 +700,9 @@ impl Scenario {
             132 => Self::HeadquartersTaken,
             133 => Self::UprisingMessages,
             134 => Self::ShipRepaired,
+            135 => Self::JediTrainingDialog,
+            136 => Self::JediTrainingMessages,
+            137 => Self::QuadrantsHeadquartersFrozen,
             _ => return None,
         })
     }
@@ -974,8 +997,11 @@ pub fn apply(
     // dialog-han-on-leia-fleet90-d1428 (sha256 44c8c052b951): Han Solo the
     // agent, Leia Organa the prisoner. The scenario takes the first
     // character as its agent and the second as its prisoner, so the two
-    // trade places with them.
-    if request.scenario == Scenario::RescueTargeting && player_is_alliance {
+    // trade places with them. The Alliance's Death Star Sabotage matches
+    // A0 2026-11-16-edited-saves/x-45..x-50 (Han Solo sent from Yavin), so
+    // Han is its agent too.
+    let death_star = request.scenario == Scenario::DeathStarTargeting;
+    if (request.scenario == Scenario::RescueTargeting || death_star) && player_is_alliance {
         let named = |world: &GameWorld, name: &str| {
             world
                 .characters
@@ -983,7 +1009,12 @@ pub fn apply(
                 .find(|(_, character)| character.name == name)
                 .map(|(key, _)| key)
         };
-        for (index, name) in [(0, "Han Solo"), (1, "Leia Organa")] {
+        let cast: &[(usize, &str)] = if death_star {
+            &[(0, "Han Solo")]
+        } else {
+            &[(0, "Han Solo"), (1, "Leia Organa")]
+        };
+        for &(index, name) in cast {
             let slot = world.characters.keys().nth(index);
             if let (Some(slot), Some(found)) = (slot, named(world, name)) {
                 swap_characters(world, slot, found);
@@ -1476,6 +1507,7 @@ pub fn apply(
         Scenario::Quadrants
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
+            | Scenario::QuadrantsHeadquartersFrozen
             | Scenario::QuadrantsFacility
             | Scenario::QuadrantsStale
             | Scenario::QuadrantsStaleSeeEverything
@@ -1483,6 +1515,19 @@ pub fn apply(
         place_quadrant_contents(
             request, world, movement, missions, uprisings, sectors, primary,
         );
+    }
+    if request.scenario == Scenario::QuadrantsHeadquartersFrozen && !player_is_alliance {
+        // The Empire's copy of the headquarters system, frozen with the
+        // headquarters object in it (FUN_004f9a60).
+        if let Some(&headquarters) = mark_systems(world, primary).first() {
+            let view = rebellion_core::object_views::SystemView::of(
+                world,
+                &world.systems[headquarters],
+                false,
+            );
+            let id = world.systems[headquarters].dat_id;
+            world.object_views.empire_systems.insert(id, view);
+        }
     }
     if matches!(
         request.scenario,
@@ -1823,6 +1868,13 @@ pub fn apply(
             layout,
         );
         sectors.open_for_system(world, secondary, request.faction);
+    }
+    if matches!(
+        request.scenario,
+        Scenario::JediTrainingDialog | Scenario::JediTrainingMessages
+    ) && player_is_alliance
+    {
+        place_jedi_training(world);
     }
     if request.scenario == Scenario::RegimentEnroute {
         place_regiment_enroute(
@@ -2536,6 +2588,65 @@ fn place_sabotage_targets(
     fleets.select(secondary, FleetWindowEntry::Fleet(fleet));
 }
 
+/// The Jedi Training scenarios' world, as A0 2026-11-16-edited-saves
+/// x-53..x-56 had it: Luke a Jedi Knight after Dagobah (x-53's Force
+/// Ranking, Force edited to 100; his Jedi mini, x-56) and Jan Dodonna with
+/// some Force, a Novice (10), both free and recruited on the Alliance's
+/// Yavin. The teacher is the member that trains Jedi at Force GNPRTB 2581
+/// (100) or more (`FUN_00570e40`, `FUN_004ed310`), the pupil any other at
+/// Force above 0 and below the teacher's (`FUN_00570690`). The recruit pool
+/// is empty, as A0 lists Jedi Training first (x-54, x-55) where Recruitment
+/// (`FUN_0046cab0` key 1) would head it.
+fn place_jedi_training(world: &mut GameWorld) {
+    let Some((luke, dodonna, yavin)) = jedi_training_cast(world) else {
+        return;
+    };
+    world.systems[yavin].control = ControlKind::Controlled(Faction::Alliance);
+    for (key, force) in [(luke, 100), (dodonna, 10)] {
+        for fleet in world.fleets.values_mut() {
+            fleet.characters.retain(|&member| member != key);
+        }
+        let value = &mut world.characters[key];
+        value.current_system = Some(yavin);
+        value.current_fleet = None;
+        value.is_alliance = true;
+        value.is_empire = false;
+        value.recruited = true;
+        value.is_captive = false;
+        value.captured_by = None;
+        value.on_mission = false;
+        value.on_mandatory_mission = false;
+        value.injury = 0;
+        value.force_potential = true;
+        value.force_aware = true;
+        value.force_base = force;
+        value.force_training = 0;
+    }
+    world.characters[luke].dagobah_completed = true;
+    world.set_recruit_pool_empty(Faction::Alliance);
+}
+
+/// The Jedi Training scenarios' Luke, Dodonna and Yavin.
+fn jedi_training_cast(world: &GameWorld) -> Option<(CharacterKey, CharacterKey, SystemKey)> {
+    let character = |name: &str| {
+        world
+            .characters
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let yavin = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Yavin")
+        .map(|(key, _)| key)?;
+    Some((
+        character("Luke Skywalker")?,
+        character("Jan Dodonna")?,
+        yavin,
+    ))
+}
+
 /// The `FleetWindowA0` scenario: A0's fleets at Kimanan, named as A0 names
 /// them, and its Fleet window open where A0's lay.
 fn place_kimanan(
@@ -2978,6 +3089,7 @@ fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(Syste
         Scenario::Quadrants
         | Scenario::QuadrantsNeutralFleet
         | Scenario::QuadrantsFreeTeam
+        | Scenario::QuadrantsHeadquartersFrozen
         | Scenario::QuadrantsFacility
         | Scenario::QuadrantsStale
         | Scenario::QuadrantsStaleSeeEverything => {
@@ -4283,6 +4395,7 @@ pub fn emit_mission_flow(
         && !matches!(
             request.scenario,
             Scenario::MissionTargeting
+                | Scenario::JediTrainingDialog
                 | Scenario::ReconTargeting
                 | Scenario::ResearchTargeting
                 | Scenario::TroopResearchTargeting
@@ -5932,6 +6045,7 @@ fn object_menu_report<'a>(
                 | Scenario::Quadrants
                 | Scenario::QuadrantsNeutralFleet
                 | Scenario::QuadrantsFreeTeam
+                | Scenario::QuadrantsHeadquartersFrozen
                 | Scenario::QuadrantsFacility
                 | Scenario::QuadrantsStale
                 | Scenario::QuadrantsStaleSeeEverything
@@ -6962,6 +7076,9 @@ pub fn mission_results(
     request: FixtureRequest,
     world: &mut GameWorld,
 ) -> Vec<rebellion_core::missions::MissionResult> {
+    if request.scenario == Scenario::JediTrainingMessages {
+        return jedi_training_result(world).into_iter().collect();
+    }
     if request.scenario != Scenario::EventMessages {
         return Vec::new();
     }
@@ -7046,6 +7163,33 @@ pub fn mission_results(
         outcome: rebellion_core::missions::MissionOutcome::Failure,
         effects: Vec::new(),
     }]
+}
+
+/// The `JediTrainingMessages` result: Luke's Jedi Training on Yavin ends a
+/// success, Dodonna's Force raised by 15 into ForceTraining (`FUN_005712b0`
+/// -> `FUN_004ee1d0`), from 10 (Novice) to 25, a Trainee as A0
+/// 2026-11-16-edited-saves/x-60 reads it. The report names Luke, its
+/// leader, and Yavin (x-59: "My Jedi Training mission on Yavin was a
+/// success."); the members stay on Yavin, so nobody returns.
+fn jedi_training_result(world: &GameWorld) -> Option<rebellion_core::missions::MissionResult> {
+    let (luke, dodonna, yavin) = jedi_training_cast(world)?;
+    Some(rebellion_core::missions::MissionResult {
+        mission_id: u64::MAX - 6,
+        tick: 0,
+        kind: MissionKind::JediTraining,
+        faction: MissionFaction::Alliance,
+        character: Some(luke),
+        lead_force: None,
+        target_system: yavin,
+        target_character: None,
+        target_object: None,
+        returning_to: None,
+        outcome: rebellion_core::missions::MissionOutcome::Success,
+        effects: vec![rebellion_core::missions::MissionEffect::ForceTrainingGained {
+            character: dodonna,
+            amount: 15,
+        }],
+    })
 }
 
 /// The event-message scenario's foiled mission: an Imperial Reconnaissance
@@ -7399,6 +7543,7 @@ fn story_messages_report(
             | Scenario::EventMessages
             | Scenario::HeadquartersTaken
             | Scenario::UprisingMessages
+            | Scenario::JediTrainingMessages
     ) {
         return None;
     }
@@ -7863,6 +8008,7 @@ fn quadrant_setup(
         Scenario::Quadrants
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
+            | Scenario::QuadrantsHeadquartersFrozen
             | Scenario::QuadrantsFacility
             | Scenario::QuadrantsStale
             | Scenario::QuadrantsStaleSeeEverything
@@ -9345,20 +9491,34 @@ pub fn open_mission_dialog(
     dialog: &mut MissionDialogState,
 ) -> bool {
     let page = match request.scenario {
-        Scenario::MissionDialogMission => MissionDialogPage::Mission,
+        Scenario::MissionDialogMission | Scenario::JediTrainingDialog => MissionDialogPage::Mission,
         Scenario::MissionDialogAgents => MissionDialogPage::Agents,
         _ => return false,
-    };
-    let (Some(character), Some(target)) =
-        (world.characters.keys().next(), world.systems.keys().next())
-    else {
-        return false;
     };
     let faction = match request.faction {
         CockpitFaction::Alliance => MissionFaction::Alliance,
         CockpitFaction::Empire => MissionFaction::Empire,
     };
-    let team = vec![MissionMember::Character(character)];
+    let (team, target) = if request.scenario == Scenario::JediTrainingDialog {
+        // Luke and Dodonna, selected together, on Yavin (A0 x-54).
+        let Some((luke, dodonna, yavin)) = jedi_training_cast(world) else {
+            return false;
+        };
+        (
+            vec![
+                MissionMember::Character(luke),
+                MissionMember::Character(dodonna),
+            ],
+            yavin,
+        )
+    } else {
+        let (Some(character), Some(target)) =
+            (world.characters.keys().next(), world.systems.keys().next())
+        else {
+            return false;
+        };
+        (vec![MissionMember::Character(character)], target)
+    };
     let kinds = available_kinds(world, uprisings, research, faction, &team, &[], target);
     if !dialog.open(
         faction,
@@ -9705,6 +9865,146 @@ mod tests {
             faction,
             code: 0,
         }
+    }
+
+    /// `diplomacy_world` with its system named Yavin, Luke (a Jedi trainer)
+    /// and Jan Dodonna, and MISSNSD's Jedi Training record (`0x58000042`)
+    /// beside Diplomacy.
+    fn jedi_training_world() -> GameWorld {
+        let mut world = diplomacy_world(Faction::Alliance);
+        let here = world.systems.keys().next().unwrap();
+        world.systems[here].name = "Yavin".into();
+        for (name, trainer) in [("Luke Skywalker", true), ("Jan Dodonna", false)] {
+            world.characters.insert(rebellion_core::world::Character {
+                name: name.into(),
+                is_major: trainer,
+                is_jedi_trainer: trainer,
+                is_empire: true,
+                current_system: None,
+                ..Default::default()
+            });
+        }
+        let template = world.mission_records[0];
+        world
+            .mission_records
+            .push(rebellion_core::world::MissionRecord {
+                dat_id: rebellion_core::ids::DatId::new(0x5800_0042),
+                repeats: false,
+                ..template
+            });
+        world
+    }
+
+    #[test]
+    fn the_jedi_training_dialog_offers_jedi_training_first_to_luke_and_dodonna_on_yavin() {
+        // A0 2026-11-16-edited-saves/x-54..x-56 (an Alliance game, day 813):
+        // Luke, Force 100, and Dodonna selected on Yavin; the dialog shows
+        // Jedi Training first (FUN_0046cab0 key 2), its agents the two.
+        let mut world = jedi_training_world();
+        apply(
+            request(Scenario::JediTrainingDialog, CockpitFaction::Alliance),
+            &mut world,
+            &mut GameMode::MainMenu,
+            &mut MissionFaction::Alliance,
+            &mut CockpitState::new(CockpitFaction::Alliance),
+            &mut GalaxyMapState::default(),
+            &mut MovementState::default(),
+            &mut ManufacturingState::default(),
+            &mut EconomyState::default(),
+            &mut MissionState::default(),
+            &mut BlockadeState::default(),
+            &mut SectorWindowState::default(),
+            &mut SystemWindowState::default(),
+            &mut FleetWindowState::default(),
+            &mut DefensesWindowState::default(),
+            &mut TroopTransportState::default(),
+            &mut rebellion_core::uprising::UprisingState::new(),
+        );
+        let (luke, dodonna, yavin) = jedi_training_cast(&world).expect("the cast");
+        assert_eq!(
+            (
+                world.characters[luke].force_level(),
+                world.characters[dodonna].force_level()
+            ),
+            (100, 10)
+        );
+        assert!(world.characters[luke].dagobah_completed);
+        for key in [luke, dodonna] {
+            let value = &world.characters[key];
+            assert_eq!(value.current_system, Some(yavin));
+            assert!(value.is_alliance && !value.is_empire && value.recruited);
+        }
+        let mut dialog = MissionDialogState::default();
+        assert!(open_mission_dialog(
+            request(Scenario::JediTrainingDialog, CockpitFaction::Alliance),
+            &world,
+            &UprisingState::default(),
+            &ResearchState::default(),
+            &mut dialog,
+        ));
+        let open = dialog.dialog().expect("the dialog is open");
+        assert_eq!(open.page(), MissionDialogPage::Mission);
+        assert_eq!(open.kinds().first(), Some(&MissionKind::JediTraining));
+        assert_eq!(
+            open.agents(),
+            [
+                MissionMember::Character(luke),
+                MissionMember::Character(dodonna)
+            ]
+        );
+    }
+
+    #[test]
+    fn the_jedi_training_messages_scenario_ends_lukes_training_with_dodonna_a_trainee() {
+        // A0 2026-11-16-edited-saves/x-59, x-60: Luke's report on Yavin
+        // and Dodonna's Force Growth, "My ranking is Trainee." (20..=79,
+        // FUN_004486f0).
+        let mut world = jedi_training_world();
+        place_jedi_training(&mut world);
+        let (luke, dodonna, yavin) = jedi_training_cast(&world).expect("the cast");
+        let results = mission_results(
+            request(Scenario::JediTrainingMessages, CockpitFaction::Alliance),
+            &mut world,
+        );
+        assert_eq!(results.len(), 1);
+        let result = &results[0];
+        assert_eq!(
+            (
+                result.kind,
+                result.character,
+                result.target_system,
+                result.returning_to
+            ),
+            (MissionKind::JediTraining, Some(luke), yavin, None)
+        );
+        assert_eq!(
+            result.outcome,
+            rebellion_core::missions::MissionOutcome::Success
+        );
+        let [rebellion_core::missions::MissionEffect::ForceTrainingGained { character, amount }] =
+            result.effects.as_slice()
+        else {
+            unreachable!("one Force gain: {:?}", result.effects);
+        };
+        assert_eq!(*character, dodonna);
+        let before = world.characters[dodonna].force_level();
+        assert_eq!(
+            rebellion_render::status_window::force_ranking(before),
+            "Novice"
+        );
+        assert_eq!(
+            rebellion_render::status_window::force_ranking(
+                before + u32::try_from(*amount).unwrap()
+            ),
+            "Trainee"
+        );
+        assert!(mission_results(
+            request(Scenario::JediTrainingDialog, CockpitFaction::Alliance),
+            &mut world
+        )
+        .is_empty());
+        assert_eq!(Scenario::decode(135), Some(Scenario::JediTrainingDialog));
+        assert_eq!(Scenario::decode(136), Some(Scenario::JediTrainingMessages));
     }
 
     #[test]
@@ -13837,6 +14137,65 @@ mod tests {
                 "{faction:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_frozen_headquarters_scenario_gives_the_empire_a_copy_holding_the_headquarters() {
+        // FUN_0045bbb0 marks a system whose viewer copy holds a family 0x20
+        // object (FUN_00526cf0); A0 2026-11-16-edited-saves/x-29 shows the
+        // mark to the Empire. The Alliance holds its own system: no copy.
+        let in_sector = |world: &mut GameWorld| {
+            // Three more systems in the primary's sector.
+            let here = world.systems.keys().next().unwrap();
+            let sector = world.systems[here].sector;
+            for index in 0..3u16 {
+                let mut copy = world.systems[here].clone();
+                copy.dat_id = rebellion_core::ids::DatId::new(0x9000_0010 + u32::from(index));
+                copy.x = copy.x.saturating_add(200 * (index + 1));
+                copy.manufacturing_facilities.clear();
+                copy.production_facilities.clear();
+                copy.defense_facilities.clear();
+                let copy = world.systems.insert(copy);
+                world.sectors[sector].systems.push(copy);
+            }
+        };
+        let applied = apply_to_loading_world_with(
+            request(
+                Scenario::QuadrantsHeadquartersFrozen,
+                CockpitFaction::Empire,
+            ),
+            in_sector,
+        );
+        let world = &applied.world;
+        let primary = world.systems.keys().next().unwrap();
+        let headquarters = mark_systems(world, primary)[0];
+        assert!(world.systems[headquarters].is_headquarters);
+        let view = world
+            .object_views
+            .system(Faction::Empire, world.systems[headquarters].dat_id)
+            .expect("the Empire's copy");
+        assert!(!view.live);
+        assert!(view
+            .manufacturing_facilities
+            .iter()
+            .any(|facility| facility.class.family() == 0x20));
+        let alliance = apply_to_loading_world_with(
+            request(
+                Scenario::QuadrantsHeadquartersFrozen,
+                CockpitFaction::Alliance,
+            ),
+            in_sector,
+        );
+        let id = alliance.world.systems[headquarters].dat_id;
+        assert!(alliance
+            .world
+            .object_views
+            .system(Faction::Empire, id)
+            .is_none());
+        assert_eq!(
+            Scenario::decode(137),
+            Some(Scenario::QuadrantsHeadquartersFrozen)
+        );
     }
 
     #[test]
