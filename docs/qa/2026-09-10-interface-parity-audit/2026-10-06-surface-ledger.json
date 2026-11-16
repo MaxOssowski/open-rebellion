@@ -5973,7 +5973,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-ship-repair-timer/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-ship-hit-repair/"
           ],
-          "note": "Repair on timer 0x380 is ported in the simulation; no UI state compared in A0 or the browser. 2026-11-15: A0 .artifacts/a0-vm/2026-11-15-partial-cells e-/e2-/e3-: a damaged Victory Destroyer (Shield Recharge 8:10, 'Ship Damaged: Yes', 8bce5f1cbf27) did not repair in 62 days at Coruscant, which has no shipyard (Ship Construction 0:0, 6705da20ecb9): consistent with the port's trace (FUN_00501c50/FUN_0050bb70/FUN_00528040: every 30 days without FastRepair, damage control 20%). The positive case at a shipyard was not observed: the Alliance took Corellia the day after arrival, twice.",
+          "note": "Repair on timer 0x380 is ported in the simulation; no UI state compared in A0 or the browser. 2026-11-15: A0 .artifacts/a0-vm/2026-11-15-partial-cells e-/e2-/e3-: a damaged Victory Destroyer (Shield Recharge 8:10, 'Ship Damaged: Yes', 8bce5f1cbf27) did not repair in 62 days at Coruscant, which has no shipyard (Ship Construction 0:0, 6705da20ecb9): consistent with the port's trace (FUN_00501c50/FUN_0050bb70/FUN_00528040: every 30 days without FastRepair, damage control 20%). The positive case at a shipyard was not observed: the Alliance took Corellia the day after arrival, twice. 2026-11-16: A0 2026-11-16-empire-hunt shows the positive case: a Victory Destroyer at Coruscant with Shield Recharge 8:10, Ship Damaged Yes (h-3, h-4), an Orbital Shipyard deployed there about day 588-591, Status read daily: Yes through day 603 (h-82 f0d61d097189), No from day 604 (h-83 4e6db844a752); later No with 10:10 (h-28 34d1e0218322, h-29 fd2acfbde37c). The repair comes about 13 days after the yard, consistent with the port's periodic check (FUN_00501c50/FUN_0050bb70); the period itself was not measured. The ship's menu stays white at Coruscant before and after.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6697,7 +6697,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-facility-lost-message/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-destroyed-messages/"
           ],
-          "note": "Facility Lost (0x303, TEXTSTRA 0x70b0/0x70b1) is filed on the Manufacturing rail; unit tests only, no browser or A0 check of the state. 2026-11-15 (b220): message-display.mjs files and opens Facility Lost on the Manufacturing rail on both sides (text only); no Facility Lost appeared in four A0 Alliance routes and one Empire game.",
+          "note": "Facility Lost (0x303, TEXTSTRA 0x70b0/0x70b1) is filed on the Manufacturing rail; unit tests only, no browser or A0 check of the state. 2026-11-15 (b220): message-display.mjs files and opens Facility Lost on the Manufacturing rail on both sides (text only); no Facility Lost appeared in four A0 Alliance routes and one Empire game. 2026-11-16: A0 2026-11-16-empire-hunt: still no Facility Lost. A facility order at Coruscant bound for Corellia before Corellia fell was dropped or redirected silently (h-73); saboteurs destroying Coruscant's construction yard filed only 'Saboteurs Strike' (h-9, h-10); Corellia's shipyard taken by assault filed no Facility Lost (h-13).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7632,7 +7632,7 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-names-and-marks/"
           ],
-          "note": "The Empire does not see the HQ mark 904 unless its fog shows the Alliance's contents (shows_alliance_headquarters); sector-quadrants.mjs checks the Empire case on Arch Chromium 155, but the A0 capture is from the Alliance side only.",
+          "note": "The Empire does not see the HQ mark 904 unless its fog shows the Alliance's contents (shows_alliance_headquarters); sector-quadrants.mjs checks the Empire case on Arch Chromium 155, but the A0 capture is from the Alliance side only. 2026-11-16: A0 2026-11-16-empire-hunt (Empire games, slots 1 and 5 loaded, never saved): from the Empire side Yavin shows no HQ mark 904 at day 133 (h-17 3fdb08fc8a19) although the Personnel Finder lists the six Alliance leaders there (h-43), nor with an Imperial fleet in orbit (h-44 8c558326eb06), after Espionage on Yavin (h-74..h-76) or after the assault took it (h-48 bcc85e933773). Consistent with the port hiding 904 from the Empire; no discovery seen.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7645,7 +7645,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "ghidra/notes/facility-ownership.md"
           ],
-          "note": "A0 sector-a.png (Alliance) shows mark 904 over Vjun and the Linux sector-quadrants.mjs 'icons' case matches 904 pixel for pixel for the Alliance; the Empire's discovery of the HQ has no A0 or browser case. The port marks HQ as a system flag, not a 0x20..0x21 facility object.",
+          "note": "A0 sector-a.png (Alliance) shows mark 904 over Vjun and the Linux sector-quadrants.mjs 'icons' case matches 904 pixel for pixel for the Alliance; the Empire's discovery of the HQ has no A0 or browser case. The port marks HQ as a system flag, not a 0x20..0x21 facility object. 2026-11-16: A0 2026-11-16-empire-hunt: no HQ-discovered message in two Empire games, only 'Assault on Yavin'; the Empire-side negatives h-17, h-44, h-48 show no 904 (see OBJ-13-C001).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8267,7 +8267,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-subdue-uprising-ends/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-near-uprising/"
           ],
-          "note": "Uprising, Near Uprising (0x148) and Uprising Ends (0x14b) take TEXTSTRA texts; the revolt and incident were seen in the browser, begin/end texts only in unit tests. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-07: Near Uprising compared with A0 (unedited Alliance game, day 795, 'Umgul Near Uprising'): texts, picture 1008, title image and rail 0 pixels from A0 in message-display.mjs (Linux); the message now names its system, as A0's lit Display shows. Uprising Begins/Ends not yet seen in A0.",
+          "note": "Uprising, Near Uprising (0x148) and Uprising Ends (0x14b) take TEXTSTRA texts; the revolt and incident were seen in the browser, begin/end texts only in unit tests. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-07: Near Uprising compared with A0 (unedited Alliance game, day 795, 'Umgul Near Uprising'): texts, picture 1008, title image and rail 0 pixels from A0 in message-display.mjs (Linux); the message now names its system, as A0's lit Display shows. Uprising Begins/Ends not yet seen in A0. 2026-11-16: A0 2026-11-16-empire-hunt (Empire): 'Uprising Begins on Selonia' row (h-30 ca08d7a6c478, popular-support tab h-37 db48c3d2da99) and opened (h-38 4a220a830731); 'Uprising Ends on Selonia' (h-33 978c7163db8b, h-34 81ec8a4e68de); 'Uprising Begins on Yavin' (h-49 5b0cd712c089, h-50 5f56fc099627), 'Uprising Ends on Yavin' row (h-52 1a9690d3c027).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
