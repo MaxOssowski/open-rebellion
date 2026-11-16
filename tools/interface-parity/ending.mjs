@@ -66,6 +66,61 @@ async function until(page, description, predicate, timeout = 30_000) {
   }
 }
 
+// END-01-C003 against A0 2026-11-16-edited-saves (an Empire "Headquarters
+// Victory" game whose Imperial Star Destroyer was edited into a Death
+// Star; the film, caption, crawl and menu do not depend on the edit): after
+// the system's own film (101, x-42), the caption film 102 "The Empire has
+// destroyed the Alliance Headquarters." (seq-empire-victory/b0021..b0099),
+// then the Empire's victory film 108 with its crawl (b0210.., part2
+// b0000..b0129), then the main menu (part2/b0355, x-43). The fixture's
+// galaxy has no headquarters, so the victory word queues 102 at once
+// (main.rs, plays_story_movies); its win is the capture of the Alliance's
+// leaders, not the Death Star, so 101 does not play.
+const A0_EDITED = path.join(ROOT, ".artifacts/a0-vm/2026-11-16-edited-saves");
+
+// The rows and columns of a frame holding any lit pixel (sum above 60).
+function litBox(png) {
+  let box = null;
+  for (let y = 0; y < png.height; y += 1) {
+    for (let x = 0; x < png.width; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (png.data[i] + png.data[i + 1] + png.data[i + 2] <= 60) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return box;
+}
+
+// The white ink box in the caption field (4, 404) 580 by 70 (FUN_00421790),
+// down to row `bottom` (A0's pointer stands lower in seq-ds2-trench-duros).
+function captionInk(png, bottom = 474) {
+  let box = null;
+  for (let y = 404; y < bottom; y += 1) {
+    for (let x = 4; x < 584; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 140) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return box;
+}
+
+// The crawl's yellow ink: its count and box.
+function yellowInk(png) {
+  let count = 0;
+  let box = null;
+  for (let y = 0; y < png.height; y += 1) {
+    for (let x = 0; x < png.width; x += 1) {
+      const i = (y * png.width + x) * 4;
+      const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+      if (!(r > 150 && g > 110 && b < 100 && r - b > 90)) continue;
+      count += 1;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return { count, box };
+}
+
 // Pixels of the screenshot in the caption field and in the movie's rows.
 function measure(bytes) {
   const png = PNG.sync.read(bytes);
@@ -123,6 +178,17 @@ async function run(browser, base, faction) {
       if (stem && stem !== stems.at(-1)) {
         stems.push(stem);
         await shot(`movie-${stem}`);
+        if (stem === faction.ending && faction.name === "empire-victory") {
+          // The crawl near the film's end (114 s; A0 part2/b0090 reads
+          // "In the darkest cells of the Imperial Palace ...").
+          // Played through fast (a seek does not repaint the canvas).
+          await page.evaluate(() => { document.querySelector("video").playbackRate = 8; });
+          await until(page, "the crawl is reached",
+            () => document.querySelector("video")?.currentTime >= document.querySelector("video").duration - 19, 60_000);
+          await page.evaluate(() => { document.querySelector("video").playbackRate = 1; });
+          await page.waitForTimeout(700);
+          await shot("movie-108-crawl");
+        }
         if (stem === faction.ending) break;
         assert.ok(log.some((line) => line.includes(`[cutscene] story movie=${stem} `)),
           `${stem} plays as a story movie ahead of the ending`);
@@ -153,8 +219,62 @@ async function run(browser, base, faction) {
     for (let i = 0; i < png.data.length; i += 4) if (png.data[i] + png.data[i + 1] + png.data[i + 2] > 60) lit += 1;
     assert.ok(lit > 100_000, `the main menu shows: ${lit}`);
     assert.equal(later, null, "no movie follows the ending");
+    // END-01-C004's A0 of 2026-11-16 (seq-ds2-trench-duros, an Empire game
+    // with an edited Death Star; the Alliance's AI took Coruscant): the
+    // caption film 103 "The Alliance has seized the Imperial capital system
+    // of Coruscant." (e5-0000, A0's pointer below the caption's line), then
+    // the Empire's defeat film 107 in the same rows (e5-0113).
+    let defeatA0 = null;
+    if (faction.name === "empire") {
+      const read = async (file) => PNG.sync.read(await fs.readFile(path.join(A0_EDITED, "seq-ds2-trench-duros", file)));
+      const port = async (label) => PNG.sync.read(await fs.readFile(path.join(directory, `${label}.png`)));
+      const [a0Caption, a0Film, portCaption, portFilm] = await Promise.all([
+        read("e5-0000.png"), read("e5-0113.png"), port("movie-103"), port("movie-107")]);
+      defeatA0 = {
+        caption_ink: { a0: captionInk(a0Caption, 432), port: captionInk(portCaption, 432) },
+        defeat_film_box: { a0: litBox(a0Film), port: litBox(portFilm) },
+      };
+      console.log(JSON.stringify({ empire_defeat_a0: defeatA0 }));
+      const near = ({ a0: a, port: p }) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+        && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+      const { a0: fa, port: fp } = defeatA0.defeat_film_box;
+      // The film's first row is 78 in both; its last lit row depends on the
+      // frame, within the film's 401.
+      assert.ok(near(defeatA0.caption_ink) && fa && fp && fa[1] === 78 && fp[1] === 78
+        && fa[3] <= 401 && fp[3] <= 401, JSON.stringify(defeatA0));
+    }
+    let a0 = null;
+    if (faction.name === "empire-victory") {
+      const read = async (file) => PNG.sync.read(await fs.readFile(path.join(A0_EDITED, file)));
+      const port = async (label) => PNG.sync.read(await fs.readFile(path.join(directory, `${label}.png`)));
+      const [a0Caption, a0Film, a0Crawl] = await Promise.all([
+        read("seq-empire-victory/b0021.png"), read("seq-empire-victory/b0255.png"),
+        read("seq-empire-victory/part2/b0090.png")]);
+      const [portCaption, portFilm, portCrawl] = await Promise.all([
+        port("movie-102"), port("movie-108"), port("movie-108-crawl")]);
+      a0 = {
+        stems,
+        // The film's rows (78..401) and the caption under it (404..).
+        caption_film_box: { a0: litBox(a0Caption), port: litBox(portCaption) },
+        victory_film_box: { a0: litBox(a0Film), port: litBox(portFilm) },
+        caption_ink: { a0: captionInk(a0Caption), port: captionInk(portCaption) },
+        crawl: { a0: yellowInk(a0Crawl), port: yellowInk(portCrawl) },
+      };
+      console.log(JSON.stringify({ empire_victory_a0: a0 }));
+      // 102 then 108, as A0 plays them after its 101.
+      assert.deepEqual(stems, ["102", "108"], JSON.stringify(a0));
+      const rows = ({ a0: a, port: p }) => a && p && a[1] === p[1] && a[3] === p[3];
+      assert.ok(rows(a0.caption_film_box) && rows(a0.victory_film_box), JSON.stringify(a0));
+      const near = ({ a0: a, port: p }) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+        && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+      assert.ok(near(a0.caption_ink), JSON.stringify(a0));
+      // The crawl's yellow text inside the film's rows in both.
+      const inside = ({ count, box }) => count > 500 && box[1] >= 78 && box[3] <= 401;
+      assert.ok(inside(a0.crawl.a0) && inside(a0.crawl.port), JSON.stringify(a0));
+    }
     assert.deepEqual(errors, [], errors.join("; "));
-    return { faction: faction.name, status: "pass", stems, later, shots,
+    return { faction: faction.name, status: "pass", stems, later, shots, ...(a0 ? { a0 } : {}),
+      ...(defeatA0 ? { defeat_a0: defeatA0 } : {}),
       menu_lines: log.filter((line) => /main_menu|game_mode|cutscene/.test(line)).slice(-12) };
   } catch (error) {
     await shot("failure").catch(() => {});
