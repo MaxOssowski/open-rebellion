@@ -342,6 +342,35 @@ async function run(browser, base, faction) {
       assert.match(failed.played[1], faction.byte === 1
         ? /directory=alsprite-dll wave=133[78] loaded=true/ : /directory=emsprite-dll wave=1378 loaded=true/);
       soundChecks.ported = portedChecks;
+      // Squadron at Full Strength (FUN_00499de0 for a squadron, +0x28 9;
+      // ghidra/notes/squadron-strength.md): TEXTSTRA 0x7040 over 0x7042
+      // naming the squadron and its container, +0x30 0x457 + (side != 1)
+      // (STRATEGY 1111 / 1112). Aboard a ship it is filed under Fleet
+      // Messages (+0x34 0x80, the tab at the window's (98, 46)), on a
+      // planet under Defense Messages (0x40, (249, 46)). No A0 capture.
+      const fleetTab = [again.window_left + 22 + 76 + 18, again.window_top + 46 + 20];
+      const defenseTab = [again.window_left + 22 + 227 + 17, again.window_top + 46 + 20];
+      const missionTab = [again.window_left + 22 + 114 + 17, again.window_top + 46 + 20];
+      let full = null;
+      for (const tab of [fleetTab, defenseTab]) {
+        await click(page, tab);
+        await frames(page, 4);
+        const list = await waitReport(page, (value) => value.mode === "list", "a rail's list");
+        if (list.rows.includes("Squadron at Full Strength")) {
+          full = await displayRow((text) => text === "Squadron at Full Strength", "squadron-full-strength");
+          break;
+        }
+      }
+      assert.ok(full, "Squadron at Full Strength is filed under Fleet or Defense Messages");
+      assert.equal(full.viewed.viewing_title, "Squadron at Full Strength", JSON.stringify(full.viewed));
+      assert.match(full.viewed.viewing_text,
+        /^The .+ Squadron attached to .+ has replaced all fighters lost in combat\.$/, JSON.stringify(full.viewed));
+      assert.equal(full.played.length, 1, full.played.join("\n"));
+      assert.match(full.played[0], new RegExp(`directory=strategy-dll wave=${1111 + side} loaded=true`));
+      await click(page, missionTab);
+      await frames(page, 4);
+      await waitReport(page, (value) => value.mode === "list" && value.rows.some((text) => text.startsWith("Mission Report")),
+        "the Mission list after Squadron at Full Strength");
     }
     await click(page, await shown(asking));
     const reportSounds = soundLines().length;
