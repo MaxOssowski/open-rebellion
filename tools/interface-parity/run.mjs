@@ -5936,7 +5936,7 @@ async function probeTacticalBattleAlertEntry(
   return probes;
 }
 
-function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
+async function probeTacticalAudioRouting(page, viewport, folder, stable, consoleLines, ready) {
   // FUN_00450540 stops the score at the Battle Alert (FUN_00417640); the
   // tactical battle has none (A0 TAC-01-C012).
   assert.equal(ready.tactical_music_mdata_id, null);
@@ -5991,6 +5991,70 @@ function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
   assert.equal(voices.find(({ faction, wave }) => faction === "Alliance" && wave === 15133).sourceEvent, 0x11e);
   assert.equal(voices.find(({ faction, wave }) => faction === "Empire" && wave === 15001).sourceEvent, 0x9a);
   fs.writeFileSync(path.join(folder, "tactical-audio-muted.png"), stable.bytes);
+
+  // FUN_005bae60: the 45 requests above are all class 2, which plays at
+  // most 5 at once (+0x24); FUN_005bab50 drops a request that waited past
+  // 225 ms (+0x44). All arrive in one frame, so 5 start and 40 are dropped.
+  const effectLines = (kind) => consoleLines.filter(({ text }) =>
+    text.includes(`[audio] context=combat effect=${kind} `));
+  const until = async (test, label, ms = 5000) => {
+    const deadline = Date.now() + ms;
+    while (!test()) {
+      if (Date.now() > deadline) assert.fail(label);
+      await page.waitForTimeout(50);
+    }
+  };
+  await until(() => effectLines("start").length + effectLines("drop").length >= routed.length,
+    "the effect channels did not settle every request");
+  const fixtureStarts = effectLines("start").map(({ text }) => text);
+  const fixtureDrops = effectLines("drop").map(({ text }) => text);
+  assert.equal(fixtureStarts.length, 5, fixtureStarts.join("\n"));
+  assert.equal(fixtureDrops.length, routed.length - 5);
+  assert.deepEqual(fixtureStarts.map((text) => Number(text.match(/wave=(\d+)/)[1])),
+    routed.slice(0, 5).map(({ wave }) => wave));
+
+  // The selected unit's hum (FUN_005a1110 / FUN_005a42e0 -> FUN_005ba980
+  // (event, 0), looping): task force 1 is selected with key 1 while the
+  // battle runs; FUN_005a4330 stops it on pause (+0x8c8) and asks again
+  // once the battle runs; leaving the selection (FUN_0059e990) stops it.
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const pause = point(575, 319);
+  const click = async (at) => {
+    await page.mouse.click(at.x, at.y);
+    await page.waitForTimeout(300);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(80);
+  };
+  const humLines = () => consoleLines.filter(({ text }) =>
+    text.includes("[audio] context=combat hum event="));
+  const humStops = () => consoleLines.filter(({ text }) =>
+    text.includes("[audio] context=combat hum_stop "));
+  assert.equal(humLines().length, 0, "a unit hummed before any selection");
+  await click(pause);
+  await page.waitForTimeout(300);
+  assert.equal(humLines().length, 0, "the opening selection hummed");
+  await page.keyboard.press("Digit1");
+  await until(() => humLines().length === 1, "selecting task force 1 started no hum");
+  const humText = humLines()[0].text;
+  const hum = humText.match(/hum event=0x([0-9a-f]{2}) wave=(\d+) unit=Ship\(\d+\) looped=true routed=true loaded=true/);
+  assert.ok(hum, humText);
+  const humEvent = Number.parseInt(hum[1], 16);
+  // FUN_005b0100: a capital ship's hum is 0x17..0x19, WAVE 13057..13059.
+  assert.ok([0x17, 0x18, 0x19].includes(humEvent), humText);
+  assert.equal(Number(hum[2]), 13034 + humEvent);
+  await click(pause);
+  await until(() => humStops().length === 1, "pausing did not stop the hum");
+  await click(pause);
+  await until(() => humLines().length === 2, "the hum did not return when the battle ran");
+  assert.equal(humLines()[1].text, humText);
+  // A click on empty space ends the selection (the empty state).
+  await click(point(320, 120));
+  await until(() => humStops().length === 2, "deselecting did not stop the hum");
+  assert.equal(humLines().length, 2);
+  await click(pause);
   return [{
     type: "tactical-audio-routing",
     music_mdata_id: 307,
@@ -6002,6 +6066,8 @@ function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
     music_log: music.text,
     cue_logs: cueLogs.map(({ text }) => text),
     voice_logs: voiceLogs.map(({ text }) => text),
+    effect_channels: { limit: 5, started: fixtureStarts, dropped: fixtureDrops.length },
+    hum: { log: humText, stops: humStops().map(({ text }) => text) },
     browser_muted: true,
     screenshot_sha256: sha256(stable.bytes),
   }];
@@ -7100,7 +7166,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           page, viewport, folder, stable, consoleLines, ready, faction,
         )
         : scenario.tactical_audio_presentation
-        ? probeTacticalAudioRouting(folder, stable, consoleLines, ready)
+        ? await probeTacticalAudioRouting(page, viewport, folder, stable, consoleLines, ready)
         : scenario.detail_escort_presentation
         ? await probeTacticalDetailEscortPresentation(
           page, viewport, folder, stable, consoleLines, ready,

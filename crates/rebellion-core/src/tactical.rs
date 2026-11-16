@@ -6805,6 +6805,15 @@ impl BattleSession {
                 TacticalAudioEvent::SuperlaserBeam,
                 0,
             ));
+            // Then voice `0x91` when the viewer is the Alliance (`+0x9ec`
+            // = 0, the side `FUN_005ada10` gives the `0x20` bank).
+            if self.player_voice_faction() == TacticalVoiceFaction::Alliance {
+                self.pending_voice_cues
+                    .push(TacticalVoiceCue::from_source_event(
+                        TacticalVoiceEvent::DeathStarWarning,
+                        0x91,
+                    ));
+            }
         }
         let position = self.ships.get(target).map(|ship| ship.source_position);
         let Some(beam) = self.death_star_beam.as_mut().filter(|beam| beam.target == target) else {

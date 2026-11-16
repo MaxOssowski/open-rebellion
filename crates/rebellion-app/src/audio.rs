@@ -103,6 +103,7 @@ use std::path::{Path, PathBuf};
 
 use quad_snd::{AudioContext, Sound};
 
+use rebellion_core::tactical::TacticalAudioCue;
 pub use rebellion_render::audio::{AudioVolumeState, MusicContext, MusicTrack, SfxKind};
 use rebellion_render::tactical_view::TacticalVoiceFaction;
 
@@ -269,6 +270,125 @@ pub const TACTICAL_VOICE_RANGES: &[(TacticalVoiceFaction, u32, u32)] = &[
     (TacticalVoiceFaction::Empire, 15_001, 15_132),
 ];
 
+/// `FUN_005bae60`: a class-2 request (every tactical event below `0x20`)
+/// waits at most this long for a free channel (`+0x44` = `0xe1` ms).
+pub const TACTICAL_EFFECT_WAIT_SECONDS: f64 = 0.225;
+
+/// The tactical sound manager's effects class: every event below `0x20` is
+/// class 2 (`FUN_005bae60`, `+0x544`), which plays at most
+/// `ORIGINAL_TACTICAL_EFFECT_CHANNELS` (5, `+0x24`) at once.
+/// `FUN_005baa60` / `FUN_005bad50` start a request while `FUN_005bad00`
+/// counts fewer playing, else queue it; each frame `FUN_005bab50` forgets
+/// the sounds that ended, drops a request that waited past 225 ms and
+/// starts the queued ones, oldest first, while there is room. The looping
+/// hum is a request with bit 3 (`FUN_005ba980(event, 0)`): it holds a
+/// channel, and with none free it is dropped at once rather than queued.
+#[derive(Debug, Default)]
+pub struct TacticalEffectChannels {
+    /// When each one-shot that holds a channel ends.
+    playing: Vec<f64>,
+    /// The hum holds a channel.
+    loop_held: bool,
+    /// Requests waiting for a channel, oldest first, with the time asked.
+    waiting: std::collections::VecDeque<(TacticalAudioCue, f64)>,
+}
+
+/// One `TacticalEffectChannels::update`: the requests to play now and the
+/// ones that waited too long.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct TacticalEffectUpdate {
+    pub started: Vec<TacticalAudioCue>,
+    pub dropped: Vec<TacticalAudioCue>,
+}
+
+impl TacticalEffectChannels {
+    /// Ask for an effect at `now` seconds (`FUN_005ba980` stamps
+    /// `timeGetTime`).
+    pub fn request(&mut self, cue: TacticalAudioCue, now: f64) {
+        self.waiting.push_back((cue, now));
+    }
+
+    fn busy(&self) -> usize {
+        self.playing.len() + usize::from(self.loop_held)
+    }
+
+    fn forget_ended(&mut self, now: f64) {
+        self.playing.retain(|&end| end > now);
+    }
+
+    /// The frame's pass (`FUN_005bab50`). `seconds` gives a WAVE's length.
+    pub fn update(&mut self, now: f64, seconds: impl Fn(u32) -> f64) -> TacticalEffectUpdate {
+        self.forget_ended(now);
+        let mut update = TacticalEffectUpdate::default();
+        let waiting = std::mem::take(&mut self.waiting);
+        for (cue, asked) in waiting {
+            if now - asked > TACTICAL_EFFECT_WAIT_SECONDS {
+                update.dropped.push(cue);
+            } else if self.busy() < rebellion_core::tactical::ORIGINAL_TACTICAL_EFFECT_CHANNELS {
+                self.playing.push(now + seconds(cue.resource_id));
+                update.started.push(cue);
+            } else {
+                self.waiting.push_back((cue, asked));
+            }
+        }
+        update
+    }
+
+    /// Take a channel for the hum, if one is free.
+    pub fn try_hold_loop(&mut self, now: f64) -> bool {
+        self.forget_ended(now);
+        if self.loop_held {
+            return true;
+        }
+        if self.busy() < rebellion_core::tactical::ORIGINAL_TACTICAL_EFFECT_CHANNELS {
+            self.loop_held = true;
+        }
+        self.loop_held
+    }
+
+    /// The hum stopped (`FUN_005bab10`): its channel is free.
+    pub fn release_loop(&mut self) {
+        self.loop_held = false;
+    }
+
+    /// Leaving the battle forgets every channel and request.
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
+/// A PCM WAVE's length: its `data` chunk over the `fmt ` chunk's byte rate.
+#[must_use]
+pub fn wave_duration_seconds(bytes: &[u8]) -> Option<f64> {
+    let u32_at = |offset: usize| {
+        bytes
+            .get(offset..offset + 4)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    if bytes.get(0..4)? != b"RIFF" || bytes.get(8..12)? != b"WAVE" {
+        return None;
+    }
+    let mut offset = 12;
+    let mut byte_rate = None;
+    while offset + 8 <= bytes.len() {
+        let id = &bytes[offset..offset + 4];
+        let size = u32_at(offset + 4)? as usize;
+        if id == b"fmt " {
+            byte_rate = u32_at(offset + 16);
+        } else if id == b"data" {
+            let rate = f64::from(byte_rate.filter(|&rate| rate > 0)?);
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "WAVE data sizes are far below 2^52"
+            )]
+            let size = size as f64;
+            return Some(size / rate);
+        }
+        offset += 8 + size + (size & 1);
+    }
+    None
+}
+
 /// Runtime-pack path and resource identity for every restored tactical voice.
 pub fn tactical_voice_assets() -> Vec<(TacticalVoiceFaction, String, u32)> {
     TACTICAL_VOICE_RANGES
@@ -306,6 +426,9 @@ pub struct AudioEngine {
     /// Original tactical weapon-event variants keyed by WAVE resource ID.
     tactical_sfx: HashMap<u32, Sound>,
 
+    /// Each loaded tactical WAVE's length, for the effect channels.
+    tactical_sfx_seconds: HashMap<u32, f64>,
+
     /// Source-mapped tactical voices keyed by faction and WAVE ID.
     tactical_voice: HashMap<(TacticalVoiceFaction, u32), Sound>,
 
@@ -333,6 +456,7 @@ impl AudioEngine {
             ctx: AudioContext::new(),
             sfx: HashMap::new(),
             tactical_sfx: HashMap::new(),
+            tactical_sfx_seconds: HashMap::new(),
             tactical_voice: HashMap::new(),
             advisor_voice: HashMap::new(),
             tactical_loop: None,
@@ -526,6 +650,23 @@ impl AudioEngine {
     pub fn load_tactical_sfx_bytes(&mut self, resource_id: u32, bytes: &[u8]) {
         let sound = Sound::load(&self.ctx, bytes);
         self.tactical_sfx.insert(resource_id, sound);
+        if let Some(seconds) = wave_duration_seconds(bytes) {
+            self.tactical_sfx_seconds.insert(resource_id, seconds);
+        }
+    }
+
+    /// Whether a tactical WAVE is loaded.
+    pub fn has_tactical_sfx(&self, resource_id: u32) -> bool {
+        self.tactical_sfx.contains_key(&resource_id)
+    }
+
+    /// A loaded tactical WAVE's length; 0 when it is not loaded (nothing
+    /// plays, so it holds no channel).
+    pub fn tactical_sfx_seconds(&self, resource_id: u32) -> f64 {
+        self.tactical_sfx_seconds
+            .get(&resource_id)
+            .copied()
+            .unwrap_or(0.0)
     }
 
     /// Load one source-mapped tactical voice from raw bytes.
@@ -874,6 +1015,125 @@ impl AudioEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cue(event: rebellion_core::tactical::TacticalAudioEvent) -> TacticalAudioCue {
+        TacticalAudioCue::from_variant(event, 0)
+    }
+
+    // FUN_005bae60: every event below 0x20 is class 2, at most 5 at once
+    // (+0x24), a request waits 225 ms (+0x44 = 0xe1). FUN_005baa60 /
+    // FUN_005bad50 start a request when FUN_005bad00 counts fewer than 5
+    // playing, else queue it; FUN_005bab50 each frame drops the finished
+    // sounds, drops a request that waited longer than 225 ms and starts the
+    // queued ones, oldest first, while there is room.
+    #[test]
+    fn at_most_five_effects_play_and_a_request_waits_225_ms() {
+        use rebellion_core::tactical::TacticalAudioEvent as E;
+        let mut channels = TacticalEffectChannels::default();
+        let seconds = |_wave: u32| 1.0;
+        for _ in 0..7 {
+            channels.request(cue(E::HullHit), 10.0);
+        }
+        let first = channels.update(10.0, seconds);
+        assert_eq!((first.started.len(), first.dropped.len()), (5, 0));
+        // Still full at 10.2 s; at 10.226 s the two waiting are dropped.
+        let wait = channels.update(10.2, seconds);
+        assert!(wait.started.is_empty() && wait.dropped.is_empty());
+        let late = channels.update(10.226, seconds);
+        assert_eq!((late.started.len(), late.dropped.len()), (0, 2));
+        // Once the five end there is room again.
+        channels.request(cue(E::LaserAtCapital), 11.0);
+        let freed = channels.update(11.0, seconds);
+        assert_eq!(freed.started, vec![cue(E::LaserAtCapital)]);
+        // A request that waited exactly 225 ms still waits.
+        let mut channels = TacticalEffectChannels::default();
+        for _ in 0..6 {
+            channels.request(cue(E::HullHit), 0.0);
+        }
+        assert_eq!(channels.update(0.0, seconds).started.len(), 5);
+        assert!(channels.update(0.225, seconds).dropped.is_empty());
+        assert_eq!(channels.update(0.25, seconds).dropped.len(), 1);
+        // Leaving the battle frees every channel.
+        channels.request(cue(E::HullHit), 0.3);
+        channels.clear();
+        assert!(channels.try_hold_loop(0.3));
+        assert_eq!(
+            channels.update(0.3, seconds),
+            TacticalEffectUpdate::default()
+        );
+    }
+
+    // The hum (FUN_005ba980(event, 0), bit 3) holds a class-2 channel while
+    // it loops; with none free FUN_005baa60 drops it at once (no queue), and
+    // the selection state asks again on the next frame.
+    #[test]
+    fn the_looping_hum_takes_one_of_the_five_channels_or_none() {
+        use rebellion_core::tactical::TacticalAudioEvent as E;
+        let mut channels = TacticalEffectChannels::default();
+        let seconds = |_wave: u32| 2.0;
+        assert!(channels.try_hold_loop(0.0));
+        for _ in 0..5 {
+            channels.request(cue(E::ShieldHit), 0.0);
+        }
+        let update = channels.update(0.0, seconds);
+        assert_eq!(update.started.len(), 4);
+        channels.release_loop();
+        let update = channels.update(0.1, seconds);
+        assert_eq!(update.started.len(), 1);
+        assert!(!channels.try_hold_loop(0.1));
+        assert!(channels.try_hold_loop(2.0));
+    }
+
+    #[test]
+    fn a_wave_lasts_its_data_over_its_byte_rate() {
+        // A canonical PCM WAVE: 11025 Hz, mono, 8-bit, 22050 data bytes.
+        let mut bytes = b"RIFF\0\0\0\0WAVEfmt ".to_vec();
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&11_025u32.to_le_bytes());
+        bytes.extend_from_slice(&11_025u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&8u16.to_le_bytes());
+        bytes.extend_from_slice(b"LIST");
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"ab");
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&22_050u32.to_le_bytes());
+        bytes.extend(std::iter::repeat_n(0x80, 22_050));
+        assert_eq!(wave_duration_seconds(&bytes), Some(2.0));
+        assert_eq!(wave_duration_seconds(b"RIFF"), None);
+        // An odd chunk is padded to an even size; a short data chunk; no
+        // data chunk; a zero byte rate; a header that is not RIFF/WAVE.
+        let wave = |rate: u32, extra: &[u8], data: Option<&[u8]>| {
+            let mut bytes = b"RIFF\0\0\0\0WAVEfmt ".to_vec();
+            bytes.extend_from_slice(&16u32.to_le_bytes());
+            bytes.extend_from_slice(&[1, 0, 1, 0]);
+            bytes.extend_from_slice(&rate.to_le_bytes());
+            bytes.extend_from_slice(&rate.to_le_bytes());
+            bytes.extend_from_slice(&[1, 0, 8, 0]);
+            bytes.extend_from_slice(extra);
+            if let Some(data) = data {
+                bytes.extend_from_slice(b"data");
+                bytes.extend_from_slice(&u32::try_from(data.len()).unwrap().to_le_bytes());
+                bytes.extend_from_slice(data);
+            }
+            bytes
+        };
+        let odd = b"junk\x03\0\0\0abc\0";
+        assert_eq!(
+            wave_duration_seconds(&wave(2, odd, Some(&[0; 4]))),
+            Some(2.0)
+        );
+        assert_eq!(wave_duration_seconds(&wave(2, &[], None)), None);
+        assert_eq!(wave_duration_seconds(&wave(0, &[], Some(&[0; 4]))), None);
+        let mut not_riff = wave(2, &[], Some(&[0; 4]));
+        not_riff[3] = b'X';
+        assert_eq!(wave_duration_seconds(&not_riff), None);
+        let mut not_wave = wave(2, &[], Some(&[0; 4]));
+        not_wave[11] = b'X';
+        assert_eq!(wave_duration_seconds(&not_wave), None);
+    }
 
     #[test]
     fn the_tactical_bank_stages_every_unit_sound_but_the_callerless_0x1a() {

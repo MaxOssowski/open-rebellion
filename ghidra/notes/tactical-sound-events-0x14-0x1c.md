@@ -112,11 +112,32 @@ moves to 2; state 2 runs `FUN_005a6d60` with the frame's time * 0.4
 (`FUN_005b69f0`: `+0x170` = 1) asks `0x1c` when its slot `+0x20` is 1
 (a fighter group), else `0x1e`, then flies in from behind.
 
-All events below `0x20` are class 2 (`FUN_005bae60`: `+0x544` + 4·event
-= 2): at most 5 play at once (`+0x24`, counted by `FUN_005bad00`), and a
-request that waits 225 ms (`+0x44` = `0xe1`) is dropped
-(`FUN_005bab50`). The arrival sounds last 1.78 s and 3.70 s, so at most
-five of them sound.
+## The effect channels
+
+The limit is the sound manager's, not DirectSound's: `FUN_00613b50` only
+sets the volume (vtable `+0x3c`) and calls `Play` on the request's own
+buffer; it picks no channel.
+
+`FUN_005bae60` gives each event a class (`+0x544` + 4·event): `0x20`
+words of 2 (events below `0x20`), then `0xfe` of 1 (the voices from
+`0x20`), `0x1f` of 3 from `0x11e`, and a few voices set to 1. Per class
+it sets a limit (`+0x1c` + 4·class: 1, 1, **5**, 1) and a wait
+(`+0x3c` + 4·class: class 1 8000 ms, class 2 **225 ms** = `0xe1`, class
+3 3000 ms).
+
+- `FUN_005baa60` (each request) first runs `FUN_005bab50`, then
+  `FUN_005bad50`, which starts the request when `FUN_005bad00` counts
+  fewer than the limit of its class among the sounds started; else the
+  request waits (bit 3 clear) or is dropped (bit 3, the hum).
+- `FUN_005bab50` (also twice a frame from `FUN_0059f380`) forgets the
+  sounds that stopped playing (`+0x3c` bit 5, from `GetStatus` in
+  `FUN_00612890`), drops a waiting request older than its class's wait
+  (four times longer for class 1 while paused), and starts the waiting
+  ones in order while their class has room.
+
+So at most five tactical effects (weapons, hits, hums, launches,
+arrivals, jumps) play at once, the hum taking one while it loops. The
+arrival sounds last 1.78 s and 3.70 s, so at most five of them sound.
 
 ## The port (2026-11-16)
 
@@ -138,9 +159,18 @@ five of them sound.
 - port: the port opens the battle with the first player ship selected;
   that is not a selection state, so no hum until the player selects
   (A0: none before task force 1).
+- `start_death_star_beam` also queues voice `0x91` (VOICEFXA 14114) for
+  an Alliance player (`+0x9ec` = 0).
+- `audio::TacticalEffectChannels` (2026-11-16) holds the five class-2
+  channels in the application: every effect cue waits there, starts while
+  fewer than five play (a WAVE holds its channel for its length, from its
+  `data` chunk), and is dropped after 225 ms; the hum takes a channel or
+  is asked again next frame. The browser gate
+  `production-tactical-audio-routing` sees 5 of the fixture's 45 requests
+  start and 40 dropped, then the hum start on task force 1, stop on
+  pause, return, and stop on a click on empty space.
 
 Open:
-- voice `0x91` from `FUN_005ba520` (Alliance viewer) is not queued;
-- the class-2 limit of 5 is applied only to the arrival, not to the
-  port's other effects;
+- the voice classes (1 and 3, one at a time, 8000 / 3000 ms waits) are
+  not ported this way;
 - the arrival's flight itself (`FUN_005a6d60` positions) is not ported.

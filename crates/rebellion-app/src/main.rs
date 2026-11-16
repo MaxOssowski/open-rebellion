@@ -1792,6 +1792,8 @@ async fn main() {
     let mut tactical_music_active = false;
     // The selected unit's looping hum now held (`TacticalState::selection_hum`).
     let mut tactical_hum: Option<rebellion_core::tactical::TacticalSelectionHum> = None;
+    // The tactical effects' five channels (`audio::TacticalEffectChannels`).
+    let mut tactical_channels = audio::TacticalEffectChannels::default();
     let mut screen_music_playing: Option<rebellion_render::MusicTrack> = None;
 
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
@@ -10219,9 +10221,63 @@ async fn main() {
             }
         }
 
+        // The effects class plays at most five at once; a request waits 225
+        // ms for a channel (`FUN_005bae60`, `FUN_005bad50`, `FUN_005bab50`).
+        let effect_now = macroquad::time::get_time();
+        if tactical_audio_context {
+            for cue in tactical_state.take_pending_audio_cues() {
+                #[cfg(not(target_arch = "wasm32"))]
+                let loaded = audio_engine.has_tactical_sfx(cue.resource_id);
+                #[cfg(target_arch = "wasm32")]
+                let loaded = browser_menu_audio
+                    .as_ref()
+                    .is_some_and(|engine| engine.has_tactical_sfx(cue.resource_id));
+                macroquad::logging::info!(
+                    "[audio] context=combat event=0x{:02x} wave={} routed=true loaded={} muted={}",
+                    cue.event.event_id(),
+                    cue.resource_id,
+                    loaded,
+                    audio_vol.muted
+                );
+                tactical_channels.request(cue, effect_now);
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            let update = tactical_channels
+                .update(effect_now, |wave| audio_engine.tactical_sfx_seconds(wave));
+            #[cfg(target_arch = "wasm32")]
+            let update = tactical_channels.update(effect_now, |wave| {
+                browser_menu_audio
+                    .as_ref()
+                    .map_or(0.0, |engine| engine.tactical_sfx_seconds(wave))
+            });
+            for cue in update.started {
+                #[cfg(not(target_arch = "wasm32"))]
+                audio_engine.play_tactical_sfx(cue.resource_id, &audio_vol);
+                #[cfg(target_arch = "wasm32")]
+                if let Some(engine) = browser_menu_audio.as_mut() {
+                    engine.play_tactical_sfx(cue.resource_id, &audio_vol);
+                }
+                macroquad::logging::info!(
+                    "[audio] context=combat effect=start event=0x{:02x} wave={}",
+                    cue.event.event_id(),
+                    cue.resource_id
+                );
+            }
+            for cue in update.dropped {
+                macroquad::logging::info!(
+                    "[audio] context=combat effect=drop event=0x{:02x} wave={}",
+                    cue.event.event_id(),
+                    cue.resource_id
+                );
+            }
+        } else {
+            tactical_channels.clear();
+        }
         // The selected unit's hum: a selection state asks it while the
         // battle runs and stops it on pause or when the state ends
-        // (`FUN_005a11e0`, `FUN_005a17e0`, `FUN_0059e990`).
+        // (`FUN_005a11e0`, `FUN_005a17e0`, `FUN_0059e990`). It takes one
+        // of the five channels; with none free it is asked again next frame
+        // (`FUN_005baa60` drops a looping request it cannot start).
         let wanted_hum = if tactical_audio_context {
             tactical_state.selection_hum()
         } else {
@@ -10235,13 +10291,14 @@ async fn main() {
                 if let Some(engine) = browser_menu_audio.as_mut() {
                     engine.stop_tactical_loop();
                 }
+                tactical_channels.release_loop();
                 macroquad::logging::info!(
                     "[audio] context=combat hum_stop event=0x{:02x} wave={}",
                     held.cue.event.event_id(),
                     held.cue.resource_id
                 );
             }
-            if let Some(hum) = wanted_hum {
+            if let Some(hum) = wanted_hum.filter(|_| tactical_channels.try_hold_loop(effect_now)) {
                 #[cfg(not(target_arch = "wasm32"))]
                 let loaded = audio_engine.start_tactical_loop(hum.cue.resource_id, &audio_vol);
                 #[cfg(target_arch = "wasm32")]
@@ -10256,25 +10313,10 @@ async fn main() {
                     loaded,
                     audio_vol.muted
                 );
+                tactical_hum = Some(hum);
             }
-            tactical_hum = wanted_hum;
         }
         if tactical_audio_context {
-            for cue in tactical_state.take_pending_audio_cues() {
-                #[cfg(not(target_arch = "wasm32"))]
-                let loaded = audio_engine.play_tactical_sfx(cue.resource_id, &audio_vol);
-                #[cfg(target_arch = "wasm32")]
-                let loaded = browser_menu_audio
-                    .as_mut()
-                    .is_some_and(|engine| engine.play_tactical_sfx(cue.resource_id, &audio_vol));
-                macroquad::logging::info!(
-                    "[audio] context=combat event=0x{:02x} wave={} routed=true loaded={} muted={}",
-                    cue.event.event_id(),
-                    cue.resource_id,
-                    loaded,
-                    audio_vol.muted
-                );
-            }
             for cue in tactical_state.take_pending_voice_cues() {
                 #[cfg(not(target_arch = "wasm32"))]
                 let loaded =

@@ -6149,6 +6149,41 @@ mod tests {
         assert!(tactical.take_pending_audio_cues().is_empty());
     }
 
+    // FUN_005ba520: after the beam's sound, voice 0x91 when the viewer is the
+    // Alliance (+0x9ec = 0, the side FUN_005ada10 gives the 0x20 bank):
+    // VOICEFXA 14001 + 0x71 = 14114. An Empire viewer hears none, nor does
+    // anyone when the target has left the fight.
+    #[test]
+    fn an_alliance_player_hears_the_superlaser_warning_as_the_beam_starts() {
+        use crate::tactical::{
+            TacticalTurnEvent, TacticalVoiceCue, TacticalVoiceEvent, TacticalVoiceFaction,
+        };
+        let ships = vec![
+            ship(true, TacticalWeaponArc::default(), 0.0),
+            ship(true, TacticalWeaponArc::default(), 0.0),
+        ];
+        let mut tactical = session(ships, Vec::new());
+        tactical.ships[1].alive = false;
+        assert_eq!(
+            tactical.player_voice_faction(),
+            TacticalVoiceFaction::Alliance
+        );
+        tactical.run_turn_event(TacticalTurnEvent::DeathStarBeam { target: 1 });
+        assert!(tactical.take_pending_voice_cues().is_empty());
+        tactical.run_turn_event(TacticalTurnEvent::DeathStarBeam { target: 0 });
+        let warning =
+            TacticalVoiceCue::from_source_event(TacticalVoiceEvent::DeathStarWarning, 0x91);
+        assert_eq!(warning.resource_id, 14_114);
+        assert_eq!(tactical.take_pending_voice_cues(), vec![warning]);
+        tactical.player_is_attacker = false;
+        assert_eq!(
+            tactical.player_voice_faction(),
+            TacticalVoiceFaction::Empire
+        );
+        tactical.run_turn_event(TacticalTurnEvent::DeathStarBeam { target: 0 });
+        assert!(tactical.take_pending_voice_cues().is_empty());
+    }
+
     // 0x5a69b0..0x5a6a7c: each factor carries its unit its distance by the
     // end of its time, 400 by 4000 ms, 575 by 3750, 650 by 3925 and 325 by
     // 3725 (_DAT_0066c24c less 0, 250, 75, 275). The test runs one unit
