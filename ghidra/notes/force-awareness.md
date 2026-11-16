@@ -106,8 +106,12 @@ not read, so only the player sends it.
 ## The Force Growth message (read 2026-11-16)
 
 Every write of the Force `+0x8c` goes through `FUN_004ee0d0` (`FUN_004eee40`,
-run by the base's hook `FUN_004f1700`; that a training gain reaches it too is
-A0's x-60 below, the training hook, slot `+0x324`, is not read). It syncs both side views
+run by the base's hook `FUN_004f1700`). The training hook, slot `+0x324`, is
+`FUN_004f1700` too: read 2026-11-17 from the nine character vtables in
+REBEXE.EXE (`0x0065ca70`, `0x006657f0`, `0x00665be0`, `0x00665fd8` Luke,
+`0x006663e0` Leia, `0x00666f90`, `0x00667628`, `0x006681d0`, `0x0066b608`):
+each has `+0x320` = `+0x324` = `0x004f1700` and `+0x394` = `0x004f1e00`, so
+no subclass overrides the path. It syncs both side views
 (`FUN_004f0220`): for a view the side knows (`FUN_004fd3d0`, `FUN_004fd600`)
 it calls slot `+0x394`, `FUN_004f1e00`, which posts notification `0x1e1`
 (`CharacterForceNotif`) with the old and the new Force. `FUN_0048ed80` builds
@@ -126,8 +130,39 @@ message), and Dodonna's reads "... My ranking is Trainee.".
 
 Ported 2026-11-16: `story_messages::force_growth_message`, posted by the
 app's `apply_mission_result` for a Jedi Training gain, the Dagobah gain and
-a result's evade gain. Open: the mission detection's evade gains applied
-with the advance (`missions::apply_advance_effects`) post none yet.
+a result's evade gain.
+
+### Every writer, traced 2026-11-17
+
+The corpus's callers of the three setters (`FUN_004ee0d0` Force,
+`FUN_004ee150` ForceExperience, `FUN_004ee1d0` ForceTraining) and of
+`FUN_004eee40`:
+
+| Writer | Setter | Reaches `0x1e1` |
+|---|---|---|
+| creation `FUN_004f11f0` -> `FUN_004eee40` | Force | yes, but from 0: `FUN_0048ed80` builds nothing |
+| Force base roll `FUN_004eee60` (creation, awareness hooks) | ForceExperience | yes, from 0: nothing built |
+| Luke's / Leia's evade, slot `+0x208` `FUN_0056f8b0` / `FUN_0056ffa0` | ForceExperience | yes |
+| the encounter `FUN_00560200` (four lessons, lines 310..365) | ForceExperience | yes |
+| Dagobah's end `FUN_005751d0` (before `Luke_SetDagobahCompleted`) | ForceExperience | yes |
+| Jedi Training `FUN_005712b0` | ForceTraining | yes (slot `+0x324`) |
+
+Each setter returns early when the value does not change and otherwise runs
+its hook at once, so each write posts its own `0x1e1` with its own old and
+new Force; two gains on one day post two messages. Not read: the guard
+`FUN_005404d0(*(context + 8))` in `FUN_004f0220`; the port treats it as
+always passing (hyp).
+
+In the port the evade gains, the encounter's lessons
+(`mission_detection::learn`) and Dagobah's end (`dagobah::training_end`) are
+advance effects, which `apply_advance_effects` stored without a message:
+`apply_mission_result`'s Dagobah branch is not the live path. Ported
+2026-11-17: the app's `advance_force_changes` reads each gain's old and new
+Force before the advance's effects are stored, and `push_advance_messages`
+posts Force Growth for each in effect order, beside the detection's
+injuries. Dagobah's Force Growth so precedes Luke Leaves Dagobah (`0x210`),
+as in `FUN_005751d0`. Port only: the integrator's `ModifySkill` on
+`SkillField::JediLevel` (no live story event uses it) posts nothing.
 
 ## Discovering others (timer `0x389`)
 

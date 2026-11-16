@@ -3756,8 +3756,16 @@ async fn main() {
                 &mission_rolls,
             );
             // Member moves and releases come before the results.
+            let force_changes = advance_force_changes(&world, &mission_advance.effects);
             rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
-            push_advance_injuries(&mut msg_log, &world, &mission_advance.effects, current_tick, &message_texts);
+            push_advance_messages(
+                &mut msg_log,
+                &world,
+                &mission_advance.effects,
+                &force_changes,
+                current_tick,
+                &message_texts,
+            );
             // Notification 0x361 (FUN_0048c9c0): a member learned the traitor.
             for effect in &mission_advance.effects {
                 if let MissionEffect::TraitorIdentified { character, traitor } = effect {
@@ -14133,20 +14141,69 @@ fn push_character_health(
     ));
 }
 
-/// The Character Injured message (`0x106`) for each injury the mission
-/// detection dealt, after [`rebellion_core::missions::apply_advance_effects`]
-/// stored it.
-fn push_advance_injuries(
+/// A Force change one advance effect makes: the effect's index, the
+/// character, its Force (`+0x8c`) before and after.
+type AdvanceForceChange = (usize, CharacterKey, u32, u32);
+
+/// The Force change of each `ForceExperience` gain in a day's advance, read
+/// before [`rebellion_core::missions::apply_advance_effects`] stores them.
+/// Each write goes through `FUN_004ee150`: the evade (`FUN_0056f8b0`,
+/// `FUN_0056ffa0`), the encounter's lessons (`FUN_00560200`) and Dagobah's
+/// end (`FUN_005751d0`). Its hook, slot `+0x320` (`FUN_004f1700` in every
+/// character vtable), recomputes the Force at once (`FUN_004eee40` ->
+/// `FUN_004ee0d0`), which posts `0x1e1` with that gain's old and new Force.
+fn advance_force_changes(world: &GameWorld, effects: &[MissionEffect]) -> Vec<AdvanceForceChange> {
+    let mut running: std::collections::HashMap<CharacterKey, rebellion_core::world::Character> =
+        std::collections::HashMap::new();
+    let mut changes = Vec::new();
+    for (index, effect) in effects.iter().enumerate() {
+        let (character, amount) = match effect {
+            MissionEffect::ForceExperienceGained { character, amount } => (*character, *amount),
+            MissionEffect::DagobahCompleted {
+                character,
+                force_gain,
+            } => (*character, *force_gain),
+            _ => continue,
+        };
+        let Some(current) = running
+            .get(&character)
+            .or_else(|| world.characters.get(character))
+            .cloned()
+        else {
+            continue;
+        };
+        let mut after = current.clone();
+        after.add_force_experience(amount);
+        changes.push((index, character, current.force_level(), after.force_level()));
+        running.insert(character, after);
+    }
+    changes
+}
+
+/// The messages of a day's advance, in effect order, after
+/// [`rebellion_core::missions::apply_advance_effects`] stored it: the
+/// Character Injured message (`0x106`) for each injury the mission
+/// detection dealt, and Force Growth (`0x1e1`, `FUN_0048ed80`) for each
+/// Force change [`advance_force_changes`] read.
+fn push_advance_messages(
     log: &mut MessageLog,
     world: &GameWorld,
     effects: &[MissionEffect],
+    force_changes: &[AdvanceForceChange],
     tick: u64,
     texts: &std::collections::HashMap<u16, String>,
 ) {
-    for effect in effects {
+    for (index, effect) in effects.iter().enumerate() {
         if let MissionEffect::CharacterInjured { character, injury } = effect {
             if *injury > 0 {
                 push_character_health(log, world, *character, tick, texts);
+            }
+        }
+        for &(_, character, old, new) in force_changes.iter().filter(|change| change.0 == index) {
+            if let Some(message) = rebellion_render::story_messages::force_growth_message(
+                world, character, old, new, tick, texts,
+            ) {
+                log.push(message);
             }
         }
     }
@@ -18775,13 +18832,123 @@ mod character_health_tests {
         ];
         rebellion_core::missions::apply_advance_effects(&mut world, &effects);
         let mut log = MessageLog::new();
-        push_advance_injuries(&mut log, &world, &effects, 5, &Default::default());
+        push_advance_messages(&mut log, &world, &effects, &[], 5, &Default::default());
         assert_eq!(world.characters[han].injury, 4);
         assert_eq!(log.messages().len(), 1);
         assert_eq!(
             log.messages()[0].text,
             "Han Solo Injured: Han Solo has been injured."
         );
+    }
+
+    /// The live loop's order: read the Force changes, store the effects,
+    /// post the messages.
+    fn advance_messages(world: &mut GameWorld, effects: &[MissionEffect]) -> MessageLog {
+        let texts = std::collections::HashMap::from([
+            (0x7160, "{1:1} Injured".to_owned()),
+            (0x7161, "{1:1} has been injured.".to_owned()),
+            (0x7180, "{1:1} Force Growth".to_owned()),
+            (0x7181, "New insights.".to_owned()),
+        ]);
+        let changes = advance_force_changes(world, effects);
+        rebellion_core::missions::apply_advance_effects(world, effects);
+        let mut log = MessageLog::new();
+        push_advance_messages(&mut log, world, effects, &changes, 5, &texts);
+        log
+    }
+
+    #[test]
+    fn each_force_gain_of_the_detection_posts_its_own_force_growth_in_effect_order() {
+        // FUN_0056f8b0 / FUN_0056ffa0 (the evade) and FUN_00560200 (the
+        // encounter's lessons) write ForceExperience through FUN_004ee150,
+        // whose hook (slot +0x320, FUN_004f1700) runs FUN_004eee40 ->
+        // FUN_004ee0d0 -> FUN_004f0220 -> slot +0x394 FUN_004f1e00: 0x1e1
+        // with that write's old and new Force. FUN_0048ed80 builds nothing
+        // from Force 0.
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke Skywalker".into(),
+            is_alliance: true,
+            is_major: true,
+            force_base: 50,
+            ..rebellion_core::world::Character::default()
+        });
+        let han = world.characters.insert(rebellion_core::world::Character {
+            name: "Han Solo".into(),
+            is_alliance: true,
+            ..rebellion_core::world::Character::default()
+        });
+        let leia = world.characters.insert(rebellion_core::world::Character {
+            name: "Leia Organa".into(),
+            is_alliance: true,
+            is_major: true,
+            ..rebellion_core::world::Character::default()
+        });
+        let effects = [
+            MissionEffect::ForceExperienceGained {
+                character: luke,
+                amount: 1,
+            },
+            MissionEffect::CharacterInjured {
+                character: han,
+                injury: 4,
+            },
+            MissionEffect::ForceExperienceGained {
+                character: luke,
+                amount: 1,
+            },
+            MissionEffect::ForceExperienceGained {
+                character: leia,
+                amount: 1,
+            },
+        ];
+        assert_eq!(
+            advance_force_changes(&world, &effects),
+            [(0, luke, 50, 51), (2, luke, 51, 52), (3, leia, 0, 1)]
+        );
+        let log = advance_messages(&mut world, &effects);
+        let titles: Vec<_> = log
+            .messages()
+            .iter()
+            .map(|m| m.title.as_deref().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                "Luke Skywalker Force Growth",
+                "Han Solo Injured",
+                "Luke Skywalker Force Growth"
+            ]
+        );
+        assert_eq!(world.characters[luke].force_level(), 52);
+    }
+
+    #[test]
+    fn dagobahs_end_in_the_advance_posts_lukes_force_growth() {
+        // FUN_005751d0 (step 0xb): Luke's ForceExperience rises through
+        // FUN_004ee150, which posts 0x1e1 (A0 alliance-game2/
+        // luke-force-growth, day 643), before Luke_SetDagobahCompleted.
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            name: "Luke Skywalker".into(),
+            is_alliance: true,
+            is_major: true,
+            force_base: 50,
+            ..rebellion_core::world::Character::default()
+        });
+        let log = advance_messages(
+            &mut world,
+            &[MissionEffect::DagobahCompleted {
+                character: luke,
+                force_gain: 30,
+            }],
+        );
+        assert_eq!(log.messages().len(), 1);
+        assert_eq!(
+            log.messages()[0].title.as_deref(),
+            Some("Luke Skywalker Force Growth")
+        );
+        assert!(world.characters[luke].dagobah_completed);
     }
 
     #[test]
