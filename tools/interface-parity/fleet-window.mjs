@@ -195,6 +195,137 @@ async function tipShows(page, at) {
   return shown && { left, top, right };
 }
 
+// A tip's box near (x, y): its grey (128, 128, 128) top-left corner over
+// the (255, 251, 240) fill; the right end read along the bottom border
+// (the top one may lie under A0's cursor).
+function tipBox(png, x, y) {
+  const at = (px, py) => {
+    const i = (py * png.width + px) * 4;
+    return [png.data[i], png.data[i + 1], png.data[i + 2]].join(",");
+  };
+  const grey = "128,128,128";
+  const fill = "255,251,240";
+  for (let top = Math.max(1, y - 40); top < Math.min(png.height - 20, y + 45); top += 1) {
+    for (let left = Math.max(1, x - 60); left < Math.min(png.width - 4, x + 60); left += 1) {
+      if (at(left, top) !== grey || at(left - 1, top) === grey || at(left, top + 1) !== grey
+        || at(left + 1, top) !== grey || at(left + 1, top + 1) !== fill) continue;
+      let bottom = top + 1;
+      while (bottom < png.height - 1 && at(left + 1, bottom) !== grey) bottom += 1;
+      let right = left;
+      while (right < png.width - 1 && at(right + 1, bottom) === grey) right += 1;
+      return { left, top, right, bottom };
+    }
+  }
+  return null;
+}
+
+// CMD-11-C017: FUN_0044c630's tips against A0
+// 2026-11-14-quadrants-status-known/44-tip-alliance-0..10 (an Alliance
+// game, day 709: General Bombardment of Kubindi, the summary at (62, 49),
+// its Alliance Forces page): the six category tips, the rail's Close (no
+// tip) and its Summary, Alliance Forces, System Forces and Display tips.
+// Each capture's name is the point the VM pointer was sent to; its box sits
+// 6 left of it and 15 below in all ten, where the tip's rule (A0
+// tooltip/01, win_tooltip.rs) is the hot spot plus (0, 21), so the hot
+// spot is taken as the box's corner less (0, 21) (hyp: the VM pointer
+// landed 6 up and left of the point sent). The port's pointer goes to that
+// hot spot in the window. Its box's left, top and height, its grey frame
+// and the fill ring around the text must be A0's, and the box's left
+// three columns and both borders every pixel A0's (A0's cursor
+// excluded); its width follows the text, whose font, antialiasing and
+// width are the accepted deviation, recorded.
+
+async function compareBombardmentTips(page, directory, [ox, oy], rail) {
+  const dir = path.join(root, ".artifacts/a0-vm/2026-11-14-quadrants-status-known");
+  if (!fs.existsSync(dir)) return null;
+  const [wx, wy] = [62, 49];
+  await click(page, point([ox + rail.x + rail.width / 2, oy + rail.ys[1] + 20]));
+  await until(page, "the Alliance Forces page of the bombardment summary",
+    (o) => o.assault_summary?.page === "Attackers");
+  await page.mouse.move(2, 2);
+  await frames(page, 3);
+  const files = fs.readdirSync(dir).filter((file) => /^44-tip-alliance-\d+-\d+-\d+\.png$/.test(file))
+    .sort((a, b) => Number(a.split("-")[3]) - Number(b.split("-")[3]));
+  assert.equal(files.length, 11, JSON.stringify(files));
+  const checks = {};
+  for (const file of files) {
+    const [index, sentX, sentY] = file.match(/^44-tip-alliance-(\d+)-(\d+)-(\d+)/).slice(1).map(Number);
+    const a0 = PNG.sync.read(fs.readFileSync(path.join(dir, file)));
+    const a0Box = tipBox(a0, sentX, sentY);
+    const hot = a0Box ? [a0Box.left, a0Box.top - 21] : [sentX - 6, sentY - 6];
+    const pointer = point([ox + hot[0] - wx, oy + hot[1] - wy]);
+    await page.mouse.move(pointer.x, pointer.y, { steps: 4 });
+    await page.waitForTimeout(1000);
+    const bytes = await page.screenshot({ animations: "disabled" });
+    fs.writeFileSync(path.join(directory, `bombardment-tip-${index}.png`), bytes);
+    const port = PNG.sync.read(bytes);
+    const portBox = tipBox(port, pointer.x, pointer.y);
+    await page.mouse.move(2, 2, { steps: 4 });
+    await page.waitForTimeout(100);
+    if (!a0Box) {
+      checks[index] = { a0: null, port: portBox };
+      assert.equal(portBox, null, `tip ${index}: A0 shows none ${JSON.stringify(portBox)}`);
+      continue;
+    }
+    assert.ok(portBox, `tip ${index}: the port shows no tip at ${JSON.stringify(pointer)}`);
+    const inWindow = (box, x0, y0) => ({ left: box.left - x0, top: box.top - y0,
+      width: box.right - box.left + 1, height: box.bottom - box.top + 1 });
+    const a0Rel = inWindow(a0Box, wx, wy);
+    const portRel = inWindow(portBox, Math.round(ox), Math.round(oy));
+    // A0's cursor: drawn right of and below the hot spot.
+    const cursor = (x, y) => x >= hot[0] + 4 && x < hot[0] + 32 && y >= hot[1] + 4 && y < hot[1] + 32;
+    const rgb = (png, x, y) => {
+      const i = (y * png.width + x) * 4;
+      return [png.data[i], png.data[i + 1], png.data[i + 2]].join(",");
+    };
+    // The frame and fill of each box: border pixels not grey, inner pixels
+    // neither the fill nor dark ink.
+    const frameAndFill = (png, box, skip) => {
+      let frame = 0;
+      let fill = 0;
+      for (let y = box.top; y <= box.bottom; y += 1) {
+        for (let x = box.left; x <= box.right; x += 1) {
+          if (skip(x, y)) continue;
+          const value = rgb(png, x, y);
+          const border = y === box.top || y === box.bottom || x === box.left || x === box.right;
+          // The fill: the inner ring clear of the text (the rows under
+          // and over it, the two columns after the left border).
+          const ring = y === box.top + 1 || y === box.bottom - 1 || x === box.left + 1 || x === box.left + 2;
+          if (border && value !== "128,128,128") frame += 1;
+          if (!border && ring && value !== "255,251,240") fill += 1;
+        }
+      }
+      return { frame, fill };
+    };
+    // The box's left three columns (its border and the two before the
+    // text) and both borders, pixel for pixel.
+    let edge = 0;
+    const shared = Math.min(a0Rel.width, portRel.width);
+    for (let y = 0; y < a0Rel.height; y += 1) {
+      for (let x = 0; x < shared; x += 1) {
+        if (x >= 3 && y !== 0 && y !== a0Rel.height - 1) continue;
+        const [ax, ay] = [a0Box.left + x, a0Box.top + y];
+        if (cursor(ax, ay)) continue;
+        if (rgb(a0, ax, ay) !== rgb(port, portBox.left + x, portBox.top + y)) edge += 1;
+      }
+    }
+    checks[index] = {
+      a0: a0Rel,
+      port: portRel,
+      a0_frame_fill: frameAndFill(a0, a0Box, cursor),
+      port_frame_fill: frameAndFill(port, portBox, () => false),
+      edge,
+      width_delta: portRel.width - a0Rel.width,
+    };
+    const c = checks[index];
+    assert.ok(c.a0.left === c.port.left && c.a0.top === c.port.top && c.a0.height === c.port.height
+      && c.a0_frame_fill.frame === 0 && c.a0_frame_fill.fill === 0
+      && c.port_frame_fill.frame === 0 && c.port_frame_fill.fill === 0 && c.edge === 0,
+    `tip ${index}: ${JSON.stringify(c)}`);
+  }
+  return checks;
+}
+
 async function startServer() {
   const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, "http://localhost").pathname;
@@ -1279,6 +1410,10 @@ const cases = [
         ? { x: 418, ys: [88, 141, 196, 250], width: 41 }
         : { x: 426, ys: [89, 148, 207, 266], width: 44 };
       const [ox, oy] = summary.origin;
+      let tipChecks = null;
+      if (faction.name === "alliance") {
+        tipChecks = await compareBombardmentTips(page, directory, [ox, oy], rail);
+      }
       await click(page, point([ox + rail.x + rail.width / 2, oy + rail.ys[3] + 20]));
       await until(page, "Display shows the destinations", (o) => o.assault_summary?.page === "Display");
       await frames(page, 3);
@@ -1287,7 +1422,7 @@ const cases = [
       const closed = await until(page, "Fleet closes the summary and opens the system's Fleet window",
         (o) => o.assault_summary === null && o.window_open);
       await shot(page, directory, "bombardment-done");
-      return { before, menu, waited, sub, after, closed, bombardChecks };
+      return { before, menu, waited, sub, after, closed, bombardChecks, tipChecks };
     },
   },
   {
