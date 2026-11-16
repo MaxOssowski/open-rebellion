@@ -604,6 +604,7 @@ mod tests {
                 class: fighter,
                 count: 2,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: false,

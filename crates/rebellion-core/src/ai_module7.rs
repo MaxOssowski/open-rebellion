@@ -1513,16 +1513,19 @@ mod tests {
                 class: w.cheap,
                 count: 0,
                 carrier: None,
+                damage: None,
             },
             crate::world::FighterEntry {
                 class: w.strong,
                 count: 1,
                 carrier: None,
+                damage: None,
             },
             crate::world::FighterEntry {
                 class: twin,
                 count: 1,
                 carrier: None,
+                damage: None,
             },
         ];
         let mut state = AIState::new(AiFaction::Alliance);

@@ -793,6 +793,7 @@ mod tests {
                     class: craft,
                     count: 1,
                     carrier: None,
+                    damage: None,
                 }],
                 is_headquarters: false,
                 is_destroyed: false,

@@ -1017,7 +1017,7 @@ fn dispatch_fleet_item(
                 if let Some(entry) = fighters.iter_mut().find(|e| e.class == class) {
                     entry.count += 1;
                 } else {
-                    fighters.push(FighterEntry { class, count: 1, carrier: None });
+                    fighters.push(FighterEntry { class, count: 1, carrier: None, damage: None });
                 }
             }
         }
@@ -1844,7 +1844,7 @@ fn deploy_bundle_to_system<R: Rng + ?Sized>(
                     if let Some(entry) = fleet_fighters.iter_mut().find(|e| e.class == class) {
                         entry.count += 1;
                     } else {
-                        fleet_fighters.push(FighterEntry { class, count: 1, carrier: None });
+                        fleet_fighters.push(FighterEntry { class, count: 1, carrier: None, damage: None });
                     }
                 }
             }

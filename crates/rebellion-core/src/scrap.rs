@@ -809,6 +809,7 @@ mod tests {
                 class: wing,
                 count: 1,
                 carrier: None,
+                damage: None,
             }],
         );
         let mut production = ProductionState::new();
@@ -894,9 +895,9 @@ mod tests {
             location: f.system,
             capital_ships: ships,
             fighters: vec![
-                crate::world::FighterEntry { class: fighter, count: 2, carrier: Some(7) },
-                crate::world::FighterEntry { class: fighter, count: 1, carrier: Some(8) },
-                crate::world::FighterEntry { class: fighter, count: 1, carrier: None },
+                crate::world::FighterEntry { class: fighter, count: 2, carrier: Some(7), damage: None },
+                crate::world::FighterEntry { class: fighter, count: 1, carrier: Some(8), damage: None },
+                crate::world::FighterEntry { class: fighter, count: 1, carrier: None, damage: None },
             ],
             characters: vec![],
             is_alliance: true,
@@ -1029,6 +1030,7 @@ mod tests {
                 class: wing,
                 count: 2,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![captain, agent],
             is_alliance: true,
@@ -1216,11 +1218,13 @@ mod tests {
                     class: x_wing,
                     count: 0,
                     carrier: None,
+                    damage: None,
                 },
                 crate::world::FighterEntry {
                     class: a_wing,
                     count: 1,
                     carrier: None,
+                    damage: None,
                 },
             ],
             characters: vec![],
@@ -1299,11 +1303,13 @@ mod tests {
                 class: x_wing,
                 count: 0,
                 carrier: None,
+                damage: None,
             },
             crate::world::FighterEntry {
                 class: a_wing,
                 count: 1,
                 carrier: None,
+                damage: None,
             },
         ];
         assert_eq!(

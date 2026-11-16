@@ -1400,6 +1400,7 @@ mod tests {
             class: squadron,
             count: 4,
             carrier: None,
+            damage: None,
         });
         defense(
             &mut fx.world,
@@ -1609,6 +1610,7 @@ mod tests {
             class: squadron,
             count: 4,
             carrier: None,
+            damage: None,
         });
         let with_squadrons = resolve(
             &fx2.world,

@@ -31,34 +31,37 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{FighterKey, FleetKey, SystemKey};
-use crate::world::{FighterEntry, GameWorld};
+use crate::world::{FighterEntry, GameWorld, SquadronDamage};
 
-/// Add `count` squadrons of `class` to `entries`, not yet on a ship.
+/// Add `count` whole squadrons of `class` to `entries`, not yet on a ship.
 pub fn add(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32) {
-    if count == 0 {
-        return;
-    }
-    if let Some(entry) = entries
-        .iter_mut()
-        .find(|entry| entry.class == class && entry.carrier.is_none())
-    {
-        entry.count = entry.count.saturating_add(count);
-    } else {
-        entries.push(FighterEntry { class, count, carrier: None });
-    }
+    put(entries, class, count, None);
 }
 
 /// Take `count` squadrons of `class` from `entries`, dropping each emptied
 /// entry. Nothing changes when there are fewer. port: the port's orders name
 /// a class, not a squadron, so it takes from the last entries first.
 pub fn take(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32) -> bool {
+    take_entries(entries, class, count).is_some()
+}
+
+/// [`take`], giving the squadrons taken as entries: whole ones by their
+/// carrier, and each squadron below full strength alone with its losses
+/// (`+0x60`, [`crate::world::SquadronDamage`]). None, and nothing
+/// changes, when there are fewer.
+pub fn take_entries(
+    entries: &mut Vec<FighterEntry>,
+    class: FighterKey,
+    count: u32,
+) -> Option<Vec<FighterEntry>> {
     let held = entries
         .iter()
         .filter(|entry| entry.class == class)
         .fold(0_u32, |sum, entry| sum.saturating_add(entry.count));
     if held < count {
-        return false;
+        return None;
     }
+    let mut taken_entries = Vec::new();
     let mut left = count;
     for index in (0..entries.len()).rev() {
         if left == 0 {
@@ -70,11 +73,79 @@ pub fn take(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32) -> b
         let taken = entries[index].count.min(left);
         entries[index].count -= taken;
         left -= taken;
+        if taken > 0 {
+            let mut piece = entries[index].clone();
+            piece.count = taken;
+            taken_entries.push(piece);
+        }
         if entries[index].count == 0 {
             entries.remove(index);
         }
     }
-    true
+    Some(taken_entries)
+}
+
+/// A battle's result for the entry at `index` of `entries`, of a class of
+/// `size` craft: `craft_after` holds each surviving squadron's craft
+/// (`FUN_0040c780` walks the squadrons, `FUN_0040d260` sets each one's
+/// losses `+0x60` to its size less the craft that came back; one with none
+/// is destroyed, `FUN_00503370` -> slot `+0xac`). Whole survivors stay in
+/// the entry; each one below full strength takes an entry of its own on
+/// the same carrier, at the end so the other indices hold. A squadron
+/// already damaged keeps its repair timer (the battle leaves it Damaged).
+/// With no craft listed, the entry keeps `squads_after` whole squadrons.
+pub fn apply_battle_craft(
+    entries: &mut Vec<FighterEntry>,
+    index: usize,
+    size: u32,
+    squads_after: u32,
+    craft_after: &[u32],
+) {
+    let Some(entry) = entries.get_mut(index) else {
+        return;
+    };
+    if craft_after.is_empty() {
+        entry.count = squads_after;
+        if squads_after == 0 {
+            entry.damage = None;
+        }
+        return;
+    }
+    let timer = entry.damage.and_then(|damage| damage.repair);
+    let damaged = |craft: u32, repair| SquadronDamage {
+        lost: size.saturating_sub(craft),
+        repair,
+    };
+    let whole = craft_after.iter().filter(|&&craft| craft >= size).count();
+    let mut below = craft_after.iter().copied().filter(|&craft| craft < size);
+    entry.count = u32::try_from(whole).unwrap_or(u32::MAX);
+    entry.damage = None;
+    if entry.count == 0 {
+        if let Some(craft) = below.next() {
+            entry.count = 1;
+            entry.damage = Some(damaged(craft, timer));
+        }
+    }
+    let (class, carrier) = (entry.class, entry.carrier);
+    for craft in below {
+        entries.push(FighterEntry {
+            class,
+            count: 1,
+            carrier,
+            damage: Some(damaged(craft, None)),
+        });
+    }
+}
+
+/// Add `entry` to `entries`: whole squadrons join an entry of their class
+/// and carrier ([`put`]); a squadron below full strength keeps an entry of
+/// its own, with its losses.
+pub fn put_entry(entries: &mut Vec<FighterEntry>, entry: FighterEntry) {
+    if entry.damage.is_none() {
+        put(entries, entry.class, entry.count, entry.carrier);
+    } else if entry.count > 0 {
+        entries.push(entry);
+    }
 }
 
 /// The squadrons aboard the ship numbered `ship`.
@@ -136,25 +207,39 @@ pub fn seat_squadrons(world: &mut GameWorld, fleet: FleetKey) {
                 break;
             };
             left -= 1;
-            put(&mut kept, entry.class, 1, Some(ship));
+            put_entry(
+                &mut kept,
+                FighterEntry {
+                    count: 1,
+                    carrier: Some(ship),
+                    ..entry.clone()
+                },
+            );
         }
-        put(&mut kept, entry.class, left, None);
+        put_entry(
+            &mut kept,
+            FighterEntry {
+                count: left,
+                carrier: None,
+                ..entry
+            },
+        );
     }
     world.fleets[fleet].fighters = kept;
 }
 
-/// Add `count` squadrons of `class` on `carrier` to `entries`.
+/// Add `count` whole squadrons of `class` on `carrier` to `entries`: they
+/// join an entry of whole squadrons of that class on that carrier.
 pub fn put(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32, carrier: Option<u64>) {
     if count == 0 {
         return;
     }
-    if let Some(entry) = entries
-        .iter_mut()
-        .find(|entry| entry.class == class && entry.carrier == carrier)
-    {
+    if let Some(entry) = entries.iter_mut().find(|entry| {
+        entry.class == class && entry.carrier == carrier && entry.damage.is_none()
+    }) {
         entry.count = entry.count.saturating_add(count);
     } else {
-        entries.push(FighterEntry { class, count, carrier });
+        entries.push(FighterEntry { class, count, carrier, damage: None });
     }
 }
 
@@ -308,6 +393,22 @@ fn entries_mut(world: &mut GameWorld, place: SquadronPlace) -> Option<&mut Vec<F
     }
 }
 
+/// Set the losses of the `index`th squadron entry at `place` (a repair
+/// event, [`crate::repair::RepairEvent::SquadronRepaired`]). Returns whether
+/// the entry was there.
+pub fn set_damage(
+    world: &mut GameWorld,
+    place: SquadronPlace,
+    index: usize,
+    damage: Option<SquadronDamage>,
+) -> bool {
+    let Some(entry) = entries_mut(world, place).and_then(|entries| entries.get_mut(index)) else {
+        return false;
+    };
+    entry.damage = damage;
+    true
+}
+
 /// Whether a squadron's pop-up menu enables Move for the side `alliance`:
 /// its own squadron of `class` at `place`, on a planet or aboard a fleet in
 /// orbit (`FUN_004f9860`'s side and en-route rules). That check is the
@@ -346,10 +447,11 @@ fn check_route(
     if is_alliance(world, class) != Some(alliance) {
         return Err(SquadronMoveError::WrongSide);
     }
+    // Every entry of the class counts: one below full strength has its own.
     let held = entries(world, from)
         .iter()
-        .find(|entry| entry.class == class)
-        .map_or(0, |entry| entry.count);
+        .filter(|entry| entry.class == class)
+        .fold(0_u32, |sum, entry| sum.saturating_add(entry.count));
     if count == 0 || held < count {
         return Err(SquadronMoveError::MissingSquadron);
     }
@@ -387,6 +489,13 @@ pub struct SquadronTransit {
     pub to: SquadronPlace,
     /// The game-day it arrives.
     pub arrival_tick: u64,
+    /// The losses (`+0x60`) of each squadron below full strength among
+    /// `count`; the others are whole. A squadron en route is not Usable, so
+    /// it does not repair (`FUN_005578d0`). The save keeps them in
+    /// `SaveState::squadron_damage` (v126); the transit's own encoding
+    /// skips them.
+    #[serde(skip)]
+    pub lost: Vec<u32>,
 }
 
 /// What a squadron Move did.
@@ -510,9 +619,9 @@ impl SquadronTransits {
         now: u64,
     ) -> Result<SquadronMove, SquadronMoveError> {
         let (origin, destination) = self.checked(world, alliance, class, count, from, to)?;
-        if let Some(source) = entries_mut(world, from) {
-            take(source, class, count);
-        }
+        let taken = entries_mut(world, from)
+            .and_then(|source| take_entries(source, class, count))
+            .unwrap_or_default();
         // FUN_00556390 puts the squadron in its destination at once; a
         // planet's system records its side (slot +0xd0, FUN_00508660).
         if let SquadronPlace::Planet(system) = to {
@@ -521,19 +630,28 @@ impl SquadronTransits {
             }
         }
         let moved = if origin == destination {
+            // A squadron moved within its system stays Usable and keeps its
+            // repair timer (FUN_005578d0).
             if let Some(target) = entries_mut(world, to) {
-                add(target, class, count);
+                for entry in taken {
+                    put_entry(target, FighterEntry { carrier: None, ..entry });
+                }
             }
             SquadronMove::Placed
         } else {
             let ticks = squadron_transit_ticks(world, class, origin, destination);
             let arrival_tick = now + u64::from(ticks);
+            let lost = taken
+                .iter()
+                .filter_map(|entry| entry.damage.map(|damage| damage.lost))
+                .collect();
             self.transits.push(SquadronTransit {
                 class,
                 count,
                 origin,
                 to,
                 arrival_tick,
+                lost,
             });
             SquadronMove::Departed(arrival_tick)
         };
@@ -571,7 +689,7 @@ impl SquadronTransits {
             };
             match entries {
                 Some(entries) => {
-                    add(entries, transit.class, transit.count);
+                    land(entries, transit.class, transit.count, &transit.lost);
                     arrived.push(transit);
                 }
                 None => lost.push(transit),
@@ -579,6 +697,115 @@ impl SquadronTransits {
         }
         self.transits = remaining;
         (arrived, lost)
+    }
+}
+
+/// Add `count` squadrons of `class`, not yet on a ship, to `entries`:
+/// one below full strength for each of `lost`, the rest whole. A squadron
+/// arriving has no repair timer: travelling cancelled it (`FUN_005578d0`).
+fn land(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32, lost: &[u32]) {
+    let damaged = lost.iter().take(count as usize);
+    let mut whole = count;
+    for &craft in damaged {
+        whole -= 1;
+        put_entry(
+            entries,
+            FighterEntry {
+                class,
+                count: 1,
+                carrier: None,
+                damage: Some(SquadronDamage {
+                    lost: craft,
+                    repair: None,
+                }),
+            },
+        );
+    }
+    add(entries, class, whole);
+}
+
+/// Where a squadron below full strength is, for the save.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DamagedSquadronPlace {
+    /// The `index`th entry of a place's squadrons.
+    Entry(SquadronPlace, usize),
+    /// Among the squadrons of the `index`th transit.
+    Transit(usize),
+}
+
+/// A squadron below full strength as the save keeps it
+/// (`SaveState::squadron_damage`, v126): the world's and the transits' own
+/// encodings skip the losses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DamagedSquadron {
+    pub place: DamagedSquadronPlace,
+    pub damage: SquadronDamage,
+}
+
+/// The squadrons below full strength, in the fleets', the planets' and the
+/// transits' order.
+#[must_use]
+pub fn damaged_squadrons(world: &GameWorld, transits: &SquadronTransits) -> Vec<DamagedSquadron> {
+    let fleets = world
+        .fleets
+        .iter()
+        .map(|(key, fleet)| (SquadronPlace::Fleet(key), &fleet.fighters));
+    let planets = world
+        .systems
+        .iter()
+        .map(|(key, system)| (SquadronPlace::Planet(key), &system.fighters));
+    let mut records: Vec<DamagedSquadron> = fleets
+        .chain(planets)
+        .flat_map(|(place, entries)| {
+            entries.iter().enumerate().filter_map(move |(index, entry)| {
+                entry.damage.map(|damage| DamagedSquadron {
+                    place: DamagedSquadronPlace::Entry(place, index),
+                    damage,
+                })
+            })
+        })
+        .collect();
+    for (index, transit) in transits.transits.iter().enumerate() {
+        records.extend(transit.lost.iter().map(|&lost| DamagedSquadron {
+            place: DamagedSquadronPlace::Transit(index),
+            damage: SquadronDamage { lost, repair: None },
+        }));
+    }
+    records
+}
+
+/// Put back the losses [`damaged_squadrons`] recorded; every other
+/// squadron is whole. A save from before v126 has none, so all its
+/// squadrons load at full strength.
+pub fn restore_damaged_squadrons(
+    world: &mut GameWorld,
+    transits: &mut SquadronTransits,
+    records: &[DamagedSquadron],
+) {
+    for transit in &mut transits.transits {
+        transit.lost.clear();
+    }
+    for fleet in world.fleets.values_mut() {
+        for entry in &mut fleet.fighters {
+            entry.damage = None;
+        }
+    }
+    for system in world.systems.values_mut() {
+        for entry in &mut system.fighters {
+            entry.damage = None;
+        }
+    }
+    for record in records {
+        match record.place {
+            DamagedSquadronPlace::Entry(place, index) => {
+                set_damage(world, place, index, Some(record.damage));
+            }
+            DamagedSquadronPlace::Transit(index) => {
+                if let Some(transit) = transits.transits.get_mut(index) {
+                    transit.lost.push(record.damage.lost);
+                }
+            }
+        }
     }
 }
 
@@ -695,7 +922,7 @@ pub fn scramble(world: &mut GameWorld, system: SystemKey) -> Vec<Sortie> {
         }
         let (fleet, group) = if let Some(fleet) = carrier {
             for entry in &launched {
-                add(&mut world.fleets[fleet].fighters, entry.class, entry.count);
+                put_entry(&mut world.fleets[fleet].fighters, entry.clone());
             }
             (fleet, false)
         } else {
@@ -734,25 +961,28 @@ pub fn recover(world: &mut GameWorld, sorties: &[Sortie]) {
                 system.fleets.retain(|&key| key != sortie.fleet);
             }
         } else if let Some(fleet) = world.fleets.get_mut(sortie.fleet) {
+            // Each class takes back as many as it sent, the ones on no ship
+            // (the planet's) first, those below full strength with their
+            // losses.
             for sent in &sortie.launched {
-                let left = fleet
-                    .fighters
+                let (mut entries, unseated): (Vec<_>, Vec<_>) = std::mem::take(&mut fleet.fighters)
+                    .into_iter()
+                    .partition(|entry| entry.class != sent.class || entry.carrier.is_some());
+                // The unseated ones go last, so they are taken first.
+                entries.extend(unseated);
+                let held = entries
                     .iter()
-                    .find(|entry| entry.class == sent.class)
-                    .map_or(0, |entry| entry.count);
-                let count = left.min(sent.count);
-                if take(&mut fleet.fighters, sent.class, count) {
-                    landing.push(FighterEntry {
-                        class: sent.class,
-                        count,
-                        carrier: None,
-                    });
+                    .filter(|entry| entry.class == sent.class)
+                    .fold(0_u32, |sum, entry| sum.saturating_add(entry.count));
+                if let Some(taken) = take_entries(&mut entries, sent.class, held.min(sent.count)) {
+                    landing.extend(taken);
                 }
+                fleet.fighters = entries;
             }
         }
         if let Some(system) = world.systems.get_mut(sortie.system) {
             for entry in landing {
-                add(&mut system.fighters, entry.class, entry.count);
+                put_entry(&mut system.fighters, FighterEntry { carrier: None, ..entry });
             }
         }
     }
@@ -763,6 +993,7 @@ mod tests {
     use super::*;
     use crate::dat::{ExplorationStatus, Faction, SectorGroup};
     use crate::ids::DatId;
+    use crate::repair::RepairTimer;
     use crate::world::{
         CapitalShipClass, ControlKind, FighterClass, Fleet, Sector, ShipInstance, System,
     };
@@ -893,9 +1124,9 @@ mod tests {
     fn squadrons_of_a_class_on_one_ship_share_an_entry() {
         let mut setup = setup(4);
         let fleet = &mut setup.world.fleets[setup.fleet];
-        fleet.fighters.push(FighterEntry { class: setup.x_wing, count: 1, carrier: None });
-        fleet.fighters.push(FighterEntry { class: setup.x_wing, count: 2, carrier: Some(99) });
-        fleet.fighters.push(FighterEntry { class: setup.tie, count: 1, carrier: None });
+        fleet.fighters.push(FighterEntry { class: setup.x_wing, count: 1, carrier: None, damage: None });
+        fleet.fighters.push(FighterEntry { class: setup.x_wing, count: 2, carrier: Some(99), damage: None });
+        fleet.fighters.push(FighterEntry { class: setup.tie, count: 1, carrier: None, damage: None });
         setup.world.number_ships();
         let fleet = &setup.world.fleets[setup.fleet];
         let ship = fleet.capital_ships[0].id;
@@ -935,8 +1166,8 @@ mod tests {
     #[test]
     fn taking_squadrons_draws_on_the_last_entries_first() {
         let mut entries = vec![
-            FighterEntry { class: FighterKey::default(), count: 2, carrier: Some(1) },
-            FighterEntry { class: FighterKey::default(), count: 1, carrier: Some(2) },
+            FighterEntry { class: FighterKey::default(), count: 2, carrier: Some(1), damage: None },
+            FighterEntry { class: FighterKey::default(), count: 1, carrier: Some(2), damage: None },
         ];
         assert!(take(&mut entries, FighterKey::default(), 2));
         assert_eq!(entries.len(), 1);
@@ -995,6 +1226,7 @@ mod tests {
             class: s.x_wing,
             count: 1,
             carrier: None,
+            damage: None,
         });
         assert_eq!(fleet_room(&s.world, s.fleet), 2);
         s.world.fleets[s.fleet].capital_ships[0].alive = false;
@@ -1192,6 +1424,7 @@ mod tests {
             class: s.x_wing,
             count: 0,
             carrier: None,
+            damage: None,
         });
         assert!(!move_enabled(
             &s.world,
@@ -1267,6 +1500,228 @@ mod tests {
         assert_eq!(on_planet(&s.world, s.here, false), 2);
     }
 
+    /// A squadron of `class` at `carrier` that has lost `lost` craft.
+    fn damaged(class: FighterKey, carrier: Option<u64>, lost: u32) -> FighterEntry {
+        FighterEntry {
+            class,
+            count: 1,
+            carrier,
+            damage: Some(SquadronDamage { lost, repair: None }),
+        }
+    }
+
+    #[test]
+    fn a_battle_sets_each_survivors_losses_from_the_craft_that_came_back() {
+        // FUN_0040d260: losses +0x60 = size less the craft the result word
+        // gives (FUN_00503370 adds them); a squadron with none is destroyed
+        // (FUN_00503370 -> slot +0xac). The others keep their entry's index.
+        let class = FighterKey::default();
+        let timer = Some(RepairTimer { due: 9, fast: false });
+        let mut entries = vec![
+            FighterEntry { class, count: 3, carrier: Some(1), damage: None },
+            FighterEntry {
+                damage: Some(SquadronDamage { lost: 2, repair: timer }),
+                ..damaged(class, None, 2)
+            },
+            FighterEntry { class, count: 2, carrier: None, damage: None },
+            FighterEntry { class, count: 2, carrier: None, damage: None },
+        ];
+        apply_battle_craft(&mut entries, 0, 12, 2, &[12, 7]);
+        // Already damaged, it keeps its timer (still Damaged).
+        apply_battle_craft(&mut entries, 1, 12, 1, &[4]);
+        apply_battle_craft(&mut entries, 2, 12, 2, &[3, 11]);
+        apply_battle_craft(&mut entries, 3, 12, 0, &[]);
+
+        assert_eq!(
+            entries[..4],
+            [
+                FighterEntry { class, count: 1, carrier: Some(1), damage: None },
+                FighterEntry {
+                    damage: Some(SquadronDamage { lost: 8, repair: timer }),
+                    ..damaged(class, None, 8)
+                },
+                damaged(class, None, 9),
+                FighterEntry { class, count: 0, carrier: None, damage: None },
+            ]
+        );
+        assert_eq!(entries[4..], [damaged(class, Some(1), 5), damaged(class, None, 1)]);
+        // An event with no craft listed keeps whole squadrons; a lost one
+        // keeps no losses.
+        let mut old = vec![
+            FighterEntry { class, count: 3, carrier: None, damage: None },
+            damaged(class, None, 4),
+            damaged(class, None, 4),
+        ];
+        apply_battle_craft(&mut old, 0, 12, 2, &[]);
+        apply_battle_craft(&mut old, 1, 12, 0, &[]);
+        apply_battle_craft(&mut old, 2, 12, 1, &[]);
+        assert_eq!(
+            old,
+            [
+                FighterEntry { class, count: 2, carrier: None, damage: None },
+                FighterEntry { class, count: 0, carrier: None, damage: None },
+                damaged(class, None, 4),
+            ]
+        );
+        // An emptied damaged entry adds nothing.
+        put_entry(&mut old, FighterEntry { count: 0, ..damaged(class, None, 1) });
+        assert_eq!(old.len(), 3);
+    }
+
+    #[test]
+    fn a_damaged_squadron_keeps_its_own_entry_and_its_losses_when_it_moves() {
+        // A squadron's losses are its own (+0x60): it never merges with
+        // whole ones. Moved within its system it stays Usable and keeps its
+        // timer; across systems it travels (not Usable, FUN_005578d0) and
+        // lands with its losses and no timer.
+        let mut s = setup(4);
+        s.world.systems[s.there].x = 300;
+        let timer = Some(RepairTimer { due: 40, fast: false });
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 1);
+        s.world.systems[s.here].fighters.push(FighterEntry {
+            damage: Some(SquadronDamage { lost: 4, repair: timer }),
+            ..damaged(s.x_wing, None, 4)
+        });
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 1);
+        assert_eq!(s.world.systems[s.here].fighters.len(), 2);
+
+        let mut transits = SquadronTransits::default();
+        let here = SquadronPlace::Planet(s.here);
+        let fleet = SquadronPlace::Fleet(s.fleet);
+        // Both go, the damaged one in its own entry.
+        transits.move_squadrons(&mut s.world, true, s.x_wing, 2, here, fleet, 1).unwrap();
+        let aboard = &s.world.fleets[s.fleet].fighters;
+        assert_eq!(total(aboard), 2);
+        assert!(aboard.iter().any(|entry| entry.damage
+            == Some(SquadronDamage { lost: 4, repair: timer })));
+
+        // Within the system, off a ship onto the planet: on no ship.
+        for entry in &mut s.world.fleets[s.fleet].fighters {
+            entry.carrier = Some(7);
+        }
+        transits.move_squadrons(&mut s.world, true, s.x_wing, 2, fleet, here, 2).unwrap();
+        assert!(s.world.systems[s.here].fighters.iter().all(|entry| entry.carrier.is_none()));
+        transits.move_squadrons(&mut s.world, true, s.x_wing, 2, here, fleet, 2).unwrap();
+        let moved = transits
+            .move_squadrons(&mut s.world, true, s.x_wing, 2, fleet, SquadronPlace::Planet(s.there), 2)
+            .unwrap();
+        let SquadronMove::Departed(day) = moved else {
+            panic!("{moved:?}");
+        };
+        assert_eq!(transits.transits()[0].lost, [4]);
+        transits.advance(&mut s.world, day);
+        let landed = &s.world.systems[s.there].fighters;
+        assert_eq!(total(landed), 2);
+        assert_eq!(
+            landed.iter().filter_map(|entry| entry.damage).collect::<Vec<_>>(),
+            [SquadronDamage { lost: 4, repair: None }]
+        );
+    }
+
+    #[test]
+    fn taken_squadrons_come_as_their_entries_without_empty_ones() {
+        let class = FighterKey::default();
+        let mut entries = vec![
+            FighterEntry { class, count: 2, carrier: Some(1), damage: None },
+            damaged(class, None, 3),
+            FighterEntry { class, count: 0, carrier: None, damage: None },
+        ];
+        assert_eq!(
+            take_entries(&mut entries, class, 2),
+            Some(vec![
+                damaged(class, None, 3),
+                FighterEntry { class, count: 1, carrier: Some(1), damage: None },
+            ])
+        );
+        assert_eq!(take_entries(&mut entries, class, 2), None);
+    }
+
+    #[test]
+    fn a_squadron_no_ship_has_room_for_rides_on_none() {
+        // seat_squadrons: a squadron whose ship is gone and finds no room
+        // stays in the fleet on no ship, its losses kept.
+        let mut s = setup(0);
+        s.world.fleets[s.fleet].fighters = vec![damaged(s.x_wing, Some(99), 3)];
+        s.world.number_ships();
+        assert_eq!(s.world.fleets[s.fleet].fighters, [damaged(s.x_wing, None, 3)]);
+    }
+
+    #[test]
+    fn a_planets_damaged_squadron_lands_again_with_its_losses() {
+        let mut s = setup(1);
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 1);
+        s.world.systems[s.here].fighters.push(damaged(s.x_wing, None, 6));
+        let sorties = scramble(&mut s.world, s.here);
+        assert_eq!(total(&s.world.fleets[s.fleet].fighters), 2);
+        // The fleet's own squadron aboard its ship, listed after them: the
+        // planet takes its unseated ones first.
+        s.world.fleets[s.fleet].fighters.push(FighterEntry {
+            class: s.x_wing,
+            count: 1,
+            carrier: Some(1),
+            damage: None,
+        });
+        recover(&mut s.world, &sorties);
+        let landed = &s.world.systems[s.here].fighters;
+        assert_eq!(total(landed), 2);
+        assert!(landed.contains(&damaged(s.x_wing, None, 6)), "{landed:?}");
+        assert_eq!(
+            s.world.fleets[s.fleet].fighters,
+            [FighterEntry { class: s.x_wing, count: 1, carrier: Some(1), damage: None }]
+        );
+
+        // One seated meanwhile lands on no ship.
+        let sorties = scramble(&mut s.world, s.here);
+        for entry in &mut s.world.fleets[s.fleet].fighters {
+            entry.carrier = Some(1);
+        }
+        recover(&mut s.world, &sorties);
+        assert!(s.world.systems[s.here].fighters.iter().all(|entry| entry.carrier.is_none()));
+    }
+
+    #[test]
+    fn the_save_records_put_back_each_squadrons_losses_and_an_old_save_is_whole() {
+        // SaveState::squadron_damage (v126): the world's and the transits'
+        // encodings skip the losses; the records carry them.
+        let mut s = setup(2);
+        s.world.systems[s.there].x = 300;
+        let timer = Some(RepairTimer { due: 12, fast: true });
+        s.world.fleets[s.fleet].fighters.push(FighterEntry {
+            damage: Some(SquadronDamage { lost: 3, repair: timer }),
+            ..damaged(s.x_wing, None, 3)
+        });
+        s.world.systems[s.here].fighters.push(damaged(s.x_wing, None, 2));
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 1);
+        let mut transits = SquadronTransits::default();
+        transits
+            .move_squadrons(
+                &mut s.world,
+                true,
+                s.x_wing,
+                2,
+                SquadronPlace::Planet(s.here),
+                SquadronPlace::Planet(s.there),
+                1,
+            )
+            .unwrap();
+        let records = damaged_squadrons(&s.world, &transits);
+        assert_eq!(records.len(), 2);
+
+        let encoded = serde_json::to_string(&(&s.world.fleets[s.fleet].fighters, &transits)).unwrap();
+        let (fighters, mut loaded): (Vec<FighterEntry>, SquadronTransits) =
+            serde_json::from_str(&encoded).unwrap();
+        assert!(fighters.iter().all(|entry| entry.damage.is_none()));
+        assert!(loaded.transits()[0].lost.is_empty());
+        let mut world = s.world.clone();
+        world.fleets[s.fleet].fighters = fighters;
+        restore_damaged_squadrons(&mut world, &mut loaded, &records);
+        assert_eq!(world.fleets[s.fleet].fighters, s.world.fleets[s.fleet].fighters);
+        assert_eq!(loaded, transits);
+
+        restore_damaged_squadrons(&mut world, &mut loaded, &[]);
+        assert!(damaged_squadrons(&world, &loaded).is_empty());
+    }
+
     #[test]
     fn a_destroyed_fleet_or_group_lands_nothing() {
         let mut s = setup(1);
@@ -1284,6 +1739,7 @@ mod tests {
             class: s.tie,
             count: 0,
             carrier: None,
+            damage: None,
         });
         assert!(scramble(&mut s.world, s.there).is_empty());
         assert!(scramble(&mut s.world, SystemKey::default()).is_empty());

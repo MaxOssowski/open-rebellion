@@ -371,6 +371,7 @@ mod tests {
                 class: tie,
                 count: 4,
                 carrier: None,
+                damage: None,
             }],
             characters: Vec::new(),
             is_alliance: false,
@@ -447,11 +448,13 @@ mod tests {
                 class: x_wing,
                 count: 2,
                 carrier: None,
+                damage: None,
             },
             FighterEntry {
                 class: tie,
                 count: 5,
                 carrier: None,
+                damage: None,
             },
         ];
 

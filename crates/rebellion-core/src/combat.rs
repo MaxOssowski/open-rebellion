@@ -51,4 +51,9 @@ pub struct FighterLossEvent {
     pub fighter_index: usize,
     pub squads_before: u32,
     pub squads_after: u32,
+    /// The craft of each surviving squadron, `squads_after` of them: the
+    /// result word `FUN_0040d260` compares with the squadron's size less
+    /// its losses to set its new losses (`+0x60`).
+    #[serde(default)]
+    pub craft_after: Vec<u32>,
 }

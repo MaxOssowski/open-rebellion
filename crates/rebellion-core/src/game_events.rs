@@ -107,6 +107,7 @@ pub const EVT_COLLECTION_RATE: &str = "collection_rate";
 pub const EVT_GARRISON_REQUIRED: &str = "garrison_required";
 pub const EVT_SHIP_REPAIRED: &str = "ship_repaired";
 pub const EVT_SHIP_REPAIR_STARTED: &str = "ship_repair_started";
+pub const EVT_SQUADRON_REPAIRED: &str = "squadron_repaired";
 pub const EVT_DECOY_TRIGGERED: &str = "decoy_triggered";
 pub const EVT_CHARACTER_COMBAT_RATING: &str = "character_combat_rating";
 pub const EVT_STORY_JABBA: &str = "story_jabba";
@@ -230,6 +231,7 @@ mod tests {
             EVT_GARRISON_REQUIRED,
             EVT_SHIP_REPAIRED,
             EVT_SHIP_REPAIR_STARTED,
+            EVT_SQUADRON_REPAIRED,
             EVT_DECOY_TRIGGERED,
             EVT_CHARACTER_COMBAT_RATING,
             EVT_STORY_JABBA,

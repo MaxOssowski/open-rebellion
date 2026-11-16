@@ -618,6 +618,7 @@ fn a_staged_spare_holding_anything_else_stays_when_its_products_go() {
                     class: tie,
                     count: 1,
                     carrier: None,
+                    damage: None,
                 }),
             2 => s.world.fleets[spare]
                 .special_forces

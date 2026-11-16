@@ -2034,6 +2034,7 @@ fn place_stale_second(
                 class: fighter,
                 count: 6,
                 carrier: None,
+                damage: None,
             });
     }
     let yard = world.manufacturing_facilities.insert(
@@ -2695,6 +2696,7 @@ fn place_coruscant(
             class: tie,
             count: 1,
             carrier: None,
+            damage: None,
         })
         .collect();
     let first = world.insert_fleet(rebellion_core::world::Fleet {
@@ -2809,6 +2811,7 @@ fn place_probe_droid_aboard(
                 class: tie,
                 count: 1,
                 carrier: None,
+                damage: None,
             })
             .collect(),
         characters: Vec::new(),
@@ -3355,6 +3358,7 @@ fn place_selonia(
         class,
         count: 1,
         carrier: None,
+        damage: None,
     };
     let mut withdrawing = fleet(vec![damaged], Vec::new());
     withdrawing.location = origin;
@@ -7141,6 +7145,34 @@ pub fn repaired_ship(request: FixtureRequest, world: &GameWorld) -> Option<(Flee
         .iter()
         .find(|(_, fleet)| fleet.is_alliance == alliance && !fleet.capital_ships.is_empty())
         .map(|(key, _)| (key, 0))
+}
+
+/// The EventMessages scenario's Squadron at Full Strength (`FUN_00499de0`
+/// for a squadron, `+0x28` 9): the player's first squadron aboard a fleet,
+/// else its first on a planet.
+pub fn full_strength_squadron(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<(rebellion_core::squadrons::SquadronPlace, usize)> {
+    use rebellion_core::squadrons::SquadronPlace;
+    if request.scenario != Scenario::EventMessages {
+        return None;
+    }
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let own = |entry: &rebellion_core::world::FighterEntry| {
+        entry.count > 0
+            && rebellion_core::squadrons::is_alliance(world, entry.class) == Some(alliance)
+    };
+    let aboard = world.fleets.iter().find_map(|(key, fleet)| {
+        let index = fleet.fighters.iter().position(own)?;
+        Some((SquadronPlace::Fleet(key), index))
+    });
+    aboard.or_else(|| {
+        world.systems.iter().find_map(|(key, system)| {
+            let index = system.fighters.iter().position(own)?;
+            Some((SquadronPlace::Planet(key), index))
+        })
+    })
 }
 
 /// The event-message scenario's messages: one per report class whose

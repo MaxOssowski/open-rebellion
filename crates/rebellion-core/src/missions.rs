@@ -12025,6 +12025,7 @@ mod tests {
                 class: tie,
                 count: 1,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -12094,11 +12095,13 @@ mod tests {
                     class: bomber,
                     count: 1,
                     carrier: None,
+                    damage: None,
                 },
                 FighterEntry {
                     class: tie,
                     count: 0,
                     carrier: None,
+                    damage: None,
                 },
             ],
             characters: vec![],
@@ -12119,6 +12122,7 @@ mod tests {
             class: tie,
             count: 1,
             carrier: None,
+            damage: None,
         });
         assert!(ship.state(&world).is_some());
         assert!(squadron.state(&world).is_some());

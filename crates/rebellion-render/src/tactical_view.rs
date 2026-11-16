@@ -13762,6 +13762,7 @@ mod tests {
                 class: awing,
                 count: 1,
                 carrier: None,
+                damage: None,
             }],
             vec![leia],
         ));
@@ -13772,11 +13773,13 @@ mod tests {
                 class: awing,
                 count: 2,
                 carrier: None,
+                damage: None,
             },
             FighterEntry {
                 class: tie,
                 count: 1,
                 carrier: None,
+                damage: None,
             },
         ];
         let rows = battle_alert_rows(
@@ -13895,7 +13898,7 @@ mod tests {
         first.id = 11;
         let mut second = ShipInstance::new(cruiser, 0, false);
         second.id = 12;
-        let entry = |class, count, carrier| FighterEntry { class, count, carrier };
+        let entry = |class, count, carrier| FighterEntry { class, count, carrier, damage: None };
         let rebels = world.fleets.insert(Fleet {
             location: system,
             capital_ships: vec![first, second],
@@ -15030,6 +15033,7 @@ mod tests {
                 fighter_index: 0,
                 squads_before: 2,
                 squads_after: 1,
+                craft_after: Vec::new(),
             }],
             tick: 0,
         };
@@ -15195,6 +15199,7 @@ mod tests {
                 fighter_index: 0,
                 squads_before: 1,
                 squads_after: 1,
+                craft_after: Vec::new(),
             }],
             tick: 0,
         }));
@@ -18222,7 +18227,7 @@ mod tests {
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
             location: SystemKey::default(),
             capital_ships: Vec::new(),
-            fighters: vec![rebellion_core::world::FighterEntry { class, count: 2, carrier: None }],
+            fighters: vec![rebellion_core::world::FighterEntry { class, count: 2, carrier: None, damage: None }],
             characters: Vec::new(),
             is_alliance: true,
             has_death_star: false,

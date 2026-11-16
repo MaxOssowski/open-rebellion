@@ -994,6 +994,7 @@ mod tests {
             class: tie,
             count: 1,
             carrier: None,
+            damage: None,
         });
         frozen(&mut world, system);
         empty(&mut world, system);
@@ -1218,6 +1219,7 @@ mod tests {
                 origin: other,
                 to: SquadronPlace::Planet(to),
                 arrival_tick: 9,
+                lost: Vec::new(),
             }]
         };
         let defenses = |travellers| {

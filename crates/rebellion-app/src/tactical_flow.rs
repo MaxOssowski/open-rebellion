@@ -296,19 +296,13 @@ pub(crate) fn apply_results(
 /// - A planet's squadron (no carrier) stays in its sortie's fleet, and
 ///   `squadrons::recover` lands it again.
 fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[FleetKey]) {
-    let classes: Vec<Vec<(rebellion_core::ids::FighterKey, Option<u64>)>> = fought
+    let classes: Vec<Vec<rebellion_core::world::FighterEntry>> = fought
         .iter()
         .map(|&key| {
             world
                 .fleets
                 .get(key)
-                .map(|fleet| {
-                    fleet
-                        .fighters
-                        .iter()
-                        .map(|entry| (entry.class, entry.carrier))
-                        .collect()
-                })
+                .map(|fleet| fleet.fighters.clone())
                 .unwrap_or_default()
         })
         .collect();
@@ -331,13 +325,29 @@ fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[Fl
         let Some(position) = fought.iter().position(|&key| key == fighter.fleet) else {
             continue;
         };
-        let Some(&(class, launched_from)) = classes[position].get(fighter.fleet_fighter_index)
-        else {
+        let Some(source) = classes[position].get(fighter.fleet_fighter_index) else {
             continue;
         };
+        let (class, launched_from) = (source.class, source.carrier);
         if fighter.squad_count == 0 {
             continue;
         }
+        // FUN_0040d260: its losses (+0x60) are its size less the craft that
+        // came back; a squadron already damaged keeps its repair timer.
+        let size = world
+            .fighter_classes
+            .get(class)
+            .map_or(0, |value| value.squadron_size);
+        let damage = (fighter.squad_count < size).then(|| rebellion_core::world::SquadronDamage {
+            lost: size - fighter.squad_count,
+            repair: source.damage.and_then(|damage| damage.repair),
+        });
+        let returning = |carrier| rebellion_core::world::FighterEntry {
+            class,
+            count: 1,
+            carrier,
+            damage,
+        };
         let docked = fighter.recovery_state
             == rebellion_core::tactical::TacticalFighterRecoveryState::Recovered;
         let (fleet_key, carrier) = match fighter.recovery_target.filter(|_| docked) {
@@ -358,10 +368,10 @@ fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[Fl
         };
         match carrier {
             Some(id) if alive(id) => {
-                rebellion_core::squadrons::put(&mut fleet.fighters, class, 1, Some(id));
+                rebellion_core::squadrons::put_entry(&mut fleet.fighters, returning(Some(id)));
             }
             Some(_) if docked || fighter.in_hangar => {}
-            _ => rebellion_core::squadrons::put(&mut fleet.fighters, class, 1, None),
+            _ => rebellion_core::squadrons::put_entry(&mut fleet.fighters, returning(None)),
         }
     }
 }
@@ -954,6 +964,63 @@ mod tests {
     }
 
     #[test]
+    fn a_squadron_back_from_a_battle_keeps_the_craft_it_lost() {
+        // FUN_0040c780 -> FUN_0040d260: a surviving squadron's losses +0x60
+        // are its size less its craft (the tactical object's hull over 8,
+        // FUN_005b9c60); it keeps its own entry beside the whole ones.
+        let (mut world, system, attacker, defender) = opposing_empty_fleets();
+        let carrier = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0001),
+            name: "Carrier".into(),
+            hull: 100,
+            fighter_capacity: 2,
+            ..Default::default()
+        });
+        let wing = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0001),
+            is_alliance: true,
+            squadron_size: 12,
+            ..Default::default()
+        });
+        world.fleets[attacker]
+            .capital_ships
+            .push(ShipInstance::new(carrier, 100, true));
+        world.fleets[defender]
+            .capital_ships
+            .push(ShipInstance::new(carrier, 100, false));
+        world.number_ships();
+        let id = world.fleets[attacker].capital_ships[0].id;
+        world.fleets[attacker].fighters = vec![rebellion_core::world::FighterEntry {
+            class: wing,
+            count: 2,
+            carrier: Some(id),
+            damage: None,
+        }];
+        let mut session =
+            BattleSession::new(&world, system, attacker, defender, true, 23, 0x1111_0009);
+        let hit = session
+            .fighters
+            .iter()
+            .position(|fighter| fighter.fleet == attacker)
+            .unwrap();
+        session.fighters[hit].hull_current = 7.0 * 8.0;
+        session.fighters[hit].refresh_craft_count();
+        assert_eq!(session.fighters[hit].squad_count, 7);
+        session.winner = Some(CombatWinner::Attacker);
+
+        apply_results(&session, &mut world, &mut TroopTransportState::default());
+
+        let fighters = &world.fleets[attacker].fighters;
+        assert_eq!(rebellion_core::squadrons::total(fighters), 2);
+        assert!(fighters
+            .iter()
+            .any(|entry| entry.carrier == Some(id) && entry.damage.is_none() && entry.count == 1));
+        assert!(fighters.iter().any(|entry| entry.carrier == Some(id)
+            && entry.damage
+                == Some(rebellion_core::world::SquadronDamage { lost: 5, repair: None })));
+    }
+
+    #[test]
     fn a_surviving_squadron_rides_on_its_carrier_and_a_lost_carriers_dies_inside_it() {
         // A0 VM 2026-10-28 (Battle at Mon Calamari): squadrons still in the
         // field at the end were back aboard the carriers they launched
@@ -999,6 +1066,7 @@ mod tests {
                 class,
                 count,
                 carrier: Some(carrier),
+                damage: None,
             });
         }
         let mut session =

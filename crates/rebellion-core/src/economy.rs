@@ -1485,6 +1485,7 @@ mod tests {
                 class: squadron,
                 count: 4,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -1503,6 +1504,7 @@ mod tests {
             class: squadron,
             count: 1,
             carrier: None,
+            damage: None,
         });
         (world, sys)
     }
@@ -2338,6 +2340,7 @@ mod tests {
                 class: crate::ids::FighterKey::default(),
                 count: 5,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: true,

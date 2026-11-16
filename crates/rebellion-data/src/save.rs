@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 125;
+pub const SAVE_VERSION: u32 = 126;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -117,7 +117,11 @@ pub const V123: u32 = 123;
 /// products' last field.
 pub const V124: u32 = 124;
 
-/// Whether a save of `version` loads (the current one, or v116 to v124
+/// v125: the save without the squadrons' losses
+/// (`SaveState::squadron_damage`), its last field.
+pub const V125: u32 = 125;
+
+/// Whether a save of `version` loads (the current one, or v116 to v125
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -222,6 +226,12 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
     } else if version == V124 {
         body.extend(bincode::serialize(&Vec::<(u64, u64)>::new())?);
     }
+    if version <= V125 {
+        // Every squadron of an older save is at full strength.
+        body.extend(bincode::serialize(
+            &Vec::<rebellion_core::squadrons::DamagedSquadron>::new(),
+        )?);
+    }
     Ok(body)
 }
 
@@ -254,6 +264,11 @@ pub fn decode_body(
     );
     state.world.object_views = state.object_views.clone();
     state.world.products = state.products.clone();
+    rebellion_core::squadrons::restore_damaged_squadrons(
+        &mut state.world,
+        &mut state.troop_transport.squadrons,
+        &state.squadron_damage,
+    );
     let fogs = [&state.fog_alliance, &state.fog_empire];
     if version == MIGRATED_VERSION {
         rebellion_core::object_views::seed_from_fog(
@@ -398,6 +413,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V125 {
+            fields.remove("squadron_damage");
+        }
         if version <= V123 {
             fields.remove("products");
         } else if version == V124 {
@@ -541,6 +559,15 @@ pub struct SaveState {
     /// ([`migrate_body`]), then its queues are placed. The loaders copy it
     /// into `world.products`; the world's own encoding skips it.
     pub products: rebellion_core::products::Products,
+    // ── v126: the squadrons below full strength ─────────────────────────
+    /// Each squadron's losses (`+0x60`) and repair timer, in the fleets,
+    /// on the planets and in transit
+    /// ([`rebellion_core::squadrons::damaged_squadrons`]). It stays the
+    /// last field: an older body is read by appending an empty one
+    /// ([`migrate_body`]), so its squadrons load at full strength. The
+    /// loaders put it back into the world and the transits, whose own
+    /// encodings skip it.
+    pub squadron_damage: Vec<rebellion_core::squadrons::DamagedSquadron>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1047,6 +1074,7 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V125,
             V124,
             V123,
             V122,
@@ -1168,6 +1196,8 @@ pub mod wasm_impl {
             versioned_meta_key(V123, slot),
             versioned_slot_key(V124, slot),
             versioned_meta_key(V124, slot),
+            versioned_slot_key(V125, slot),
+            versioned_meta_key(V125, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1197,6 +1227,7 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V125,
             V124,
             V123,
             V122,
@@ -1351,6 +1382,7 @@ mod tests {
             player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
             object_views: rebellion_core::object_views::ObjectViews::default(),
             products: rebellion_core::products::Products::default(),
+            squadron_damage: Vec::new(),
         }
     }
 
@@ -1757,16 +1789,50 @@ mod tests {
         write_old(saves_dir, state, V124, trips_tail())
     }
 
-    /// The length of the empty trips v125 added.
+    /// The length of the empty trips v125 added and the empty squadron
+    /// losses v126 added.
     fn trips_tail() -> usize {
-        bincode::serialize(&Vec::<(u64, u64)>::new()).unwrap().len()
+        bincode::serialize(&Vec::<(u64, u64)>::new()).unwrap().len() + damage_tail()
     }
 
-    /// The length of the empty products v124 added.
+    /// The length of the empty products v124 added and the empty squadron
+    /// losses v126 added.
     fn products_tail() -> usize {
         bincode::serialize(&rebellion_core::products::Products::default())
             .unwrap()
             .len()
+            + damage_tail()
+    }
+
+    /// The length of the empty squadron losses v126 added.
+    fn damage_tail() -> usize {
+        bincode::serialize(&Vec::<rebellion_core::squadrons::DamagedSquadron>::new())
+            .unwrap()
+            .len()
+    }
+
+    /// `state` written as a v125 file: no squadron losses. `state` holds
+    /// none.
+    fn write_v125(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert!(state.squadron_damage.is_empty());
+        write_old(saves_dir, state, V125, damage_tail())
+    }
+
+    /// `minimal_save_state` with an Empire squadron of 12 craft on its
+    /// first system's planet.
+    fn state_with_planet_squadron() -> (SaveState, rebellion_core::ids::SystemKey) {
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let tie = state
+            .world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_empire: true,
+                squadron_size: 12,
+                ..rebellion_core::world::FighterClass::default()
+            });
+        rebellion_core::squadrons::add(&mut state.world.systems[system].fighters, tie, 1);
+        (state, system)
     }
 
     /// `state` written as a v123 file: no products. `state` holds none.
@@ -2055,6 +2121,66 @@ mod tests {
             fingerprint_as(&state, V121).unwrap(),
             fingerprint_as(&loaded, V121).unwrap()
         );
+    }
+
+    #[test]
+    fn a_v125_save_loads_every_squadron_at_full_strength() {
+        // v126 adds the squadrons' losses (+0x60, FUN_0040d260); a v125
+        // save kept none, so each of its squadrons loads whole.
+        let saves_dir = tmp_dir("v125_migration");
+        let (state, system) = state_with_planet_squadron();
+        write_v125(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v125 save migrates");
+        assert!(loaded.squadron_damage.is_empty());
+        assert_eq!(loaded.world.systems[system].fighters[0].damage, None);
+        assert_eq!(loaded.world.systems[system].fighters[0].count, 1);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V125).unwrap(),
+            fingerprint_as(&loaded, V125).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v125_fingerprint_has_no_squadron_losses() {
+        // A v125 file was fingerprinted without SaveState::squadron_damage
+        // (v126), so its check ignores the field.
+        let (mut state, system) = state_with_planet_squadron();
+        let before = fingerprint_as(&state, V125).unwrap();
+        state.world.systems[system].fighters[0].damage =
+            Some(rebellion_core::world::SquadronDamage { lost: 1, repair: None });
+        state.squadron_damage = rebellion_core::squadrons::damaged_squadrons(
+            &state.world,
+            &state.troop_transport.squadrons,
+        );
+        assert_eq!(fingerprint_as(&state, V125).unwrap(), before);
+    }
+
+    #[test]
+    fn a_save_keeps_each_squadrons_losses_and_repair_timer() {
+        // SaveState::squadron_damage (v126): the world's own encoding skips
+        // the losses, so the save carries them and the loader puts them back.
+        let saves_dir = tmp_dir("squadron_damage");
+        let (mut state, system) = state_with_planet_squadron();
+        let damage = rebellion_core::world::SquadronDamage {
+            lost: 5,
+            repair: Some(rebellion_core::repair::RepairTimer { due: 40, fast: false }),
+        };
+        state.world.systems[system].fighters[0].damage = Some(damage);
+        state.squadron_damage = rebellion_core::squadrons::damaged_squadrons(
+            &state.world,
+            &state.troop_transport.squadrons,
+        );
+        save_slot(&saves_dir, 0, "Losses", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.world.systems[system].fighters[0].damage, Some(damage));
+        assert_eq!(loaded.squadron_damage, state.squadron_damage);
+        assert_eq!(meta.state_fingerprint, compute_state_fingerprint(&state).unwrap());
     }
 
     #[test]
@@ -2520,6 +2646,7 @@ mod tests {
                 class: rebellion_core::ids::FighterKey::default(),
                 count: 2,
                 carrier: Some(7),
+                damage: None,
             }],
             characters: vec![],
             is_alliance: true,

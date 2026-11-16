@@ -1308,30 +1308,36 @@ pub fn resolve_space_battle(
     // dead, so each fleet's events run from the last hull to the first.
     ship_damage.sort_by(|left, right| right.ship_index.cmp(&left.ship_index));
 
-    let mut survivors: Vec<((FleetKey, usize), u32)> = Vec::new();
+    // FUN_0040d260: each squadron's craft come back as a result word; one
+    // with none is lost.
+    let mut survivors: Vec<((FleetKey, usize), Vec<u32>)> = Vec::new();
     for (fighter, &fleet_key) in session.fighters.iter().zip(&fighter_fleets) {
         let key = (fleet_key, fighter.fleet_fighter_index);
         // An escaped group keeps its craft.
-        let alive = u32::from(fighter.squad_count > 0);
+        let craft = (fighter.squad_count > 0).then_some(fighter.squad_count);
         match survivors.iter_mut().find(|(entry, _)| *entry == key) {
-            Some((_, count)) => *count += alive,
-            None => survivors.push((key, alive)),
+            Some((_, list)) => list.extend(craft),
+            None => survivors.push((key, craft.into_iter().collect())),
         }
     }
     let fighter_losses = survivors
         .into_iter()
-        .filter_map(|((fleet_key, fighter_index), after)| {
-            let before = world
-                .fleets
-                .get(fleet_key)?
-                .fighters
-                .get(fighter_index)?
-                .count;
-            (after != before).then_some(FighterLossEvent {
+        .filter_map(|((fleet_key, fighter_index), craft_after)| {
+            let entry = world.fleets.get(fleet_key)?.fighters.get(fighter_index)?;
+            let size = world
+                .fighter_classes
+                .get(entry.class)
+                .map_or(0, |class| class.squadron_size);
+            let before = entry.count;
+            let after = u32::try_from(craft_after.len()).unwrap_or(u32::MAX);
+            let unchanged = after == before
+                && craft_after.iter().all(|&craft| craft == entry.craft(size));
+            (!unchanged).then_some(FighterLossEvent {
                 fleet: fleet_key,
                 fighter_index,
                 squads_before: before,
                 squads_after: after,
+                craft_after,
             })
         })
         .collect();
@@ -2923,6 +2929,7 @@ mod tests {
                 class: escort,
                 count: 2,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -2949,6 +2956,7 @@ mod tests {
                 class: craft,
                 count: 2,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -2978,9 +2986,9 @@ mod tests {
         world.capital_ship_classes[ship].fighter_capacity = 4;
         world.fleets[alliance].capital_ships[0].id = 5;
         world.fleets[alliance].fighters = vec![
-            FighterEntry { class: escort, count: 2, carrier: Some(5) },
-            FighterEntry { class: jumper, count: 1, carrier: Some(5) },
-            FighterEntry { class: escort, count: 1, carrier: None },
+            FighterEntry { class: escort, count: 2, carrier: Some(5), damage: None },
+            FighterEntry { class: jumper, count: 1, carrier: Some(5), damage: None },
+            FighterEntry { class: escort, count: 1, carrier: None, damage: None },
         ];
         let FleetBattle { session, .. } = BattleSession::new_for_fleets(
             &world,
@@ -3208,6 +3216,57 @@ mod tests {
             ),
             (squadrons, 0, 2, 0)
         );
+    }
+
+    // FUN_0040be90 gives FUN_005b9c60 a squadron's craft (FUN_0040d730: its
+    // size less its losses +0x60) and its size: eight hull per craft, the
+    // maximum from the size. FUN_0040d260 reads each survivor's craft back:
+    // one that kept its craft has no event, a lost one none listed.
+    #[test]
+    fn a_squadron_with_losses_fights_with_its_remaining_craft() {
+        use crate::world::{FighterEntry, SquadronDamage};
+        let (mut world, system, alliance, ships, squadrons) = world_with_battle();
+        let escort = world.fleets[alliance].fighters[0].class;
+        world.fleets[alliance].fighters = vec![FighterEntry {
+            class: escort,
+            count: 1,
+            carrier: None,
+            damage: Some(SquadronDamage { lost: 5, repair: None }),
+        }];
+        let FleetBattle { session, .. } = BattleSession::new_for_fleets(
+            &world,
+            system,
+            &[alliance],
+            &[ships, squadrons],
+            true,
+            3,
+            7,
+        );
+        let fighter = session
+            .fighters
+            .iter()
+            .find(|fighter| fighter.fleet == alliance)
+            .unwrap();
+        assert_eq!(fighter.squad_count, 7);
+        assert_eq!(fighter.hull_current, 56.0);
+        assert_eq!(fighter.hull_max, 96.0);
+
+        let (result, _) = resolve_space_battle(
+            &world,
+            system,
+            &[alliance],
+            &[ships, squadrons],
+            7,
+            3,
+            [false, false],
+        );
+        assert!(result.fighter_losses.iter().all(|event| event.fleet != alliance));
+        let lost = result
+            .fighter_losses
+            .iter()
+            .find(|event| event.fleet == squadrons)
+            .unwrap();
+        assert_eq!((lost.squads_after, lost.craft_after.len()), (0, 0));
     }
 
     // FUN_004362b0 -> FUN_005afb30: the side's answer reaches its commander's
@@ -4033,6 +4092,7 @@ mod tests {
             class: tie,
             count: 0,
             carrier: None,
+            damage: None,
         });
         assert!(!retreat_offered(&world, battle, false));
         world.systems[battle].fighters[0].count = 1;

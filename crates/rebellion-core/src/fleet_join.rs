@@ -265,16 +265,9 @@ pub fn merge_fleet_into(
     target.capital_ships.extend(source.capital_ships);
     order_ships(&mut target.capital_ships);
     // The squadrons stay aboard their ships.
+    // One below full strength keeps its own entry.
     for fighter in source.fighters {
-        if let Some(entry) = target
-            .fighters
-            .iter_mut()
-            .find(|entry| entry.class == fighter.class && entry.carrier == fighter.carrier)
-        {
-            entry.count = entry.count.saturating_add(fighter.count);
-        } else {
-            target.fighters.push(fighter);
-        }
+        crate::squadrons::put_entry(&mut target.fighters, fighter);
     }
     for character in source.characters {
         if !target.characters.contains(&character) {
@@ -838,11 +831,13 @@ mod tests {
             class: fighter,
             count: 2,
             carrier: None,
+            damage: None,
         });
         setup.world.fleets[target].fighters.push(FighterEntry {
             class: fighter,
             count: 1,
             carrier: None,
+            damage: None,
         });
         let admiral = setup.world.characters.insert(Character {
             name: "Admiral".into(),
@@ -987,6 +982,7 @@ mod tests {
                 class: crate::ids::FighterKey::default(),
                 count,
                 carrier: Some(carrier),
+                damage: None,
             });
         }
         let mut transport = TroopTransportState::default();
@@ -1111,10 +1107,10 @@ mod tests {
         let to = fleet(&mut setup, here, &[20], true);
         let class = crate::ids::FighterKey::default();
         setup.world.fleets[from].fighters = vec![
-            FighterEntry { class, count: 1, carrier: Some(1) },
-            FighterEntry { class, count: 2, carrier: Some(2) },
+            FighterEntry { class, count: 1, carrier: Some(1), damage: None },
+            FighterEntry { class, count: 2, carrier: Some(2), damage: None },
         ];
-        setup.world.fleets[to].fighters = vec![FighterEntry { class, count: 3, carrier: Some(2) }];
+        setup.world.fleets[to].fighters = vec![FighterEntry { class, count: 3, carrier: Some(2), damage: None }];
         let mut transport = TroopTransportState::default();
         merge_fleet_into(&mut setup.world, &mut transport, from, to);
         assert_eq!(

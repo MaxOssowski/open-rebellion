@@ -763,10 +763,17 @@ impl ReplayRuntime {
             player_agent,
             object_views,
             products,
+            squadron_damage,
         } = state;
         let mut world = world;
         world.object_views = object_views;
         world.products = products;
+        let mut troop_transport = troop_transport;
+        rebellion_core::squadrons::restore_damaged_squadrons(
+            &mut world,
+            &mut troop_transport.squadrons,
+            &squadron_damage,
+        );
         let (fog, inactive_fog) = if player_is_alliance {
             (fog_alliance, fog_empire)
         } else {
@@ -920,6 +927,10 @@ impl ReplayRuntime {
             player_agent: self.player_agent.clone(),
             object_views: self.world.object_views.clone(),
             products: self.world.products.clone(),
+            squadron_damage: rebellion_core::squadrons::damaged_squadrons(
+                &self.world,
+                &self.states.troop_transport.squadrons,
+            ),
         }
     }
 }
@@ -1259,6 +1270,7 @@ mod tests {
             player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
             object_views: rebellion_core::object_views::ObjectViews::default(),
             products: rebellion_core::products::Products::default(),
+            squadron_damage: Vec::new(),
         }
     }
 

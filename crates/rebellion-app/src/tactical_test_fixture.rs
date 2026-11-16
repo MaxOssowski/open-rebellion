@@ -717,7 +717,7 @@ pub(crate) fn apply(
                         // `FighterEntry::count` is the number of strategic
                         // squadrons. `FIGHTSD.squadron_size` supplies the
                         // twelve craft inside each tactical object.
-                        .map(|_| FighterEntry { class, count: 1, carrier: None })
+                        .map(|_| FighterEntry { class, count: 1, carrier: None, damage: None })
                         .collect()
                 })
                 .unwrap_or_default(),
@@ -1371,6 +1371,7 @@ fn coruscant_chase_fleets(
             class,
             count: 1,
             carrier: None,
+            damage: None,
         })
         .to_vec();
     let attacker = world.fleets.insert(Fleet {
@@ -1436,6 +1437,7 @@ fn yavin_multi_ship_fleets(
             class: tie,
             count,
             carrier: Some(carrier),
+            damage: None,
         })
         .to_vec();
     let attacker = world.fleets.insert(Fleet {

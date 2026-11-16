@@ -565,6 +565,7 @@ fn a_system_copy_holds_its_squadrons_special_forces_and_characters() {
             class: tie,
             count: 3,
             carrier: None,
+            damage: None,
         });
     let force = setup
         .world
@@ -740,6 +741,7 @@ fn a_squadron_seen_leaving_for_an_unseen_system_is_copied_there_en_route() {
             origin: chandrila,
             to: crate::squadrons::SquadronPlace::Planet(coruscant),
             arrival_tick: 171,
+            lost: Vec::new(),
         });
     day(&mut setup, &missions);
     let extras = alliance_extras(&setup, coruscant).unwrap();
@@ -1252,6 +1254,7 @@ fn a_frozen_copy_keeps_a_fleet_as_seen_after_it_has_moved_and_died() {
             class: tie,
             count: 3,
             carrier: None,
+            damage: None,
         }],
         characters: vec![vader],
         is_alliance: false,

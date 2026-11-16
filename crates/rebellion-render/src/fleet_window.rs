@@ -2802,6 +2802,7 @@ fn right_items(
                             class: transit.class,
                             arrival: transit.arrival_tick,
                         },
+                        0,
                     )
                 });
             value
@@ -2813,6 +2814,9 @@ fn right_items(
                         entry.class,
                         entry.count,
                         ItemObject::Fighter { fleet, index },
+                        // A squadron with losses (+0x60) is damaged
+                        // (FUN_00503340 sets +0x50 bit 0x200).
+                        if entry.damage.is_some() { entry.count } else { 0 },
                     )
                 })
                 .chain(travelling)
@@ -2830,19 +2834,20 @@ fn right_items(
                             system: value.location,
                             class,
                         },
+                        0,
                     ))
                 }))
-                .filter_map(|(class, count, object)| {
-                    Some((world.fighter_classes.get(class)?, count, object))
+                .filter_map(|(class, count, object, damaged)| {
+                    Some((world.fighter_classes.get(class)?, count, object, damaged))
                 })
-                .flat_map(|(class, count, object)| {
-                    (0..count).map(move |_| RightItem {
+                .flat_map(|(class, count, object, damaged)| {
+                    (0..count).map(move |row| RightItem {
                         mini: fighter_mini_id(class.dat_id),
                         kind: MiniObject::Craft,
                         label: class.name.clone(),
                         no_hyperdrive: false,
                         contents: 0,
-                        damaged: false,
+                        damaged: row < damaged,
                         captive: false,
                         en_route: matches!(object, ItemObject::TravellingFighter { .. }),
                         object: Some(object),
@@ -5219,6 +5224,7 @@ pub(crate) mod tests {
             class: fighter,
             count: 3,
             carrier: None,
+            damage: None,
         });
         let troops: Vec<_> = (0..3).map(|_| add_troop(&mut world, system)).collect();
         let mut transport = TroopTransportState::default();
@@ -5360,6 +5366,7 @@ pub(crate) mod tests {
                     origin: system,
                     to: SquadronPlace::Fleet(to),
                     arrival_tick: 9,
+                    lost: Vec::new(),
                 })
                 .unwrap(),
             );
@@ -6154,6 +6161,7 @@ pub(crate) mod tests {
                 class: tie,
                 count: 2,
                 carrier: None,
+                damage: None,
             });
         let officer = world.characters.insert(rebellion_core::world::Character {
             name: "Tarkin".into(),
@@ -6897,6 +6905,7 @@ pub(crate) mod tests {
                 class: fighter,
                 count: 1,
                 carrier: None,
+                damage: None,
             });
 
         let (actions, release, held) = drag_from_tab(
@@ -7585,6 +7594,7 @@ pub(crate) mod tests {
                     class: fighter,
                     count: 1,
                     carrier: None,
+                    damage: None,
                 });
         }
         let mut state = opened(&world, system);
@@ -7678,6 +7688,7 @@ pub(crate) mod tests {
                 class: fighter,
                 count: 3,
                 carrier: None,
+                damage: None,
             });
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
@@ -8092,6 +8103,7 @@ pub(crate) mod tests {
                 origin: system,
                 to: SquadronPlace::Fleet(fleet),
                 arrival_tick: 9,
+                lost: Vec::new(),
             })
             .unwrap(),
         );
@@ -8182,6 +8194,7 @@ pub(crate) mod tests {
             class: fighter,
             count: 2,
             carrier: None,
+            damage: None,
         }];
         let transport = TroopTransportState::default();
         let squadrons = ship_cargo(&world, &transport, fleet)
@@ -8508,6 +8521,7 @@ pub(crate) mod tests {
             class: squadron,
             count: 1,
             carrier: None,
+            damage: None,
         });
         assert!(!tab_enabled(&world, &transport, &[], ship(1), FleetWindowTab::Fighters));
         world.capital_ship_classes[carrier].fighter_capacity = 1;
@@ -9006,6 +9020,35 @@ pub(crate) mod tests {
         assert!(state.begin_rename(&world, system, ship));
         assert_eq!(state.selection(system).unwrap().0, Some(ship));
         assert_eq!(state.windows[0].rename.as_ref().unwrap().item, None);
+    }
+
+    #[test]
+    fn a_squadron_with_losses_lists_with_the_damaged_mark() {
+        // FUN_00503340 sets a squadron with losses (+0x60) Damaged (+0x50
+        // bit 0x200); FUN_0042c3b0(.., 0, 1) marks its mini.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 1);
+        let wing = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0001),
+            name: "X-wing".into(),
+            is_alliance: true,
+            squadron_size: 12,
+            ..Default::default()
+        });
+        rebellion_core::squadrons::add(&mut world.fleets[fleet].fighters, wing, 1);
+        world.fleets[fleet].fighters.push(rebellion_core::world::FighterEntry {
+            class: wing,
+            count: 1,
+            carrier: None,
+            damage: Some(rebellion_core::world::SquadronDamage { lost: 2, repair: None }),
+        });
+        let transport = TroopTransportState::default();
+        let selected = Some(FleetWindowEntry::Fleet(fleet));
+        let fighters = right_items(&world, &transport, &[], selected, FleetWindowTab::Fighters);
+        assert_eq!(
+            fighters.iter().map(|item| item.damaged).collect::<Vec<_>>(),
+            [false, true]
+        );
     }
 
     #[test]
@@ -9597,6 +9640,7 @@ pub(crate) mod tests {
                 class: squadron,
                 count: 0,
                 carrier: None,
+                damage: None,
             });
         assert!(!lit(&world, FleetWindowTab::Fighters));
         world.fleets[fleet].fighters[0].count = 1;
@@ -9921,6 +9965,7 @@ pub(crate) mod tests {
             class: tie,
             count: 2,
             carrier: None,
+            damage: None,
         });
         world.fleets[imperial].capital_ships[0].hull_current = 40;
         // A second ship at full hull is not damaged (100 of 100).

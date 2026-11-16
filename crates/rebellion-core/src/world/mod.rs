@@ -1079,7 +1079,7 @@ impl Fleet {
 
 /// One entry in a fleet's or a system's fighter roster: a class, the number
 /// of squadrons, and the capital ship they ride on.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FighterEntry {
     pub class: FighterKey,
     pub count: u32,
@@ -1089,6 +1089,43 @@ pub struct FighterEntry {
     /// (`FUN_004fe160`); `None` on a system, and in a fleet for the port's
     /// squadrons not yet boarded.
     pub carrier: Option<u64>,
+    /// A squadron below full strength ([`SquadronDamage`]); `None` for
+    /// whole squadrons. An entry with damage holds one squadron
+    /// (`count` 1). The save keeps it in its own last field
+    /// (`SaveState::squadron_damage`, v126), so the world's own encoding
+    /// skips it.
+    #[serde(skip)]
+    pub damage: Option<SquadronDamage>,
+}
+
+/// A squadron's losses (`FightSquad` `+0x60` `SquadSizeDamage`): the craft
+/// it lacks of its class's size (slot `+0x244`, class `+0xc8`); the
+/// current size is `+0x244` less `+0x254` (`FUN_0040d730`). A battle sets
+/// them from the craft that came back (`FUN_0040d260`); each repair fire
+/// gives one craft back (`FUN_00503530` -> `FUN_00503400(1)`;
+/// `ghidra/notes/ship-repair.md`, `squadron-strength.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SquadronDamage {
+    /// The craft lost, above 0 and below the class's size.
+    pub lost: u32,
+    /// Its timer `0x380` while it is under repair (Damaged and Usable,
+    /// `FUN_005578d0`); `None` until the repair arms it.
+    pub repair: Option<crate::repair::RepairTimer>,
+}
+
+impl FighterEntry {
+    /// The craft each of the entry's squadrons has: the class's size less
+    /// its losses (`FUN_0040d730`).
+    #[must_use]
+    pub fn craft(&self, size: u32) -> u32 {
+        size.saturating_sub(self.lost())
+    }
+
+    /// The craft each of the entry's squadrons has lost (`+0x60`).
+    #[must_use]
+    pub fn lost(&self) -> u32 {
+        self.damage.map_or(0, |damage| damage.lost)
+    }
 }
 
 /// A single hull of a capital ship — the primary ship record in Fleet.

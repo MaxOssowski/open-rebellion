@@ -5854,8 +5854,12 @@ impl BattleSession {
         for (fighter_idx, entry) in fleet.fighters.iter().enumerate() {
             let class = &world.fighter_classes[entry.class];
             for squadron_index in 0..entry.count {
-                let squad_count = class.squadron_size;
+                // FUN_0040be90 gives FUN_005b9c60 the squadron's craft
+                // (FUN_0040d730: size less its losses +0x60) and its size
+                // (+0x244): its hull and its maximum, eight per craft.
+                let squad_count = entry.craft(class.squadron_size);
                 let hull = squad_count as f32 * ORIGINAL_FIGHTER_HULL_PER_CRAFT;
+                let hull_max = class.squadron_size as f32 * ORIGINAL_FIGHTER_HULL_PER_CRAFT;
                 fighters.push(TacticalFighter {
                     class_key: entry.class,
                     identity: TacticalObjectIdentity {
@@ -5875,7 +5879,7 @@ impl BattleSession {
                     y: 0.0,
                     squad_count,
                     hull_current: hull,
-                    hull_max: hull,
+                    hull_max,
                     shield: class.shield_strength as f32,
                     shield_max: class.shield_strength as f32,
                     weapon_arc: TacticalWeaponArc::new(

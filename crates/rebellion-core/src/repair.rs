@@ -1,5 +1,5 @@
-//! Capital ship repair: each damaged ship's timer `0x380`
-//! (`ghidra/notes/ship-repair.md`).
+//! Capital ship and squadron repair: each damaged unit's timer `0x380`
+//! (`ghidra/notes/ship-repair.md`, `ghidra/notes/squadron-strength.md`).
 //!
 //! A ship is UnderRepair while it is Damaged and Usable (`FUN_005578d0`):
 //! anywhere, as long as it does not travel. Turning the flag on arms timer
@@ -19,7 +19,9 @@
 //! - a fleet in hyperspace is in no system's list, which stands for the
 //!   ship's en route bit;
 //! - a ship still unnumbered (id 0) waits for its id;
-//! - the port keeps no partial squadron damage, so squadrons have no timer;
+//! - a squadron's timer is kept on its entry
+//!   ([`crate::world::SquadronDamage`]) and changes through
+//!   [`RepairEvent::SquadronRepaired`]; squadrons have no ids;
 //! - a fire's draws come from a `SplitMix64` stream seeded by the day and
 //!   the ship's id (the original draws from its game generator,
 //!   `FUN_005f5700`);
@@ -35,13 +37,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::dat::Faction;
 use crate::ids::{FleetKey, SystemKey};
+use crate::squadrons::SquadronPlace;
 use crate::tick::TickEvent;
-use crate::world::GameWorld;
+use crate::world::{FighterEntry, GameWorld, SquadronDamage};
 
 /// GNPRTB 2052 (2): timer `0x380`'s period with FastRepair (`FUN_005010a0`).
 const GNPRTB_FAST_REPAIR_PERIOD: u16 = 2052;
 /// GNPRTB 2053 (30): its period without.
 const GNPRTB_REPAIR_PERIOD: u16 = 2053;
+/// GNPRTB 4608 (2): a squadron's period with FastRepair (`FUN_00503140`).
+const GNPRTB_SQUADRON_FAST_REPAIR_PERIOD: u16 = 4608;
+/// GNPRTB 4609 (30): its period without.
+const GNPRTB_SQUADRON_REPAIR_PERIOD: u16 = 4609;
 
 // ---------------------------------------------------------------------------
 // Events
@@ -59,6 +66,16 @@ pub enum RepairEvent {
         /// The ship's `+0x64` hit counters after the fire.
         #[serde(default)]
         hits_after: u32,
+    },
+    /// A squadron below full strength changed: its timer was armed, rebuilt
+    /// or dropped, or a fire gave a craft back. `damage` is its new state,
+    /// `None` once it is at full strength again (`FUN_00503530`); the
+    /// entry is the `index`th of `place`'s squadrons.
+    SquadronRepaired {
+        place: SquadronPlace,
+        index: usize,
+        lost_before: u32,
+        damage: Option<SquadronDamage>,
     },
     /// Repair started for damaged ships in one fleet: their timers were
     /// armed. Never emitted for a healthy fleet.
@@ -242,6 +259,7 @@ impl RepairSystem {
                 });
             }
         }
+        squadron_repairs(world, tick, &mut events);
         // A ship no longer Damaged and Usable drops its timer
         // (FUN_005578d0 -> FUN_005577f0 off).
         state.timers.retain(|id, _| under_repair.contains(id));
@@ -250,6 +268,103 @@ impl RepairSystem {
             .retain(|fleet| repairing_now.contains(fleet));
         state.active_fleets.extend(repairing_now);
         events
+    }
+}
+
+/// The squadrons' timers `0x380`: a squadron is Damaged while it has
+/// losses (`FUN_00503340`: `+0x254` non-zero) and Usable in a fleet in a
+/// system's list or on a planet that stands; travelling it is in neither,
+/// and its timer drops (`FUN_005578d0`). The period is GNPRTB 4608 (2)
+/// with FastRepair, else 4609 (30) (slot `+0x1d8`, `FUN_00503140`); each
+/// fire gives one craft back (`FUN_00503530` -> `FUN_00503400(1)`). The
+/// squadron's side is its class's.
+fn squadron_repairs(world: &GameWorld, tick: u64, events: &mut Vec<RepairEvent>) {
+    let period = |fast: bool| {
+        u64::try_from(
+            world
+                .gnprtb
+                .value(
+                    if fast {
+                        GNPRTB_SQUADRON_FAST_REPAIR_PERIOD
+                    } else {
+                        GNPRTB_SQUADRON_REPAIR_PERIOD
+                    },
+                    world.difficulty_index,
+                )
+                .max(1),
+        )
+        .unwrap_or(1)
+    };
+    let mut places: Vec<(SquadronPlace, Option<SystemKey>, &[FighterEntry])> = Vec::new();
+    for (fleet_key, fleet) in &world.fleets {
+        let usable = world
+            .systems
+            .get(fleet.location)
+            .is_some_and(|sys| sys.fleets.contains(&fleet_key));
+        places.push((
+            SquadronPlace::Fleet(fleet_key),
+            usable.then_some(fleet.location),
+            &fleet.fighters,
+        ));
+    }
+    for (system_key, system) in &world.systems {
+        let usable = !system.is_destroyed;
+        places.push((
+            SquadronPlace::Planet(system_key),
+            usable.then_some(system_key),
+            &system.fighters,
+        ));
+    }
+    for (place, location, entries) in places {
+        for (index, entry) in entries.iter().enumerate() {
+            let Some(damage) = entry.damage else {
+                continue;
+            };
+            let changed = |damage: Option<SquadronDamage>| RepairEvent::SquadronRepaired {
+                place,
+                index,
+                lost_before: entry.lost(),
+                damage,
+            };
+            let Some(system) = location.filter(|_| entry.count > 0 && damage.lost > 0) else {
+                if damage.repair.is_some() {
+                    events.push(changed(Some(SquadronDamage {
+                        repair: None,
+                        ..damage
+                    })));
+                }
+                continue;
+            };
+            let alliance = crate::squadrons::is_alliance(world, entry.class).unwrap_or(false);
+            let fast = fast_repair(world, system, alliance);
+            let timer = match damage.repair {
+                // FUN_00557c30: a new period rebuilds the timer from today.
+                Some(timer) if timer.fast == fast => timer,
+                _ => RepairTimer {
+                    due: tick + period(fast),
+                    fast,
+                },
+            };
+            if timer.due > tick {
+                if damage.repair != Some(timer) {
+                    events.push(changed(Some(SquadronDamage {
+                        repair: Some(timer),
+                        ..damage
+                    })));
+                }
+                continue;
+            }
+            // FUN_00503530 -> FUN_00503400(1): one craft back; whole, it is
+            // no longer Damaged and its timer drops.
+            let lost = damage.lost - 1;
+            events.push(changed((lost > 0).then_some(SquadronDamage {
+                lost,
+                repair: Some(RepairTimer {
+                    due: timer.due + period(fast),
+                    fast,
+                }),
+            })));
+        }
     }
 }
 
@@ -410,7 +525,8 @@ mod tests {
                     hull_after,
                     ..
                 } => Some((*hull_before, *hull_after)),
-                RepairEvent::RepairCheckPerformed { .. } => None,
+                RepairEvent::RepairCheckPerformed { .. }
+                | RepairEvent::SquadronRepaired { .. } => None,
             })
             .collect()
     }
@@ -632,5 +748,192 @@ mod tests {
         world.systems[sys].control = ControlKind::Controlled(Faction::Empire);
         world.systems[sys].is_destroyed = true;
         assert!(!fast_repair(&world, sys, false));
+    }
+
+    /// GNPRTB 4608 = 2 and 4609 = 30, as shipped (`ship-repair.md`).
+    fn squadron_gnprtb() -> GnprtbParams {
+        GnprtbParams::uniform(&[(4608, 2), (4609, 30)])
+    }
+
+    /// An Empire squadron class of 12 craft, and one squadron of it at
+    /// `place` that has lost `lost` craft.
+    fn damaged_squadron(world: &mut GameWorld, place: SquadronPlace, lost: u32) {
+        let class = world.fighter_classes.insert(FighterClass {
+            name: "TIE Fighter".into(),
+            is_empire: true,
+            squadron_size: 12,
+            ..FighterClass::default()
+        });
+        let entry = FighterEntry {
+            class,
+            count: 1,
+            carrier: None,
+            damage: Some(SquadronDamage { lost, repair: None }),
+        };
+        match place {
+            SquadronPlace::Fleet(fleet) => world.fleets[fleet].fighters.push(entry),
+            SquadronPlace::Planet(system) => world.systems[system].fighters.push(entry),
+        }
+    }
+
+    /// Run the repair on `days`, applying its squadron events as the
+    /// integrator does; returns each day's squadron events.
+    fn run_squadrons(
+        world: &mut GameWorld,
+        days: std::ops::RangeInclusive<u64>,
+    ) -> Vec<(u64, RepairEvent)> {
+        let mut state = RepairState::default();
+        let mut seen = Vec::new();
+        for tick in days {
+            for event in RepairSystem::advance(&mut state, world, &day(tick)) {
+                if let RepairEvent::SquadronRepaired {
+                    place,
+                    index,
+                    damage,
+                    ..
+                } = event
+                {
+                    crate::squadrons::set_damage(world, place, index, damage);
+                    seen.push((tick, event));
+                }
+            }
+        }
+        seen
+    }
+
+    /// The days a craft came back, with the losses left after it.
+    fn regained(events: &[(u64, RepairEvent)]) -> Vec<(u64, u32)> {
+        events
+            .iter()
+            .filter_map(|(tick, event)| match event {
+                RepairEvent::SquadronRepaired {
+                    lost_before,
+                    damage,
+                    ..
+                } => {
+                    let after = damage.map_or(0, |value| value.lost);
+                    (after < *lost_before).then_some((*tick, after))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_squadron_regains_one_craft_every_two_days_at_its_sides_shipyard() {
+        // FUN_00503140: GNPRTB 4608 (2) with FastRepair (FUN_0050c580); each
+        // fire FUN_00503530 -> FUN_00503400(1) gives one craft back.
+        let mut world = GameWorld {
+            gnprtb: squadron_gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, true);
+        let fleet = fleet(&mut world, sys, 200);
+        damaged_squadron(&mut world, SquadronPlace::Fleet(fleet), 3);
+
+        let events = run_squadrons(&mut world, 1..=12);
+        assert_eq!(regained(&events), [(3, 2), (5, 1), (7, 0)]);
+        // The first day arms the timer.
+        assert!(matches!(
+            events[0],
+            (
+                1,
+                RepairEvent::SquadronRepaired {
+                    lost_before: 3,
+                    damage: Some(SquadronDamage {
+                        lost: 3,
+                        repair: Some(RepairTimer { due: 3, fast: true })
+                    }),
+                    ..
+                }
+            )
+        ));
+        // Whole, it is no longer Damaged (FUN_00503340) and its timer drops:
+        // the last event is the one that clears it, once.
+        let cleared = events
+            .iter()
+            .filter(|(_, event)| {
+                matches!(event, RepairEvent::SquadronRepaired { lost_before, damage: None, .. } if *lost_before > 0)
+            })
+            .count();
+        assert_eq!(cleared, 1);
+        assert_eq!(events.last().map(|(tick, _)| *tick), Some(7));
+        assert_eq!(world.fleets[fleet].fighters[0].damage, None);
+    }
+
+    #[test]
+    fn away_from_a_shipyard_a_planets_squadron_regains_a_craft_every_thirty_days() {
+        // FUN_00503140: GNPRTB 4609 (30) without FastRepair. A squadron on
+        // a planet is Usable and repairs there (FUN_005578d0).
+        let mut world = GameWorld {
+            gnprtb: squadron_gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, false);
+        damaged_squadron(&mut world, SquadronPlace::Planet(sys), 2);
+
+        let events = run_squadrons(&mut world, 1..=70);
+        assert_eq!(regained(&events), [(31, 1), (61, 0)]);
+        assert_eq!(world.systems[sys].fighters[0].damage, None);
+    }
+
+    #[test]
+    fn a_new_period_rebuilds_a_squadrons_timer_and_an_emptied_entry_has_none() {
+        // FUN_00557860 -> FUN_00557c30: FastRepair changing rebuilds the
+        // timer from that day (GNPRTB 4609 -> 4608). An entry with no
+        // squadron left is no unit, so its timer drops.
+        let mut world = GameWorld {
+            gnprtb: squadron_gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, false);
+        let fleet = fleet(&mut world, sys, 200);
+        damaged_squadron(&mut world, SquadronPlace::Fleet(fleet), 2);
+        run_squadrons(&mut world, 1..=1);
+        assert_eq!(
+            world.fleets[fleet].fighters[0].damage.and_then(|d| d.repair),
+            Some(RepairTimer { due: 31, fast: false })
+        );
+        let yard = world.manufacturing_facilities.insert(ManufacturingFacilityInstance {
+            class_dat_id: DatId::new(0x2800_0001),
+            side: Faction::Empire,
+            is_shipyard: true,
+        });
+        world.systems[sys].manufacturing_facilities.push(yard);
+        let events = run_squadrons(&mut world, 5..=7);
+        assert_eq!(regained(&events), [(7, 1)]);
+
+        world.fleets[fleet].fighters[0].count = 0;
+        run_squadrons(&mut world, 8..=8);
+        assert_eq!(
+            world.fleets[fleet].fighters[0].damage,
+            Some(SquadronDamage { lost: 1, repair: None })
+        );
+    }
+
+    #[test]
+    fn a_travelling_squadron_drops_its_timer_and_a_whole_one_has_none() {
+        // FUN_005578d0: not Usable while its fleet travels (in no system's
+        // list), so UnderRepair goes off and the timer with it.
+        let mut world = GameWorld {
+            gnprtb: squadron_gnprtb(),
+            ..GameWorld::default()
+        };
+        let sys = system(&mut world, true);
+        let fleet = fleet(&mut world, sys, 200);
+        damaged_squadron(&mut world, SquadronPlace::Fleet(fleet), 1);
+        let class = world.fleets[fleet].fighters[0].class;
+        crate::squadrons::add(&mut world.fleets[fleet].fighters, class, 2);
+        run_squadrons(&mut world, 1..=1);
+        assert!(world.fleets[fleet].fighters[0].damage.and_then(|d| d.repair).is_some());
+        assert_eq!(world.fleets[fleet].fighters[1].damage, None);
+
+        world.systems[sys].fleets.clear();
+        let events = run_squadrons(&mut world, 2..=40);
+        assert!(regained(&events).is_empty());
+        assert_eq!(
+            world.fleets[fleet].fighters[0].damage,
+            Some(SquadronDamage { lost: 1, repair: None })
+        );
     }
 }

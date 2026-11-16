@@ -32,7 +32,7 @@ use rebellion_core::game_events::{
     EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
     EVT_ADRIFT_ORDERED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
-    EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED,
+    EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SQUADRON_REPAIRED,
     EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
     EVT_UPRISING_SUPPORT,
@@ -1934,6 +1934,25 @@ impl PerceptionIntegrator {
                             "delta": hull_after - hull_before,
                         }),
                     );
+                }
+                RepairEvent::SquadronRepaired {
+                    place,
+                    index,
+                    lost_before,
+                    damage,
+                } => {
+                    rebellion_core::squadrons::set_damage(world, *place, *index, *damage);
+                    let lost_after = damage.map_or(0, |value| value.lost);
+                    if lost_after < *lost_before {
+                        self.emit(
+                            SYS_REPAIR,
+                            EVT_SQUADRON_REPAIRED,
+                            serde_json::json!({
+                                "lost_before": lost_before,
+                                "lost_after": lost_after,
+                            }),
+                        );
+                    }
                 }
                 RepairEvent::RepairCheckPerformed {
                     system,
@@ -5601,12 +5620,24 @@ pub fn apply_space_combat_result_inner(
 
     // Apply fighter attrition before testing whether either fleet is empty.
     // `fighter_index` maps directly to the roster snapshot used by combat.
+    // FUN_0040d260: each surviving squadron's losses (+0x60) from the craft
+    // that came back.
     for evt in &result.fighter_losses {
-        if let Some(fleet) = world.fleets.get_mut(evt.fleet) {
-            if let Some(entry) = fleet.fighters.get_mut(evt.fighter_index) {
-                entry.count = evt.squads_after;
-            }
-        }
+        let Some(fleet) = world.fleets.get_mut(evt.fleet) else {
+            continue;
+        };
+        let size = fleet
+            .fighters
+            .get(evt.fighter_index)
+            .and_then(|entry| world.fighter_classes.get(entry.class))
+            .map_or(0, |class| class.squadron_size);
+        rebellion_core::squadrons::apply_battle_craft(
+            &mut fleet.fighters,
+            evt.fighter_index,
+            size,
+            evt.squads_after,
+            &evt.craft_after,
+        );
     }
 
     // Remove dead ships and empty fleets: the two named fleets and every
@@ -5743,6 +5774,102 @@ mod combat_application_tests {
     }
 
     #[test]
+    fn a_squadrons_repair_sets_its_losses_and_records_only_a_craft_regained() {
+        // FUN_00503530: a fire gives one craft back; arming the timer
+        // (FUN_005578d0) changes no losses and records nothing.
+        use rebellion_core::repair::{RepairEvent, RepairTimer};
+        use rebellion_core::squadrons::SquadronPlace;
+        use rebellion_core::world::SquadronDamage;
+        let mut world = GameWorld::default();
+        let fleet = world.fleets.insert(Fleet {
+            location: SystemKey::default(),
+            capital_ships: vec![],
+            fighters: vec![FighterEntry {
+                class: FighterKey::default(),
+                count: 1,
+                carrier: None,
+                damage: Some(SquadronDamage { lost: 2, repair: None }),
+            }],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let place = SquadronPlace::Fleet(fleet);
+        let armed = Some(SquadronDamage {
+            lost: 2,
+            repair: Some(RepairTimer { due: 3, fast: true }),
+        });
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.apply_repair_events(
+            &mut world,
+            &[RepairEvent::SquadronRepaired { place, index: 0, lost_before: 2, damage: armed }],
+        );
+        assert_eq!(world.fleets[fleet].fighters[0].damage, armed);
+        assert!(integrator.events.is_empty());
+        integrator.apply_repair_events(
+            &mut world,
+            &[RepairEvent::SquadronRepaired { place, index: 0, lost_before: 2, damage: None }],
+        );
+        assert_eq!(world.fleets[fleet].fighters[0].damage, None);
+        assert_eq!(integrator.events.len(), 1);
+        assert_eq!(integrator.events[0].event_type, EVT_SQUADRON_REPAIRED);
+        assert_eq!(integrator.events[0].details["lost_after"], 0);
+    }
+
+    #[test]
+    fn a_battle_leaves_each_surviving_squadron_its_lost_craft() {
+        // FUN_0040c780 -> FUN_0040d260: each squadron's losses (+0x60) are
+        // its size less the craft that came back.
+        let mut world = GameWorld::default();
+        let wing = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            is_alliance: true,
+            squadron_size: 12,
+            ..rebellion_core::world::FighterClass::default()
+        });
+        let fleet = world.fleets.insert(Fleet {
+            location: SystemKey::default(),
+            capital_ships: vec![],
+            fighters: vec![FighterEntry {
+                class: wing,
+                count: 3,
+                carrier: None,
+                damage: None,
+            }],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let result = SpaceCombatResult {
+            attacker_fleet: fleet,
+            defender_fleet: fleet,
+            system: SystemKey::default(),
+            winner: CombatSide::Attacker,
+            ship_damage: vec![],
+            fighter_losses: vec![FighterLossEvent {
+                fleet,
+                fighter_index: 0,
+                squads_before: 3,
+                squads_after: 2,
+                craft_after: vec![12, 9],
+            }],
+            tick: 1,
+        };
+
+        apply_space_combat_result_inner(&result, &mut world, &[]);
+
+        let fighters = &world.fleets[fleet].fighters;
+        assert_eq!(rebellion_core::squadrons::total(fighters), 2);
+        assert_eq!((fighters[0].count, fighters[0].damage), (1, None));
+        assert_eq!(
+            fighters[1].damage,
+            Some(rebellion_core::world::SquadronDamage { lost: 3, repair: None })
+        );
+        assert_eq!(fighters[1].craft(12), 9);
+    }
+
+    #[test]
     fn fighter_losses_update_rosters_and_set_the_defeated_fleets_officers_adrift() {
         let mut world = GameWorld::default();
         let attacker = world.fleets.insert(Fleet {
@@ -5752,6 +5879,7 @@ mod combat_application_tests {
                 class: FighterKey::default(),
                 count: 4,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -5765,6 +5893,7 @@ mod combat_application_tests {
                 class: FighterKey::default(),
                 count: 3,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -5790,12 +5919,14 @@ mod combat_application_tests {
                     fighter_index: 0,
                     squads_before: 4,
                     squads_after: 2,
+                    craft_after: Vec::new(),
                 },
                 FighterLossEvent {
                     fleet: defender,
                     fighter_index: 0,
                     squads_before: 3,
                     squads_after: 0,
+                    craft_after: Vec::new(),
                 },
             ],
             tick: 1,
@@ -5838,6 +5969,7 @@ mod combat_application_tests {
                 class: FighterKey::default(),
                 count: 4,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -5851,6 +5983,7 @@ mod combat_application_tests {
                 class: FighterKey::default(),
                 count: 3,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -5876,6 +6009,7 @@ mod combat_application_tests {
                 fighter_index: 0,
                 squads_before: 3,
                 squads_after: 0,
+                craft_after: Vec::new(),
             }],
             tick: 4,
         };

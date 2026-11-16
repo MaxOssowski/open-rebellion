@@ -927,10 +927,8 @@ fn class_rows(
 }
 
 /// The Fighter Squadron Status rows (`FUN_004444c0`), for the fleet's
-/// squadron entry at `index`. It has no "Status:" row.
-///
-/// port: the port counts whole squadrons and keeps no losses (`+0x60`), so
-/// each "current" is its maximum.
+/// squadron entry at `index`. It has no "Status:" row; each current value
+/// is the maximum less the squadron's losses (`+0x60`).
 #[must_use]
 pub fn fighter_rows(
     sources: StatusSources<'_>,
@@ -950,12 +948,13 @@ pub fn fighter_rows(
         aboard_label(world, fleet_key, seat).unwrap_or_default(),
     )];
     eta(&mut rows, fleet_arrival(sources, fleet_key));
-    squadron_class_rows(&mut rows, class);
+    squadron_class_rows(&mut rows, class, entry.lost());
     Some(rows)
 }
 
 /// [`fighter_rows`] for a squadron of `class` on `system`'s planet: it is
-/// attached to the system.
+/// attached to the system. port: the planet's squadrons are named by
+/// class, so the rows show the first one of the class.
 #[must_use]
 pub fn planet_fighter_rows(
     sources: StatusSources<'_>,
@@ -964,9 +963,14 @@ pub fn planet_fighter_rows(
 ) -> Option<Vec<StatusRow>> {
     let world = sources.world;
     let value = world.systems.get(system)?;
+    let lost = value
+        .fighters
+        .iter()
+        .find(|entry| entry.class == class && entry.count > 0)
+        .map_or(0, rebellion_core::world::FighterEntry::lost);
     let class = world.fighter_classes.get(class)?;
     let mut rows = vec![row("Attached: ", value.name.clone())];
-    squadron_class_rows(&mut rows, class);
+    squadron_class_rows(&mut rows, class, lost);
     Some(rows)
 }
 
@@ -1006,16 +1010,28 @@ pub fn travelling_fighter_rows(
     let class = world.fighter_classes.get(class)?;
     let mut rows = vec![row("Attached: ", attached)];
     eta(&mut rows, Some(arrival));
-    squadron_class_rows(&mut rows, class);
+    squadron_class_rows(&mut rows, class, 0);
     Some(rows)
 }
 
-fn squadron_class_rows(rows: &mut Vec<StatusRow>, class: &rebellion_core::world::FighterClass) {
+/// `FUN_004444c0`'s class rows for a squadron that has lost `lost` craft
+/// (`+0x254`, `FUN_00503100`): each is the class value times the size
+/// (`+0x1e0`, `+0x1f8`, `+0x23c`) less the value times the losses
+/// (`+0x204`, `+0x21c`, `+0x24c`), over the first; the bombardment value
+/// loses `value x losses / size` (`FUN_00503110`).
+fn squadron_class_rows(
+    rows: &mut Vec<StatusRow>,
+    class: &rebellion_core::world::FighterClass,
+    lost: u32,
+) {
     let size = class.squadron_size;
-    let full = |per_craft: u32| ratio(per_craft * size, per_craft * size);
+    let lost = lost.min(size);
+    let full = |per_craft: u32| ratio(per_craft * size - per_craft * lost, per_craft * size);
+    let bombardment = class.bombardment_defense;
+    let bombardment_lost = if size == 0 { 0 } else { bombardment * lost / size };
     rows.extend([
         row("Maintenance Cost:", class.maintenance_cost.to_string()),
-        row("Squadron Size:", ratio(size, size)),
+        row("Squadron Size:", ratio(size - lost, size)),
         row("Hyperdrive Rating:", class.hyperdrive.to_string()),
         row("Maximum Shield Strength:", full(class.shield_strength)),
         row("Sub-Light Engine Rating:", class.sub_light_engine.to_string()),
@@ -1023,7 +1039,7 @@ fn squadron_class_rows(rows: &mut Vec<StatusRow>, class: &rebellion_core::world:
         row("Detection Rating:", class.detection.to_string()),
         row(
             "Bombardment Value:",
-            ratio(class.bombardment_defense, class.bombardment_defense),
+            ratio(bombardment - bombardment_lost, bombardment),
         ),
         heading("Weapons Rating:"),
         row(" Laser Rating:", full(class.laser_cannon_attack_strength)),
@@ -1181,7 +1197,7 @@ fn viewed_unit_view(
             let fighter = world.fighter_classes.values().find(|value| value.dat_id == class)?;
             let mut rows = vec![row("Attached: ", system_name(world, system))];
             eta(&mut rows, arrival);
-            squadron_class_rows(&mut rows, fighter);
+            squadron_class_rows(&mut rows, fighter, 0);
             let portrait = picture(fighter_mini_id(class));
             Some(StatusView {
                 marks: craft_marks(portrait, arrival.is_some(), false),
@@ -1738,9 +1754,15 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         }
         StatusObject::Fighter { fleet, index } => {
             let value = world.fleets.get(fleet)?;
-            let class = world.fighter_classes.get(value.fighters.get(index)?.class)?;
+            let entry = value.fighters.get(index)?;
+            let class = world.fighter_classes.get(entry.class)?;
             let portrait = picture(fighter_mini_id(class.dat_id));
-            let marks = craft_marks(portrait, fleet_arrival(sources, fleet).is_some(), false);
+            // A squadron with losses is damaged (FUN_00503340).
+            let marks = craft_marks(
+                portrait,
+                fleet_arrival(sources, fleet).is_some(),
+                entry.damage.is_some(),
+            );
             StatusView {
                 marks,
                 ..view(
@@ -2255,6 +2277,7 @@ mod tests {
                 class: fighter,
                 count: 4,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![character],
             is_alliance: true,
@@ -2516,6 +2539,7 @@ mod tests {
                 origin: here,
                 to: rebellion_core::squadrons::SquadronPlace::Fleet(fleet),
                 arrival_tick: 20,
+                lost: Vec::new(),
             })
             .unwrap(),
         );
@@ -2778,6 +2802,66 @@ mod tests {
                 ("Maximum Shield Strength:", "60:60"),
             ]
         );
+    }
+
+    #[test]
+    fn a_squadron_with_losses_shows_its_current_values_over_the_maximum() {
+        // FUN_004444c0: Squadron Size is +0x244 less +0x254 (FUN_00503100,
+        // the losses +0x60) over +0x244; each rating is the class value
+        // times the size less it times the losses (+0x1e0 less +0x204), and
+        // bombardment loses value x losses / size (FUN_00503110 ->
+        // FUN_0053e170, truncated). A squadron with losses is damaged
+        // (FUN_00503340): its portrait takes the + 0x2000 mark.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, here);
+        let class = world.fleets[fleet].fighters[0].class;
+        world.fighter_classes[class].bombardment_defense = 10;
+        world.fighter_classes[class].laser_cannon_attack_strength = 2;
+        world.fleets[fleet].fighters[0].damage = Some(rebellion_core::world::SquadronDamage {
+            lost: 5,
+            repair: None,
+        });
+        let states = States::new();
+
+        let rows = fighter_rows(states.sources(&world), fleet, 0).unwrap();
+        let shown = super::tests::rows(&rows);
+        for expected in [
+            ("Squadron Size:", "7:12"),
+            ("Maximum Shield Strength:", "35:60"),
+            ("Bombardment Value:", "6:10"),
+            (" Laser Rating:", "14:24"),
+        ] {
+            assert!(shown.contains(&expected), "{expected:?} in {shown:?}");
+        }
+        let view = status_view(states.sources(&world), StatusObject::Fighter { fleet, index: 0 })
+            .unwrap();
+        assert!(view.marks.iter().any(|(_, id)| id & 0x2000 != 0));
+    }
+
+    #[test]
+    fn a_planets_squadron_shows_the_losses_of_the_first_of_its_class() {
+        // FUN_004444c0 on a planet's squadron: port, named by class, the
+        // first squadron of the class still there (+0x60 of that one).
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
+        let fleet = carrier_fleet(&mut world, here);
+        let damaged_class = world.fleets[fleet].fighters[0].class;
+        let other = world.fighter_classes.insert(world.fighter_classes[damaged_class].clone());
+        let entry = |class, count, lost| rebellion_core::world::FighterEntry {
+            class,
+            count,
+            carrier: None,
+            damage: (lost > 0).then_some(rebellion_core::world::SquadronDamage { lost, repair: None }),
+        };
+        world.systems[here].fighters =
+            vec![entry(other, 1, 0), entry(damaged_class, 0, 0), entry(damaged_class, 1, 5)];
+        let states = States::new();
+        let size = |class| {
+            planet_fighter_rows(states.sources(&world), here, class).unwrap()[2].value.clone()
+        };
+        assert_eq!(size(damaged_class), "7:12");
+        assert_eq!(size(other), "12:12");
     }
 
     #[test]
@@ -3193,8 +3277,8 @@ mod tests {
         let class = world.fleets[fleet].fighters[0].class;
         let ids: Vec<u64> = world.fleets[fleet].capital_ships.iter().map(|ship| ship.id).collect();
         world.fleets[fleet].fighters = vec![
-            FighterEntry { class, count: 1, carrier: Some(ids[1]) },
-            FighterEntry { class, count: 1, carrier: Some(ids[0]) },
+            FighterEntry { class, count: 1, carrier: Some(ids[1]), damage: None },
+            FighterEntry { class, count: 1, carrier: Some(ids[0]), damage: None },
         ];
         let states = States::new();
         let attached =
@@ -4047,6 +4131,7 @@ mod tests {
                 origin: here,
                 to: rebellion_core::squadrons::SquadronPlace::Planet(there),
                 arrival_tick: 20,
+                lost: Vec::new(),
             })
             .unwrap(),
         );
@@ -4097,6 +4182,7 @@ mod tests {
                     origin: here,
                     to: SquadronPlace::Fleet(fleet),
                     arrival_tick: arrival,
+                    lost: Vec::new(),
                 })
                 .unwrap(),
             );
@@ -4457,6 +4543,7 @@ mod tests {
             class: x_wing,
             count: 1,
             carrier: None,
+            damage: None,
         });
         let class = |world: &mut GameWorld, id, maintenance_cost| {
             catalog(world, id, "Class", BuildableClass {

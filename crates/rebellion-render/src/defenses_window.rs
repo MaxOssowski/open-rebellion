@@ -2826,6 +2826,7 @@ mod tests {
             origin: other,
             to,
             arrival_tick: 77,
+            lost: Vec::new(),
         };
         let squadrons = [
             transit(xwing, 2, SquadronPlace::Planet(system)),

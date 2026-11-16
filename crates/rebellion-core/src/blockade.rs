@@ -1271,6 +1271,7 @@ mod tests {
                 class: fighter,
                 count: squadrons,
                 carrier: None,
+                damage: None,
             }],
             characters: vec![],
             is_alliance: false,

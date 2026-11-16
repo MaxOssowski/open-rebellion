@@ -2450,6 +2450,7 @@ mod tests {
                 class: crate::ids::FighterKey::default(),
                 count: 2,
                 carrier: None,
+                damage: None,
             });
         crate::squadrons::add(&mut world.systems[here].fighters, tie, 1);
         imperial_fleet(&mut world, there, false);

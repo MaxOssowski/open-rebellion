@@ -813,6 +813,10 @@ impl LiveCampaign<'_> {
             player_agent: self.player_agent.clone(),
             object_views: self.world.object_views.clone(),
             products: self.world.products.clone(),
+            squadron_damage: rebellion_core::squadrons::damaged_squadrons(
+                self.world,
+                &self.troop_transport.squadrons,
+            ),
         }
     }
 
@@ -856,6 +860,11 @@ impl LiveCampaign<'_> {
         *self.player_agent = state.player_agent;
         self.world.object_views = state.object_views;
         self.world.products = state.products;
+        rebellion_core::squadrons::restore_damaged_squadrons(
+            self.world,
+            &mut self.troop_transport.squadrons,
+            &state.squadron_damage,
+        );
     }
 }
 
@@ -2100,8 +2109,8 @@ async fn main() {
             &interface_test_fixture::personnel_arrivals(request, &world),
             &message_texts,
         );
-        // Recruitment Done (FUN_0048ae40) and Capital Ship Repaired
-        // (FUN_00499de0), for the player's side.
+        // Recruitment Done (FUN_0048ae40), Capital Ship Repaired and
+        // Squadron at Full Strength (FUN_00499de0), for the player's side.
         if let Some(alliance) = interface_test_fixture::recruitment_done(request) {
             if let Some(message) =
                 rebellion_render::story_messages::recruitment_done_message(alliance, 0, &message_texts)
@@ -2111,6 +2120,15 @@ async fn main() {
         }
         if let Some((fleet, index)) = interface_test_fixture::repaired_ship(request, &world) {
             if let Some(message) = ship_repaired_message(&world, fleet, index, 0, &message_texts) {
+                msg_log.push(message);
+            }
+        }
+        if let Some((place, index)) =
+            interface_test_fixture::full_strength_squadron(request, &world)
+        {
+            if let Some(message) =
+                squadron_full_strength_message(&world, place, index, 0, &message_texts)
+            {
                 msg_log.push(message);
             }
         }
@@ -4542,35 +4560,56 @@ async fn main() {
 
             // ── Repair ──────────────────────────────────────────────────────
             let repair_events = RepairSystem::advance(&mut repair_state, &world, &tick_events);
-            for evt in &repair_events {
-                if let RepairEvent::ShipRepaired {
-                    fleet,
-                    ship_index,
-                    hull_after,
-                    hits_after,
-                    ..
-                } = evt
-                {
-                    let was_damaged = ship_damaged(&world, *fleet, *ship_index);
-                    if let Some(f) = world.fleets.get_mut(*fleet) {
-                        if let Some(ship) = f.capital_ships.get_mut(*ship_index) {
-                            ship.hull_current = *hull_after;
-                            ship.subsystem_hits = *hits_after;
-                        }
+            let repair_tick = tick_events.last().map_or(0, |event| event.tick);
+            let ships_damaged: Vec<Option<bool>> = repair_events
+                .iter()
+                .map(|evt| match evt {
+                    RepairEvent::ShipRepaired { fleet, ship_index, .. } => {
+                        ship_damaged(&world, *fleet, *ship_index)
                     }
+                    _ => None,
+                })
+                .collect();
+            rebellion_data::integrator::PerceptionIntegrator::new(repair_tick, 0)
+                .apply_repair_events(&mut world, &repair_events);
+            for (evt, was_damaged) in repair_events.iter().zip(ships_damaged) {
+                match evt {
                     // The damage flag clearing posts 0x106: Capital Ship
                     // Repaired (FUN_00499de0).
-                    if was_damaged == Some(true) && ship_damaged(&world, *fleet, *ship_index) == Some(false) {
-                        if let Some(message) = ship_repaired_message(
+                    RepairEvent::ShipRepaired { fleet, ship_index, .. } => {
+                        if was_damaged == Some(true)
+                            && ship_damaged(&world, *fleet, *ship_index) == Some(false)
+                        {
+                            if let Some(message) = ship_repaired_message(
+                                &world,
+                                *fleet,
+                                *ship_index,
+                                repair_tick,
+                                &message_texts,
+                            ) {
+                                msg_log.push(message);
+                            }
+                        }
+                    }
+                    // A squadron's losses reaching 0 clear its damage flag
+                    // (FUN_00503340): Squadron at Full Strength (FUN_00499de0).
+                    RepairEvent::SquadronRepaired {
+                        place,
+                        index,
+                        lost_before,
+                        damage: None,
+                    } if *lost_before > 0 => {
+                        if let Some(message) = squadron_full_strength_message(
                             &world,
-                            *fleet,
-                            *ship_index,
-                            tick_events.last().map_or(0, |event| event.tick),
+                            *place,
+                            *index,
+                            repair_tick,
                             &message_texts,
                         ) {
                             msg_log.push(message);
                         }
                     }
+                    _ => {}
                 }
             }
 
@@ -14763,6 +14802,59 @@ fn ship_repaired_message(
     ))
 }
 
+/// Notification `0x106` with the damage flag cleared for a squadron,
+/// Squadron at Full Strength (`FUN_00499de0`, class `0x65bb88`, `+0x28` 9):
+/// TEXTSTRA `0x7040` / `0x7042` naming the squadron and its container, to
+/// the squadron's side, the squadron's own picture (`FUN_004c5000`), sound
+/// `0x457 + (side != 1)`. A squadron aboard a capital ship names the ship's
+/// fleet on the Fleet rail (`+0x34` = `0x80`); one on a planet names the
+/// system on the Defense rail (`0x40`).
+fn squadron_full_strength_message(
+    world: &GameWorld,
+    place: rebellion_core::squadrons::SquadronPlace,
+    index: usize,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    use rebellion_core::squadrons::SquadronPlace;
+    let (entry, system, container, rail) = match place {
+        SquadronPlace::Fleet(fleet) => {
+            let value = world.fleets.get(fleet)?;
+            (
+                value.fighters.get(index)?,
+                value.location,
+                rebellion_render::system_window::fleet_label(world, fleet).unwrap_or_default(),
+                MessageRail::Fleet,
+            )
+        }
+        SquadronPlace::Planet(system) => {
+            let value = world.systems.get(system)?;
+            (
+                value.fighters.get(index)?,
+                system,
+                value.name.clone(),
+                MessageRail::Defense,
+            )
+        }
+    };
+    let class = world.fighter_classes.get(entry.class)?;
+    let alliance = rebellion_core::squadrons::is_alliance(world, entry.class)?;
+    let (title, text) =
+        rebellion_render::story_messages::repaired_texts(&class.name, &container, true, texts)?;
+    Some(filed(
+        GameMessage::at_system(tick, text, MessageCategory::Combat, system)
+            .with_title(title)
+            .with_picture_if(pictures::deployed(
+                world,
+                rebellion_core::manufacturing::BuildableKind::Fighter(entry.class),
+            ))
+            .with_sounds(MessageSounds::repaired(true, alliance))
+            .with_advisor_event(9),
+        rail,
+        Some(RailAudience::side(alliance)),
+    ))
+}
+
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
     continuing: bool,
@@ -16275,11 +16367,13 @@ mod tactical_ground_tests {
                     class: fighter_class,
                     count: 12,
                     carrier: None,
+                    damage: None,
                 },
                 FighterEntry {
                     class: fighter_class,
                     count: 12,
                     carrier: None,
+                    damage: None,
                 },
             ],
             characters: vec![],
@@ -18759,6 +18853,89 @@ mod character_health_tests {
         assert_eq!(placed.system, Some(rebellion_core::ids::SystemKey::default()));
         assert!(!placed.unplaced_target);
         assert_eq!(placed.picture.map(|p| p.background), Some(0x3f6));
+    }
+
+    #[test]
+    fn a_squadron_back_at_full_strength_reports_to_its_side_by_its_container() {
+        // FUN_00499de0, a squadron (families 0x1c..0x1f): TEXTSTRA 0x7040 /
+        // 0x7042 name it and its container, +0x30 0x457 + (side != 1),
+        // +0x28 9; aboard a ship it names the ship's fleet on the Fleet rail
+        // (+0x34 0x80), on a planet the system on the Defense rail (0x40).
+        use rebellion_core::squadrons::SquadronPlace;
+        use rebellion_core::world::{FighterClass, FighterEntry, Fleet};
+        let texts: std::collections::HashMap<u16, String> = [
+            (0x7040, "Squadron at Full Strength"),
+            (0x7042, "The {1:1} Squadron attached to {2:1} has replaced all fighters lost in combat."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mut world = GameWorld::default();
+        let system = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0000),
+            name: "Kuat".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        let tie = world.fighter_classes.insert(FighterClass {
+            name: "TIE Fighter".into(),
+            is_empire: true,
+            squadron_size: 12,
+            ..FighterClass::default()
+        });
+        let entry = FighterEntry { class: tie, count: 1, carrier: None, damage: None };
+        world.systems[system].fighters.push(entry.clone());
+        let fleet = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![entry],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[system].fleets.push(fleet);
+
+        let planet =
+            squadron_full_strength_message(&world, SquadronPlace::Planet(system), 0, 5, &texts)
+                .unwrap();
+        assert_eq!(planet.title.as_deref(), Some("Squadron at Full Strength"));
+        assert_eq!(
+            planet.text,
+            "The TIE Fighter Squadron attached to Kuat has replaced all fighters lost in combat."
+        );
+        assert_eq!(planet.rail, Some(MessageRail::Defense));
+        assert_eq!(planet.audience, RailAudience::Empire);
+        assert_eq!(planet.sounds.strategy, 0x458);
+        assert_eq!(planet.system, Some(system));
+
+        let aboard =
+            squadron_full_strength_message(&world, SquadronPlace::Fleet(fleet), 0, 5, &texts)
+                .unwrap();
+        assert_eq!(aboard.rail, Some(MessageRail::Fleet));
+        let label = rebellion_render::system_window::fleet_label(&world, fleet).unwrap_or_default();
+        assert!(aboard.text.contains(&format!("attached to {label} has")), "{}", aboard.text);
+        assert!(squadron_full_strength_message(&world, SquadronPlace::Fleet(fleet), 1, 5, &texts)
+            .is_none());
     }
 
     #[test]
