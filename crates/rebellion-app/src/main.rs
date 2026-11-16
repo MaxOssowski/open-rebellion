@@ -2162,6 +2162,45 @@ async fn main() {
                 msg_log.push(message.with_picture_if(holder.and_then(pictures::near_uprising)));
             }
         }
+        // A0 2026-11-16-empire-hunt h-30..h-50: Uprising Begins / Ends
+        // (FUN_00499460, notification 0x14b) as the live uprising path
+        // files them, by the holder at filing.
+        for (name, holder, begins) in interface_test_fixture::uprising_messages(request) {
+            let Some(at) = world
+                .systems
+                .iter()
+                .find(|(_, system)| system.name == name)
+                .map(|(key, _)| key)
+            else {
+                continue;
+            };
+            let Some((title, body)) = rebellion_render::story_messages::uprising_texts(
+                name,
+                Some(holder),
+                begins,
+                &message_texts,
+            ) else {
+                continue;
+            };
+            let picture = if begins {
+                Some(pictures::uprising_begins())
+            } else {
+                pictures::uprising_ends(holder)
+            };
+            let message = GameMessage::at_system(0, body, MessageCategory::Diplomacy, at)
+                .with_picture_if(picture)
+                .with_sounds(MessageSounds::uprising(begins))
+                .with_advisor_events(
+                    uprising_event(Some(holder), Faction::Alliance, begins),
+                    uprising_event(Some(holder), Faction::Empire, begins),
+                )
+                .with_title(title);
+            msg_log.push(filed(
+                message,
+                MessageRail::PopularSupport,
+                Some(RailAudience::Both),
+            ));
+        }
         // A0 message-index/category-1-day228: Corellia, then Commenor, joins
         // the Empire, as the Alliance reads it.
         for (name, tick) in interface_test_fixture::systems_joining_the_empire(request) {

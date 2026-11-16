@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 133;
+const SCENARIO_COUNT: u8 = 134;
 
 
 extern "C" {
@@ -525,6 +525,14 @@ pub enum Scenario {
     /// game, day 1268..1716, OBJ-13-C007). The report is filed on the
     /// Conflict rail and not opened, as A0 read it from the index (v-18).
     HeadquartersTaken = 132,
+    /// The Empire's Popular Support rail with three Uprising messages
+    /// (`FUN_00499460`, notification `0x14b`) filed, as A0 2026-11-16-
+    /// empire-hunt (slot 5, an Empire game, day 153..368) lists them:
+    /// "Uprising Begins on Selonia" on Imperial Selonia (h-30, h-37, h-38),
+    /// "Uprising Ends on Selonia" after Selonia left the Empire (h-33, h-34)
+    /// and "Uprising Begins on Yavin" on Imperial Yavin (h-49, h-50). None
+    /// is opened (EVT-01-C005).
+    UprisingMessages = 133,
 }
 
 impl Scenario {
@@ -663,6 +671,7 @@ impl Scenario {
             130 => Self::ShipShieldHit,
             131 => Self::SpecialForceAboard,
             132 => Self::HeadquartersTaken,
+            133 => Self::UprisingMessages,
             _ => return None,
         })
     }
@@ -6822,6 +6831,25 @@ pub fn near_uprisings(request: FixtureRequest) -> Vec<&'static str> {
     vec!["Umgul"]
 }
 
+/// The `UprisingMessages` scenario's Uprising messages (`FUN_00499460`),
+/// oldest first: the system, its holder when the message is filed (the
+/// class reads the system's side, `+0x24` bits 6..7) and whether the
+/// uprising begins. A0 2026-11-16-empire-hunt: Selonia's begins on day 153
+/// while the Empire holds it (h-38, "the Imperial controlled system");
+/// its end on day 299 shows the Alliance system's picture `0x3f3` (h-34),
+/// Selonia then the enemy's (the Empire's informants report on it, h-36);
+/// Yavin's begins after the Empire took the Alliance's HQ system (h-50).
+pub fn uprising_messages(request: FixtureRequest) -> Vec<(&'static str, Faction, bool)> {
+    if request.scenario != Scenario::UprisingMessages {
+        return Vec::new();
+    }
+    vec![
+        ("Selonia", Faction::Empire, true),
+        ("Selonia", Faction::Alliance, false),
+        ("Yavin", Faction::Empire, true),
+    ]
+}
+
 /// The event-message scenario's Personnel Arrive: Mon Mothma's Move landing
 /// at Klatooine, as A0 mission-reports/index-day914-top lists "Mon Mothma
 /// Arrives at Klatooine". The app posts it through
@@ -7270,15 +7298,19 @@ fn story_messages_report(
 ) -> Option<FixtureStoryMessages> {
     if !matches!(
         request.scenario,
-        Scenario::StoryMessages | Scenario::EventMessages | Scenario::HeadquartersTaken
+        Scenario::StoryMessages
+            | Scenario::EventMessages
+            | Scenario::HeadquartersTaken
+            | Scenario::UprisingMessages
     ) {
         return None;
     }
-    // The assault report is filed on the Conflict rail (FUN_00497530).
-    let rail_of = if request.scenario == Scenario::HeadquartersTaken {
-        rebellion_render::MessageRail::Conflict
-    } else {
-        rebellion_render::story_messages::STORY_RAIL
+    // The assault report is filed on the Conflict rail (FUN_00497530), an
+    // uprising on Popular Support (FUN_00499460's class, mask 0x001).
+    let rail_of = match request.scenario {
+        Scenario::HeadquartersTaken => rebellion_render::MessageRail::Conflict,
+        Scenario::UprisingMessages => rebellion_render::MessageRail::PopularSupport,
+        _ => rebellion_render::story_messages::STORY_RAIL,
     };
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
     let rail = rebellion_render::cockpit::strategic_message_index_controls(request.faction)
@@ -10592,6 +10624,33 @@ mod tests {
         assert_eq!(world.systems[yavin].control, ControlKind::Controlled(Faction::Empire));
         assert!(!world.systems[yavin].is_headquarters);
         assert!(hq(world).is_none());
+    }
+
+    #[test]
+    fn the_uprising_messages_scenario_files_selonia_begins_and_ends_then_yavin_begins() {
+        // A0 2026-11-16-empire-hunt (an Empire game): h-38 (sha256
+        // 4a220a83) "An uprising has begun on the Imperial controlled
+        // system Selonia." over 0x3f2; h-34 (81ec8a4e) "Uprising Ends on
+        // Selonia" over 0x3f3, FUN_00499460's picture for a system whose
+        // side bits are 1 (the Alliance's); h-50 (5f56fc09) Yavin begins.
+        use rebellion_render::message_pictures as pictures;
+        let empire = request(Scenario::UprisingMessages, CockpitFaction::Empire);
+        assert_eq!(
+            uprising_messages(empire),
+            vec![
+                ("Selonia", Faction::Empire, true),
+                ("Selonia", Faction::Alliance, false),
+                ("Yavin", Faction::Empire, true),
+            ]
+        );
+        assert_eq!(
+            pictures::uprising_ends(Faction::Alliance).map(|picture| picture.background),
+            Some(0x3f3)
+        );
+        assert_eq!(pictures::uprising_begins().background, 0x3f2);
+        let other = request(Scenario::EventMessages, CockpitFaction::Empire);
+        assert!(uprising_messages(other).is_empty());
+        assert_eq!(Scenario::decode(133), Some(Scenario::UprisingMessages));
     }
 
     /// The `EnemyAssaultTaken` world: Yavin with GNPRTB as shipped, the

@@ -16,7 +16,7 @@
 // here, and the message asks no more.
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
-// Run:         node message-display.mjs [--out=DIR] [--faction=alliance|empire]
+// Run:         node message-display.mjs [--out=DIR] [--faction=alliance|empire] [--only=CASE]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -2616,6 +2616,159 @@ async function headquartersTaken(browser, base) {
   }
 }
 
+// EVT-01-C005: Uprising Begins / Ends (FUN_00499460, notification 0x14b)
+// as the Empire reads them. Scenario::UprisingMessages (133) files, on the
+// Popular Support rail, "Uprising Begins on Selonia" (Imperial Selonia,
+// TEXTSTRA 0x7030 / 0x7033, picture 0x3f2), "Uprising Ends on Selonia"
+// (Selonia then the Alliance's: 0x7031 / 0x7032, picture 0x3f3) and
+// "Uprising Begins on Yavin" (Imperial Yavin). Against A0 2026-11-16-
+// empire-hunt (slot 5, an Empire game; the window at (125, 52)): the
+// Popular Support rows (h-37, sha256 db48c3d2; h-33, 978c7163) and the All
+// rows (h-30, ca08d7a6; h-49, 5b0cd712) head with 0x2a9b, an unchosen row
+// without the icon's last column and row (FUN_00468ab0); the opened
+// messages h-38 (4a220a83), h-34 (81ec8a4e) and h-50 (5f56fc09): title and
+// text, the picture, the rail and the corners every pixel A0's, A0's
+// pointer and tooltip left out, title and body ink within A0's tolerance.
+const UPRISING_MESSAGES = 134;
+const A0_EMPIRE_HUNT = path.join(ROOT, ".artifacts/a0-vm/2026-11-16-empire-hunt");
+
+async function uprisingMessages(browser, base) {
+  const directory = path.join(OUT, "empire-uprising-messages");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const screen = async (label) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    return PNG.sync.read(bytes);
+  };
+  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(A0_EMPIRE_HUNT, file)));
+  const checks = {};
+  try {
+    await page.goto(`${base}?fixture-code=${UPRISING_MESSAGES | (2 << 8)}`);
+    const ready = await waitReport(page, () => true, "the fixture reports");
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const opened = await waitReport(page, (value) => value.index_open && value.rows.length > 0,
+      "the Popular Support rail opens the index");
+    const [left, top] = [Math.round(opened.window_left), Math.round(opened.window_top)];
+    const row = (k) => [left + 25 + 60, top + 108 + 21 * k + 10];
+    const showMessage = [left + 0x1aa + 22, top + 0x59 + 20];
+    // The Popular Support row icon 0x2a9b (the Empire's), keyed on index
+    // 0; an unchosen row shows its first 14 columns and 15 rows.
+    const icon = (await indexedBitmap(0x2a9b)).filter(([x, y, , k]) => k !== 0 && x < 14 && y < 15);
+    const titles = ["Uprising Begins on Selonia", "Uprising Ends on Selonia", "Uprising Begins on Yavin"];
+    for (const title of titles) assert.ok(opened.rows.includes(title), JSON.stringify(opened.rows));
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const listed = await screen("popular-support-rows");
+    const rowIcon = (png, [x0, y0], k) => differing(png, [x0 + 26, y0 + 109 + 21 * k], icon);
+    checks.rows = {
+      origin: [left, top],
+      rows: opened.rows,
+      port: Object.fromEntries(titles.map((title) => [title, rowIcon(listed, [left, top], opened.rows.indexOf(title))])),
+      // A0's unchosen "Uprising ..." rows: the first row in each.
+      a0_h37: rowIcon(await a0("h-37-slot5-run3-popular-support-index-uprising-begins-on-selonia-row-d154.png"), [125, 52], 0),
+      a0_h33: rowIcon(await a0("h-33-slot5-popular-support-index-uprising-ends-on-selonia-row-d299.png"), [125, 52], 0),
+      a0_h30: rowIcon(await a0("h-30-slot5-index-all-uprising-begins-on-selonia-row-d153.png"), [125, 52], 0),
+      a0_h49_ends: rowIcon(await a0("h-49-slot5-run4-index-all-uprising-begins-on-yavin-assault-on-yavin-d349.png"), [125, 52], 1),
+      a0_h49_yavin: rowIcon(await a0("h-49-slot5-run4-index-all-uprising-begins-on-yavin-assault-on-yavin-d349.png"), [125, 52], 3),
+    };
+    console.log(JSON.stringify({ uprising_messages: checks }));
+    const white = (data, k) => Math.min(data[k], data[k + 1], data[k + 2]) > 140
+      && Math.max(data[k], data[k + 1], data[k + 2]) - Math.min(data[k], data[k + 1], data[k + 2]) < 40;
+    const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+      let found = null;
+      for (let y = ya; y < yb; y += 1) {
+        for (let x = xa; x < xb; x += 1) {
+          if (!white(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+          found = found ? [Math.min(found[0], x), Math.min(found[1], y), Math.max(found[2], x), Math.max(found[3], y)]
+            : [x, y, x, y];
+        }
+      }
+      return found;
+    };
+    const near = (a, p) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+      && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+    // Each message: its title and text as A0 shows them, its picture,
+    // A0's capture and the screen box of A0's pointer (and tooltip).
+    const cases = [
+      ["Uprising Begins on Selonia", "An uprising has begun on the Imperial controlled system Selonia.", 0x3f2,
+        "h-38-slot5-run3-msg-uprising-begins-on-selonia-d158view.png", [550, 150, 640, 200]],
+      ["Uprising Ends on Selonia", "The uprising on Selonia has ended.", 0x3f3,
+        "h-34-slot5-msg-uprising-ends-on-selonia-d319view.png", [510, 60, 545, 95]],
+      ["Uprising Begins on Yavin", "An uprising has begun on the Imperial controlled system Yavin.", 0x3f2,
+        "h-50-slot5-run4-msg-uprising-begins-on-yavin-d368view.png", [510, 60, 545, 95]],
+    ];
+    checks.messages = {};
+    for (const [title, text, picture, file, [px0, py0, px1, py1]] of cases) {
+      const listedNow = await report(page);
+      await click(page, row(listedNow.rows.indexOf(title)));
+      await click(page, showMessage);
+      const viewed = await waitReport(page, (value) => value.mode === "single" && value.viewing_title === title,
+        `Display Message shows ${title}`);
+      assert.equal(viewed.viewing_text, text, JSON.stringify(viewed));
+      assert.equal(viewed.viewing_background, picture, JSON.stringify(viewed));
+      await page.mouse.move(2, 2);
+      await frames(page, 6);
+      const shown = await screen(title.toLowerCase().replace(/ /g, "-"));
+      const original = await a0(file);
+      const [ox, oy] = [Math.round(viewed.window_left), Math.round(viewed.window_top)];
+      // The title's up and down arrows (the window's 366..406, 8..30) show
+      // whether a newer or older message neighbours this one; the
+      // fixture's three-message list is not A0's, so they are left out.
+      const arrows = (x, y) => x >= 366 && x < 406 && y >= 8 && y < 30;
+      const differ = ([xa, ya, xb, yb]) => {
+        let count = 0;
+        for (let y = ya; y < yb; y += 1) {
+          for (let x = xa; x < xb; x += 1) {
+            const [sx, sy] = [125 + x, 52 + y];
+            if (arrows(x, y) || (sx >= px0 && sx < px1 && sy >= py0 && sy < py1)) continue;
+            const i = (sy * 640 + sx) * 4;
+            const j = ((oy + y) * 640 + ox + x) * 4;
+            if ([0, 1, 2].some((c) => original.data[i + c] !== shown.data[j + c])) count += 1;
+          }
+        }
+        return count;
+      };
+      checks.messages[title] = {
+        origin: [ox, oy],
+        picture: differ([12, 33, 412, 233]),
+        title_image: differ([15, 16, 30, 32]),
+        rail: differ([414, 11, 468, 296]),
+        corners: differ([0, 0, 30, 22]) + differ([384, 0, 414, 22]),
+        title: { a0: ink(original, [125, 52], [34, 10, 360, 32]), port: ink(shown, [ox, oy], [34, 10, 360, 32]) },
+        // The parent's text behind the title band: the title's own ink.
+        title_text: { a0: ink(original, [125, 52], [34, 14, 360, 30]), port: ink(shown, [ox, oy], [34, 14, 360, 30]) },
+        body: { a0: ink(original, [125, 52], [4, 236, 412, 270]), port: ink(shown, [ox, oy], [4, 236, 412, 270]) },
+      };
+      console.log(JSON.stringify({ uprising_messages: { [title]: checks.messages[title] } }));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", `the Popular Support list after ${title}`);
+    }
+    const r = checks.rows;
+    assert.deepEqual([r.origin, Object.values(r.port), r.a0_h37, r.a0_h33, r.a0_h30, r.a0_h49_ends, r.a0_h49_yavin],
+      [[125, 52], [0, 0, 0], 0, 0, 0, 0, 0], JSON.stringify(checks.rows));
+    for (const [title, c] of Object.entries(checks.messages)) {
+      assert.deepEqual([c.origin, c.picture, c.title_image, c.rail, c.corners], [[125, 52], 0, 0, 0, 0],
+        `${title} ${JSON.stringify(c)}`);
+      assert.ok(near(c.title.a0, c.title.port) && near(c.title_text.a0, c.title_text.port)
+        && near(c.body.a0, c.body.port), `${title} ${JSON.stringify(c)}`);
+    }
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "empire", case: "uprising-messages", status: "pass", checks };
+  } catch (error) {
+    await screen("failure").catch(() => {});
+    return { faction: "empire", case: "uprising-messages", status: "fail", error: String(error.stack || error),
+      checks, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -2626,8 +2779,14 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  for (const faction of FACTIONS) results.push(await run(browser, base, faction));
-  if (FACTIONS.some(({ name }) => name === "alliance")) results.push(await headquartersTaken(browser, base));
+  // --only=<case> runs that one case (headquarters-taken, uprising-messages).
+  if (!args.only) for (const faction of FACTIONS) results.push(await run(browser, base, faction));
+  if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "headquarters-taken")) {
+    results.push(await headquartersTaken(browser, base));
+  }
+  if (FACTIONS.some(({ name }) => name === "empire") && (!args.only || args.only === "uprising-messages")) {
+    results.push(await uprisingMessages(browser, base));
+  }
 } finally {
   await browser.close();
   server.close();
