@@ -50,6 +50,9 @@ const BUILD_SELECTION = 55;
 const SQUADRON_LOAD = 65;
 const BATTERY_STATUS = 92;
 const RECON_TARGETING = 63;
+// 131 SpecialForceAboard: Coruscant's Fleet 1 with the Imperial Probe
+// Droid aboard, its Fleet window at (365, 92).
+const SPECIAL_FORCE_ABOARD = 132;
 // 104 SpecialForceEnroute: ReconTargeting with an Infiltrators team (the
 // Empire's Imperial Commandos) travelling to the primary system.
 const SPECIAL_FORCE_ENROUTE = 104;
@@ -605,6 +608,40 @@ const cases = [
     a0Menu: { width: 104, height: 122,
       rows: ["Move", "Confirmed Move", "Mission", "Encyclopedia", "Status", "Retire"] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
+  // A special force aboard a fleet (OBJ-10-C006): A0 2026-11-16-partial-
+  // cells/f-4, f-5 (an Empire game; the Fleet window at (365, 92), the
+  // Status at (170, 81)): the Imperial Probe Droid on Fleet 1's Personnel
+  // tab. Its menu greys nothing (f-4, 9f101f002770); FUN_00445780 names
+  // the ship it rides under Attached, "Imperial Star Destroyer 1" over two
+  // lines, then Status "Awaiting Orders" (f-5, 472c151b475c).
+  {
+    name: "special-force-aboard",
+    code: SPECIAL_FORCE_ABOARD,
+    family: "SpecialForce",
+    sides: ["empire"],
+    a0: { file: "../2026-11-16-partial-cells/f-5-spec-forces-status-attached-isd1-awaiting-orders-d318.png",
+      x: 170, y: 81, labels: 8, skip: [1], side: "empire",
+      values: { "attached-value": 0, "attached-wrap": 1, "status-value": 2 } },
+    // The droid's picture over the grid, every pixel A0's.
+    a0Picture: { file: "../2026-11-16-partial-cells/f-5-spec-forces-status-attached-isd1-awaiting-orders-d318.png",
+      x: 170, y: 81, side: "empire" },
+    rows: [["Attached: ", "Imperial Star Destroyer 1"], ["Status:", "Awaiting Orders"], ["Maintenance Cost:", "1"],
+      ["Diplomacy Rating:", "0"], ["Espionage Rating:", "30"], ["Combat Rating:", "10"], ["Leadership Rating:", "0"]],
+    a0Menu: { width: 104, height: 122,
+      rows: ["Move", "Confirmed Move", "Mission", "Encyclopedia", "Status", "Retire"],
+      states: [true, true, true, true, true, true] },
+    // The Fleet window opens at (365, 92) with nothing selected: Fleet 1's
+    // entry (LEFT_LIST y 29), the Personnel tab (TAB_STRIP (99, 96) + 97),
+    // then the droid, the right list's first item.
+    target: async (page) => {
+      const origin = { x: 365, y: 92 };
+      await click(page, { x: origin.x + 40, y: origin.y + 29 + 26 });
+      await page.waitForTimeout(300);
+      await click(page, { x: origin.x + 99 + 97 + 15, y: origin.y + 96 + 14 });
+      await page.waitForTimeout(300);
+      return { x: origin.x + 160, y: origin.y + 143 };
+    },
   },
   // The en route regiment (OBJ-10 C004): A0 2026-11-11-regiment-en-route/
   // 03, 04 (an Alliance game, day 46..47: the Alliance Army Regiment moving
@@ -1414,7 +1451,10 @@ async function main() {
   const results = [];
   try {
     for (const faction of factions) {
-      for (const testCase of cases) results.push(await inspect(server, source, faction, testCase, executable));
+      // A case with `sides` runs for those sides alone.
+      for (const testCase of cases.filter(({ sides }) => !sides || sides.includes(faction.name))) {
+        results.push(await inspect(server, source, faction, testCase, executable));
+      }
     }
   } finally {
     await new Promise((resolve) => server.close(resolve));

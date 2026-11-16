@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 131;
+const SCENARIO_COUNT: u8 = 132;
 
 
 extern "C" {
@@ -512,6 +512,13 @@ pub enum Scenario {
     /// 2026-11-15-partial-cells e-vd2 (8bce5f1cbf27) reads it, "Ship
     /// Damaged: Yes", Hull 1800:1800, Shield Recharge Rate 8:10.
     ShipShieldHit = 130,
+    /// A0 2026-11-16-partial-cells/f-1..f-5 (an Empire game, day 304..318,
+    /// OBJ-10-C006): Coruscant's Fleet 1, Imperial Star Destroyer 1 and
+    /// Victory Destroyer 1, each carrying TIE Fighter squadrons and
+    /// Stormtrooper Regiments, with the Imperial Probe Droid aboard the
+    /// Star Destroyer; its Fleet window open at A0's (365, 92), nothing
+    /// selected.
+    SpecialForceAboard = 131,
 }
 
 impl Scenario {
@@ -648,6 +655,7 @@ impl Scenario {
             128 => Self::UnfinishedShipEnroute,
             129 => Self::FleetLoadUnfinished,
             130 => Self::ShipShieldHit,
+            131 => Self::SpecialForceAboard,
             _ => return None,
         })
     }
@@ -726,6 +734,7 @@ impl Scenario {
             || self.uses_the_fleet_window()
             || self == Self::FleetWindowYavin
             || self == Self::FleetWindowA0
+            || self == Self::SpecialForceAboard
             || self == Self::EnemyRegimentFrozen
             || self == Self::EnemyRegimentAtRest
             || self == Self::QuadrantsStale
@@ -1331,6 +1340,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowCoruscant {
         place_coruscant(request, world, cockpit, movement, troop_transport, fleets);
+    }
+    if request.scenario == Scenario::SpecialForceAboard {
+        place_probe_droid_aboard(request, world, cockpit, movement, troop_transport, fleets);
     }
     if request.scenario == Scenario::FleetWindowUmgul {
         place_umgul(request, world, cockpit, movement, troop_transport, fleets);
@@ -2682,6 +2694,128 @@ fn place_coruscant(
     fleets.expand(coruscant, first);
 }
 
+/// The `SpecialForceAboard` scenario: A0 2026-11-16-partial-cells/f-1
+/// (sha256 1b446c19e7e7): Coruscant's Fleet 1 after the Imperial Probe
+/// Droid was dropped on it, its two ships each marked with squadrons and
+/// regiments (f-2, ce8c644c6e6a) and the droid aboard Imperial Star
+/// Destroyer 1 (f-5, 472c151b475c), the Fleet window at (365, 92).
+fn place_probe_droid_aboard(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+    fleets: &mut FleetWindowState,
+) {
+    let coruscant = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Coruscant")
+        .map(|(key, _)| key);
+    let class = |world: &GameWorld, name: &str| {
+        world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, value)| value.is_empire && value.name == name)
+            .map(|(key, _)| key)
+    };
+    let destroyer = class(world, "Imperial Star Destroyer");
+    let victory = class(world, "Victory Destroyer");
+    let tie = world
+        .fighter_classes
+        .iter()
+        .find(|(_, value)| !value.is_alliance && value.name == "TIE Fighter")
+        .map(|(key, _)| key);
+    let stormtroopers = world
+        .buildable_classes
+        .iter()
+        .find(|(class, value)| class.family() == 0x10 && value.name == "Stormtrooper Regiment")
+        .map(|(class, _)| *class);
+    let (Some(coruscant), Some(destroyer), Some(victory), Some(tie), Some(stormtroopers)) =
+        (coruscant, destroyer, victory, tie, stormtroopers)
+    else {
+        return;
+    };
+    let sector = world.systems[coruscant].sector;
+    let Some(elsewhere) = world
+        .systems
+        .iter()
+        .find(|(key, value)| *key != coruscant && value.sector == sector)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    for value in world.fleets.values_mut() {
+        if value.location == coruscant {
+            value.location = elsewhere;
+        }
+    }
+    let value = &mut world.systems[coruscant];
+    value.control = ControlKind::Controlled(Faction::Empire);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.ground_units.clear();
+    value.special_forces.clear();
+    let ships = [destroyer, victory]
+        .map(|class| ShipInstance::new(class, world.capital_ship_classes[class].hull as i32, true));
+    let capacity = |class| &world.capital_ship_classes[class];
+    // Room for one more than the Star Destroyer holds, so the Victory
+    // Destroyer carries some too (squadrons go where most room is left,
+    // regiments fill the ships in fleet order).
+    let squadrons = capacity(destroyer).fighter_capacity + capacity(victory).fighter_capacity;
+    let regiments = (capacity(destroyer).troop_capacity + 1)
+        .min(capacity(destroyer).troop_capacity + capacity(victory).troop_capacity);
+    let first = world.insert_fleet(rebellion_core::world::Fleet {
+        location: coruscant,
+        capital_ships: ships.to_vec(),
+        fighters: (0..squadrons)
+            .map(|_| rebellion_core::world::FighterEntry {
+                class: tie,
+                count: 1,
+                carrier: None,
+            })
+            .collect(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.rename_fleet(first, "Fleet 1");
+    world.rename_ship(first, 0, "Imperial Star Destroyer 1");
+    world.rename_ship(first, 1, "Victory Destroyer 1");
+    world.number_ships();
+    rebellion_core::squadrons::seat_squadrons(world, first);
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let regiments: Vec<_> = (0..regiments)
+        .map(|_| {
+            world.troops.insert(TroopUnit {
+                class_dat_id: stormtroopers,
+                is_alliance: false,
+                regiment_strength: 100,
+            })
+        })
+        .collect();
+    world.systems[coruscant].ground_units = regiments.clone();
+    let _ = troop_transport.embark(world, first, &regiments);
+    world.systems[coruscant].ground_units.clear();
+    // SPECFCSD class 5, the Imperial Probe Droid, with f-5's ratings:
+    // Espionage 30 and Combat 10 ([`Skill`] order).
+    let droid = world
+        .special_forces
+        .insert(rebellion_core::world::SpecialForceUnit {
+            class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0005),
+            is_alliance: false,
+            skills: [0, 30, 0, 0, 0, 10, 0, 0],
+            on_mission: false,
+        });
+    rebellion_core::missions::board_fleet(
+        world,
+        rebellion_core::missions::MissionMember::SpecialForce(droid),
+        first,
+    );
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, coruscant, (365, 92), request.faction, layout);
+}
+
 /// The MANFACSD classes of the advanced bases: the Advanced Shipyard,
 /// Advanced Training Facility and Advanced Construction Yard (records 4, 5
 /// and 6, families 0x28, 0x29 and 0x2a).
@@ -3821,7 +3955,8 @@ fn emit_finder_list(
 
 /// The open Status window's title, name and rows: a Character Status in the
 /// ForceStatus and FleetArrivals scenarios, a facility's (the headquarters') in Quadrants, the
-/// travelling special force's in SpecialForceEnroute, regiment's in
+/// travelling special force's in SpecialForceEnroute, the one aboard a
+/// fleet's in SpecialForceAboard, regiment's in
 /// RegimentEnroute and the receiving fleet's or ship's in FleetArrivals
 /// (with the picture's marks), the hit ship's in ShipShieldHit, and an
 /// unfinished unit's or a producer's in any.
@@ -3847,7 +3982,10 @@ pub fn emit_status_rows(
             };
             ("Character Status", None, rows)
         }
-        (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_)))
+        (
+            Scenario::SpecialForceEnroute | Scenario::SpecialForceAboard,
+            Some(object @ StatusObject::SpecialForce(_)),
+        )
         | (Scenario::RegimentEnroute, Some(object @ StatusObject::Troop(_)))
         | (
             Scenario::EnemyRegimentFrozen | Scenario::EnemyRegimentAtRest,
@@ -5648,6 +5786,7 @@ fn object_menu_report<'a>(
                 | Scenario::EnemyRegimentAtRest
                 | Scenario::FleetWindowYavin
                 | Scenario::FleetWindowA0
+                | Scenario::SpecialForceAboard
                 | Scenario::BatteryStatus
                 | Scenario::PersonnelStates
                 | Scenario::BuildSelectionDefensesDestination
@@ -10507,6 +10646,75 @@ mod tests {
     }
 
     #[test]
+    fn the_probe_droid_aboard_scenario_loads_fleet_1_as_a0_f2_shows_it() {
+        // A0 2026-11-16-partial-cells/f-2 (sha256 ce8c644c6e6a): Fleet 1's
+        // Imperial Star Destroyer 1 marked with squadrons, regiments and
+        // personnel, Victory Destroyer 1 with squadrons and regiments
+        // (FUN_004a66a0 flags 1, 2, 4); f-3 (9b90894dbe9b) lists the
+        // Imperial Probe Droid alone on the Personnel tab.
+        let request = request(Scenario::SpecialForceAboard, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Coruscant".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            for (name, fighters, troops) in [("Imperial Star Destroyer", 6, 3), ("Victory Destroyer", 2, 2)] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_empire: true,
+                        hull: 100,
+                        hyperdrive: 80,
+                        fighter_capacity: fighters,
+                        troop_capacity: troops,
+                        ..Default::default()
+                    });
+            }
+            world.fighter_classes.insert(rebellion_core::world::FighterClass {
+                name: "TIE Fighter".into(),
+                is_empire: true,
+                ..Default::default()
+            });
+            world.buildable_classes.insert(
+                rebellion_core::ids::DatId::new(0x1000_0007),
+                rebellion_core::world::BuildableClass {
+                    name: "Stormtrooper Regiment".into(),
+                    is_empire: true,
+                    ..Default::default()
+                },
+            );
+        });
+        let world = &applied.world;
+        let coruscant = world.systems.keys().next().unwrap();
+        let [first] = world.systems[coruscant].fleets[..] else {
+            panic!("one fleet at Coruscant: {:?}", world.systems[coruscant].fleets);
+        };
+        let fleet = &world.fleets[first];
+        assert_eq!(world.fleet_name(first), Some("Fleet 1"));
+        assert_eq!(world.ship_name(first, 0), Some("Imperial Star Destroyer 1"));
+        assert_eq!(world.ship_name(first, 1), Some("Victory Destroyer 1"));
+        for ship in &fleet.capital_ships {
+            assert!(
+                fleet.fighters.iter().any(|entry| entry.carrier == Some(ship.id)),
+                "squadrons aboard {}",
+                ship.id
+            );
+        }
+        // One regiment more than the Star Destroyer holds.
+        assert_eq!(applied.transport.cargo(first).len(), 4);
+        assert!(fleet.characters.is_empty());
+        let [droid] = fleet.special_forces[..] else {
+            panic!("the droid aboard: {:?}", fleet.special_forces);
+        };
+        assert_eq!(
+            world.special_forces[droid].class_dat_id,
+            rebellion_core::ids::DatId::new(0x3c00_0005)
+        );
+        assert!(applied.fleets.is_open(coruscant));
+    }
+
+    #[test]
     fn the_a0_vjun_scenario_seats_admiral_bel_iblis_aboard_fleet_5() {
         // A0 fleet2/vjun-fleet5-admiral-personnel: the Admiral order renames
         // him "Admiral Bel Iblis" (FUN_004f17f0, TEXTSTRA name + 0x6c00).
@@ -14342,6 +14550,7 @@ mod tests {
                 Scenario::EnemyRegimentAtRest,
                 Scenario::FleetLoadUnfinished,
                 Scenario::ShipShieldHit,
+                Scenario::SpecialForceAboard,
             ]
         );
     }

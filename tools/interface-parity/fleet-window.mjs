@@ -56,6 +56,8 @@ const UNFINISHED_SHIP_MINI = 128;
 const UNFINISHED_SHIP_ENROUTE = 129;
 // Scenario::FleetLoadUnfinished (129).
 const FLEET_LOAD_UNFINISHED = 130;
+// Scenario::SpecialForceAboard (131).
+const SPECIAL_FORCE_ABOARD = 132;
 // `--a0-products=DIR` (.artifacts/a0-vm/2026-11-15-partial-cells): A0's
 // run "m-" (unfinished products, Empire).
 const a0ProductsDir = process.argv.find((arg) => arg.startsWith("--a0-products="))?.slice(15)
@@ -3389,6 +3391,80 @@ const cases = [
       await frames(page);
       await page.mouse.up();
       await page.waitForTimeout(300);
+      return checks;
+    },
+  },
+  {
+    name: "a0-probe-droid-aboard",
+    code: SPECIAL_FORCE_ABOARD,
+    factions: ["empire"],
+    standalone: true,
+    // OBJ-10-C006: A0 2026-11-16-partial-cells/f-1..f-4 (an Empire game,
+    // days 304..316, the window at (365, 92)): Fleet 1 at Coruscant after
+    // the Imperial Probe Droid was dropped on it. Its entry carries the
+    // squadron, regiment and personnel marks (f-1, 1b446c19e7e7);
+    // selected, the ships tab lists Imperial Star Destroyer 1 with all
+    // three marks and Victory Destroyer 1 with two (f-2, ce8c644c6e6a);
+    // the Personnel tab lists the droid alone (f-3, 9b90894dbe9b); its
+    // menu lists Move, Confirmed Move, Mission, Encyclopedia, Status and
+    // Retire, none grey (f-4, 9f101f002770). Every pixel of the window is
+    // A0's but the text (the accepted deviation) and A0's pointer; f-1's
+    // title bar is A0's inactive one (the drop came from the system
+    // window, which kept the focus).
+    async run(page, faction, setup, directory) {
+      const origin = { x: 365, y: 92 };
+      const dir = path.join(root, ".artifacts/a0-vm/2026-11-16-partial-cells");
+      const has = fs.existsSync(dir);
+      // [x0, y0, x1, y1), window pixels.
+      const text = { title: [19, 2, 175, 16], entry: [8, 33, 45, 44], pane: [100, 30, 155, 42] };
+      const left = (masks) => (x, y) => masks.some(([x0, y0, x1, y1]) => x >= x0 && y >= y0 && x < x1 && y < y1);
+      const checks = {};
+      const step = async (label, file, masks) => {
+        const port = await stableWindow(page, origin, directory, label);
+        fs.writeFileSync(path.join(directory, `${label}.png`), PNG.sync.write(port));
+        if (!has) return null;
+        const a0 = PNG.sync.read(fs.readFileSync(path.join(dir, file)));
+        const skip = left(masks);
+        let differing = 0;
+        let compared = 0;
+        for (let y = 0; y < windowSize.height; y += 1) {
+          for (let x = 0; x < windowSize.width; x += 1) {
+            if (skip(x, y)) continue;
+            compared += 1;
+            const p = (y * windowSize.width + x) * 4;
+            const q = ((origin.y + y) * a0.width + origin.x + x) * 4;
+            if ([0, 1, 2].some((k) => port.data[p + k] !== a0.data[q + k])) differing += 1;
+          }
+        }
+        checks[label] = { compared, differing };
+        return checks[label];
+      };
+      // f-1: nothing selected; A0's drag pointer (with a 2-pixel remnant
+      // at (30, 52)) lies over the entry's regiment mark.
+      await step("a0-probe-droid-dropped", "f-1-probe-droid-dropped-on-fleet1-personnel-icon-d304.png",
+        [[0, 0, 235, 18], text.entry, [26, 50, 52, 72]]);
+      // f-2: the entry selected, the ships tab; A0's pointer by the entry.
+      await click(page, { x: origin.x + 40, y: origin.y + 29 + 26 });
+      await page.waitForTimeout(300);
+      await step("a0-probe-droid-ships", "f-2-fleet1-panel-ships-tab-isd-carries-personnel-d309.png",
+        [text.title, text.entry, text.pane, [66, 65, 90, 86], [100, 164, 232, 178], [100, 214, 232, 228]]);
+      // f-3: the Personnel tab, the droid alone; A0's pointer on the tab.
+      await click(page, { x: origin.x + 99 + 97 + 15, y: origin.y + 96 + 14 });
+      await page.waitForTimeout(300);
+      await step("a0-probe-droid-personnel", "f-3-fleet1-personnel-tab-imperial-probe-droid-d312.png",
+        [text.title, text.entry, text.pane, [206, 104, 235, 130], [100, 160, 232, 178]]);
+      // f-4: the droid's menu, every row enabled.
+      const menu = await openMenu(page, { x: origin.x + 160, y: origin.y + 143 }, directory, "a0-probe-droid");
+      checks.menu = menu.row_states;
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      console.log(JSON.stringify({ probe_droid_a0: checks }));
+      assert.deepEqual(menu.row_states, [["Move", true], ["Confirmed Move", true], ["Mission", true],
+        ["Encyclopedia", true], ["Status", true], ["Retire", true]], JSON.stringify(menu));
+      if (has) {
+        assert.deepEqual(["a0-probe-droid-dropped", "a0-probe-droid-ships", "a0-probe-droid-personnel"]
+          .map((label) => checks[label].differing), [0, 0, 0], JSON.stringify(checks));
+      }
       return checks;
     },
   },
