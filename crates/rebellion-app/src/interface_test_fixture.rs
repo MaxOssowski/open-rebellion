@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 132;
+const SCENARIO_COUNT: u8 = 133;
 
 
 extern "C" {
@@ -519,6 +519,12 @@ pub enum Scenario {
     /// Star Destroyer; its Fleet window open at A0's (365, 92), nothing
     /// selected.
     SpecialForceAboard = 131,
+    /// As `EnemyAssaultTaken` with Yavin the Alliance's headquarters (the
+    /// HQ object, ALLFACSD `0x20000001`, on it) and Sumitra's sector
+    /// window open: A0 2026-11-16-partial-cells/v-17..v-20 (an Alliance
+    /// game, day 1268..1716, OBJ-13-C007). The report is filed on the
+    /// Conflict rail and not opened, as A0 read it from the index (v-18).
+    HeadquartersTaken = 132,
 }
 
 impl Scenario {
@@ -656,6 +662,7 @@ impl Scenario {
             129 => Self::FleetLoadUnfinished,
             130 => Self::ShipShieldHit,
             131 => Self::SpecialForceAboard,
+            132 => Self::HeadquartersTaken,
             _ => return None,
         })
     }
@@ -1353,8 +1360,14 @@ pub fn apply(
     if request.scenario == Scenario::FleetWindowYavin {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
     }
-    if request.scenario == Scenario::EnemyAssaultTaken {
+    if matches!(
+        request.scenario,
+        Scenario::EnemyAssaultTaken | Scenario::HeadquartersTaken
+    ) {
         place_enemy_assault(world, movement, troop_transport);
+    }
+    if request.scenario == Scenario::HeadquartersTaken {
+        place_headquarters_at_yavin(request, world, sectors);
     }
     if request.scenario == Scenario::OwnAssaultRepulsed {
         place_own_assault(world, movement, troop_transport);
@@ -2950,6 +2963,15 @@ fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(Syste
             let coruscant = coruscant(world)?;
             Some((loading_target(world, coruscant)?, coruscant))
         }
+        // Yavin, in Sumitra's open sector window, both times.
+        Scenario::HeadquartersTaken => {
+            let yavin = world
+                .systems
+                .iter()
+                .find(|(_, value)| value.name == "Yavin")
+                .map(|(key, _)| key)?;
+            Some((yavin, yavin))
+        }
         // The second system, in the open sector window, both times.
         Scenario::SquadronEnroute => {
             let second = world.systems.keys().nth(1)?;
@@ -3540,6 +3562,52 @@ fn place_own_assault(
     world.systems[commenor].ground_units = defenders;
 }
 
+/// The `HeadquartersTaken` scenario: Yavin the Alliance's headquarters
+/// alone, the HQ object (ALLFACSD `0x20000001`, the Alliance's) on it, as
+/// A0 2026-11-16-partial-cells/v-17 (sha256 2d0316e7) marks it, and
+/// Sumitra's sector window open on it.
+fn place_headquarters_at_yavin(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    sectors: &mut SectorWindowState,
+) {
+    let Some(yavin) = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Yavin")
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    for value in world.systems.values_mut() {
+        value.is_headquarters = false;
+    }
+    world.systems[yavin].is_headquarters = true;
+    let class = rebellion_core::ids::DatId::new(0x2000_0001);
+    if !world.systems[yavin]
+        .manufacturing_facilities
+        .iter()
+        .any(|&key| world.manufacturing_facilities.get(key).is_some_and(|f| f.class_dat_id == class))
+    {
+        let hq = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: class,
+                side: Faction::Alliance,
+                is_shipyard: false,
+            },
+        );
+        world.systems[yavin].manufacturing_facilities.push(hq);
+    }
+    sectors.open_for_system(world, yavin, request.faction);
+}
+
+/// Whether the app opens the fixture's assault report at once, as Display
+/// on it would (`FUN_00469de0`): not in `HeadquartersTaken`, whose gate
+/// reads it from the index as A0 did (v-18).
+pub fn opens_the_assault_report(request: FixtureRequest) -> bool {
+    request.scenario != Scenario::HeadquartersTaken
+}
+
 /// The `EnemyAssaultTaken` scenario's assault: the Empire's fleets at
 /// Yavin assault it (`FUN_0058c120`) with the first seed whose draws give
 /// A0 assault-clean's outcome: the defending regiment destroyed, no
@@ -3555,7 +3623,7 @@ pub fn enemy_assault(
     // the attacking regiment destroyed, no defender lost, the system kept
     // (TEXTSTRA 0x7092).
     let (name, side) = match request.scenario {
-        Scenario::EnemyAssaultTaken => ("Yavin", Faction::Empire),
+        Scenario::EnemyAssaultTaken | Scenario::HeadquartersTaken => ("Yavin", Faction::Empire),
         Scenario::OwnAssaultRepulsed => ("Commenor", Faction::Alliance),
         _ => return Vec::new(),
     };
@@ -3593,6 +3661,13 @@ pub fn enemy_assault(
         if as_a0 && !env.reports.is_empty() {
             *world = trial_world;
             *troop_transport = trial_transport;
+            if request.scenario == Scenario::HeadquartersTaken {
+                // The occupation's control change (FUN_00510d70 ->
+                // FUN_004f6f40, as `tactical_flow::occupy` makes it): the
+                // HQ, which serves the Alliance alone, ends (FUN_004f8680).
+                world.systems[yavin].control = ControlKind::Controlled(Faction::Empire);
+                world.hand_over_facilities(yavin);
+            }
             return env.reports;
         }
     }
@@ -7195,15 +7270,21 @@ fn story_messages_report(
 ) -> Option<FixtureStoryMessages> {
     if !matches!(
         request.scenario,
-        Scenario::StoryMessages | Scenario::EventMessages
+        Scenario::StoryMessages | Scenario::EventMessages | Scenario::HeadquartersTaken
     ) {
         return None;
     }
+    // The assault report is filed on the Conflict rail (FUN_00497530).
+    let rail_of = if request.scenario == Scenario::HeadquartersTaken {
+        rebellion_render::MessageRail::Conflict
+    } else {
+        rebellion_render::story_messages::STORY_RAIL
+    };
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
     let rail = rebellion_render::cockpit::strategic_message_index_controls(request.faction)
         .iter()
         .zip(rebellion_render::MessageRail::RAIL_ORDER)
-        .find(|(_, rail)| *rail == rebellion_render::story_messages::STORY_RAIL)
+        .find(|(_, rail)| *rail == rail_of)
         .map(|(control, _)| {
             let rect = control.rect;
             egui_macroquad::egui::pos2(
@@ -8232,6 +8313,9 @@ struct EnemyAssaultObservation {
     yavin_holder: Option<String>,
     /// Commenor's holder (`OwnAssaultRepulsed`).
     commenor_holder: Option<String>,
+    /// Whether Yavin is still the Alliance's headquarters
+    /// (`HeadquartersTaken`).
+    yavin_headquarters: Option<bool>,
 }
 
 impl EnemyAssaultWatch {
@@ -8243,7 +8327,10 @@ impl EnemyAssaultWatch {
     ) {
         if !matches!(
             request.scenario,
-            Scenario::EnemyAssaultTaken | Scenario::FleetWindowA0 | Scenario::OwnAssaultRepulsed
+            Scenario::EnemyAssaultTaken
+                | Scenario::HeadquartersTaken
+                | Scenario::FleetWindowA0
+                | Scenario::OwnAssaultRepulsed
         ) || self.last.as_ref() == Some(&assault_summary)
         {
             return;
@@ -8265,6 +8352,11 @@ impl EnemyAssaultWatch {
             assault_summary,
             yavin_holder,
             commenor_holder,
+            yavin_headquarters: world
+                .systems
+                .values()
+                .find(|value| value.name == "Yavin")
+                .map(|value| value.is_headquarters),
         };
         let bytes = serde_json::to_vec(&report).expect("serialize the enemy assault observation");
         unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
@@ -10462,6 +10554,104 @@ mod tests {
     }
 
     #[test]
+    fn the_headquarters_taken_scenario_ends_the_alliance_headquarters_with_yavin() {
+        // A0 2026-11-16-partial-cells (an Alliance game): v-17 (sha256
+        // 2d0316e7) marks Yavin the headquarters; the Empire's assault takes
+        // it (v-19, a2feadda, "Imperial troops have taken control of the
+        // Alliance system Yavin"), and v-20 (c9066ff2) shows Imperial Yavin
+        // without the mark. The control change removes the HQ object, whose
+        // class serves the Alliance alone (FUN_004f8680, FUN_004f27d0).
+        let request = request(Scenario::HeadquartersTaken, CockpitFaction::Alliance);
+        let mut applied = apply_to_loading_world_with(request, |world| {
+            seed_yavin_assault(world);
+            world.buildable_classes.insert(
+                rebellion_core::ids::DatId::new(0x2000_0001),
+                rebellion_core::world::BuildableClass {
+                    name: "Alliance HQ".into(),
+                    is_alliance: true,
+                    ..Default::default()
+                },
+            );
+        });
+        let yavin = applied.world.systems.keys().next().unwrap();
+        let hq = |world: &GameWorld| {
+            rebellion_render::sector_window::headquarters_object(world, yavin)
+        };
+        assert!(applied.world.systems[yavin].is_headquarters);
+        assert!(hq(&applied.world).is_some());
+        assert_eq!(applied.world.systems.values().filter(|s| s.is_headquarters).count(), 1);
+        let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+        assert!(applied.sectors.planet_screen_rect(&applied.world, layout, yavin).is_some());
+        assert!(!opens_the_assault_report(request));
+        let reports = enemy_assault(request, &mut applied.world, &mut applied.transport);
+        let [report] = &reports[..] else {
+            panic!("one report: {reports:?}");
+        };
+        assert!(report.taken);
+        let world = &applied.world;
+        assert_eq!(world.systems[yavin].control, ControlKind::Controlled(Faction::Empire));
+        assert!(!world.systems[yavin].is_headquarters);
+        assert!(hq(world).is_none());
+    }
+
+    /// The `EnemyAssaultTaken` world: Yavin with GNPRTB as shipped, the
+    /// Imperial Star Destroyer and the two regiment classes.
+    fn seed_yavin_assault(world: &mut GameWorld) {
+        let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+        let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+        world.systems[here].name = "Yavin".into();
+        world.systems[elsewhere].sector = world.systems[here].sector;
+        // GNPRTB as shipped (ghidra/notes/planetary-assault.md):
+        // 0x200..0x205, and the garrison 0x1e51 / 0x1e52 that bounds
+        // the landing (FUN_0058c810).
+        let entry = |id: u32, value: i32| rebellion_core::world::GnprtbEntry {
+            parameter_id: id,
+            development: value,
+            alliance_sp_easy: value,
+            alliance_sp_medium: value,
+            alliance_sp_hard: value,
+            empire_sp_easy: value,
+            empire_sp_medium: value,
+            empire_sp_hard: value,
+            multiplayer: value,
+        };
+        world.gnprtb = rebellion_core::world::GnprtbParams::new(vec![
+            entry(0x200, 5),
+            entry(0x201, 30),
+            entry(0x202, 10),
+            entry(0x203, 4),
+            entry(0x204, 6),
+            entry(0x205, 8),
+            entry(0x1e51, 60),
+            entry(0x1e52, -10),
+        ]);
+        world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass {
+                name: "Imperial Star Destroyer".into(),
+                is_empire: true,
+                hull: 100,
+                hyperdrive: 80,
+                troop_capacity: 3,
+                ..Default::default()
+            });
+        for (id, name, alliance) in [
+            (0x1000_0007, "Stormtrooper Regiment", false),
+            (0x1000_0001, "Alliance Army Regiment", true),
+        ] {
+            world.buildable_classes.insert(
+                rebellion_core::ids::DatId::new(id),
+                rebellion_core::world::BuildableClass {
+                    name: name.into(),
+                    is_alliance: alliance,
+                    is_empire: !alliance,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+
+    #[test]
     fn the_enemy_assault_scenario_takes_yavin_from_its_one_regiment_as_a0_shows() {
         // A0 assault-clean/01..03 (an unedited Alliance game, day 720): the
         // Empire took the Alliance's Yavin; Imperial Forces list
@@ -10470,60 +10660,7 @@ mod tests {
         // from its Conflict rail (FUN_00497530 kind 3).
         use rebellion_core::assault_report::ReportCategory;
         let enemy = request(Scenario::EnemyAssaultTaken, CockpitFaction::Alliance);
-        let mut applied = apply_to_loading_world_with(enemy, |world| {
-            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
-            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
-            world.systems[here].name = "Yavin".into();
-            world.systems[elsewhere].sector = world.systems[here].sector;
-            // GNPRTB as shipped (ghidra/notes/planetary-assault.md):
-            // 0x200..0x205, and the garrison 0x1e51 / 0x1e52 that bounds
-            // the landing (FUN_0058c810).
-            let entry = |id: u32, value: i32| rebellion_core::world::GnprtbEntry {
-                parameter_id: id,
-                development: value,
-                alliance_sp_easy: value,
-                alliance_sp_medium: value,
-                alliance_sp_hard: value,
-                empire_sp_easy: value,
-                empire_sp_medium: value,
-                empire_sp_hard: value,
-                multiplayer: value,
-            };
-            world.gnprtb = rebellion_core::world::GnprtbParams::new(vec![
-                entry(0x200, 5),
-                entry(0x201, 30),
-                entry(0x202, 10),
-                entry(0x203, 4),
-                entry(0x204, 6),
-                entry(0x205, 8),
-                entry(0x1e51, 60),
-                entry(0x1e52, -10),
-            ]);
-            world
-                .capital_ship_classes
-                .insert(rebellion_core::world::CapitalShipClass {
-                    name: "Imperial Star Destroyer".into(),
-                    is_empire: true,
-                    hull: 100,
-                    hyperdrive: 80,
-                    troop_capacity: 3,
-                    ..Default::default()
-                });
-            for (id, name, alliance) in [
-                (0x1000_0007, "Stormtrooper Regiment", false),
-                (0x1000_0001, "Alliance Army Regiment", true),
-            ] {
-                world.buildable_classes.insert(
-                    rebellion_core::ids::DatId::new(id),
-                    rebellion_core::world::BuildableClass {
-                        name: name.into(),
-                        is_alliance: alliance,
-                        is_empire: !alliance,
-                        ..Default::default()
-                    },
-                );
-            }
-        });
+        let mut applied = apply_to_loading_world_with(enemy, seed_yavin_assault);
         let reports = enemy_assault(enemy, &mut applied.world, &mut applied.transport);
         let [report] = &reports[..] else {
             panic!("one report: {reports:?}");

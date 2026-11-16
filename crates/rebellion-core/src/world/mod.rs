@@ -1999,7 +1999,8 @@ impl GameWorld {
     /// A change of `system`'s holder (`FUN_004f6f40` → `FUN_004fae40` →
     /// `FUN_004f8680`): each facility of another side passes to the holder
     /// when its class serves that side (`FUN_004f27d0`), and is removed
-    /// otherwise. Returns the facilities removed. A class missing from the
+    /// otherwise; so a system leaving the Alliance loses its
+    /// headquarters. Returns the facilities removed. A class missing from the
     /// catalog keeps its facility (port).
     pub fn hand_over_facilities(&mut self, system: SystemKey) -> Vec<FacilityRef> {
         let Some(holder) = self
@@ -2009,6 +2010,14 @@ impl GameWorld {
         else {
             return Vec::new();
         };
+        // The HQ's class serves the Alliance alone: it ends with the
+        // system's leaving the Alliance (FUN_004f8680, then event 0x300's
+        // FUN_00561470 loyalty shift, `loyalty::settle`).
+        if holder != Faction::Alliance {
+            if let Some(value) = self.systems.get_mut(system) {
+                value.is_headquarters = false;
+            }
+        }
         let mut removed = Vec::new();
         for facility in self.facilities_at(system) {
             let Some((class, side)) = self.facility(facility) else {
@@ -2471,6 +2480,30 @@ mod facility_ownership_tests {
         assert_eq!(world.hand_over_facilities(here), vec![facility]);
         assert_eq!(side_of(&world, facility), None);
         assert!(world.systems[here].manufacturing_facilities.is_empty());
+    }
+
+    #[test]
+    fn the_alliance_headquarters_ends_when_its_system_leaves_the_alliance() {
+        // FUN_004f8680 removes the HQ (ALLFACSD 0x20000001 serves the
+        // Alliance alone, FUN_004f27d0) when its system turns Empire; its
+        // loss (event 0x300 -> FUN_00561470 -> FUN_00561780) ends the
+        // headquarters. A0 2026-11-16-partial-cells/v-17 (sha256
+        // 2d0316e7) shows Yavin with the HQ mark; after "Assault on Yavin"
+        // (v-19, a2feadda) v-20 (c9066ff2) shows Imperial Yavin without it.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, ControlKind::Controlled(Faction::Alliance));
+        world.systems[here].is_headquarters = true;
+        let hq = class(&mut world, 0x2000_0001, true, false);
+        let facility = yard(&mut world, here, hq, Faction::Alliance);
+        assert!(world.hand_over_facilities(here).is_empty());
+        assert!(world.systems[here].is_headquarters);
+        // A battle there changes nothing.
+        world.systems[here].control = ControlKind::Contested;
+        assert!(world.hand_over_facilities(here).is_empty());
+        assert!(world.systems[here].is_headquarters);
+        world.systems[here].control = ControlKind::Controlled(Faction::Empire);
+        assert_eq!(world.hand_over_facilities(here), vec![facility]);
+        assert!(!world.systems[here].is_headquarters);
     }
 
     #[test]

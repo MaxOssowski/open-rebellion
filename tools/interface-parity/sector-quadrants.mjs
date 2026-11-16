@@ -27,6 +27,10 @@ const QUADRANTS = 50;
 // CoruscantSeized: Coruscant the Alliance's, as A0 coruscant-676/14; the
 // setup's second system is Coruscant. A case with `scenario` runs it.
 const CORUSCANT_SEIZED = 107;
+// HeadquartersTaken (132): the Empire's assault takes Yavin, the
+// Alliance's headquarters, with Sumitra's sector window open; the
+// setup's systems are Yavin both times.
+const HEADQUARTERS_TAKEN = 133;
 // CoruscantSquadrons: the Empire's Coruscant with ten TIE Fighter
 // squadrons, as A0 2026-11-11-icon-menu-topic/05; the second system again.
 const CORUSCANT_SQUADRONS = 109;
@@ -56,6 +60,10 @@ const QUADRANTS_STALE_SEE_EVERYTHING = 125;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
+  "2026-11-16-partial-cells/v-17-sumitra-yavin-hq-mark-imperial-presence-d1268.png":
+    "2d0316e721000c783d72837706813f353d9d80477538fd875cf6862cd29eb4c1",
+  "2026-11-16-partial-cells/v-20-sumitra-yavin-imperial-no-hq-mark-d1716.png":
+    "c9066ff230159c65bedd03d6cb0448f8cc45e9f2a4d5aba9f747962d9945460f",
   "2026-11-13-icon-drag-move/20-fleet-icon-drag-start.png":
     "511d44431ecd9424c9df400a14a192e6364b4acfc411304982ffb9b4860baf53",
   "2026-11-13-icon-drag-move/21-fleet-icon-dragged-over-kubindi.png":
@@ -2452,6 +2460,62 @@ const cases = [
     },
   },
   {
+    name: "headquarters-taken",
+    scenario: HEADQUARTERS_TAKEN,
+    factions: ["alliance"],
+    // OBJ-13-C007: the HQ object (ALLFACSD, the Alliance's alone) ends with
+    // its system's leaving the Alliance (FUN_004f8680), so FUN_0045bbb0
+    // adds no overlay. A0 2026-11-16-partial-cells (an Alliance game,
+    // Sumitra's window at (300, 38)): v-17 shows 904 over Yavin at (389,
+    // 217), every opaque pixel; after the Empire took Yavin, v-20 shows
+    // none. The port's Yavin there is v-20's, the quadrant icons' corner
+    // (x < 404, y >= 243: other units than A0's) left out.
+    async run(page, faction, setup, directory, source) {
+      const screen = await stableScreen(page, directory, "headquarters-taken");
+      const before = a0Capture("2026-11-16-partial-cells/v-17-sumitra-yavin-hq-mark-imperial-presence-d1268.png");
+      const after = a0Capture("2026-11-16-partial-cells/v-20-sumitra-yavin-imperial-no-hq-mark-d1716.png");
+      if (!before || !after) return { a0: null };
+      const icon = resource(source, 904);
+      const at = { x: 389, y: 217 };
+      const mark = (png) => {
+        let opaque = 0;
+        let differing = 0;
+        for (let y = 0; y < icon.height; y += 1) {
+          for (let x = 0; x < icon.width; x += 1) {
+            const i = (y * icon.width + x) * 4;
+            if (blueKey(icon.data, i)) continue;
+            opaque += 1;
+            const j = ((at.y + y) * png.width + at.x + x) * 4;
+            if ([0, 1, 2].some((k) => png.data[j + k] !== icon.data[i + k])) differing += 1;
+          }
+        }
+        return { opaque, differing };
+      };
+      const region = (port, a0) => {
+        let differing = 0;
+        for (let y = at.y; y < at.y + icon.height; y += 1) {
+          for (let x = at.x; x < at.x + icon.width; x += 1) {
+            if (x < 404 && y >= 243) continue;
+            const i = (y * port.width + x) * 4;
+            if ([0, 1, 2].some((k) => port.data[i + k] !== a0.data[i + k])) differing += 1;
+          }
+        }
+        return differing;
+      };
+      const checks = {
+        a0_before: mark(before),
+        port_mark: mark(screen),
+        port_against_after: region(screen, after),
+        before_against_after: region(before, after),
+      };
+      assert.equal(checks.a0_before.differing, 0, JSON.stringify(checks));
+      assert.ok(checks.port_mark.differing > checks.port_mark.opaque / 2, JSON.stringify(checks));
+      assert.equal(checks.port_against_after, 0, JSON.stringify(checks));
+      assert.ok(checks.before_against_after > 0, JSON.stringify(checks));
+      return checks;
+    },
+  },
+  {
     name: "coruscant-seized",
     scenario: CORUSCANT_SEIZED,
     factions: ["empire"],
@@ -3409,7 +3473,10 @@ async function inspect(server, source, faction, testCase, executable) {
     await page.goto(`${serverOrigin}/?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
     await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
     const ready = await page.evaluate(() => window.__openRebellionInterfaceReady);
-    assert.equal(ready.status, "ready", JSON.stringify(ready));
+    // HeadquartersTaken also reports its message index on this channel
+    // (story_messages_report), which may come first.
+    assert.ok(ready.status === "ready" || (testCase.scenario === HEADQUARTERS_TAKEN
+      && ready.status === "story-messages"), JSON.stringify(ready));
     assert.equal(ready.code, fixtureCode);
     await page.waitForFunction(() => window.__openRebellionInterfaceQuadrantSetup
       && (window.__openRebellionInterfaceQuadrants || []).length > 0, null, { timeout: 10_000 });

@@ -2459,6 +2459,163 @@ async function run(browser, base, faction) {
   }
 }
 
+// OBJ-13-C007: the Alliance's headquarters system lost. Scenario::
+// HeadquartersTaken (132) is EnemyAssaultTaken with Yavin the Alliance's
+// headquarters: the Empire's assault takes it, the report is filed on the
+// Conflict rail (FUN_00497530 kind 3) and not opened. Against A0 2026-11-16-
+// partial-cells (an Alliance game): the Message Index lists "Assault on
+// Yavin" with the Conflict rail's row icon (v-18, sha256 c510c1b7), and
+// Display opens its Assault Summary (FUN_00469de0): "Assault on Yavin" over
+// "Imperial troops have taken control of the Alliance system Yavin"
+// (TEXTSTRA 0x7090 / 0x7091, FUN_00496770), picture 0x2b99, the rail every
+// pixel A0's (v-19, a2feadda, the window at (62, 49)); the HQ ends with the
+// system (FUN_004f8680), so Yavin is no longer the headquarters.
+const HEADQUARTERS_TAKEN = 133;
+const A0_PARTIAL = path.join(ROOT, ".artifacts/a0-vm/2026-11-16-partial-cells");
+
+async function headquartersTaken(browser, base) {
+  const directory = path.join(OUT, "alliance-headquarters-taken");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const screen = async (label) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    return PNG.sync.read(bytes);
+  };
+  const assaults = () => page.evaluate(() => (window.__openRebellionInterfaceFleetLoads || []).at(-1));
+  const until = async (predicate, description) => {
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      const value = await assaults();
+      if (value && predicate(value)) return value;
+      if (Date.now() > deadline) throw new Error(`${description}: ${JSON.stringify(value)}`);
+      await page.waitForTimeout(100);
+    }
+  };
+  const checks = {};
+  try {
+    await page.goto(`${base}?fixture-code=${HEADQUARTERS_TAKEN | (1 << 8)}`);
+    const ready = await waitReport(page, () => true, "the fixture reports");
+    const start = await until((o) => "yavin_headquarters" in o, "the assault observation");
+    checks.start = { yavin_holder: start.yavin_holder, yavin_headquarters: start.yavin_headquarters,
+      summary_open: start.assault_summary !== null };
+    // Filed, not opened; Yavin the Empire's and no longer the headquarters.
+    assert.deepEqual(checks.start, { yavin_holder: "Controlled(Empire)", yavin_headquarters: false,
+      summary_open: false }, JSON.stringify(start));
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const opened = await waitReport(page, (value) => value.index_open && value.rows.length > 0,
+      "the Conflict rail opens the index");
+    const index = opened.rows.findIndex((text) => text.startsWith("Assault on Yavin"));
+    assert.ok(index >= 0, JSON.stringify(opened.rows));
+    const [left, top] = [Math.round(opened.window_left), Math.round(opened.window_top)];
+    const row = (k) => [left + 25 + 60, top + 108 + 21 * k + 10];
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const listed = await screen("index-assault-row");
+    // A0 v-18 lists "Assault on Yavin" second, the index window at (62,
+    // 49): each row 21 high from the window's y 108, its icon at x 25.
+    const a0Index = PNG.sync.read(await fs.readFile(path.join(A0_PARTIAL,
+      "v-18-message-index-assault-on-yavin-d1716.png")));
+    const a0Row = 1;
+    // The Conflict rail's row icon 0x2ad7 (keyed on index 0) in the port's
+    // row and in A0's second row (the port's row is selected, A0's is
+    // not, so only the icon is compared, not the row's text art).
+    const conflictIcon = (await indexedBitmap(0x2ad7)).filter(([, , , k]) => k !== 0);
+    checks.row = {
+      index,
+      text: opened.rows[index],
+      icon_port: differing(listed, [left + 26, top + 109 + 21 * index], conflictIcon),
+      icon_a0: differing(a0Index, [62 + 26, 49 + 109 + 21 * a0Row], conflictIcon),
+    };
+    console.log(JSON.stringify({ headquarters_taken: checks }));
+    // A double click on the row displays it (mode 2), and a battle report
+    // opens its Assault Summary and closes the index (FUN_00469de0). (A
+    // press of Display Message would end on the summary's system button
+    // there, which closes it, assault-clean/07.)
+    const [rx, ry] = row(index);
+    await page.mouse.move(rx, ry);
+    await frames(page);
+    for (const step of [1, 2]) {
+      await page.mouse.down({ clickCount: step });
+      await frames(page, 1);
+      await page.mouse.up({ clickCount: step });
+      await frames(page, 1);
+    }
+    await frames(page, 3);
+    await page.waitForTimeout(300);
+    const after = await until((o) => o.assault_summary?.page === "Summary", "Display opens the Assault Summary");
+    const summary = after.assault_summary;
+    assert.equal(summary.title, "Assault on Yavin", JSON.stringify(summary));
+    assert.equal(summary.body, "Imperial troops have taken control of the Alliance system Yavin",
+      JSON.stringify(summary));
+    assert.equal(summary.picture, 0x2b99, JSON.stringify(summary));
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const shown = await screen("assault-summary");
+    const a0 = PNG.sync.read(await fs.readFile(path.join(A0_PARTIAL, "v-19-msg-assault-on-yavin-hq-d1716view.png")));
+    const [ox, oy] = summary.origin.map(Math.round);
+    // A0's pointer and the Summary tip stand at the screen's (480..560,
+    // 140..198).
+    const pointer = (x, y) => x >= 480 && x < 560 && y >= 140 && y < 198;
+    const differ = ([xa, ya, xb, yb]) => {
+      let count = 0;
+      for (let y = ya; y < yb; y += 1) {
+        for (let x = xa; x < xb; x += 1) {
+          if (pointer(62 + x, 49 + y)) continue;
+          const i = ((49 + y) * a0.width + 62 + x) * 4;
+          const j = ((oy + y) * shown.width + ox + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== shown.data[j + c])) count += 1;
+        }
+      }
+      return count;
+    };
+    const green = (data, k) => data[k + 1] > 180 && data[k] < 100 && data[k + 2] < 100;
+    const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+      let found = null;
+      for (let y = ya; y < yb; y += 1) {
+        for (let x = xa; x < xb; x += 1) {
+          if (!green(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+          found = found ? [Math.min(found[0], x), Math.min(found[1], y), Math.max(found[2], x), Math.max(found[3], y)]
+            : [x, y, x, y];
+        }
+      }
+      return found;
+    };
+    checks.summary = {
+      origin: [ox, oy],
+      picture: differ([12, 13 + 25, 412, 13 + 205]),
+      rail: differ([414, 11, 468, 296]),
+      corners: differ([0, 0, 30, 22]) + differ([384, 0, 414, 22]),
+      title: { a0: ink(a0, [62, 49], [12, 10, 412, 40]), port: ink(shown, [ox, oy], [12, 10, 412, 40]) },
+      body: { a0: ink(a0, [62, 49], [20, 220, 400, 262]), port: ink(shown, [ox, oy], [20, 220, 400, 262]) },
+    };
+    console.log(JSON.stringify({ headquarters_taken: checks }));
+    const near = (a, p) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+      && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+    const c = checks.summary;
+    assert.deepEqual([c.origin, c.picture, c.rail, c.corners], [[62, 49], 0, 0, 0], JSON.stringify(checks));
+    assert.ok(near(c.title.a0, c.title.port) && near(c.body.a0, c.body.port), JSON.stringify(checks));
+    // A0's unselected row shows the list's ground at the icon's (14, 10)
+    // and (14, 11), two near-black pixels of 0x2ad7 the port's selected
+    // row draws; the unselected row's keying is not compared (open).
+    assert.deepEqual([checks.row.text, checks.row.icon_port, checks.row.icon_a0], ["Assault on Yavin", 0, 2],
+      JSON.stringify(checks));
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "alliance", case: "headquarters-taken", status: "pass", checks };
+  } catch (error) {
+    await screen("failure").catch(() => {});
+    return { faction: "alliance", case: "headquarters-taken", status: "fail", error: String(error.stack || error),
+      checks, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -2470,6 +2627,7 @@ const browser = await chromium.launch({
 const results = [];
 try {
   for (const faction of FACTIONS) results.push(await run(browser, base, faction));
+  if (FACTIONS.some(({ name }) => name === "alliance")) results.push(await headquartersTaken(browser, base));
 } finally {
   await browser.close();
   server.close();

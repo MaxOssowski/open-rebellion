@@ -2241,9 +2241,10 @@ async fn main() {
             let report = msg_log.messages().iter().rev().find_map(|message| {
                 message.assault_report.clone().map(|report| (message.id, report))
             });
-            if let Some((id, report)) =
-                report.filter(|_| assault_summary_state.window_count() == 0)
-            {
+            if let Some((id, report)) = report.filter(|_| {
+                assault_summary_state.window_count() == 0
+                    && interface_test_fixture::opens_the_assault_report(request)
+            }) {
                 assault_summary_state.open(&world, *report, &message_texts, Some(id));
             }
         }
