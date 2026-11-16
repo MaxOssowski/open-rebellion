@@ -2798,6 +2798,163 @@ async function uprisingMessages(browser, base) {
   }
 }
 
+// EVT-01-C015: a Jedi Training's messages as the Alliance reads them.
+// Scenario::JediTrainingMessages (136) ends Luke's Jedi Training on Yavin a
+// success through the app's apply_mission_result: Dodonna's Force grows
+// from 10 to 25 (FUN_005712b0 -> FUN_004ee1d0), which files Force Growth
+// (notification 0x1e1, FUN_0048ed80: TEXTSTRA 0x7180 / 0x7181 over 0x412
+// with his portrait), then Luke's Mission Report (FUN_004927c0, 0x71c0 /
+// 0x71c1). Against A0 2026-11-16-edited-saves (an Alliance game whose
+// Luke's Force was edited to 100; the window at (62, 49)): the Message
+// Index lists "Luke Skywalker Mission Report" above "Jan Dodonna Force
+// Growth", each under the Mission rail's row icon 0x2a9e (x-58, sha256
+// 507ebeea); "My Jedi Training mission on Yavin was a success." (x-59,
+// 452ffaa7) and "... My ranking is Trainee." (x-60, 35ebeb31): title and
+// text, the picture, its title image, the rail and the corners every pixel
+// A0's, A0's pointer and tooltip and the title's neighbour arrows left out,
+// title and body ink within A0's tolerance. The ranking word is the
+// edit's (Dodonna's gain follows Luke's edited Force).
+const JEDI_TRAINING_MESSAGES = 137;
+const A0_EDITED = path.join(ROOT, ".artifacts/a0-vm/2026-11-16-edited-saves");
+
+async function jediTrainingMessages(browser, base) {
+  const directory = path.join(OUT, "alliance-jedi-training-messages");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const screen = async (label) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    return PNG.sync.read(bytes);
+  };
+  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(A0_EDITED, file)));
+  const checks = {};
+  try {
+    await page.goto(`${base}?fixture-code=${JEDI_TRAINING_MESSAGES | (1 << 8)}`);
+    const ready = await waitReport(page, () => true, "the fixture reports");
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const opened = await waitReport(page, (value) => value.index_open && value.rows.length > 0,
+      "the Mission rail opens the index");
+    const [left, top] = [Math.round(opened.window_left), Math.round(opened.window_top)];
+    const row = (k) => [left + 25 + 60, top + 108 + 21 * k + 10];
+    const showMessage = [left + 0x1aa + 22, top + 0x59 + 20];
+    const reportTitle = "Luke Skywalker Mission Report";
+    const growthTitle = "Jan Dodonna Force Growth";
+    // The Mission rail's row icon (the Alliance's), keyed on index 0; an
+    // unchosen row shows its first 14 columns and 15 rows.
+    const icon = (await indexedBitmap(0x2a9e)).filter(([x, y, , k]) => k !== 0 && x < 14 && y < 15);
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const listed = await screen("mission-rows");
+    const rowIcon = (png, [x0, y0], k) => differing(png, [x0 + 26, y0 + 109 + 21 * k], icon);
+    checks.rows = {
+      origin: [left, top],
+      rows: opened.rows,
+      report_row: opened.rows.indexOf(reportTitle),
+      growth_row: opened.rows.indexOf(growthTitle),
+    };
+    checks.rows.port = [rowIcon(listed, [left, top], checks.rows.report_row),
+      rowIcon(listed, [left, top], checks.rows.growth_row)];
+    // x-58's All list: the report third, Force Growth fourth, unchosen.
+    const index = await a0("x-58-al790jedi-message-index-mission-report-force-growth-d943.png");
+    checks.rows.a0 = [rowIcon(index, [62, 49], 2), rowIcon(index, [62, 49], 3)];
+    console.log(JSON.stringify({ jedi_training_messages: checks }));
+    const white = (data, k) => Math.min(data[k], data[k + 1], data[k + 2]) > 140
+      && Math.max(data[k], data[k + 1], data[k + 2]) - Math.min(data[k], data[k + 1], data[k + 2]) < 40;
+    const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+      let found = null;
+      for (let y = ya; y < yb; y += 1) {
+        for (let x = xa; x < xb; x += 1) {
+          if (!white(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+          found = found ? [Math.min(found[0], x), Math.min(found[1], y), Math.max(found[2], x), Math.max(found[3], y)]
+            : [x, y, x, y];
+        }
+      }
+      return found;
+    };
+    const near = (a, p) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+      && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+    // Each message: its title and text, A0's capture and the screen box
+    // of A0's pointer (and tooltip).
+    const cases = [
+      [reportTitle, (text) => text === "My Jedi Training mission on Yavin was a success.",
+        "x-59-al790jedi-msg-luke-mission-report-jedi-training-success-d958view.png", [494, 154, 590, 200]],
+      [growthTitle, (text) => text.startsWith(
+        "My recent experience has given me new insights and I have grown in my skills in the Force.")
+        && text.endsWith("My ranking is Trainee."),
+      "x-60-al790jedi-msg-dodonna-force-growth-trainee-d958view.png", [454, 56, 486, 96]],
+    ];
+    checks.messages = {};
+    for (const [title, textOk, file, [px0, py0, px1, py1]] of cases) {
+      const listedNow = await report(page);
+      await click(page, row(listedNow.rows.indexOf(title)));
+      await click(page, showMessage);
+      const viewed = await waitReport(page, (value) => value.mode === "single" && value.viewing_title === title,
+        `Display Message shows ${title}`);
+      assert.ok(textOk(viewed.viewing_text), JSON.stringify(viewed));
+      await page.mouse.move(2, 2);
+      await frames(page, 6);
+      const shown = await screen(title.toLowerCase().replace(/ /g, "-"));
+      const original = await a0(file);
+      const [ox, oy] = [Math.round(viewed.window_left), Math.round(viewed.window_top)];
+      // The title's up and down arrows (the window's 366..406, 8..30) show
+      // whether a newer or older message neighbours this one; the
+      // fixture's list is not A0's, so they are left out.
+      const arrows = (x, y) => x >= 366 && x < 406 && y >= 8 && y < 30;
+      const differ = ([xa, ya, xb, yb]) => {
+        let count = 0;
+        for (let y = ya; y < yb; y += 1) {
+          for (let x = xa; x < xb; x += 1) {
+            const [sx, sy] = [62 + x, 49 + y];
+            if (arrows(x, y) || (sx >= px0 && sx < px1 && sy >= py0 && sy < py1)) continue;
+            const i = (sy * 640 + sx) * 4;
+            const j = ((oy + y) * 640 + ox + x) * 4;
+            if ([0, 1, 2].some((c) => original.data[i + c] !== shown.data[j + c])) count += 1;
+          }
+        }
+        return count;
+      };
+      checks.messages[title] = {
+        origin: [ox, oy],
+        text: viewed.viewing_text,
+        background: viewed.viewing_background,
+        foreground: viewed.viewing_foreground,
+        picture: differ([12, 33, 412, 233]),
+        title_image: differ([15, 16, 30, 32]),
+        rail: differ([414, 11, 468, 296]),
+        corners: differ([0, 0, 30, 22]) + differ([384, 0, 414, 22]),
+        title: { a0: ink(original, [62, 49], [34, 14, 360, 30]), port: ink(shown, [ox, oy], [34, 14, 360, 30]) },
+        body: { a0: ink(original, [62, 49], [4, 236, 412, 270]), port: ink(shown, [ox, oy], [4, 236, 412, 270]) },
+      };
+      console.log(JSON.stringify({ jedi_training_messages: { [title]: checks.messages[title] } }));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", `the Mission list after ${title}`);
+    }
+    const r = checks.rows;
+    // The report files after the Force Growth its effect posted, so it
+    // lists above it, as in A0.
+    assert.ok(r.report_row >= 0 && r.growth_row === r.report_row + 1, JSON.stringify(r));
+    assert.deepEqual([r.origin, r.port, r.a0], [[62, 49], [0, 0], [0, 0]], JSON.stringify(r));
+    for (const [title, c] of Object.entries(checks.messages)) {
+      assert.deepEqual([c.origin, c.picture, c.title_image, c.rail, c.corners], [[62, 49], 0, 0, 0, 0],
+        `${title} ${JSON.stringify(c)}`);
+      assert.ok(near(c.title.a0, c.title.port) && near(c.body.a0, c.body.port), `${title} ${JSON.stringify(c)}`);
+    }
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "alliance", case: "jedi-training-messages", status: "pass", checks };
+  } catch (error) {
+    await screen("failure").catch(() => {});
+    return { faction: "alliance", case: "jedi-training-messages", status: "fail",
+      error: String(error.stack || error), checks, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -2808,13 +2965,17 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  // --only=<case> runs that one case (headquarters-taken, uprising-messages).
+  // --only=<case> runs that one case (headquarters-taken, uprising-messages,
+  // jedi-training-messages).
   if (!args.only) for (const faction of FACTIONS) results.push(await run(browser, base, faction));
   if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "headquarters-taken")) {
     results.push(await headquartersTaken(browser, base));
   }
   if (FACTIONS.some(({ name }) => name === "empire") && (!args.only || args.only === "uprising-messages")) {
     results.push(await uprisingMessages(browser, base));
+  }
+  if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "jedi-training-messages")) {
+    results.push(await jediTrainingMessages(browser, base));
   }
 } finally {
   await browser.close();
