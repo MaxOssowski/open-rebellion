@@ -70,6 +70,9 @@ const knownA0 = "../2026-11-14-quadrants-status-known";
 // 126 EnemyRegimentAtRest: the same copy at rest on its planet.
 const ENEMY_REGIMENT_AT_REST = 126;
 const regimentA0 = "../2026-11-11-regiment-en-route";
+// 130 ShipShieldHit: FleetLoad's fleet, its ship whole but for one hit
+// against the shield recharge (the Empire's: Victory Destroyer 2).
+const SHIP_SHIELD_HIT = 131;
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
   encyclopedia: { x: 258, y: 218, id: 11552 },
@@ -516,6 +519,27 @@ const cases = [
     // compared; Liberation Sans's "T" stands up to 3 pixels right of GDI
     // Arial's (the accepted text deviation).
     a0: { file: "03-ship.png", x: 170, y: 81, labels: 14, leftSlack: 3 },
+    target: async (page) => {
+      const opened = await openFleetWindow(page);
+      await click(page, point(opened.fleet_entry));
+      return point((await fleetLoad(page, (o) => o.selected === "fleet" && o.first_item)).first_item);
+    },
+  },
+  // OBJ-06-C007: a ship whole but for one hit against its shield recharge
+  // (+0x64 bits 0..3). A0 2026-11-15-partial-cells e-vd2 (an Empire game,
+  // day 490, the window at (170, 81)): Victory Destroyer 2 reads "Ship
+  // Damaged: Yes" (FUN_00501c00: a counter set), Hull Value 1800:1800 and
+  // Shield Recharge Rate 8:10 (FUN_00500fa0: 10 - 10 x 1 / GNPRTB 2048).
+  {
+    name: "capital-ship-shield-hit",
+    code: SHIP_SHIELD_HIT,
+    family: "Ship",
+    shieldHit: {
+      file: "2026-11-15-partial-cells/e-vd2-status-damaged-yes-enroute-d490-OBJ-06-C007.png",
+      sha256: "8bce5f1cbf27a6779c221513f99632a926546937a2f41c8c5e75a2767b1629c8",
+      x: 170,
+      y: 81,
+    },
     target: async (page) => {
       const opened = await openFleetWindow(page);
       await click(page, point(opened.fleet_entry));
@@ -1170,6 +1194,120 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.equal(differing, 0, `the picture differs from A0: ${JSON.stringify(pictureCheck)}`);
     }
 
+    // OBJ-06-C007: the hit ship's rows, and against A0 e-vd2 (the Empire)
+    // the rows whose content is A0's, the name and the picture.
+    let shieldHitChecks = null;
+    if (testCase.shieldHit) {
+      await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+      const { rows, marks } = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+      const value = (label) => rows.find(([name]) => name === label)?.[1];
+      const ratio = (label) => (value(label) ?? "").split(":").map(Number);
+      const [hull, hullFull] = ratio("Hull Value:");
+      const [recharge, rechargeFull] = ratio("Shield Recharge Rate:");
+      shieldHitChecks = { rows: { damaged: value("Ship Damaged:"), hull: value("Hull Value:"),
+        recharge: value("Shield Recharge Rate:"), class: value("Class:") }, marks };
+      assert.equal(value("Ship Damaged:"), "Yes", JSON.stringify(rows));
+      assert.ok(hull === hullFull && hull > 0, JSON.stringify(rows));
+      assert.ok(recharge < rechargeFull, JSON.stringify(rows));
+      if (faction.name === "empire") {
+        assert.deepEqual(shieldHitChecks.rows, { damaged: "Yes", hull: "1800:1800", recharge: "8:10",
+          class: "Victory Destroyer" }, JSON.stringify(rows));
+      }
+      const a0File = path.join(root, ".artifacts/a0-vm", testCase.shieldHit.file);
+      if (faction.name === "empire" && fs.existsSync(a0File)) {
+        const a0Bytes = fs.readFileSync(a0File);
+        assert.equal(sha256(a0Bytes), testCase.shieldHit.sha256, `${testCase.shieldHit.file} is not the recorded capture`);
+        const a0 = PNG.sync.read(a0Bytes);
+        const port = PNG.sync.read(second);
+        const [ax, ay] = [testCase.shieldHit.x, testCase.shieldHit.y];
+        const ink = (png, ox, oy, [x0, y0, x1, y1]) => {
+          let box = null;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = ((oy + y) * png.width + ox + x) * 4;
+              if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 200) continue;
+              box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+            }
+          }
+          return box;
+        };
+        // A0's page holds the ETA row the port's (not en route) lacks:
+        // from Maintenance Cost on, A0's row k is the port's k - 1. Each
+        // row's ink against its own row top: left, top and bottom within 1
+        // pixel, the right within 3 (the text-width deviation).
+        const rowsOf = (a0Row, portRow) => [
+          ["label", [16, 47 + 14 * a0Row, 118, 61 + 14 * a0Row], [16, 47 + 14 * portRow, 118, 61 + 14 * portRow], 14 * (a0Row - portRow)],
+          ["value", [119, 47 + 14 * a0Row, 226, 61 + 14 * a0Row], [119, 47 + 14 * portRow, 226, 61 + 14 * portRow], 14 * (a0Row - portRow)],
+        ];
+        const compared = {
+          title: [["ink", [15, 18, 226, 36], [15, 18, 226, 36], 0]],
+          class: rowsOf(0, 0),
+          ship_damaged: rowsOf(12, rows.findIndex(([name]) => name === "Ship Damaged:")),
+        };
+        const text = {};
+        for (const [row, parts] of Object.entries(compared)) {
+          for (const [part, a0Region, portRegion, shift] of parts) {
+            const a = ink(a0, ax, ay, a0Region);
+            const p = ink(port, rect.x, rect.y, portRegion);
+            const moved = p && [p[0], p[1] + shift, p[2], p[3] + shift];
+            text[`${row}-${part}`] = { a0: a, port: moved };
+            assert.ok(a && moved && Math.abs(a[0] - moved[0]) <= 1 && Math.abs(a[1] - moved[1]) <= 1
+              && Math.abs(a[3] - moved[3]) <= 1 && Math.abs(a[2] - moved[2]) <= 3,
+            `${row} ${part}: ${JSON.stringify(text[`${row}-${part}`])}`);
+          }
+        }
+        // The name, centred (DT_CENTER): its ink's middle within 2 pixels,
+        // top and bottom within 1.
+        const nameRegion = [masks.name.x, masks.name.y, masks.name.x + masks.name.width, masks.name.y + masks.name.height];
+        const nameA0 = ink(a0, ax, ay, nameRegion);
+        const namePort = ink(port, rect.x, rect.y, nameRegion);
+        text.name = { a0: nameA0, port: namePort };
+        assert.ok(nameA0 && namePort && Math.abs(nameA0[0] + nameA0[2] - namePort[0] - namePort[2]) <= 4
+          && Math.abs(nameA0[1] - namePort[1]) <= 1 && Math.abs(nameA0[3] - namePort[3]) <= 1,
+        `name: ${JSON.stringify(text.name)}`);
+        // The picture: every pixel A0's but those of the en route mark
+        // (GOKRES portrait + 0x1000, FUN_0042c3b0), which A0's moving ship
+        // shows and the port's resting one does not. The damaged mark
+        // (+ 0x2000) is the port's only mark; the portrait is it less 0x2000.
+        const damagedMark = marks.find(([dll, id]) => dll === "Gokres" && id >= 0x2000);
+        assert.ok(damagedMark && marks.length === 1, JSON.stringify(marks));
+        const portrait = damagedMark[1] - 0x2000;
+        const gokres = path.join(root, "data/base/ui/gokres-dll/BMP");
+        const bmpSize = (id) => {
+          const bytes = fs.readFileSync(path.join(gokres, `${id}.bmp`));
+          return [bytes.readInt32LE(18), Math.abs(bytes.readInt32LE(22))];
+        };
+        const [pw, ph] = bmpSize(portrait);
+        const enRoute = resource(gokres, portrait + 0x1000, ...bmpSize(portrait + 0x1000));
+        // PICTURE_CENTRE (307, 64), integer halves (status_window.rs).
+        const [px, py] = [307 - Math.trunc(pw / 2), 64 - Math.trunc(ph / 2)];
+        const markAt = (x, y) => {
+          const mx = x - px;
+          const my = y - py;
+          if (mx < 0 || my < 0 || mx >= Math.min(pw, enRoute.width) || my >= Math.min(ph, enRoute.height)) return false;
+          const i = (my * enRoute.width + mx) * 4;
+          return !(enRoute.data[i] === 0 && enRoute.data[i + 1] === 0 && enRoute.data[i + 2] === 255);
+        };
+        const box = masks.picture;
+        let differing = 0;
+        let skipped = 0;
+        for (let y = box.y; y < box.y + box.height; y += 1) {
+          for (let x = box.x; x < box.x + box.width; x += 1) {
+            if (markAt(x, y)) {
+              skipped += 1;
+              continue;
+            }
+            const i = ((ay + y) * a0.width + ax + x) * 4;
+            const j = ((rect.y + y) * port.width + rect.x + x) * 4;
+            if ([0, 1, 2].some((k) => a0.data[i + k] !== port.data[j + k])) differing += 1;
+          }
+        }
+        fs.writeFileSync(path.join(directory, "shield-hit-picture-port.png"), PNG.sync.write(crop(second, { x: rect.x + box.x, y: rect.y + box.y, width: box.width, height: box.height })));
+        shieldHitChecks.a0 = { text, picture: { pixels: box.width * box.height - skipped, skipped, differing, portrait } };
+        assert.equal(differing, 0, `the picture differs from A0: ${JSON.stringify(shieldHitChecks.a0.picture)}`);
+      }
+    }
+
     // FUN_00443020's tips (A0 a0-vm/tooltip/122-st-ency.png,
     // 123-st-close.png): a (255, 251, 240) tip with a (128, 128, 128)
     // border, 19 high, its top left at the pointer plus (0, 21). The
@@ -1253,7 +1391,7 @@ async function inspect(server, source, faction, testCase, executable) {
       menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
       assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
     }
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, embarked, pictureCheck, menuInk, cellCheck, iconCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, off_band_menu: offBandMenu, opened: line, rect, forceRanking, menuTopic, statusRows, embarked, pictureCheck, shieldHitChecks, menuInk, cellCheck, iconCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

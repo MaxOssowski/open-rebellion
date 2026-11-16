@@ -42,7 +42,8 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 130;
+const SCENARIO_COUNT: u8 = 131;
+
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -506,6 +507,11 @@ pub enum Scenario {
     /// ordered at the primary system: it waits unfinished on the planet,
     /// the Defenses window's second row (A0 2026-11-15 "m-5").
     FleetLoadUnfinished = 129,
+    /// As `FleetLoad`, the fleet's ship whole but for one hit against its
+    /// shield recharge: for the Empire, Victory Destroyer 2, as A0
+    /// 2026-11-15-partial-cells e-vd2 (8bce5f1cbf27) reads it, "Ship
+    /// Damaged: Yes", Hull 1800:1800, Shield Recharge Rate 8:10.
+    ShipShieldHit = 130,
 }
 
 impl Scenario {
@@ -641,6 +647,7 @@ impl Scenario {
             127 => Self::UnfinishedShipMini,
             128 => Self::UnfinishedShipEnroute,
             129 => Self::FleetLoadUnfinished,
+            130 => Self::ShipShieldHit,
             _ => return None,
         })
     }
@@ -671,6 +678,7 @@ impl Scenario {
                 | Self::FleetArrivals
                 | Self::FleetJoinEnroute
                 | Self::FleetLoadUnfinished
+                | Self::ShipShieldHit
         )
     }
 
@@ -1285,6 +1293,9 @@ pub fn apply(
             if let Some(fleet) = world.fleets.keys().next() {
                 send_member_aboard(request, world, missions, fleet);
             }
+        }
+        if request.scenario == Scenario::ShipShieldHit {
+            hit_the_shield_recharge(request, world);
         }
         if request.scenario == Scenario::FleetLoadUnfinished {
             if let Some(regiment) = loading_regiment(world, primary) {
@@ -3812,7 +3823,8 @@ fn emit_finder_list(
 /// ForceStatus and FleetArrivals scenarios, a facility's (the headquarters') in Quadrants, the
 /// travelling special force's in SpecialForceEnroute, regiment's in
 /// RegimentEnroute and the receiving fleet's or ship's in FleetArrivals
-/// (with the picture's marks), and an unfinished unit's or a producer's in any.
+/// (with the picture's marks), the hit ship's in ShipShieldHit, and an
+/// unfinished unit's or a producer's in any.
 pub fn emit_status_rows(
     request: FixtureRequest,
     sources: rebellion_render::status_rows::StatusSources<'_>,
@@ -3844,7 +3856,8 @@ pub fn emit_status_rows(
         | (
             Scenario::FleetArrivals,
             Some(object @ (StatusObject::Ship { .. } | StatusObject::Fleet(_))),
-        ) => {
+        )
+        | (Scenario::ShipShieldHit, Some(object @ StatusObject::Ship { .. })) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };
@@ -4814,6 +4827,33 @@ fn send_member_aboard(
 /// carries fighters, two of the player's squadrons stand on the primary
 /// planet, and the Defenses window shows its squadron page.
 #[allow(clippy::too_many_arguments)]
+/// The `ShipShieldHit` scenario's ship (A0 2026-11-15-partial-cells e-vd2,
+/// 8bce5f1cbf27): the loading fleet's ship at its class's full hull with
+/// one hit against its shield recharge (`+0x64` bits 0..3). For the Empire
+/// it is the Victory Destroyer class, named Victory Destroyer 2 as in A0.
+fn hit_the_shield_recharge(request: FixtureRequest, world: &mut GameWorld) {
+    let Some(fleet) = world.fleets.keys().next() else {
+        return;
+    };
+    let victory = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| !class.is_alliance && class.name == "Victory Destroyer")
+        .map(|(key, _)| key)
+        .filter(|_| request.faction == CockpitFaction::Empire);
+    let Some(ship) = world.fleets[fleet].capital_ships.first().cloned() else {
+        return;
+    };
+    let class = victory.unwrap_or(ship.class);
+    let hull = world.capital_ship_classes[class].hull as i32;
+    let mut hit = ShipInstance::new(class, hull, request.faction == CockpitFaction::Alliance);
+    hit.set_hits(rebellion_core::world::Subsystem::Shield, 1);
+    if victory.is_some() {
+        hit.name = Some("Victory Destroyer 2".into());
+    }
+    world.fleets[fleet].capital_ships[0] = hit;
+}
+
 fn place_loading_fleet(
     request: FixtureRequest,
     world: &mut GameWorld,
@@ -12305,6 +12345,39 @@ mod tests {
     }
 
     #[test]
+    fn the_shield_hit_scenario_holds_an_undamaged_hull_with_one_shield_recharge_hit() {
+        // A0 2026-11-15-partial-cells e-vd2 (8bce5f1cbf27): the Empire's
+        // Victory Destroyer 2, Ship Damaged Yes with hull 1800:1800 and
+        // Shield Recharge Rate 8:10: one hit against the shield recharge
+        // (+0x64 bits 0..3, FUN_00501510; FUN_00500fa0).
+        use rebellion_core::world::Subsystem;
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied = apply_to_loading_world_with(request(Scenario::ShipShieldHit, faction), |world| {
+                world.capital_ship_classes.insert(rebellion_core::world::CapitalShipClass {
+                    name: "Victory Destroyer".into(),
+                    is_alliance: false,
+                    hull: 1800,
+                    hyperdrive: 60,
+                    troop_capacity: 2,
+                    fighter_capacity: 2,
+                    shield_recharge_rate: 10,
+                    ..Default::default()
+                });
+            });
+            let fleet = applied.world.fleets.keys().next().unwrap();
+            let ship = &applied.world.fleets[fleet].capital_ships[0];
+            let class = &applied.world.capital_ship_classes[ship.class];
+            assert_eq!(ship.hits(Subsystem::Shield), 1, "{faction:?}");
+            assert_eq!(ship.subsystem_hits, 1, "{faction:?}");
+            assert_eq!(ship.hull_current, class.hull as i32, "{faction:?}");
+            if faction == CockpitFaction::Empire {
+                assert_eq!(class.name, "Victory Destroyer");
+                assert_eq!(ship.name.as_deref(), Some("Victory Destroyer 2"));
+            }
+        }
+    }
+
+    #[test]
     fn without_a_carrier_the_fleet_load_scenario_builds_one_for_the_players_side() {
         // port: the fixture's fallback class.
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
@@ -14240,6 +14313,7 @@ mod tests {
                 Scenario::QuadrantsStaleSeeEverything,
                 Scenario::EnemyRegimentAtRest,
                 Scenario::FleetLoadUnfinished,
+                Scenario::ShipShieldHit,
             ]
         );
     }
