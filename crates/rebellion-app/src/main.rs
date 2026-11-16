@@ -78,6 +78,7 @@ use rebellion_render::build_selection::{
 use rebellion_render::fleet_finder::{draw_fleet_finder, FleetFinderAction, FleetFinderState};
 use rebellion_render::message_index::{MessageIndexAction, MessageIndexState};
 use rebellion_render::message_pictures as pictures;
+use rebellion_render::message_sound::MessageSounds;
 use rebellion_render::personnel_finder::{
     draw_personnel_finder, PersonnelFinderAction, PersonnelFinderState,
 };
@@ -1983,6 +1984,7 @@ async fn main() {
                 msg_log.push(filed(
                     GameMessage::at_system(0, text, MessageCategory::Event, system)
                         .with_picture_if(Some(pictures::system_incident(true)))
+                        .with_sounds(MessageSounds::disaster())
                         .with_advisor_events(0x1c, 0x1c)
                         .with_title(title),
                     MessageRail::Resource,
@@ -3060,6 +3062,10 @@ async fn main() {
                     completion.system,
                 )
                 .with_picture_if(pictures::deployed(&world, completion.kind))
+                .with_sounds(MessageSounds::deployed(
+                    matches!(completion.kind, rebellion_core::manufacturing::BuildableKind::Fighter(_)),
+                    system_audience(&world, completion.system) != Some(RailAudience::Empire),
+                ))
                 // FUN_00497940 writes code 3 (advisor-briefing.md, "The events").
                 .with_advisor_event(3);
                 if let Some(title) = title {
@@ -3107,6 +3113,10 @@ async fn main() {
                     departure.destination,
                 )
                 .with_picture_if(pictures::deployed(&world, departure.kind))
+                .with_sounds(MessageSounds::deployed(
+                    matches!(departure.kind, rebellion_core::manufacturing::BuildableKind::Fighter(_)),
+                    system_audience(&world, departure.origin) != Some(RailAudience::Empire),
+                ))
                 .with_advisor_event(3);
                 if let Some(title) = title {
                     message = message.with_title(title);
@@ -3155,6 +3165,15 @@ async fn main() {
                     completion.system,
                 )
                 .with_picture_if(pictures::deployed(&world, completion.kind))
+                // FUN_004981c0: ships are case 2, other units case 3.
+                .with_sounds(MessageSounds::arrival(
+                    if matches!(completion.kind, rebellion_core::manufacturing::BuildableKind::CapitalShip(_)) {
+                        pictures::Arrival::Fleet
+                    } else {
+                        pictures::Arrival::Units
+                    },
+                    system_audience(&world, completion.system) != Some(RailAudience::Empire),
+                ))
                 .with_advisor_event(
                     rebellion_render::story_messages::arrival_event(completion.kind),
                 );
@@ -3222,6 +3241,7 @@ async fn main() {
                         )
                         .with_title(title)
                         .with_picture_if(picture)
+                        .with_sounds(MessageSounds::facility_idle())
                         // FUN_0048be60 writes code 3.
                         .with_advisor_event(3)
                         // Class_0065b260_vt30: kept while the manager idles.
@@ -3307,6 +3327,10 @@ async fn main() {
                             )
                         },
                     ))
+                    .with_sounds(MessageSounds::arrival(
+                        pictures::Arrival::Units,
+                        audience != Some(RailAudience::Empire),
+                    ))
                     // FUN_004981c0's units case (3), code 6.
                     .with_advisor_event(6),
                     MessageRail::Fleet,
@@ -3361,6 +3385,10 @@ async fn main() {
                     .with_picture_if(alliance.and_then(|alliance| {
                         pictures::arrival(pictures::Arrival::Units, pictures::reader(alliance))
                     }))
+                    .with_sounds(MessageSounds::arrival(
+                        pictures::Arrival::Units,
+                        alliance != Some(false),
+                    ))
                     .with_advisor_event(6),
                     MessageRail::Fleet,
                     alliance.map(RailAudience::side),
@@ -3850,6 +3878,10 @@ async fn main() {
                     if matches!(effect, MissionEffect::PickupInProgress) {
                         if let Some(message) =
                             rebellion_render::story_messages::jabba_delivers_message(
+                                // FUN_0048b6e0 tests Luke's DagobahCompleted.
+                                world.characters.values().any(|c| {
+                                    c.dat_id.index() == 0x242 && c.dagobah_completed
+                                }),
                                 current_tick,
                                 &message_texts,
                             )
@@ -3944,6 +3976,7 @@ async fn main() {
                         .with_picture_if(pictures::uprising_ends(pictures::system_side(
                             &world, system,
                         )))
+                        .with_sounds(MessageSounds::uprising(false))
                         .with_advisor_events(
                             uprising_event(holder, Faction::Alliance, false),
                             uprising_event(holder, Faction::Empire, false),
@@ -4312,6 +4345,9 @@ async fn main() {
                                 .with_picture_if(Some(pictures::evacuation_losses(
                                     cockpit_state.faction,
                                 )))
+                                .with_sounds(MessageSounds::evacuation_losses(
+                                    cockpit_state.faction == CockpitFaction::Alliance,
+                                ))
                                 // FUN_00495e90 writes 0x10, which no side's
                                 // advisor answers.
                                 .with_advisor_event(0x10);
@@ -4398,6 +4434,7 @@ async fn main() {
                         )
                         .with_title(title)
                         .with_picture_if(Some(pictures::research()))
+                        .with_sounds(MessageSounds::research())
                         // FUN_0048abc0 (kind 8) writes code 4.
                         .with_advisor_event(4)
                         .plain(),
@@ -4580,6 +4617,7 @@ async fn main() {
                             GameMessage::at_system(*tick, text, MessageCategory::Event, *system)
                                 .with_title(title)
                                 .with_picture_if(Some(pictures::system_incident(false)))
+                                .with_sounds(MessageSounds::resources())
                                 // FUN_0048e940 writes 0x1c.
                                 .with_advisor_event(0x1c),
                             MessageRail::Resource,
@@ -4717,8 +4755,16 @@ async fn main() {
                     _ => [0; 2],
                 };
                 // Notification 3, Uprising Message.
+                // FUN_00499460: 0x454 / 0x455; FUN_0048e940: 0x44e.
+                let sounds = match evt {
+                    UprisingEvent::UprisingBegan { .. } => MessageSounds::uprising(true),
+                    UprisingEvent::UprisingEnded { .. } => MessageSounds::uprising(false),
+                    UprisingEvent::Disaster { .. } => MessageSounds::disaster(),
+                    _ => MessageSounds::NONE,
+                };
                 let mut message = GameMessage::at_system(tick, text, category, system)
                     .with_picture_if(picture)
+                    .with_sounds(sounds)
                     .with_advisor_events(events[0], events[1]);
                 if let Some(title) = title {
                     message = message.with_title(title);
@@ -13848,6 +13894,11 @@ fn push_character_health(
         };
     let mut message = GameMessage::new(tick, text, MessageCategory::Event)
         .with_picture_if(Some(picture))
+        .with_sounds(MessageSounds::character_health(
+            health,
+            c.dat_id.index(),
+            c.dagobah_completed,
+        ))
         // FUN_0048fdf0's speaker map on the character.
         .with_advisor_event(rebellion_render::story_messages::speaker_event(
             world,
@@ -13906,6 +13957,11 @@ pub(crate) fn system_joins_message(
         GameMessage::at_system(tick, text, MessageCategory::Diplomacy, system)
             .with_title(title)
             .with_picture_if(Some(pictures::loyalty_change()))
+            // FUN_00499760: a side gains it, or it goes neutral.
+            .with_sounds(MessageSounds::control_change(matches!(
+                holder,
+                Some(Faction::Alliance | Faction::Empire)
+            )))
             .with_advisor_events(
                 joins_event(holder, Faction::Alliance),
                 joins_event(holder, Faction::Empire),
@@ -13965,6 +14021,10 @@ fn push_foiled_missions(
                             .character
                             .and_then(|character| pictures::portrait_key(world, character)),
                     ))
+                    .with_sounds(MessageSounds::mission_foiled(
+                        leader.dat_id.index(),
+                        leader.dagobah_completed,
+                    ))
                     .with_advisor_event(rebellion_render::story_messages::speaker_event(
                         world,
                         ended.character,
@@ -13990,7 +14050,8 @@ fn push_foiled_missions(
             .with_title(title)
             .with_picture(pictures::enemy_mission_foiled(pictures::reader(
                 opponent_is_alliance,
-            ))),
+            )))
+            .with_sounds(MessageSounds::enemy_mission_foiled(opponent_is_alliance)),
             MessageRail::Mission,
             Some(RailAudience::side(opponent_is_alliance)),
         ));
@@ -14049,6 +14110,16 @@ fn push_personnel_arrivals(
                     pictures::reader(is_alliance),
                     leader.and_then(|key| pictures::portrait_key(world, key)),
                 ))
+                .with_sounds(
+                    match leader.and_then(|key| world.characters.get(key)) {
+                        Some(c) => MessageSounds::personnel_arrive(
+                            is_alliance,
+                            c.dat_id.index(),
+                            c.dagobah_completed,
+                        ),
+                        None => MessageSounds::personnel_arrive(is_alliance, 0, false),
+                    },
+                )
                 .with_advisor_event(if major {
                     rebellion_render::story_messages::speaker_event(world, leader)
                 } else {
@@ -14135,6 +14206,7 @@ fn headquarters_arrival_message(
             pictures::Arrival::Headquarters,
             CockpitFaction::Alliance,
         ))
+        .with_sounds(MessageSounds::arrival(pictures::Arrival::Headquarters, true))
         .with_advisor_event(6),
         MessageRail::Defense,
         Some(RailAudience::Alliance),
@@ -14249,6 +14321,7 @@ fn informants_message(
         GameMessage::at_system(tick, text, MessageCategory::Event, system)
             .with_title(title)
             .with_picture_if(Some(pictures::informants()))
+            .with_sounds(MessageSounds::informants())
             // FUN_00491060 writes 0x1c.
             .with_advisor_event(0x1c),
         MessageRail::PopularSupport,
@@ -14282,6 +14355,7 @@ fn maintenance_message(
         message
             .with_title(title)
             .with_picture_if(Some(pictures::units_destroyed(pictures::reader(alliance))))
+            .with_sounds(MessageSounds::units_destroyed())
             // FUN_00498970 writes 0xc.
             .with_advisor_event(0xc),
         MessageRail::Manufacturing,
@@ -14327,6 +14401,7 @@ fn research_complete_message(
     // FUN_00499aa0 writes code 4.
     let mut message = GameMessage::new(tick, text, MessageCategory::Event)
         .with_picture_if(Some(pictures::research()))
+        .with_sounds(MessageSounds::research())
         .with_advisor_event(4);
     if let Some(object) =
         rebellion_render::story_messages::research_complete_encyclopedia_object(world, is_alliance, tech, level)
@@ -14365,6 +14440,7 @@ fn fleet_arrival_message(
         system,
     )
     .with_picture_if(pictures::arrival(pictures::Arrival::Fleet, pictures::reader(is_alliance)))
+    .with_sounds(MessageSounds::arrival(pictures::Arrival::Fleet, is_alliance))
     // hyp: FUN_004981c0's fleet case (1), code 5.
     .with_advisor_event(5);
     if let Some((title, _)) = texts {
@@ -14414,6 +14490,7 @@ fn blockade_started_message(
     };
     let mut message = GameMessage::at_system(tick, text, MessageCategory::Combat, system)
         .with_picture_if(pictures::blockade(pictures::system_side(world, system)))
+        .with_sounds(MessageSounds::blockade())
         // FUN_004960f0: 0xe for the holder, 0xd for the other side.
         .with_advisor_events(
             blockade_event(holder, Faction::Alliance),
@@ -14449,6 +14526,7 @@ fn saboteurs_strike_message(
         GameMessage::at_system(tick, body, MessageCategory::Combat, system)
             .with_title(title)
             .with_picture_if(Some(pictures::units_destroyed(pictures::reader(alliance))))
+            .with_sounds(MessageSounds::units_destroyed())
             .with_advisor_event(0xc),
         MessageRail::Conflict,
         Some(RailAudience::side(alliance)),
@@ -14530,16 +14608,30 @@ fn apply_mission_result(
         | MissionKind::Pickup => MessageCategory::Mission,
     };
     // FUN_004927c0: the mission type's picture and the leader's portrait.
-    let picture = {
+    let reported = {
         use pictures::ReportedMission;
+        match result.kind {
+            MissionKind::Diplomacy => ReportedMission::Diplomacy,
+            MissionKind::Espionage => ReportedMission::Espionage,
+            MissionKind::InciteUprising => ReportedMission::InciteUprising,
+            MissionKind::SubdueUprising => ReportedMission::SubdueUprising,
+            _ => ReportedMission::Other,
+        }
+    };
+    // FUN_004927c0's +0x30 by family and +0x32, the leader's verdict.
+    let sounds = {
+        let leader = result.character.and_then(|key| world.characters.get(key));
+        MessageSounds::mission_report(
+            reported,
+            result.outcome == rebellion_core::missions::MissionOutcome::Success,
+            result.faction == MissionFaction::Alliance,
+            leader.map_or(0, |c| c.dat_id.index()),
+            leader.is_some_and(|c| c.dagobah_completed),
+        )
+    };
+    let picture = {
         pictures::mission_report(
-            match result.kind {
-                MissionKind::Diplomacy => ReportedMission::Diplomacy,
-                MissionKind::Espionage => ReportedMission::Espionage,
-                MissionKind::InciteUprising => ReportedMission::InciteUprising,
-                MissionKind::SubdueUprising => ReportedMission::SubdueUprising,
-                _ => ReportedMission::Other,
-            },
+            reported,
             result.outcome == rebellion_core::missions::MissionOutcome::Success,
             pictures::reader(result.faction == MissionFaction::Alliance),
             result
@@ -14607,6 +14699,7 @@ fn apply_mission_result(
                             GameMessage::new(result.tick, text, MessageCategory::Event)
                                 .with_title(title)
                                 .with_picture_if(Some(pictures::research()))
+                                .with_sounds(MessageSounds::research())
                                 // FUN_0048abc0 (kind 8) writes code 4.
                                 .with_advisor_event(4)
                                 .plain(),
@@ -14846,6 +14939,8 @@ fn apply_mission_result(
     );
     let mut report = GameMessage::at_system(result.tick, text, category, result.target_system)
         .with_picture(picture)
+        .with_sounds(sounds)
+
         .with_mission(result.mission_id);
     if let Some(title) = title {
         report = report.with_title(title);

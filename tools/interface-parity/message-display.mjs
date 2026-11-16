@@ -185,6 +185,17 @@ async function run(browser, base, faction) {
       return row(8);
     };
     const displays = () => log.filter((line) => line.includes("[interface] message_index display"));
+    // The Message window's display sounds (FUN_00469de0), one line a WAVE.
+    const soundLines = () => log.filter((line) => line.includes("[message] display sound"));
+    const soundChecks = {};
+    const soundsAfter = async (mark, count, description) => {
+      const deadline = Date.now() + 5_000;
+      while (soundLines().length < mark + count) {
+        if (Date.now() > deadline) throw new Error(`${description}: ${soundLines().slice(mark).join("\n")}`);
+        await page.waitForTimeout(100);
+      }
+      return soundLines().slice(mark);
+    };
     // The index is modal (A0 a0-vm/modal2/18-msg-gid.png): the GID control
     // opens nothing and the index stays.
     await click(page, faction.byte === 1 ? [459, 414] : [537, 446]);
@@ -282,10 +293,19 @@ async function run(browser, base, faction) {
       await waitReport(page, (value) => value.mode === "list", "the Manufacturing list after Facility Lost");
     };
     await click(page, await shown(asking));
+    const reportSounds = soundLines().length;
     await click(page, showMessage);
     const viewing = await waitReport(page, (value) => value.mode === "single",
       "Display Message shows the report");
     assert.ok(Number.isInteger(viewing.viewing_question), JSON.stringify(viewing));
+    // FUN_00469de0 plays the report's sounds (FUN_004927c0): a Diplomacy
+    // report's +0x30 0x47e (STRATEGY 1150) and +0x32 Leia's success list
+    // 0xde (1335 / 1336) from the side's sprite DLL.
+    const reportPlayed = await soundsAfter(reportSounds, 2, "the report's display sounds");
+    assert.match(reportPlayed[0], /directory=strategy-dll wave=1150 loaded=true/, reportPlayed.join("\n"));
+    assert.match(reportPlayed[1], new RegExp(`directory=${faction.byte === 1 ? "al" : "em"}sprite-dll wave=133[56] loaded=true`),
+      reportPlayed.join("\n"));
+    soundChecks.report = reportPlayed;
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("question");
@@ -348,9 +368,18 @@ async function run(browser, base, faction) {
     const captured = list.rows.findIndex((text) => text.startsWith("Emperor Palpatine Captured"));
     assert.ok(captured >= 0, JSON.stringify(list.rows));
     await click(page, await shown(captured));
+    const captureSounds = soundLines().length;
     await click(page, showMessage);
     const capture = await waitReport(page, (value) => value.mode === "single"
       && value.viewing_title === "Emperor Palpatine Captured", "Display Message shows the capture");
+    // FUN_00490340 cases 3 and 4 keep the default +0x30 0x44c (STRATEGY
+    // 1100) and no voice, for both sides.
+    const capturePlayed = await soundsAfter(captureSounds, 1, "the capture's display sound");
+    await frames(page, 10);
+    const captureAll = soundLines().slice(captureSounds);
+    assert.equal(captureAll.length, 1, captureAll.join("\n"));
+    assert.match(captureAll[0], /directory=strategy-dll wave=1100 loaded=true/, captureAll.join("\n"));
+    soundChecks.capture = capturePlayed;
     assert.equal(capture.viewing_text, faction.byte === 1
       ? "Emperor Palpatine was captured at Corfai."
       : "Emperor Palpatine was captured by the Alliance at Corfai.", JSON.stringify(capture));
@@ -2327,7 +2356,7 @@ async function run(browser, base, faction) {
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
       encyclopedia: opening[0], research_encyclopedia: researchEncyclopedia, dagobah: dagobahChecks,
-      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, facility_lost: facilityLost, shots };
+      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, facility_lost: facilityLost, sounds: soundChecks, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };

@@ -5992,7 +5992,7 @@ pub fn post_story_messages(
     }
     // Jabba Delivers Prisoners (FUN_0048b6e0), then Jabba Captures
     // (FUN_00490340 case 5): Chewbacca, a failed rescuer.
-    if let Some(message) = rebellion_render::story_messages::jabba_delivers_message(0, texts) {
+    if let Some(message) = rebellion_render::story_messages::jabba_delivers_message(false, 0, texts) {
         log.push(message);
     }
     if let Some(message) = rebellion_render::story_messages::jabba_captures_message(
@@ -6772,6 +6772,38 @@ pub fn post_event_messages(
         CockpitFaction::Alliance => Faction::Alliance,
         CockpitFaction::Empire => Faction::Empire,
     };
+    let alliance = reader == CockpitFaction::Alliance;
+    // Each post's display sounds (ghidra/notes/message-sounds.md), as its
+    // class writes them.
+    use rebellion_render::message_sound::MessageSounds;
+    let sounds = |title: &str| match title {
+        // FUN_004927c0: a Diplomacy success led by Leia.
+        "Mission Report" => MessageSounds::mission_report(
+            ReportedMission::Diplomacy,
+            true,
+            alliance,
+            0x241,
+            false,
+        ),
+        // FUN_00499460.
+        "Uprising Begins" => MessageSounds::uprising(true),
+        "Uprising Ends" => MessageSounds::uprising(false),
+        // FUN_004960f0.
+        "Blockade" => MessageSounds::blockade(),
+        // FUN_004981c0.
+        "Fleet Arrives" => MessageSounds::arrival(Arrival::Fleet, alliance),
+        "Units Arrive" => MessageSounds::arrival(Arrival::Units, alliance),
+        // FUN_0048fdf0.
+        "Character Killed" => MessageSounds::character_health(
+            rebellion_render::story_messages::CharacterHealth::Killed,
+            0,
+            false,
+        ),
+        // FUN_00499aa0.
+        "Research Complete" => MessageSounds::research(),
+        // FUN_00497940: neither a shipyard nor a regiment sounds.
+        _ => MessageSounds::NONE,
+    };
     let posts = [
         (
             "Mission Report",
@@ -6865,6 +6897,7 @@ pub fn post_event_messages(
             message
             .with_title(title)
             .with_picture_if(picture)
+            .with_sounds(sounds(title))
             .on_rail(
                 rebellion_render::story_messages::STORY_RAIL,
                 rebellion_render::message_log::RailAudience::Both,

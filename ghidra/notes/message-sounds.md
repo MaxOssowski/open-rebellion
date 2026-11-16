@@ -3,7 +3,7 @@ title: "Message sounds: what a message plays when it is displayed"
 description: "FUN_00469de0 plays a message's +0x30 (STRATEGY.DLL) and +0x32 (the side's sprite DLL) and stops the last display's; the builders that set them"
 category: ghidra
 created: 2026-11-15
-updated: 2026-11-15
+updated: 2026-11-16
 tags: [messages, sounds, strategy-dll, message-window, preemption]
 ---
 
@@ -80,6 +80,24 @@ The base constructor `FUN_004c4d90` zeroes both. Builders that set `+0x30`
   engine.
 - `tools/stage-ui-assets` stages STRATEGY.DLL's 66 WAVEs and the runtime
   pack carries them as `advisor/strategy-dll/<id>.wav`.
-- Only the advice (`FUN_0048b2e0`) sets its sound so far. The other
-  builders above are open; each needs its `+0x30` (and `+0x32` voice) on
-  the port's builder.
+- 2026-11-16: every builder above with a port counterpart sets its sounds
+  (`MessageSounds::*` in `message_sound.rs`, one constructor per builder).
+- `+0x32` is `FUN_004c4990(list)`: slot 9's `RT_RCDATA` `list` is a count
+  and that many WAVE ids; a count above 1 draws one (`FUN_0041cd80`).
+  ALSPRITE and EMSPRITE hold the same lists `0xc8..0x139`; `0x136`
+  (`FUN_0048f1e0`, Vader training) is missing, so that voice is 0. The
+  port draws when the message is filed (`MessageLog::push`), from its own
+  generator (port: the original's is global).
+- A major character's lists run from a base: Mon Mothma `0xf0`, Leia
+  `0xdc`, Luke `0xc8` (`0xd2` after Dagobah, `+0xb0` bit 3), Han `0xe6`,
+  the Emperor `0x104`, Vader `0xfa`. Personnel Arrive takes the base,
+  a Mission Report base + 2 (success) or + 3 (failure; Mission Foiled
+  too), an escape base + 6, a healing base + 7.
+- `FUN_0048b6e0` and `FUN_0048e3c0` test Luke's (`FUN_004f3e50`) bit 3,
+  not a side record's.
+- No port counterpart, so no sound: `FUN_00498e90` (the other side's
+  message, multiplayer), `FUN_0049a350` (the order confirmation, whose
+  window `FUN_0044f180` plays nothing), `FUN_00499de0` (repaired / full
+  strength, `0x7040..0x7043`), `FUN_0048ae40` (Recruitment Done,
+  `0x7210`), `FUN_00491500` codes 6..10 and `0xc`, and a Research
+  mission's report (`0x47f`; the port has no Research mission).

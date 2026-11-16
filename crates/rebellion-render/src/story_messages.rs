@@ -17,6 +17,7 @@ use crate::message_log::{
     GameMessage, MessageCategory, MessagePicture, MessageRail, RailAudience, StoryMovie,
 };
 use crate::system_window::character_mini_resource_id;
+use crate::message_sound::{Bounty, MessageSounds};
 
 /// The category story messages are filed under: the Mission rail, bit
 /// `0x10`, which the story classes' constructors take from `FUN_0048af30`
@@ -176,7 +177,22 @@ pub fn story_message(
     if picture.foreground.is_some() {
         picture.foreground = subject.and_then(character_portrait_of);
     }
-    message.with_picture(picture).with_advisor_event(event)
+    let alliance = side == CockpitFaction::Alliance;
+    let sounds = match class {
+        StoryClass::LukeGoesToDagobah => MessageSounds::luke_to_dagobah(),
+        StoryClass::ForceGrowth => MessageSounds::force_growth(
+            alliance,
+            subject.map_or(0, |character| character.dat_id.index()),
+            subject.is_some_and(|character| character.dagobah_completed),
+        ),
+        // FUN_0048f1e0 voices the trainer, whom the event does not name.
+        StoryClass::LeiaUsesForce => MessageSounds::future_jedi(alliance, 0),
+        StoryClass::JabbaCaptures => MessageSounds::jabba_captures(),
+    };
+    message
+        .with_picture(picture)
+        .with_advisor_event(event)
+        .with_sounds(sounds)
 }
 
 /// Notification `0x221`, Luke Goes to Dagobah (`FUN_0048d190`): built for
@@ -194,7 +210,8 @@ pub fn luke_goes_to_dagobah(tick: u64, texts: &HashMap<u16, String>) -> Option<G
             .with_title(title)
             .with_picture(StoryClass::LukeGoesToDagobah.picture(CockpitFaction::Alliance, None))
             // FUN_0048d190 writes 0x16.
-            .with_advisor_event(0x16),
+            .with_advisor_event(0x16)
+            .with_sounds(MessageSounds::luke_to_dagobah()),
     )
 }
 
@@ -223,7 +240,8 @@ pub fn luke_leaves_dagobah(
                 foreground: character_portrait_of(luke),
             })
             // FUN_0048d0f0 writes 0x16.
-            .with_advisor_event(0x16),
+            .with_advisor_event(0x16)
+            .with_sounds(MessageSounds::luke_leaves_dagobah()),
     )
 }
 
@@ -249,9 +267,9 @@ const LEIA: u32 = 0x241;
 ///   GNPRTB 2581 (100) or more (`FUN_004ed310`), else `0x717a` (once a
 ///   Jedi Knight).
 ///
-/// port: the builder's `+0x28`, `+0x30` and `+0x32` (a per-character id and
-/// two resources) are not read; the message keeps the Mission rail of the
-/// story classes (`FUN_0048f0e0`).
+/// Its sounds are `0x47c + (side != 1)` and the trainer's voice
+/// ([`MessageSounds::future_jedi`]). port: the message keeps the Mission
+/// rail of the story classes (`FUN_0048f0e0`).
 #[must_use]
 pub fn force_user_discovered(
     world: &GameWorld,
@@ -307,6 +325,11 @@ pub fn force_user_discovered(
             })
             // FUN_0048f1e0's speaker map on the same character.
             .with_advisor_event(character_speaker_event(Some(speaker)))
+            // Its +0x32 switches on the trainer in both branches.
+            .with_sounds(MessageSounds::future_jedi(
+                teacher.is_alliance,
+                teacher.dat_id.index(),
+            ))
             // Class 0x0065b520's slot +0x30 is FUN_006158b0: it never
             // expires.
             .with_lifetime(crate::message_log::MessageLifetime::Kept)
@@ -438,9 +461,8 @@ impl EncounterNotes {
 /// when `0x220` (`MissionMgrFinalBattleNotif`) set its bit `0x10`, for each
 /// side: title `0x71e0`, body `0x71e1` with Luke free (he overcame the
 /// Emperor) or `0x71e2` with him captured, on background `0x428` once
-/// Luke's `DagobahCompleted` (`+0xb0` bit 8) is set, else `0x427`.
-///
-/// port: the media ids `+0x30` and `+0x32` are not read.
+/// Luke's `DagobahCompleted` (`+0xb0` bit 8) is set, else `0x427`, with
+/// its sounds ([`MessageSounds::final_battle`]).
 #[must_use]
 pub fn final_battle_message(
     world: &GameWorld,
@@ -459,7 +481,8 @@ pub fn final_battle_message(
             .with_picture(MessagePicture {
                 background: if luke.dagobah_completed { 0x428 } else { 0x427 },
                 foreground: None,
-            }),
+            })
+            .with_sounds(MessageSounds::final_battle(luke.dagobah_completed)),
     )
 }
 
@@ -468,8 +491,8 @@ pub fn final_battle_message(
 /// the Palace mission's failed rescuer (`FUN_0056e870`). TEXTSTRA
 /// `0x7156` / `0x7157` name it (`+0x30`) on background `0x429`.
 ///
-/// port: posted to both sides, as the class's case 5 reads no side; the
-/// media ids `+0x30`, `+0x32` and the speaker `+0x28` are not read.
+/// Its sound is `0x478`. port: posted to both sides, as the class's case 5
+/// reads no side.
 #[must_use]
 pub fn jabba_captures_message(
     character: &rebellion_core::world::Character,
@@ -490,7 +513,8 @@ pub fn jabba_captures_message(
         .on_rail(STORY_RAIL, RailAudience::Both)
         .with_title(fill_message_text(texts.get(&title)?, &parameters))
         .with_picture(class.picture(CockpitFaction::Alliance, None))
-        .with_advisor_event(captured_event(character)),
+        .with_advisor_event(captured_event(character))
+        .with_sounds(MessageSounds::jabba_captures()),
     )
 }
 
@@ -548,7 +572,8 @@ pub fn captured_message(
         background: if character.is_alliance { 0x418 } else { 0x419 },
         foreground: None,
     })
-    .with_advisor_event(captured_event(character));
+    .with_advisor_event(captured_event(character))
+    .with_sounds(MessageSounds::captured());
     // The message has a target, so the index's Display is lit (A0
     // messages-day633/capture-palpatine). port: it goes to the system the
     // capture took place at.
@@ -648,7 +673,12 @@ pub fn escaped_message(
         .on_rail(STORY_RAIL, audience)
         .with_title(fill_message_text(texts.get(&title)?, &parameters))
         .with_picture(crate::message_pictures::escaped())
-        .with_advisor_event(event),
+        .with_advisor_event(event)
+        .with_sounds(MessageSounds::escaped(
+            !captors,
+            character.dat_id.index(),
+            character.dagobah_completed,
+        )),
     )
 }
 
@@ -659,7 +689,8 @@ pub fn escaped_message(
 /// `FUN_004f3dd0`), on its side background with the discoverer's portrait.
 ///
 /// port: the side names are "Alliance" and "Empire" (the side records'
-/// `+0x30` names are not loaded); the speakers and media are not read.
+/// `+0x30` names are not loaded). Its sounds: `0x47c + (side != 1)` and the
+/// discoverer's voice ([`MessageSounds::discovers_traitor`]).
 #[must_use]
 pub fn discovers_traitor_message(
     discoverer: &rebellion_core::world::Character,
@@ -694,7 +725,12 @@ pub fn discovers_traitor_message(
             foreground: character_portrait_of(discoverer),
         })
         // FUN_0048c9c0's speaker map on the discoverer.
-        .with_advisor_event(character_speaker_event(Some(discoverer))),
+        .with_advisor_event(character_speaker_event(Some(discoverer)))
+        .with_sounds(MessageSounds::discovers_traitor(
+            discoverer.is_alliance,
+            discoverer.dat_id.index(),
+            discoverer.dagobah_completed,
+        )),
     )
 }
 
@@ -705,7 +741,8 @@ pub fn discovers_traitor_message(
 /// `0x71ea` / `0x71eb` with the rescuer's name, on its side background
 /// (`0x412`) with the rescuer's portrait (`FUN_004c5000`).
 ///
-/// port: the speaker (`+0x28` by character) and media are not read.
+/// Its sounds: `0x47c` and the rescuer's voice
+/// ([`MessageSounds::rescue_attempt`]).
 #[must_use]
 pub fn rescue_attempt_message(
     rescuer: &rebellion_core::world::Character,
@@ -730,7 +767,12 @@ pub fn rescue_attempt_message(
             foreground: character_portrait_of(rescuer),
         })
         // FUN_0048c4c0's speaker map on the rescuer (+0x68).
-        .with_advisor_event(character_speaker_event(Some(rescuer))),
+        .with_advisor_event(character_speaker_event(Some(rescuer)))
+        .with_sounds(MessageSounds::rescue_attempt(
+            true,
+            rescuer.dat_id.index(),
+            rescuer.dagobah_completed,
+        )),
     )
 }
 
@@ -766,8 +808,7 @@ pub fn victory_conditions_movies(word: u32, texts: &HashMap<u16, String>) -> Vec
 /// with its argument set, as `SeatOfPower` is set. The Empire alone reads
 /// TEXTSTRA `0x71c8` / `0x71c9` on background `0x42c`.
 ///
-/// port: the speaker `0x1a`, the media `0x47b` and `FUN_004c4990(0x130)`
-/// are not read.
+/// It speaks `0x1a` and plays `0x47b` with the voice list `0x130`.
 #[must_use]
 pub fn emperor_arrives_message(tick: u64, texts: &HashMap<u16, String>) -> Option<GameMessage> {
     Some(
@@ -779,7 +820,8 @@ pub fn emperor_arrives_message(tick: u64, texts: &HashMap<u16, String>) -> Optio
                 foreground: None,
             })
             // FUN_0048ce80 writes 0x1a.
-            .with_advisor_event(0x1a),
+            .with_advisor_event(0x1a)
+            .with_sounds(MessageSounds::emperor_arrives()),
     )
 }
 
@@ -789,8 +831,8 @@ pub fn emperor_arrives_message(tick: u64, texts: &HashMap<u16, String>) -> Optio
 /// `0x7208` / `0x7209` name the character (1) and the system around its
 /// location (3), on background `0x42e`, for the Alliance only.
 ///
-/// port: the location is the character's system; the media id `0x474`
-/// and the speaker `0x15` are not read.
+/// Its sound is `0x474`, its speaker `0x15`. port: the location is the
+/// character's system.
 #[must_use]
 pub fn assassins_message(
     character: &rebellion_core::world::Character,
@@ -820,7 +862,8 @@ pub fn assassins_message(
             foreground: None,
         })
         // FUN_0048b050 writes 0x15.
-        .with_advisor_event(0x15),
+        .with_advisor_event(0x15)
+        .with_sounds(MessageSounds::assassins()),
     )
 }
 
@@ -853,7 +896,8 @@ pub fn death_star_sabotaged_movie(
 /// category mask is `0x001`, Popular Support (`FUN_00499030`,
 /// `FUN_0040f340`); its background is `0x3ec` (STRATEGY 1004, A0
 /// alliance-game2/smuggling-benefits shows it under "Smuggling
-/// Benefits"). The class's `0x44f` is no STRATEGY bitmap.
+/// Benefits"). Its `+0x30` is `0x44f` as smuggling begins.
+
 #[must_use]
 pub fn smuggling_message(
     system: &str,
@@ -897,7 +941,8 @@ pub fn smuggling_message(
         .with_picture(MessagePicture {
             background: 0x3ec,
             foreground: None,
-        }),
+        })
+        .with_sounds(MessageSounds::smuggling(percent != 0)),
     )
 }
 
@@ -2032,20 +2077,25 @@ pub fn near_uprising_message(
             crate::message_log::MessageRail::PopularSupport,
             RailAudience::side(viewer_is_alliance),
         )
-        .with_title(fill_message_text(texts.get(&0x7070)?, &parameters)),
+        .with_title(fill_message_text(texts.get(&0x7070)?, &parameters))
+        .with_sounds(MessageSounds::near_uprising(holder == Some(Faction::Alliance))),
     )
 }
 
 /// Jabba Delivers Prisoners (`FUN_0048b6e0`): notification `0x231` with
 /// its argument set, as the Pickup's hit sets `PickupInProgress`. TEXTSTRA
 /// `0x7200` / `0x7201` take no arguments; the background is `0x42a`, or
-/// `0x42b` when the side record's `+0xb0` bit 8 is set.
+/// `0x42b` when Luke's `+0xb0` bit 3 (`DagobahCompleted`, `FUN_004f3e50`)
+/// is set; its sounds follow the same bit ([`MessageSounds::jabba_delivers`]).
 ///
 /// port: posted to both sides (`story-message-classes.md` row 15) on
-/// `0x42a`, as the side record's bit is not traced; the media ids and the
-/// speaker `0x1b` are not read.
+/// `0x42a`.
 #[must_use]
-pub fn jabba_delivers_message(tick: u64, texts: &HashMap<u16, String>) -> Option<GameMessage> {
+pub fn jabba_delivers_message(
+    luke_dagobah: bool,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
     Some(
         GameMessage::new(tick, texts.get(&0x7201)?.clone(), MessageCategory::Event)
             .on_rail(STORY_RAIL, RailAudience::Both)
@@ -2055,7 +2105,8 @@ pub fn jabba_delivers_message(tick: u64, texts: &HashMap<u16, String>) -> Option
                 foreground: None,
             })
             // FUN_0048b6e0 writes 0x1b.
-            .with_advisor_event(0x1b),
+            .with_advisor_event(0x1b)
+            .with_sounds(MessageSounds::jabba_delivers(luke_dagobah)),
     )
 }
 
@@ -2069,8 +2120,7 @@ pub fn jabba_delivers_message(tick: u64, texts: &HashMap<u16, String>) -> Option
 ///   Solo (`0x716a` / `0x716b` with the system Han stands at, `0x41e`) when
 ///   his containers reach a system.
 ///
-/// port: the media ids `+0x30`, `+0x32` and the speaker `+0x28` are not
-/// read.
+/// Each carries its sounds ([`MessageSounds::bounty`]).
 #[must_use]
 pub fn bounty_messages(
     world: &GameWorld,
@@ -2101,7 +2151,11 @@ pub fn bounty_messages(
     // attack) and 0x2d (the Empire's location).
     if c.is_captive {
         return message(0x716c, 0x716d, &[], 0x41d, RailAudience::Both)
-            .map(|message| message.with_advisor_event(0x21))
+            .map(|message| {
+                message
+                    .with_advisor_event(0x21)
+                    .with_sounds(MessageSounds::bounty(Bounty::Captured))
+            })
             .into_iter()
             .collect();
     }
@@ -2112,7 +2166,11 @@ pub fn bounty_messages(
         .or(c.current_system)
         .and_then(|key| world.systems.get(key));
     let mut out: Vec<GameMessage> = message(0x7168, 0x7169, &[], 0x41c, RailAudience::Alliance)
-        .map(|message| message.with_advisor_event(0x19))
+        .map(|message| {
+            message
+                .with_advisor_event(0x19)
+                .with_sounds(MessageSounds::bounty(Bounty::Attacked))
+        })
         .into_iter()
         .collect();
     if let Some(system) = system {
@@ -2124,7 +2182,11 @@ pub fn bounty_messages(
                 0x41e,
                 RailAudience::Empire,
             )
-            .map(|message| message.with_advisor_event(0x2d)),
+            .map(|message| {
+                message
+                    .with_advisor_event(0x2d)
+                    .with_sounds(MessageSounds::bounty(Bounty::Located))
+            }),
         );
     }
     out
@@ -2141,7 +2203,8 @@ fn character_parameter(c: &rebellion_core::world::Character) -> MessageParameter
 /// the side's background (`(side != 1) + 0x412`) with its portrait,
 /// TEXTSTRA `0x71b0` / `0x71b1` naming it and the enemy.
 ///
-/// port: the media ids `+0x30` and `+0x32` are not read.
+/// Its sounds: `0x47c + (side != 1)` and the own character's voice
+/// ([`MessageSounds::detects_enemy`]).
 fn detects_enemy_message(
     side: CockpitFaction,
     audience: RailAudience,
@@ -2160,7 +2223,12 @@ fn detects_enemy_message(
             .with_picture(MessagePicture {
                 background: side_background(side),
                 foreground: character_portrait_of(own),
-            }),
+            })
+            .with_sounds(MessageSounds::detects_enemy(
+                side == CockpitFaction::Alliance,
+                own.dat_id.index(),
+                own.dagobah_completed,
+            )),
     )
 }
 
@@ -2216,7 +2284,12 @@ fn confrontation_message(
             .with_picture(MessagePicture {
                 background,
                 foreground: None,
-            }),
+            })
+            .with_sounds(MessageSounds::confrontation(
+                a.dat_id.index() == LUKE,
+                a.dagobah_completed,
+                against_vader,
+            )),
     )
 }
 
@@ -2266,7 +2339,9 @@ fn heritage_message(
             .with_picture(MessagePicture {
                 background: 0x422,
                 foreground: None,
-            }),
+            })
+            .with_sounds(MessageSounds::heritage()),
+
     )
 }
 
@@ -2373,9 +2448,8 @@ pub fn story_text(
 /// Empire), on background `0x42f` / `0x430`. Its `+0x28` is `0x2a`, which
 /// the reader's advisor gets. `None` when the texts are missing.
 ///
-/// hyp: the media short `+0x30` (`0x461` / `0x462`) plays nothing, as
-/// `FUN_00469de0` starts media only with `+0x32` set too, and the class
-/// leaves it 0.
+/// Its `+0x30` is `0x461` / `0x462`, which `FUN_00469de0` plays.
+
 #[must_use]
 pub fn agent_advice_message(
     number: u16,
@@ -2507,6 +2581,151 @@ mod tests {
         assert!(agent_advice_message(2, true, 4, &texts).is_none());
     }
 
+    fn every_text() -> HashMap<u16, String> {
+        (0x7000..0x7400).map(|id| (id, "t".to_owned())).collect()
+    }
+
+    fn major(index: u32, alliance: bool, dagobah: bool) -> rebellion_core::world::Character {
+        rebellion_core::world::Character {
+            dat_id: DatId::new(index),
+            name: format!("{index:x}"),
+            is_alliance: alliance,
+            is_empire: !alliance,
+            is_major: true,
+            dagobah_completed: dagobah,
+            ..Default::default()
+        }
+    }
+
+    fn sounds(strategy: u16, voice: u16) -> Option<crate::message_sound::MessageSounds> {
+        Some(crate::message_sound::MessageSounds::strategy(strategy).with_voice(voice))
+    }
+
+    #[test]
+    fn the_character_story_messages_carry_their_display_sounds() {
+        let texts = every_text();
+        let luke = major(0x242, true, true);
+        let vader = major(0x281, false, false);
+        let leia = major(0x241, true, false);
+        // FUN_00490340: 0x44c captured, 0x478 by Jabba; an escape 0x469
+        // with the escapee's voice on its own side (Luke after Dagobah 0xd8).
+        let at = |reader| captured_message(None, &luke, false, "Bespin", reader, 0, &texts);
+        assert_eq!(at(CockpitFaction::Alliance).map(|m| m.sounds), sounds(0x44c, 0));
+        assert_eq!(jabba_captures_message(&luke, 0, &texts).map(|m| m.sounds), sounds(0x478, 0));
+        let escape = |reader| escaped_message(&luke, false, "Bespin", reader, 0, &texts);
+        assert_eq!(escape(CockpitFaction::Alliance).map(|m| m.sounds), sounds(0x469, 0xd8));
+        assert_eq!(escape(CockpitFaction::Empire).map(|m| m.sounds), sounds(0x469, 0));
+        // FUN_0048c9c0 voices the discoverer (Vader 0x128), FUN_0048c4c0
+        // the rescuer (Leia 0xe5), FUN_0048b050 none.
+        assert_eq!(
+            discovers_traitor_message(&vader, &leia, 0, &texts).map(|m| m.sounds),
+            sounds(0x47d, 0x128)
+        );
+        assert_eq!(rescue_attempt_message(&leia, 0, &texts).map(|m| m.sounds), sounds(0x47c, 0xe5));
+        assert_eq!(assassins_message(&leia, "Yavin", 0, &texts).map(|m| m.sounds), sounds(0x474, 0));
+        // FUN_0048e1d0 voices the reader's own character (Luke 0xda).
+        let detects =
+            detects_enemy_message(CockpitFaction::Alliance, RailAudience::Alliance, &luke, &vader, 0, &texts);
+        assert_eq!(detects.map(|m| m.sounds), sounds(0x47c, 0xda));
+        // FUN_0048df20 (Luke after Dagobah against Vader) and FUN_0048dc50.
+        assert_eq!(confrontation_message(&luke, &vader, 0, &texts).map(|m| m.sounds), sounds(0x46f, 0x11a));
+        assert_eq!(heritage_message(&luke, &vader, false, 0, &texts).map(|m| m.sounds), sounds(0x46d, 0x11e));
+    }
+
+    #[test]
+    fn the_scene_story_messages_carry_their_display_sounds() {
+        let texts = every_text();
+        let mut world = GameWorld::default();
+        let luke = world.characters.insert(major(0x242, true, false));
+        // FUN_0048d190, FUN_0048d0f0, FUN_0048ce80.
+        assert_eq!(luke_goes_to_dagobah(0, &texts).map(|m| m.sounds), sounds(0x46c, 0x11d));
+        assert_eq!(luke_leaves_dagobah(&world, luke, 0, &texts).map(|m| m.sounds), sounds(0x47c, 0));
+        assert_eq!(emperor_arrives_message(0, &texts).map(|m| m.sounds), sounds(0x47b, 0x130));
+        // FUN_0048e3c0 and FUN_0048b6e0 by Luke's Dagobah bit.
+        assert_eq!(final_battle_message(&world, luke, 0, &texts).map(|m| m.sounds), sounds(0x472, 0x11c));
+        world.characters[luke].dagobah_completed = true;
+        assert_eq!(final_battle_message(&world, luke, 0, &texts).map(|m| m.sounds), sounds(0x473, 0x12f));
+        assert_eq!(jabba_delivers_message(true, 0, &texts).map(|m| m.sounds), sounds(0x47a, 0x139));
+        assert_eq!(jabba_delivers_message(false, 0, &texts).map(|m| m.sounds), sounds(0x479, 0x123));
+        // FUN_0048f1e0 voices the trainer (Luke 0x135).
+        let dodonna = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(0x340),
+            name: "Jan Dodonna".into(),
+            is_alliance: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            force_user_discovered(&world, luke, dodonna, 0, &texts).map(|m| m.sounds),
+            sounds(0x47c, 0x135)
+        );
+        // FUN_0048fa00: Han attacked (Alliance) and located (Empire), or
+        // captured.
+        let system = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: DatId::new(0x9000_0001),
+            name: "Tatooine".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: vec![],
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        let mut han = major(0x243, true, false);
+        han.current_system = Some(system);
+        let han = world.characters.insert(han);
+        let bounty: Vec<_> = bounty_messages(&world, han, 0, &texts).iter().map(|m| m.sounds).collect();
+        assert_eq!(bounty, [sounds(0x475, 0x120).unwrap(), sounds(0x477, 0).unwrap()]);
+        world.characters[han].is_captive = true;
+        let bounty: Vec<_> = bounty_messages(&world, han, 0, &texts).iter().map(|m| m.sounds).collect();
+        assert_eq!(bounty, [sounds(0x476, 0x11f).unwrap()]);
+    }
+
+    #[test]
+    fn the_system_story_messages_carry_their_display_sounds() {
+        use rebellion_core::dat::Faction;
+        let texts = every_text();
+        // FUN_00499130: 0x44f as smuggling begins, none as it ends.
+        let smuggling = |previous, percent| {
+            smuggling_message("Kessel", Some(Faction::Alliance), true, previous, percent, 0, &texts)
+                .map(|m| m.sounds)
+        };
+        assert_eq!(smuggling(0, 5), sounds(0x44f, 0));
+        assert_eq!(smuggling(5, 0), Some(crate::message_sound::MessageSounds::NONE));
+        // FUN_00498cb0: 0x452 for an Alliance system, 0x453 for an Empire one.
+        let near = |holder, alliance| {
+            near_uprising_message(
+                rebellion_core::ids::SystemKey::default(),
+                "Kessel",
+                Some(holder),
+                alliance,
+                true,
+                false,
+                3,
+                0,
+                0,
+                &texts,
+            )
+            .map(|m| m.sounds)
+        };
+        assert_eq!(near(Faction::Alliance, true), sounds(0x452, 0));
+        assert_eq!(near(Faction::Empire, false), sounds(0x453, 0));
+    }
+
     #[test]
     fn an_advice_plays_its_sides_strategy_sound_when_displayed() {
         // FUN_0048b2e0: +0x30 = 0x461 for side 1, else 0x462; +0x32 stays
@@ -2525,6 +2744,7 @@ mod tests {
         let sound = |strategy| crate::message_sound::MessageSounds {
             strategy,
             sprite: 0,
+            voice: 0,
         };
         assert_eq!(sounds(true, 1), Some(sound(1121)));
         assert_eq!(sounds(false, 10), Some(sound(1122)));
@@ -5478,7 +5698,7 @@ mod tests {
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
-        let message = jabba_delivers_message(4, &texts).expect("message");
+        let message = jabba_delivers_message(false, 4, &texts).expect("message");
         assert_eq!(message.title.as_deref(), Some("Jabba Delivers Prisoners"));
         assert_eq!(
             message.text,
@@ -5486,7 +5706,7 @@ mod tests {
         );
         assert_eq!(message.picture.map(|p| p.background), Some(0x42a));
         assert_eq!(message.audience, RailAudience::Both);
-        assert!(jabba_delivers_message(4, &HashMap::new()).is_none());
+        assert!(jabba_delivers_message(false, 4, &HashMap::new()).is_none());
     }
 
     #[test]

@@ -535,6 +535,10 @@ pub struct MessageLog {
     /// The sounds of the messages displayed since the last take
     /// ([`Self::display_message`]).
     displayed_sounds: Vec<crate::message_sound::MessageSounds>,
+    /// The generator a filed message's voice is drawn from
+    /// (`FUN_004c4990` -> `FUN_0041cd80`). port: the original draws from
+    /// its global generator; the port keeps its own xorshift.
+    voice_draws: u32,
 }
 
 /// A category's posting option bit 4: its messages post silently, without
@@ -562,6 +566,7 @@ impl MessageLog {
             posting: (0, std::collections::BTreeMap::new()),
             story_movies: std::collections::VecDeque::new(),
             displayed_sounds: Vec::new(),
+            voice_draws: 0x2545_f491,
         }
     }
 
@@ -590,6 +595,14 @@ impl MessageLog {
         self.next_id += 1;
         msg.id = id;
         msg.posted = self.now;
+        // FUN_004c4990: the builder draws its voice (+0x32) once.
+        let draws = &mut self.voice_draws;
+        msg.sounds = msg.sounds.drawn(|count| {
+            *draws ^= *draws << 13;
+            *draws ^= *draws >> 17;
+            *draws ^= *draws << 5;
+            u16::try_from(*draws % u32::from(count.max(1))).unwrap_or(0)
+        });
         // FUN_0048a060: a delivered message (port: one filed on a side's
         // rail) hands its event code to that side's advisor unless its
         // category posts silently (FUN_0048a1c0 bit 4).
@@ -1120,6 +1133,64 @@ mod tests {
         assert!(log.take_displayed_sounds().is_empty());
         assert!(log.messages().iter().all(|message| !message.unread));
     }
+
+    #[test]
+    fn a_filed_message_draws_its_voice_from_the_sprite_dlls_list() {
+        // FUN_004c4990 draws +0x32 when the builder runs: RCDATA 0x11d
+        // (FUN_0048d190) holds WAVE 1395 alone; 0xe8 (FUN_004927c0's
+        // list) four, one of them drawn (FUN_0041cd80).
+        use crate::message_sound::MessageSounds;
+        let mut log = MessageLog::new();
+        let single = log.push(
+            GameMessage::new(1, "Dagobah", MessageCategory::Event)
+                .with_sounds(MessageSounds::strategy(0x46c).with_voice(0x11d)),
+        );
+        let drawn = log.push(
+            GameMessage::new(1, "report", MessageCategory::Event)
+                .with_sounds(MessageSounds::strategy(0x47e).with_voice(0xe8)),
+        );
+        log.display_message(single);
+        log.display_message(drawn);
+        let sounds = log.take_displayed_sounds();
+        assert_eq!(
+            sounds[0],
+            MessageSounds {
+                strategy: 0x46c,
+                sprite: 1395,
+                voice: 0
+            }
+        );
+        assert_eq!(sounds[1].strategy, 0x47e);
+        assert_eq!(sounds[1].voice, 0);
+        assert!((1354..=1357).contains(&sounds[1].sprite), "{sounds:?}");
+        // Displaying it again replays the same voice.
+        log.display_message(drawn);
+        assert_eq!(log.take_displayed_sounds(), [sounds[1]]);
+    }
+
+    #[test]
+    fn filed_voices_draw_every_entry_of_a_longer_list() {
+        // FUN_0041cd80 draws below the count; port: the log's own
+        // generator, which over 40 messages reaches all four of 0xe8's.
+        use crate::message_sound::MessageSounds;
+        let mut log = MessageLog::new();
+        let ids: Vec<_> = (0..40)
+            .map(|_| {
+                log.push(
+                    GameMessage::new(1, "report", MessageCategory::Event)
+                        .with_sounds(MessageSounds::strategy(0x47e).with_voice(0xe8)),
+                )
+            })
+            .collect();
+        for id in ids {
+            log.display_message(id);
+        }
+        let mut waves: Vec<u16> = log.take_displayed_sounds().iter().map(|s| s.sprite).collect();
+        waves.sort_unstable();
+        waves.dedup();
+        assert_eq!(waves, [1354, 1355, 1356, 1357]);
+    }
+
 
     #[test]
     fn a_filed_message_hands_each_reading_side_its_advisor_event() {
