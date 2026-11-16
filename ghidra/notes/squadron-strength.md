@@ -125,3 +125,24 @@ with the new value 0 for a unit of the reader's side:
 - port: a squadron's name is its class's (the port's squadrons have none
   of their own); the planet's squadrons are named by class, so their
   Status window shows the first of the class.
+
+## The AI's strength sums (2026-11-16)
+
+The AI records weigh a squadron by its craft, not its class size:
+
+- `FUN_00484630` (a fleet's ship record, `ai_records::ship_record`) and
+  `FUN_00433e40` (a system's record, the planet's squadrons) pass
+  `+0x244 - +0x254` (size less losses) to `FUN_00473610` / `620` / `630`.
+- Those return the class record's `+0x30` / `+0x34` / `+0x38` x that
+  count / the record's `+0x4c` (the squadron size, `values[7]`),
+  truncating. So a squadron with one craft of two counts half.
+- The fleet record sums them into `+0x90`, `+0x94`, `+0x84`, `+0x7c`,
+  `+0x80`; the system record into `+0xb0`..`+0xb8`. The bombardment figure
+  (`+0x40` into `+0x48`) and the counts are not scaled.
+- `FUN_005031e0` (slot `+0x1f4`, the weakest-squadron pick in
+  `ai_module7`) is the class size (`+0x244`) x the class's `+0xbc`
+  (`FUN_005574f0`), not the craft left.
+
+Port: `ai_records::at_strength` (tests
+`a_squadron_below_full_strength_adds_its_craft_s_share_aboard`,
+`a_planet_s_squadron_below_full_strength_counts_its_craft_s_share`).

@@ -72,6 +72,22 @@ fn int(value: u32) -> i32 {
     i32::try_from(value).unwrap_or(i32::MAX)
 }
 
+/// `FUN_00473610` / `620` / `630`: a squadron's share of its class figure,
+/// `value` x its craft (slot `+0x244` less `+0x254`, the losses) / the
+/// class's squadron size (record `+0x4c`, `values[7]`), truncating. A
+/// squadron below full strength counts for less
+/// (`ghidra/notes/squadron-strength.md`).
+fn at_strength(value: i32, wing: &ClassRecord, entry: &crate::world::FighterEntry) -> i32 {
+    let size = wing.values[7];
+    let craft = size.saturating_sub(int(entry.lost())).max(0);
+    // port: a class of size 0 would divide by zero in the original; it
+    // keeps the figure.
+    value
+        .saturating_mul(craft)
+        .checked_div(size)
+        .unwrap_or(value)
+}
+
 /// `FUN_00473090` and `FUN_00473290`: 1 when the Empire may not build the
 /// class, else 2 when the Alliance may not, else 0.
 fn either_side(is_alliance: bool, is_empire: bool) -> u8 {
@@ -681,12 +697,14 @@ fn ship_record(
                 v[13] += wing.maintenance;
                 v[5] += 1;
                 flags |= 0x100;
-                // FUN_00473610 / 620 / 630 at full squadron strength.
-                v[19] += wing.values[0];
-                v[20] += wing.values[1];
-                v[16] += wing.values[2];
-                v[14] += wing.values[0];
-                v[15] += wing.values[1];
+                // FUN_00473610 / 620 / 630 at the squadron's strength.
+                let attack = at_strength(wing.values[0], wing, entry);
+                let defense = at_strength(wing.values[1], wing, entry);
+                v[19] += attack;
+                v[20] += defense;
+                v[16] += at_strength(wing.values[2], wing, entry);
+                v[14] += attack;
+                v[15] += defense;
                 v[1] += wing.values[4];
                 v[17] += 1;
                 v[6] += 1;
@@ -1376,7 +1394,8 @@ impl SystemRecord {
             // (0x1c..0x1f). A counted one is the side's in an unmarked
             // system, or one whose class +0x34 reaches the threshold
             // `+0x40 -> +0x28` (hyp: 0). port: every squadron is active
-            // (+0x50 bit 0) and at full strength (FUN_00473610/620/630).
+            // (+0x50 bit 0); its strengths are at its craft
+            // (FUN_00473610/620/630).
             for entry in &sys.fighters {
                 let Some(class) = inputs.classes.fighter(entry.class) else {
                     continue;
@@ -1387,9 +1406,9 @@ impl SystemRecord {
                     if f30 & 1 != 0 && (f28 & 0x83e0_0000 == 0 || class.values[1] >= 0) {
                         v[24] += 1;
                     }
-                    v[26] += class.values[0];
-                    v[27] += class.values[1];
-                    v[28] += class.values[2];
+                    v[26] += at_strength(class.values[0], class, entry);
+                    v[27] += at_strength(class.values[1], class, entry);
+                    v[28] += at_strength(class.values[2], class, entry);
                     v[25] += 1;
                     if f30 & 1 != 0 {
                         f28 |= 0x8_0000;
@@ -2943,6 +2962,43 @@ mod tests {
     }
 
     #[test]
+    fn a_planet_s_squadron_below_full_strength_counts_its_craft_s_share() {
+        // FUN_00433e40: +0xb0..+0xb8 are FUN_00473610/620/630 of the
+        // squadron's craft (slot +0x244 less +0x254) over the class's size.
+        let mut fixture = system_fixture();
+        let x_wing = fixture
+            .world
+            .fighter_classes
+            .insert(crate::world::FighterClass {
+                is_alliance: true,
+                maintenance_cost: 4,
+                squadron_size: 4,
+                laser_cannon_fore: 1,
+                maneuverability: 3,
+                ..crate::world::FighterClass::default()
+            });
+        let system = fixture.system;
+        fixture.world.systems[system]
+            .fighters
+            .push(crate::world::FighterEntry {
+                class: x_wing,
+                count: 1,
+                carrier: None,
+                damage: Some(crate::world::SquadronDamage {
+                    lost: 1,
+                    repair: None,
+                }),
+            });
+
+        let r = system_record(&fixture, true, 0);
+        let v = &r.values;
+        // FUN_004736c0 at size 4: attack 16 x 4 = 64, light 1 x 3 x 4 x 10
+        // = 120, 4 x 25 / 10 = 10; three craft of four: 48, 90, 7.
+        assert_eq!((v[23], v[25]), (1, 1));
+        assert_eq!((v[26], v[27], v[28], v[32]), (48, 90, 7, 4));
+    }
+
+    #[test]
     fn an_opponent_s_system_record_lists_its_assets() {
         // FUN_00433e40 seen by the Empire: +0x30 4 | 0x20 | 0x28; support
         // term (89 - 50) / 10 = 3; +0x118 = regiments 2 + 3 + batteries 1;
@@ -4271,6 +4327,56 @@ mod tests {
         assert_eq!((r.values[25], r.values[26]), (33, 40));
         // An own free person aboard (0x400000) gives the fleet 0x4000000.
         assert_ne!(r.flags & 0x400_0000, 0);
+    }
+
+    #[test]
+    fn a_squadron_below_full_strength_adds_its_craft_s_share_aboard() {
+        // FUN_00484630: each strength is FUN_00473610 / 620 / 630 of the
+        // squadron's craft, slot +0x244 less its losses +0x254, over the
+        // class's size (record +0x4c).
+        let mut world = GameWorld::default();
+        let here = system(&mut world);
+        let hull = world.capital_ship_classes.insert(ship(0x40));
+        let wing = world.fighter_classes.insert(FighterClass {
+            squadron_size: 2,
+            laser_cannon_fore: 3,
+            maneuverability: 2,
+            ..FighterClass::default()
+        });
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: here,
+            capital_ships: vec![crate::world::ShipInstance::new(hull, 1, true)],
+            fighters: vec![crate::world::FighterEntry {
+                class: wing,
+                count: 1,
+                carrier: None,
+                damage: Some(crate::world::SquadronDamage {
+                    lost: 1,
+                    repair: None,
+                }),
+            }],
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let classes = ClassRecords::build(&world);
+
+        let r = FleetRecord::build(
+            &world,
+            &classes,
+            fleet,
+            true,
+            &crate::movement::MovementState::new(),
+            &crate::troop_transport::TroopTransportState::new(),
+            &|_| None,
+        )
+        .unwrap();
+
+        // One craft of two: attack 33 x 1 / 2, light 40 x 1 / 2, +0x38
+        // 5 x 1 / 2, truncating.
+        assert_eq!((r.values[2], r.values[3], r.values[5]), (16, 20, 2));
+        assert_eq!((r.values[25], r.values[26]), (16, 20));
     }
 
     #[test]
