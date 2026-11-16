@@ -7045,15 +7045,15 @@
         {
           "id": "OBJ-11-C005",
           "requirement": "Death Star Sabotage",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-death-star-sabotage/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Death Star Sabotage is a dialog kind (mission_dialog.rs kind_name). Core tested; no browser journey picks it. No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs death-star (fixture 60, Alliance) offers Death Star Sabotage with icon 3137 at A0's (70, 86) on Linux; no A0 of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Death Star Sabotage is a dialog kind (mission_dialog.rs kind_name). Core tested; no browser journey picks it. No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs death-star (fixture 60, Alliance) offers Death Star Sabotage with icon 3137 at A0's (70, 86) on Linux; no A0 of the dialog for this kind. Batch b234 (2026-11-16): A0 2026-11-16-edited-saves (slot 4 'alliance d790' with the Imperial ship Dragon retyped to a Death Star by dspatch.py, 7b724338): x-46 (eb45cb97) Create Mission with Death Star Sabotage, x-47 (51ba991a) the kind list with it on top, x-49 the agents tab. Fixed by trace: the dialog draws a capital ship or Death Star target's portrait (FUN_0042c3b0(..,1,1): +0x30 & 0xfff, the Death Star GOKRES 1928); the port left the box empty. mission-dialog death-star (Han as agent) matches kind icon, buttons, target frame, portrait, kind list, Agents headers, Han's mini, lists and buttons 0 px off; Begin Mission files DeathStarSabotage. The edit supports the dialog, not the Death Star's name or place. x-44, x-45, x-50, x-51 not compared.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-11-C006",
@@ -7111,13 +7111,13 @@
         {
           "id": "OBJ-11-C010",
           "requirement": "Jedi Training",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md"
           ],
-          "note": "Jedi Training is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Jedi Training is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind. Batch b234 (2026-11-16): A0 2026-11-16-edited-saves (owner-approved edited save: Luke's Force raised to the teacher minimum 100, GNPRTB 2581, FUN_004ed310; jedipatch.py, 192df6bf). With Luke and Dodonna on Yavin the original offers Jedi Training first (x-54 4e96180a, x-55..x-56). mission-dialog jedi-training (fixture JediTrainingDialog) matches the kind icon GOKRES 3138, buttons, target frame, Yavin's picture, the open kind list and the Agents tab 0 px off (names excepted, text deviation); Begin Mission files JediTraining. The edit supports the dialog, not Luke's rank or the success chance. Open: kinds below the first row not captured in A0; the Ctrl+click entry path is not driven.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-11-C011",
@@ -7639,15 +7639,15 @@
         {
           "id": "OBJ-13-C002",
           "requirement": "discovered HQ",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-names-and-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "ghidra/notes/facility-ownership.md"
           ],
-          "note": "A0 sector-a.png (Alliance) shows mark 904 over Vjun and the Linux sector-quadrants.mjs 'icons' case matches 904 pixel for pixel for the Alliance; the Empire's discovery of the HQ has no A0 or browser case. The port marks HQ as a system flag, not a 0x20..0x21 facility object. 2026-11-16: A0 2026-11-16-empire-hunt: no HQ-discovered message in two Empire games, only 'Assault on Yavin'; the Empire-side negatives h-17, h-44, h-48 show no 904 (see OBJ-13-C001).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 sector-a.png (Alliance) shows mark 904 over Vjun and the Linux sector-quadrants.mjs 'icons' case matches 904 pixel for pixel for the Alliance; the Empire's discovery of the HQ has no A0 or browser case. The port marks HQ as a system flag, not a 0x20..0x21 facility object. 2026-11-16: A0 2026-11-16-empire-hunt: no HQ-discovered message in two Empire games, only 'Assault on Yavin'; the Empire-side negatives h-17, h-44, h-48 show no 904 (see OBJ-13-C001). Batch b234 (2026-11-16): traced: FUN_0045bbb0 draws 904 when the viewer's record of the system (FUN_004f3220, the side's table, live or frozen) holds a family 0x20..0x21 object (FUN_00526cf0); the Death Star edit in both A0 games only brought the Empire's fleet there. Fixed: shows_alliance_headquarters reads the player's copy, so a frozen copy holding the HQ now shows it. A0 2026-11-16-edited-saves x-29 (31eb3ec4, Duros) and x-39 (ec787bc5, Tokmia) show 904 to the Empire, 0 of 376 px off the port's sector-quadrants empire/headquarters-frozen (fixture QuadrantsHeadquartersFrozen); the Empire 'no mark' case still passes. Open: when the Empire first sees the HQ is not isolated in A0; no HQ-discovered message seen.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-13-C003",
@@ -8413,14 +8413,14 @@
         {
           "id": "EVT-01-C015",
           "requirement": "Jedi",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-jedi-training/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-jedi-rs-panels/"
           ],
-          "note": "Jedi Training mission 0x58 ported; its dialog and messages were not opened in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Jedi Training mission 0x58 ported; its dialog and messages were not opened in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). Batch b234 (2026-11-16): A0 x-58 (507ebeea) lists the Jedi Training Mission Report directly above Force Growth; x-59 (452ffaa7) 'My Jedi Training mission on Yavin was a success.', x-60 (35ebeb31) 'Jan Dodonna Force Growth ... My ranking is Trainee.' Fixed by trace: a Force change now files Force Growth (FUN_004ee0d0 -> FUN_004f0220 -> FUN_004f1e00 notification 0x1e1 -> FUN_0048ed80, both values above 0, own side; minor characters advisor event 0x15) before the report, and the report leader's portrait is the character's own (FUN_004c5000). message-display jedi-training-messages: row order and icon 0x2a9e, picture, title image, rail and corners 0 px off, texts exact, ink within 1 px. Open: Force gains from mission detection (missions::apply_advance_effects) still file no Force Growth; the Jedi Training hook (+0x324) is not read (A0 x-60 supports the gain).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "EVT-01-C016",
@@ -10794,7 +10794,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "An Imperial victory for the Empire player plays MDATA.108 (state 0x12), then the main menu (unit test); not yet compared with A0. 2026-11-07 (b119): ending.mjs's EndingVictory cases play 108 in the browser and return to the main menu; no A0 capture of a win.",
+          "note": "An Imperial victory for the Empire player plays MDATA.108 (state 0x12), then the main menu (unit test); not yet compared with A0. 2026-11-07 (b119): ending.mjs's EndingVictory cases play 108 in the browser and return to the main menu; no A0 capture of a win. Batch b234 (2026-11-16): A0 2026-11-16-edited-saves (Headquarters Victory game, an ISD retyped to a Death Star destroys Tokmia, the HQ): caption film 102 ('The Death Star has destroyed the Alliance system Tokmia.', x-42 fa1c6442), then 108 and the crawl, then the main menu. ending.mjs empire-victory: 102's lit rows 78..419 and caption ink box identical to A0, 108 in rows 78..401 as A0, crawl inside the film rows, then the main menu. Open: in A0 the galaxy stays up one day (to day 46) between 102 and 108; the port plays 108 at once (FUN_00425c90 state 0x12 not traced). Stays partial.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
