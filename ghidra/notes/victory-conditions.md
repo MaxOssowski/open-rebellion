@@ -90,3 +90,54 @@ The function stores the word in galaxy `+0x74` and marks it changed
   `DeathStarVictory` when the HQ system is destroyed, else `HqDestroyed`.
   The manual's Imperial assault after the bombardment is not needed, and
   a destroyed Coruscant counts for the Alliance, as in the binary.
+
+## From the word to the ending film (read 2026-11-16, END-01-C003)
+
+A0 (Empire, Headquarters Victory, edited save): the Death Star destroys
+Tokmia on day 45, MDATA.102 plays, the galaxy runs on to day 46, then
+MDATA.108. The ending does not follow the word directly; the advisor's
+speech stands between them.
+
+- A changed word reaches each side's advisor through slot `0x10`
+  (`Class_0065c4c8_vt10` = `FUN_004c3010`, Alliance;
+  `Class_0065c4a0_vt10` = `FUN_004c0f10`, Empire). The Empire's win bit
+  `0x100000` is tested first:
+
+  | Side | `0x100000` (Empire wins) | `0x1000000` (Alliance wins) |
+  |---|---|---|
+  | Alliance | message `0x57` (`+0x15c`) | `0x56` (`+0x158`) |
+  | Empire | `0x54` (`+0x150`) | `0x55` (`+0x154`) |
+
+  Each is due for 40000 sub-ticks, and `FUN_0041d810` sets the galaxy
+  window's `+0xac` (it then skips `FUN_0042db70`'s `WM_COMMAND 0x15e`).
+  hyp: the caller is the `0x128` notification; slot `0x10` is reached
+  only through the vtable, and the dispatch was not read.
+- The messages (C3POACT.SPT / IMP22ACT.SPT): a speech clip, then the idle
+  clip carrying action kind 3, code 1. Alliance `0x56` [`0x276e`,
+  `0x2710` (3, 1)], `0x57` [`0x276d`, `0x2710` (3, 1)]; Empire `0x54`
+  [`0x2b56`, `0x2af8` (3, 1)], `0x55` [`0x2b55`, `0x2af8` (3, 1)].
+- A scheduled message plays only when the advisor's update runs
+  (`FUN_004c0a60` / `FUN_004c2b20`, while `DAT_006b28bc` is set), and
+  slot `0x10` does not set it: it waits for the droid's idle clip to end
+  (`FUN_0041cea0` -> `FUN_00439ef0`, `advisor-briefing.md`).
+- The idle clip's end (`Class_00658848` slot `0x20`, `FUN_00412400` ->
+  `FUN_0041d140` -> `FUN_00436620` -> `FUN_004878d0` -> `FUN_00439eb0`)
+  stores the pending action `DAT_006b28c4 = 3`. The next update runs it
+  (`FUN_004c0f60` / `FUN_004c3060`): kind 3 calls `FUN_0041d830` with the
+  local side's VictoryConditions (`FUN_004f3dd0`), which calls
+  `FUN_00425c90` when the galaxy window exists (`FUN_00422ca0`).
+- `FUN_00425c90` sets the galaxy window's `+0xa8`: `0x100000` -> `0x11 +
+  (player side +0x9c == 2)`; else `0x1000000` -> `0x10` for side 1,
+  `0x13` otherwise; else 0. The game loop (`FUN_0041e500`, `FUN_0041e390`
+  -> `FUN_0041db60` -> `FUN_0042db70`) posts `0x482(0, state)` while
+  `+0xa4` is 0, and `FUN_00414830` plays the film (`movie-flow.md`).
+
+So the galaxy keeps running while 102 ends, the droid's idle clip ends
+and the speech plays: the extra day in A0 is that time, not a rule on
+the day tick. The number of days depends on the game speed and the
+clips' length (not measured beyond A0's one day at its speed).
+
+Ported 2026-11-16: `AdvisorSchedule::victory_word` (slot `0x10`), and
+main.rs sets the ending only on a finished clip of kind 3
+(`ending_from_conditions_word`, `FUN_00425c90`). port: without the
+advisor's messages the ending still follows the victory check at once.
