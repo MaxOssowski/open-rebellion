@@ -650,9 +650,9 @@ fn fighter_class(io: &mut Inputs<'_>, key: FighterRank, order: Order) -> (Option
 }
 
 /// The squadron on `system`'s planet with the lowest strength (slot
-/// `+0x1f4`, `FUN_005031e0`: fighters left times a constant), the first on
-/// a tie, of either side (`FUN_005039d0` mode 1). port: every squadron is
-/// at full strength, its class's squadron size.
+/// `+0x1f4`, `FUN_005031e0`: the class's squadron size times class
+/// `+0xbc`, losses not counted), the first on a tie, of either side
+/// (`FUN_005039d0` mode 1).
 fn weakest_squadron(io: &Inputs<'_>, system: SystemKey) -> Option<FighterKey> {
     let sys = io.world.systems.get(system)?;
     let mut best: Option<(FighterKey, u32)> = None;
