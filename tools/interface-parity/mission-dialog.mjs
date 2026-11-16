@@ -99,7 +99,19 @@ const scenarios = [
   { name: "facility-research", code: 121, page: "mission",
     kinds: ["FacilityDesignResearch", "Diplomacy", "Espionage"],
     icon: { alliance: 3105, empire: 7201 } },
+  // Scenario::JediTrainingDialog (135): Luke, a Jedi Knight at Force 100,
+  // and Jan Dodonna selected together on the Alliance's Yavin; the dialog
+  // opens as their Mission released on Yavin would. A0 2026-11-16-edited-
+  // saves/x-54 (4e96180a): Jedi Training shown first (FUN_0046cab0 key 2),
+  // GOKRES 3138 (TEXTSTRA 11330 & 0xfff). The Empire has no such case
+  // (only the Alliance's A0 exists, and the scenario's cast is Luke's).
+  { name: "jedi-training", code: 136, page: "mission", firstKind: "JediTraining", icon: { alliance: 3138 },
+    factions: ["alliance"] },
 ];
+// The edited-save A0 of 2026-11-16 (approved by the owner; see its
+// README): layouts, art and dialog kinds are evidence, the Death Star's
+// name and the Force values are the edit's.
+const EDITED_A0 = path.join(root, ".artifacts/a0-vm/2026-11-16-edited-saves");
 // REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
 // at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
 const cursor = { id: 1002, hotspot: { x: 12, y: 12 }, key: [0, 0, 255] };
@@ -836,8 +848,127 @@ async function inspect(server, source, faction, scenario, executable) {
       assert.equal(reconA0.launched.length, 1, JSON.stringify(reconA0));
       assert.equal(reconA0.launched[0][0], "Reconnaissance", JSON.stringify(reconA0));
     }
+    // OBJ-11-C010 and OBJ-11-C005 against the edited-save A0 (the dialog
+    // at (168, 38) in both, Alliance games): the shown kind's icon, the
+    // bottom buttons and the target's frame and picture; the open kind
+    // list (its icon, edge and bar); the Agents page (the headers, each
+    // agent's mini, the lists but the agents' names, the buttons); then
+    // the check button files the mission and closes the dialog. The kind
+    // and target names (the accepted text deviation) and A0's pointer are
+    // left out.
+    let editedA0 = null;
+    const journeys = {
+      // x-54 (4e96180a), x-55, x-56, x-57: Luke and Dodonna on Yavin.
+      "jedi-training": {
+        open: "x-54-al790jedi-create-mission-jedi-training-yavin-d813.png",
+        list: "x-55-al790jedi-kinds-list-open-d813.png",
+        agents: "x-56-al790jedi-agents-tab-luke-dodonna-d813.png",
+        // A0's pointer on the dialog's right edge (x-54, about (420..432,
+        // 342..360) on the screen).
+        openPointer: (x, y) => x >= 248 && y >= 300 && y < 324,
+        // The list's rows are 59 apart (FUN_0046a9c0's 107 by 59 items).
+        minis: [[28, 105, 95, 135], [28, 164, 95, 194]],
+        launched: [["JediTraining", null, null]],
+      },
+      // x-46 (eb45cb97), x-47 (51ba991a), x-49, x-51: Han on the Death
+      // Star "Dragon" in Fleet 38 (the name is the edit's).
+      "death-star": {
+        open: "x-46-dsa9d6-create-mission-death-star-sabotage-dragon-d815.png",
+        list: "x-47-dsa9d6-kinds-list-death-star-sabotage-first-d816.png",
+        agents: "x-49-dsa9d6-mission-agents-tab-han-d816.png",
+        // A0's pointer below the target box's right corner (x-46, about
+        // (392..412, 318..344) on the screen).
+        openPointer: (x, y) => x >= 222 && x < 246 && y >= 278 && y < 308,
+        minis: [[28, 105, 95, 135]],
+        launched: [["DeathStarSabotage", null, "DeathStar"]],
+      },
+    };
+    const journey = journeys[scenario.name];
+    if (journey && faction.name === "alliance" && kindIcon && fs.existsSync(EDITED_A0)) {
+      const a0 = (file) => cropDialog(fs.readFileSync(path.join(EDITED_A0, file)), origin);
+      const regionOf = (port, reference, skip = () => false) => (x0, y0, x1, y1) => {
+        let differing = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            if (skip(x, y)) continue;
+            const at = (y * port.width + x) * 4;
+            if ([0, 1, 2].some((c) => port.data[at + c] !== reference.data[at + c])) differing += 1;
+          }
+        }
+        return differing;
+      };
+      const press = async (x, y) => {
+        await page.mouse.move(origin.x + x, origin.y + y);
+        await frames(page);
+        await page.mouse.down();
+        await frames(page);
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        await frames(page);
+      };
+      editedA0 = {};
+      // "Target" (font 5 at (37, 195)) is text, as the static compare masks it.
+      const targetText = (x, y) => x >= 35 && x < 95 && y >= 193 && y < 210;
+      const dialog = regionOf(opened, a0(journey.open), (x, y) => journey.openPointer(x, y) || targetText(x, y));
+      const icon = kindIcon.at;
+      editedA0.kind_icon = dialog(icon.x, icon.y, icon.x + 130, icon.y + 64);
+      editedA0.buttons = dialog(30, 320, 230, 352);
+      editedA0.target_frame = dialog(28, 192, 60, 300) + dialog(216, 192, 236, 300);
+      // The target's picture inside the box, above its name.
+      editedA0.target_picture = dialog(60, 214, 216, 290);
+      const flowOpen = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+      editedA0.kinds = flowOpen.kinds;
+      // The kind list (Missions at (101, 174)); A0's pointer rests on the
+      // first item's name at about (136..152, 186..210).
+      await press(101 + 32, 174 + 9);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      const listed = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
+      fs.writeFileSync(path.join(directory, "edited-a0-kind-list.png"), PNG.sync.write(listed));
+      const listPointer = (x, y) => x >= 134 && x < 154 && y >= 184 && y < 212;
+      const list = regionOf(listed, a0(journey.list), listPointer);
+      editedA0.list_icon = list(35, 203, 218, 291);
+      editedA0.list_edge = list(229, 175, 236, 291) + list(35, 289, 236, 292);
+      editedA0.list_bar = list(218, 175, 236, 292);
+      // Choosing the first row closes the list.
+      await press(135, 250);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      // The Agents tab (0x98 at (137, 20)); A0's pointer stands on the
+      // tab at about (200..222, 33..66).
+      await press(137 + 58, 20 + 16);
+      await page.mouse.move(2, 2);
+      await frames(page, 2);
+      const agents = cropDialog(await page.screenshot({ animations: "disabled" }), origin);
+      fs.writeFileSync(path.join(directory, "edited-a0-agents.png"), PNG.sync.write(agents));
+      const a0Agents = a0(journey.agents);
+      const tabPointer = (x, y) => x >= 194 && x < 224 && y >= 33 && y < 66;
+      const tab = regionOf(agents, a0Agents, tabPointer);
+      editedA0.agents_headers = tab(0, 60, 259, 95);
+      editedA0.agents_minis = journey.minis.map(([x0, y0, x1, y1]) => tab(x0, y0, x1, y1));
+      // Both lists and the arrows but the names under the minis (the
+      // text deviation).
+      const names = (x, y) => x >= 8 && x < 116 && journey.minis.some(([, , , y1]) => y >= y1 && y < y1 + 18);
+      editedA0.agents_lists = regionOf(agents, a0Agents, names)(0, 95, 259, 318);
+      editedA0.agents_buttons = tab(30, 320, 230, 352);
+      // The check button (at (100, 320)) files the mission.
+      await press(100 + 33, 320 + 16);
+      await page.waitForFunction(() => window.__openRebellionInterfaceMissionFlow?.dialog_open === false,
+        null, { timeout: 10_000 });
+      const launched = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+      editedA0.launched = launched.missions;
+      fs.writeFileSync(path.join(directory, "edited-a0-launched-screen.png"),
+        await page.screenshot({ animations: "disabled" }));
+      console.log(JSON.stringify({ edited_a0: editedA0 }));
+      assert.deepEqual(
+        [editedA0.kind_icon, editedA0.buttons, editedA0.target_frame, editedA0.target_picture,
+          editedA0.list_icon + editedA0.list_edge, editedA0.list_bar, editedA0.agents_headers,
+          ...editedA0.agents_minis, editedA0.agents_lists, editedA0.agents_buttons],
+        Array(10 + journey.minis.length - 1).fill(0), JSON.stringify(editedA0));
+      assert.deepEqual(editedA0.launched, journey.launched, JSON.stringify(editedA0));
+    }
     let cancelled = null;
-    if (targeting && !rescueA0 && !reconA0) {
+    if (targeting && !rescueA0 && !reconA0 && !editedA0) {
       comparisons.push(targeting.cursorCheck);
       // Cancel (0x15, the right bottom button at (170, 320)) closes the
       // dialog and starts nothing (FUN_0046c3c0; A0 menus3/61, 62).
@@ -868,6 +999,7 @@ async function inspect(server, source, faction, scenario, executable) {
       ...(kindList ? { kind_list: kindList } : {}),
       ...(rescueA0 ? { rescue_a0: rescueA0 } : {}),
       ...(reconA0 ? { recon_a0: reconA0 } : {}),
+      ...(editedA0 ? { edited_a0: editedA0 } : {}),
       comparisons,
       requests,
       errors,
