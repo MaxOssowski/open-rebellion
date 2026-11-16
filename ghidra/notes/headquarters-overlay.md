@@ -82,3 +82,22 @@ Open:
   `FUN_004593e0` case `0x203` hit-tests the overlay list only
   (`FUN_0045cc10`) and does nothing when no overlay takes the point (A0:
   Adega, Flax, Akrit'tar and Yavin open nothing).
+
+## The Empire's view (read 2026-11-16)
+
+`FUN_0045bbb0` takes the system from the viewer's table (`FUN_004f3220` on
+`+0x194` -> `+0x9c`) and walks that record's families `0x20..0x22`
+(`FUN_00526cf0(record, 3)`, `FUN_00513120`); any child sets bit 8 and the
+overlay. It does not ask whether the copy is live: a copy the Empire froze
+while the headquarters stood there keeps 904 until the Empire sees the
+system again. A0 2026-11-16-edited-saves (Empire games; their saves carry a
+Death Star edit, the headquarters is not edited): x-39 (Tokmia under the
+Empire's blockade, day 45) and x-29 (Duros, day 527) show 904 to the Empire.
+The edit does not enter the rule: it only brought the Empire's fleet there.
+
+Ported 2026-11-16: `sector_window::shows_alliance_headquarters` reads the
+player's copy (`viewed_contents::system_sight`): live, the Alliance-held
+system marked `is_headquarters`; frozen, a copied family `0x20..0x21`
+facility. sector-quadrants.mjs `empire/headquarters-frozen`
+(`Scenario::QuadrantsHeadquartersFrozen`) compares 904 over the planet, and
+904 in x-29 and x-39, every opaque pixel.

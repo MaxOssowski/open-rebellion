@@ -1585,26 +1585,39 @@ pub fn headquarters_object(
         })
 }
 
-/// `FUN_0045bbb0`'s item state bit 8: the viewer's record of the system holds
-/// a headquarters object (families `0x20..0x21`, `FUN_00526cf0`), which
-/// serves only the Alliance (`ghidra/notes/facility-ownership.md`). port: the
-/// Alliance's headquarters system is the Alliance-held one marked
-/// `is_headquarters`, which the Alliance always sees (it holds the system)
-/// and the Empire only while its fog shows the system
-/// (`opposing_contents_visible`).
+/// `FUN_0045bbb0`'s item state bit 8: the viewer's record of the system
+/// (`FUN_004f3220` on the side's table, `+0x9c`) holds a headquarters
+/// object (families `0x20..0x21`, `FUN_00526cf0(record, 3)`), which serves
+/// only the Alliance (`ghidra/notes/facility-ownership.md`). So the Empire
+/// sees the mark while its copy of the system is live, and keeps seeing it
+/// in a frozen copy made while the headquarters stood there (A0 2026-11-16-
+/// edited-saves/x-39, Tokmia under the Empire's blockade; x-29, Duros on
+/// day 527). port: a live view's headquarters is the Alliance-held system
+/// marked `is_headquarters`, which the Alliance always sees (it holds the
+/// system); a frozen copy's is the headquarters object it copied.
 fn shows_alliance_headquarters(
     world: &GameWorld,
     fog: &FogState,
     player: Faction,
     system: SystemKey,
 ) -> bool {
+    use crate::viewed_contents::{system_sight, SystemSight};
     let Some(value) = world.systems.get(system) else {
         return false;
     };
-    value.is_headquarters
-        && !value.is_destroyed
-        && value.control.is_controlled_by(Faction::Alliance)
-        && crate::system_window::opposing_contents_visible(world, fog, player, system)
+    if value.is_destroyed {
+        return false;
+    }
+    match system_sight(world, fog, player, system) {
+        SystemSight::Live => {
+            value.is_headquarters && value.control.is_controlled_by(Faction::Alliance)
+        }
+        SystemSight::Frozen(view) => view
+            .manufacturing_facilities
+            .iter()
+            .any(|facility| matches!(facility.class.family(), 0x20..=0x21)),
+        SystemSight::Hidden => false,
+    }
 }
 
 /// The sector window's title colour, `0x200f0f0` (`FUN_00459e30`); the A0
@@ -2108,6 +2121,61 @@ mod tests {
             &world,
             &fog,
             Faction::Alliance,
+            system
+        ));
+    }
+
+    // FUN_0045bbb0 reads the viewer's copy (FUN_004f3220): a frozen copy
+    // that holds the headquarters object keeps the mark after the Empire
+    // has left (A0 2026-11-16-edited-saves/x-29, Duros on day 527); one
+    // made before the headquarters came shows none, whatever the live
+    // system holds.
+    #[test]
+    fn an_empire_copy_frozen_with_the_headquarters_keeps_its_mark() {
+        let (mut world, system, _) = fixture_world();
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        let fog = FogState::new(Faction::Empire);
+        let freeze = |world: &mut GameWorld| {
+            let view =
+                rebellion_core::object_views::SystemView::of(world, &world.systems[system], false);
+            let id = world.systems[system].dat_id;
+            world.object_views.empire_systems.insert(id, view);
+        };
+        // Frozen before the headquarters came.
+        freeze(&mut world);
+        let hq = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2000_0001),
+                side: Faction::Alliance,
+                is_shipyard: false,
+            },
+        );
+        world.systems[system].manufacturing_facilities.push(hq);
+        world.systems[system].is_headquarters = true;
+        assert!(!shows_alliance_headquarters(
+            &world,
+            &fog,
+            Faction::Empire,
+            system
+        ));
+        // Frozen with it: the mark stays, here even after it has moved on.
+        freeze(&mut world);
+        world.systems[system]
+            .manufacturing_facilities
+            .retain(|key| *key != hq);
+        world.systems[system].is_headquarters = false;
+        assert!(shows_alliance_headquarters(
+            &world,
+            &fog,
+            Faction::Empire,
+            system
+        ));
+        // A destroyed system shows none.
+        world.systems[system].is_destroyed = true;
+        assert!(!shows_alliance_headquarters(
+            &world,
+            &fog,
+            Faction::Empire,
             system
         ));
     }
