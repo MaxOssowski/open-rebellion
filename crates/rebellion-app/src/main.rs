@@ -247,6 +247,19 @@ fn apply_settings(
     options.display_holocube = settings.shows(display::HOLOCUBE);
 }
 
+/// `FUN_00425c90`: the ending's state from the victory conditions word,
+/// the Empire's win (`0x100000`) tested first; `None` (state 0) without a
+/// win.
+const fn ending_from_conditions_word(word: u32, player_is_alliance: bool) -> Option<u32> {
+    if word & rebellion_core::victory::WORD_EMPIRE_WINS != 0 {
+        Some(ending_cutscene(false, player_is_alliance))
+    } else if word & rebellion_core::victory::WORD_ALLIANCE_WINS != 0 {
+        Some(ending_cutscene(true, player_is_alliance))
+    } else {
+        None
+    }
+}
+
 const fn ending_cutscene(alliance_won: bool, player_is_alliance: bool) -> u32 {
     match (player_is_alliance, alliance_won) {
         (true, true) => 105,
@@ -461,6 +474,18 @@ mod audio_source_tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_game_over_action_picks_the_ending_from_the_victory_word_empire_win_first() {
+        // FUN_00425c90: 0x100000 -> state 0x11 + (side == 2), 0x1000000 ->
+        // 0x10 for side 1 else 0x13, nothing else -> 0.
+        assert_eq!(ending_from_conditions_word(0x10_0000, false), Some(108));
+        assert_eq!(ending_from_conditions_word(0x10_0000, true), Some(106));
+        assert_eq!(ending_from_conditions_word(0x100_0000, true), Some(105));
+        assert_eq!(ending_from_conditions_word(0x100_0000, false), Some(107));
+        assert_eq!(ending_from_conditions_word(0x110_0000, true), Some(106));
+        assert_eq!(ending_from_conditions_word(0x1000_0001, false), None);
     }
 
     #[test]
@@ -2616,6 +2641,17 @@ async fn main() {
                 rebellion_render::advisor_clip::ClipEvent::Finished(action) => {
                     if let Some(schedule) = advisor_schedule.as_mut() {
                         schedule.clip_finished(action);
+                    }
+                    // FUN_004c3060 / FUN_004c0f60 kind 3: FUN_0041d830 with
+                    // the player's side's word sets the ending's state
+                    // (FUN_00425c90); FUN_0042db70 then starts it.
+                    if action.kind == 3 {
+                        if let Some(number) = ending_from_conditions_word(
+                            victory_state.conditions_word,
+                            player_faction == MissionFaction::Alliance,
+                        ) {
+                            pending_ending = Some(number);
+                        }
                     }
                     let side = advisor_schedule
                         .as_ref()
@@ -4972,14 +5008,28 @@ async fn main() {
                 };
                 msg_log.push(GameMessage::new(current_tick, msg, MessageCategory::Event));
 
-                // FUN_00425c90: the end's movie for the winner and the
-                // player's side, then the main menu. FUN_00422ce0 starts it
-                // once the story movies the same day queued have played
-                // (A0 empire-clean/61, 62: MDATA.103, then the defeat).
-                pending_ending = Some(ending_cutscene(
-                    victory_winner_is_alliance(&outcome),
-                    player_faction == MissionFaction::Alliance,
-                ));
+                // The word's change (0x128) reaches the advisor's slot 0x10
+                // (FUN_004c3010 / FUN_004c0f10), which schedules its win or
+                // loss speech; the speech's last clip carries the game-over
+                // action (kind 3), and only that sets the ending's state
+                // (FUN_004c3060 -> FUN_0041d830 -> FUN_00425c90). So the
+                // galaxy runs on until the advisor's next idle end and the
+                // speech (A0 END-01-C003: day 45's MDATA.102, day 46, then
+                // MDATA.108). port: without the advisor's messages the end
+                // follows at once.
+                if let Some(schedule) = advisor_schedule.as_mut() {
+                    schedule.victory_word(victory_state.conditions_word, advisor_now(&clock));
+                } else {
+                    // FUN_00425c90: the end's movie for the winner and the
+                    // player's side, then the main menu. FUN_00422ce0 starts
+                    // it once the story movies the same day queued have
+                    // played (A0 empire-clean/61, 62: MDATA.103, then the
+                    // defeat).
+                    pending_ending = Some(ending_cutscene(
+                        victory_winner_is_alliance(&outcome),
+                        player_faction == MissionFaction::Alliance,
+                    ));
+                }
             }
         }
 

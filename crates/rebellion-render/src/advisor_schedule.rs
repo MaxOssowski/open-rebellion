@@ -407,6 +407,28 @@ impl AdvisorSchedule {
         self.last_tick[slots.start + pick as usize] = now + 10;
     }
 
+    /// A new victory conditions word (`0x128`), to the side's slot `0x10`
+    /// (`FUN_004c3010` Alliance, `FUN_004c0f10` Empire): the Empire's win
+    /// (`0x100000`, tested first) schedules the Alliance's message `0x57` or
+    /// the Empire's `0x54`, the Alliance's win (`0x1000000`) `0x56` or
+    /// `0x55`, each for 40000 sub-ticks. The message is a speech and then
+    /// the idle clip with the game-over action, kind 3 code 1 (C3POACT,
+    /// IMP22ACT). Like the reactions, it waits for the next idle end.
+    pub fn victory_word(&mut self, word: u32, now: u32) {
+        let (empire_wins, alliance_wins) = match self.faction {
+            AdvisorFaction::Alliance => (0x57, 0x56),
+            AdvisorFaction::Empire => (0x54, 0x55),
+        };
+        let message = if word & rebellion_core::victory::WORD_EMPIRE_WINS != 0 {
+            empire_wins
+        } else if word & rebellion_core::victory::WORD_ALLIANCE_WINS != 0 {
+            alliance_wins
+        } else {
+            return;
+        };
+        self.last_tick[message] = now + ALWAYS;
+    }
+
     /// The port's stand-in for the interface's generator (xorshift32).
     fn next_roll(&mut self) -> u32 {
         self.roll ^= self.roll << 13;
@@ -1277,6 +1299,63 @@ mod tests {
             );
         }
         assert_eq!(seen.into_iter().collect::<Vec<_>>(), [0x11, 0x12]);
+    }
+
+    #[test]
+    fn each_sides_victory_word_schedules_its_win_or_loss_speech_for_40000_sub_ticks() {
+        // FUN_004c3010 (Alliance) / FUN_004c0f10 (Empire): +0x168 + 0x15c /
+        // 0x158 and + 0x150 / 0x154; the Empire's win bit is tested first.
+        for (faction, word, message) in [
+            (AdvisorFaction::Alliance, 0x10_0000, 0x15c / 4),
+            (AdvisorFaction::Alliance, 0x100_0000, 0x158 / 4),
+            (AdvisorFaction::Alliance, 0x110_0000, 0x15c / 4),
+            (AdvisorFaction::Empire, 0x10_0000, 0x150 / 4),
+            (AdvisorFaction::Empire, 0x100_0000, 0x154 / 4),
+            (AdvisorFaction::Empire, 0x110_0000, 0x150 / 4),
+        ] {
+            let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+            schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
+            schedule.victory_word(word, 7);
+            assert_eq!(schedule.last_tick[message], 40_007, "{faction:?} {word:#x}");
+            assert_eq!(schedule.last_tick.iter().filter(|&&tick| tick != 0).count(), 1);
+        }
+        // A word without a win schedules nothing.
+        let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Empire, HashMap::new());
+        schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
+        schedule.victory_word(0x1 | 0x10, 7);
+        assert!(schedule.last_tick.iter().all(|&tick| tick == 0));
+    }
+
+    #[test]
+    fn the_victory_speech_ends_in_the_game_over_action_after_the_next_idle_end() {
+        // C3POACT 0x56: the speech, then the idle clip [0x11, 0x18f] carrying
+        // kind 3 code 1, which FUN_004c3060 runs as FUN_0041d830 -> the
+        // ending's state (FUN_00425c90). The speech waits for the idle
+        // clip's end (FUN_00439ef0) like any scheduled message.
+        let root = staged_root("victory");
+        let speech = HashMap::from([(
+            0x56,
+            vec![ScriptEntry {
+                record: 0x2710,
+                flags: 0,
+                a: 3,
+                b: 1,
+            }],
+        )]);
+        let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, speech);
+        schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
+        schedule.victory_word(0x100_0000, 1);
+        let mut player = player(&root.0);
+
+        let finished = |events: &[ClipEvent]| {
+            events.iter().any(|event| {
+                matches!(event, ClipEvent::Finished(ClipAction { kind: 3, code: 1 }))
+            })
+        };
+        let early = run(&mut schedule, &mut player, 14.0 * CLIP_TICK_SECONDS, 2);
+        assert!(!finished(&early), "the speech waits for the idle end");
+        let events = run(&mut schedule, &mut player, 40.0 * CLIP_TICK_SECONDS, 2);
+        assert!(finished(&events));
     }
 
     #[test]
