@@ -76,6 +76,9 @@ const regimentA0 = "../2026-11-11-regiment-en-route";
 // 130 ShipShieldHit: FleetLoad's fleet, its ship whole but for one hit
 // against the shield recharge (the Empire's: Victory Destroyer 2).
 const SHIP_SHIELD_HIT = 131;
+// 134 ShipRepaired: ShipShieldHit's ship after the port's repair at an
+// Orbital Shipyard of its side (OBJ-06-C012).
+const SHIP_REPAIRED = 135;
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
   encyclopedia: { x: 258, y: 218, id: 11552 },
@@ -542,6 +545,31 @@ const cases = [
       sha256: "8bce5f1cbf27a6779c221513f99632a926546937a2f41c8c5e75a2767b1629c8",
       x: 170,
       y: 81,
+    },
+    target: async (page) => {
+      const opened = await openFleetWindow(page);
+      await click(page, point(opened.fleet_entry));
+      return point((await fleetLoad(page, (o) => o.selected === "fleet" && o.first_item)).first_item);
+    },
+  },
+  // OBJ-06-C012: the same ship mended by the port's repair (timer 0x380,
+  // FastRepair FUN_0050c580 / FUN_0050bb70, each fire FUN_00501c50) at an
+  // Orbital Shipyard of its side. A0 2026-11-16-empire-hunt h-28 (an
+  // Empire game, day 634, the window at (170, 81), Victory Destroyer 2
+  // awaiting orders at Coruscant): "Ship Damaged: No", the picture without
+  // fires; h-29 (fd2acfbd, scrolled): Shield Recharge Rate 10:10, Hull
+  // 1800:1800.
+  {
+    name: "capital-ship-repaired",
+    code: SHIP_REPAIRED,
+    family: "Ship",
+    sides: ["empire"],
+    shieldHit: {
+      file: "2026-11-16-empire-hunt/h-28-run6-vd2-status-ship-damaged-no-repaired-coruscant-shipyard-d634.png",
+      sha256: "34d1e02183220987fed0e50d5642592fedff428c96f50fda86973eac680ecd12",
+      x: 170,
+      y: 81,
+      repaired: true,
     },
     target: async (page) => {
       const opened = await openFleetWindow(page);
@@ -1243,12 +1271,13 @@ async function inspect(server, source, faction, testCase, executable) {
       const [recharge, rechargeFull] = ratio("Shield Recharge Rate:");
       shieldHitChecks = { rows: { damaged: value("Ship Damaged:"), hull: value("Hull Value:"),
         recharge: value("Shield Recharge Rate:"), class: value("Class:") }, marks };
-      assert.equal(value("Ship Damaged:"), "Yes", JSON.stringify(rows));
+      const repaired = Boolean(testCase.shieldHit.repaired);
+      assert.equal(value("Ship Damaged:"), repaired ? "No" : "Yes", JSON.stringify(rows));
       assert.ok(hull === hullFull && hull > 0, JSON.stringify(rows));
-      assert.ok(recharge < rechargeFull, JSON.stringify(rows));
+      assert.ok(repaired ? recharge === rechargeFull : recharge < rechargeFull, JSON.stringify(rows));
       if (faction.name === "empire") {
-        assert.deepEqual(shieldHitChecks.rows, { damaged: "Yes", hull: "1800:1800", recharge: "8:10",
-          class: "Victory Destroyer" }, JSON.stringify(rows));
+        assert.deepEqual(shieldHitChecks.rows, { damaged: repaired ? "No" : "Yes", hull: "1800:1800",
+          recharge: repaired ? "10:10" : "8:10", class: "Victory Destroyer" }, JSON.stringify(rows));
       }
       const a0File = path.join(root, ".artifacts/a0-vm", testCase.shieldHit.file);
       if (faction.name === "empire" && fs.existsSync(a0File)) {
@@ -1268,8 +1297,9 @@ async function inspect(server, source, faction, testCase, executable) {
           }
           return box;
         };
-        // A0's page holds the ETA row the port's (not en route) lacks:
-        // from Maintenance Cost on, A0's row k is the port's k - 1. Each
+        // e-vd2's page holds the ETA row the port's (not en route) lacks:
+        // from Maintenance Cost on, A0's row k is the port's k - 1 (h-28's
+        // ship awaits orders: no ETA row, row 11). Each
         // row's ink against its own row top: left, top and bottom within 1
         // pixel, the right within 3 (the text-width deviation).
         const rowsOf = (a0Row, portRow) => [
@@ -1279,7 +1309,7 @@ async function inspect(server, source, faction, testCase, executable) {
         const compared = {
           title: [["ink", [15, 18, 226, 36], [15, 18, 226, 36], 0]],
           class: rowsOf(0, 0),
-          ship_damaged: rowsOf(12, rows.findIndex(([name]) => name === "Ship Damaged:")),
+          ship_damaged: rowsOf(repaired ? 11 : 12, rows.findIndex(([name]) => name === "Ship Damaged:")),
         };
         const text = {};
         for (const [row, parts] of Object.entries(compared)) {
@@ -1306,19 +1336,21 @@ async function inspect(server, source, faction, testCase, executable) {
         // (GOKRES portrait + 0x1000, FUN_0042c3b0), which A0's moving ship
         // shows and the port's resting one does not. The damaged mark
         // (+ 0x2000) is the port's only mark; the portrait is it less 0x2000.
+        // The repaired ship (h-28) shows no mark: every pixel compared.
         const damagedMark = marks.find(([dll, id]) => dll === "Gokres" && id >= 0x2000);
-        assert.ok(damagedMark && marks.length === 1, JSON.stringify(marks));
-        const portrait = damagedMark[1] - 0x2000;
+        assert.ok(repaired ? marks.length === 0 : damagedMark && marks.length === 1, JSON.stringify(marks));
+        const portrait = repaired ? null : damagedMark[1] - 0x2000;
         const gokres = path.join(root, "data/base/ui/gokres-dll/BMP");
         const bmpSize = (id) => {
           const bytes = fs.readFileSync(path.join(gokres, `${id}.bmp`));
           return [bytes.readInt32LE(18), Math.abs(bytes.readInt32LE(22))];
         };
-        const [pw, ph] = bmpSize(portrait);
-        const enRoute = resource(gokres, portrait + 0x1000, ...bmpSize(portrait + 0x1000));
+        const [pw, ph] = repaired ? [0, 0] : bmpSize(portrait);
+        const enRoute = repaired ? null : resource(gokres, portrait + 0x1000, ...bmpSize(portrait + 0x1000));
         // PICTURE_CENTRE (307, 64), integer halves (status_window.rs).
         const [px, py] = [307 - Math.trunc(pw / 2), 64 - Math.trunc(ph / 2)];
         const markAt = (x, y) => {
+          if (repaired) return false;
           const mx = x - px;
           const my = y - py;
           if (mx < 0 || my < 0 || mx >= Math.min(pw, enRoute.width) || my >= Math.min(ph, enRoute.height)) return false;
@@ -1452,7 +1484,10 @@ async function main() {
   try {
     for (const faction of factions) {
       // A case with `sides` runs for those sides alone.
-      for (const testCase of cases.filter(({ sides }) => !sides || sides.includes(faction.name))) {
+      // `--only=NAME` runs that case alone.
+      const only = process.argv.find((arg) => arg.startsWith("--only="))?.slice(7);
+      for (const testCase of cases.filter(({ sides, name }) => (!sides || sides.includes(faction.name))
+        && (!only || only === name))) {
         results.push(await inspect(server, source, faction, testCase, executable));
       }
     }

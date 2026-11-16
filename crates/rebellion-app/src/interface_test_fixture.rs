@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 134;
+const SCENARIO_COUNT: u8 = 135;
 
 
 extern "C" {
@@ -533,6 +533,13 @@ pub enum Scenario {
     /// and "Uprising Begins on Yavin" on Imperial Yavin (h-49, h-50). None
     /// is opened (EVT-01-C005).
     UprisingMessages = 133,
+    /// As `ShipShieldHit` with an Orbital Shipyard of the player's side at
+    /// the fleet's system, the days run until the port's repair
+    /// (`FUN_00501c50`, FastRepair `FUN_0050c580` / `FUN_0050bb70`) has
+    /// mended the hit: A0 2026-11-16-empire-hunt h-28 / h-29 (an Empire
+    /// game, day 634): Victory Destroyer 2 at Coruscant reads "Ship
+    /// Damaged: No", Shield Recharge Rate 10:10 (OBJ-06-C012).
+    ShipRepaired = 134,
 }
 
 impl Scenario {
@@ -672,6 +679,7 @@ impl Scenario {
             131 => Self::SpecialForceAboard,
             132 => Self::HeadquartersTaken,
             133 => Self::UprisingMessages,
+            134 => Self::ShipRepaired,
             _ => return None,
         })
     }
@@ -703,6 +711,7 @@ impl Scenario {
                 | Self::FleetJoinEnroute
                 | Self::FleetLoadUnfinished
                 | Self::ShipShieldHit
+                | Self::ShipRepaired
         )
     }
 
@@ -1319,8 +1328,14 @@ pub fn apply(
                 send_member_aboard(request, world, missions, fleet);
             }
         }
-        if request.scenario == Scenario::ShipShieldHit {
+        if matches!(
+            request.scenario,
+            Scenario::ShipShieldHit | Scenario::ShipRepaired
+        ) {
             hit_the_shield_recharge(request, world);
+        }
+        if request.scenario == Scenario::ShipRepaired {
+            repair_at_a_shipyard(request, world);
         }
         if request.scenario == Scenario::FleetLoadUnfinished {
             if let Some(regiment) = loading_regiment(world, primary) {
@@ -4079,7 +4094,10 @@ pub fn emit_status_rows(
             Scenario::FleetArrivals,
             Some(object @ (StatusObject::Ship { .. } | StatusObject::Fleet(_))),
         )
-        | (Scenario::ShipShieldHit, Some(object @ StatusObject::Ship { .. })) => {
+        | (
+            Scenario::ShipShieldHit | Scenario::ShipRepaired,
+            Some(object @ StatusObject::Ship { .. }),
+        ) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };
@@ -5074,6 +5092,53 @@ fn hit_the_shield_recharge(request: FixtureRequest, world: &mut GameWorld) {
         hit.name = Some("Victory Destroyer 2".into());
     }
     world.fleets[fleet].capital_ships[0] = hit;
+}
+
+/// The `ShipRepaired` scenario: an Orbital Shipyard (MANFACSD
+/// `0x28000001`) of the player's side at the hit ship's system, which the
+/// side holds, then the days the port's repair takes. Each day runs
+/// `RepairSystem::advance` (timer `0x380`, FastRepair `FUN_0050c580` /
+/// `FUN_0050bb70`; each fire `FUN_00501c50`) and the integrator's repair,
+/// until the ship is whole. Returns the days run.
+fn repair_at_a_shipyard(request: FixtureRequest, world: &mut GameWorld) -> u64 {
+    let Some(fleet) = world.fleets.keys().next() else {
+        return 0;
+    };
+    let side = if request.faction == CockpitFaction::Alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    let at = world.fleets[fleet].location;
+    if world.fleets[fleet].capital_ships[0].id == 0 {
+        world.last_ship_id += 1;
+        world.fleets[fleet].capital_ships[0].id = world.last_ship_id;
+    }
+    world.systems[at].control = ControlKind::Controlled(side);
+    let yard = world.manufacturing_facilities.insert(
+        rebellion_core::world::ManufacturingFacilityInstance {
+            class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+            side,
+            is_shipyard: true,
+        },
+    );
+    world.systems[at].manufacturing_facilities.push(yard);
+    let mut state = rebellion_core::repair::RepairState::default();
+    for day in 1..=600 {
+        let ship = &world.fleets[fleet].capital_ships[0];
+        let hull = world.capital_ship_classes[ship.class].hull as i32;
+        if ship.subsystem_hits == 0 && ship.hull_current >= hull {
+            return day - 1;
+        }
+        let events = rebellion_core::repair::RepairSystem::advance(
+            &mut state,
+            world,
+            &[TickEvent { tick: day }],
+        );
+        rebellion_data::integrator::PerceptionIntegrator::new(day, 0)
+            .apply_repair_events(world, &events);
+    }
+    600
 }
 
 fn place_loading_fleet(
@@ -12863,6 +12928,46 @@ mod tests {
     }
 
     #[test]
+    fn the_ship_repaired_scenario_mends_the_shield_hit_at_its_sides_shipyard() {
+        // A0 2026-11-16-empire-hunt (an Empire game): Victory Destroyer 2,
+        // damaged (h-3, 96f59062, Shield Recharge 8:10 in h-4), is whole
+        // after an Orbital Shipyard deploys at Coruscant: h-28 (34d1e021)
+        // "Ship Damaged: No", h-29 (fd2acfbd) 10:10, Hull 1800:1800; h-82 /
+        // h-83 show the change from day 603 to 604. The port's repair:
+        // timer 0x380 with FastRepair (FUN_0050c580, FUN_0050bb70), each
+        // fire FUN_00501c50.
+        use rebellion_core::world::Subsystem;
+        let faction = CockpitFaction::Empire;
+        let victory = rebellion_core::world::CapitalShipClass {
+            name: "Victory Destroyer".into(),
+            is_alliance: false,
+            hull: 1800,
+            hyperdrive: 60,
+            troop_capacity: 2,
+            fighter_capacity: 2,
+            shield_recharge_rate: 10,
+            damage_control: 50,
+            ..Default::default()
+        };
+        let applied =
+            apply_to_loading_world_with(request(Scenario::ShipRepaired, faction), |world| {
+                world.capital_ship_classes.insert(victory);
+            });
+        let fleet = applied.world.fleets.keys().next().unwrap();
+        let ship = &applied.world.fleets[fleet].capital_ships[0];
+        let class = &applied.world.capital_ship_classes[ship.class];
+        assert_eq!(class.name, "Victory Destroyer");
+        assert_eq!(ship.subsystem_hits, 0);
+        assert_eq!(ship.hits(Subsystem::Shield), 0);
+        assert_eq!(ship.hull_current, class.hull as i32);
+        let at = applied.world.fleets[fleet].location;
+        assert!(applied.world.systems[at]
+            .manufacturing_facilities
+            .iter()
+            .any(|&key| applied.world.manufacturing_facilities[key].is_shipyard));
+    }
+
+    #[test]
     fn without_a_carrier_the_fleet_load_scenario_builds_one_for_the_players_side() {
         // port: the fixture's fallback class.
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
@@ -14800,6 +14905,7 @@ mod tests {
                 Scenario::FleetLoadUnfinished,
                 Scenario::ShipShieldHit,
                 Scenario::SpecialForceAboard,
+                Scenario::ShipRepaired,
             ]
         );
     }
