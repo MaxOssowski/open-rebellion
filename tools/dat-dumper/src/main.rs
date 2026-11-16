@@ -220,7 +220,16 @@ fn main() -> anyhow::Result<()> {
             (13_051, "tactical_event_13_0.wav"),
             (13_052, "tactical_event_13_1.wav"),
             (13_053, "tactical_event_13_2.wav"),
+            (13_054, "tactical_event_14_0.wav"),
+            (13_055, "tactical_event_15_0.wav"),
+            (13_056, "tactical_event_16_0.wav"),
+            (13_057, "tactical_event_17_0.wav"),
+            (13_058, "tactical_event_18_0.wav"),
+            (13_059, "tactical_event_19_0.wav"),
+            (13_061, "tactical_event_1b_0.wav"),
+            (13_062, "tactical_event_1c_0.wav"),
             (13_063, "tactical_event_1d_0.wav"),
+            (13_064, "tactical_event_1e_0.wav"),
             (13_065, "tactical_event_1f_0.wav"),
         ];
         let resource_ids: Vec<u32> = mapping.iter().map(|(id, _)| *id).collect();

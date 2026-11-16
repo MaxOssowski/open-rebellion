@@ -1609,6 +1609,12 @@ pub struct BattleSession {
     /// Index: `[attacker as usize][slot]`. A new force starts Stand Off
     /// (`0x005cbf50` builds `0x005ec310`).
     pub task_force_formations: [[TacticalTactic; 8]; 2],
+    /// A unit selection state (`0x66bba8`, `0x66bce8`, `0x66bc48`,
+    /// `0x66bbf8`) is open: a click or key chose the selected unit. Those
+    /// states hum their unit (`selection_hum`); the opening selection is not
+    /// one (A0 TAC-01-C012: no hum after the first unpause until task force
+    /// 1 is selected).
+    pub selection_state_open: bool,
     /// Each force's band of distance to its target, by its lead unit: the
     /// tactic object's `+0x30` and `+0x34` (slot `+0x10`), recomputed once
     /// a turn through the force's slot `+0xc` (`0x005c9bd0`).
@@ -2049,8 +2055,32 @@ pub enum TacticalAudioEvent {
     LaserHullHit,
     /// 0x13: an ion cannon through the shield.
     IonHullHit,
+    /// 0x14: the superlaser's beam starts at a target still in the fight
+    /// (`FUN_005ba520`, event `0x44`).
+    SuperlaserBeam,
+    /// 0x15: an Imperial fighter group's hum (`FUN_005b8df0`, slot `+0x6c`,
+    /// side `+0x168` not 0).
+    ImperialFighterHum,
+    /// 0x16: an Alliance fighter group's hum (`FUN_005b8df0`, side 0).
+    AllianceFighterHum,
+    /// 0x17: a capital ship's hum, full hull (`+0x3c8`) 2000 or more
+    /// (`FUN_005b0100`, slot `+0x6c`).
+    LargeCapitalHum,
+    /// 0x18: a capital ship's hum, full hull from 1100 to below 2000.
+    MediumCapitalHum,
+    /// 0x19: a capital ship's hum, full hull below 1100.
+    SmallCapitalHum,
+    /// 0x1b: a squadron launches from its carrier (`FUN_005a9170`, from
+    /// event `0x19`'s `FUN_005b8c70`).
+    FighterLaunch,
+    /// 0x1c: a fighter group's arrival at the battle's opening
+    /// (`FUN_005a6d60`, slot `+0x20` = 1).
+    FighterArrival,
     /// A fighter group's jump out (`FUN_005a6b40`, slot `+0x20` = 1).
     FighterJump,
+    /// 0x1e: a capital ship's arrival at the battle's opening
+    /// (`FUN_005a6d60`, slot `+0x20` = 0).
+    CapitalArrival,
     /// A capital ship's jump out (`FUN_005a6b40`, slot `+0x20` = 0).
     CapitalJump,
 }
@@ -2073,8 +2103,48 @@ impl TacticalAudioEvent {
             Self::HullHit => 0x11,
             Self::LaserHullHit => 0x12,
             Self::IonHullHit => 0x13,
+            Self::SuperlaserBeam => 0x14,
+            Self::ImperialFighterHum => 0x15,
+            Self::AllianceFighterHum => 0x16,
+            Self::LargeCapitalHum => 0x17,
+            Self::MediumCapitalHum => 0x18,
+            Self::SmallCapitalHum => 0x19,
+            Self::FighterLaunch => 0x1b,
+            Self::FighterArrival => 0x1c,
             Self::FighterJump => 0x1d,
+            Self::CapitalArrival => 0x1e,
             Self::CapitalJump => 0x1f,
+        }
+    }
+
+    /// `FUN_005b0100` (a capital ship's slot `+0x6c`): its hum by its full
+    /// hull `+0x3c8` (`FUN_005b1770` divides by it), below 1100.0
+    /// (`0x0066c47c`) small, below 2000.0 (`0x0066c480`) medium, else
+    /// large; both sides alike.
+    #[must_use]
+    pub fn capital_hum(hull_max: i32) -> Self {
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "the original compares the float +0x3c8; hulls are far below 2^24"
+        )]
+        let hull = hull_max as f32;
+        if hull < 1100.0 {
+            Self::SmallCapitalHum
+        } else if hull < 2000.0 {
+            Self::MediumCapitalHum
+        } else {
+            Self::LargeCapitalHum
+        }
+    }
+
+    /// `FUN_005b8df0` (a fighter group's slot `+0x6c`): `0x16 - (side !=
+    /// 0)`, the Alliance being side 0.
+    #[must_use]
+    pub const fn fighter_hum(is_alliance: bool) -> Self {
+        if is_alliance {
+            Self::AllianceFighterHum
+        } else {
+            Self::ImperialFighterHum
         }
     }
 
@@ -2169,6 +2239,19 @@ pub const fn original_audio_resource_base(event: u8) -> u32 {
 pub struct TacticalAudioCue {
     pub event: TacticalAudioEvent,
     pub resource_id: u32,
+}
+
+/// `FUN_005bae60`: the effects class (2, every event below `0x20`) plays at
+/// most this many sounds at once (`+0x24`, counted by `FUN_005bad00`).
+pub const ORIGINAL_TACTICAL_EFFECT_CHANNELS: usize = 5;
+
+/// The selected unit's looping hum (`BattleSession::selection_hum`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TacticalSelectionHum {
+    /// The unit the selection state asked (`FUN_0059ed70()+4`).
+    pub unit: TacticalUnitRef,
+    /// Its slot `+0x6c` event and WAVE (one variant each).
+    pub cue: TacticalAudioCue,
 }
 
 /// Faction-specific voice bank selected by the tactical sound manager.
@@ -4465,6 +4548,7 @@ impl BattleSession {
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
+            selection_state_open: false,
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
             member_states: Vec::new(),
@@ -5924,6 +6008,12 @@ impl BattleSession {
         squadron.alive = true;
         squadron.home_carrier = Some(carrier);
         squadron.source_position = underside;
+        // `FUN_005a9170` ends the launch with event `0x1b` (WAVE 13061; A0
+        // TAC-01-C012 at 47.38 s, before any order).
+        self.pending_audio_cues.push(TacticalAudioCue::from_variant(
+            TacticalAudioEvent::FighterLaunch,
+            0,
+        ));
     }
 
     /// Bind every active battle participant to the source X-slot and Z-lane
@@ -6708,6 +6798,14 @@ impl BattleSession {
     /// `0x005ba520` starts the beam (`0x005c12d0`), aimed at the target
     /// where it is now.
     fn start_death_star_beam(&mut self, target: usize) {
+        // With the target still in the fight (`FUN_005ad870`) the beam's
+        // sound, event `0x14` (WAVE 13054), plays before the beam.
+        if self.unit_in_the_fight(OriginalFighterTarget::Capital(target)) {
+            self.pending_audio_cues.push(TacticalAudioCue::from_variant(
+                TacticalAudioEvent::SuperlaserBeam,
+                0,
+            ));
+        }
         let position = self.ships.get(target).map(|ship| ship.source_position);
         let Some(beam) = self.death_star_beam.as_mut().filter(|beam| beam.target == target) else {
             return;
@@ -8423,6 +8521,82 @@ impl BattleSession {
 
     pub fn take_pending_audio_cues(&mut self) -> Vec<TacticalAudioCue> {
         std::mem::take(&mut self.pending_audio_cues)
+    }
+
+    /// The selected unit's hum, held while it plays. A selection state's
+    /// constructor (`FUN_005a1110`) and its slot `+0x3c` (`FUN_005a11e0`,
+    /// `FUN_005a1770`, `FUN_005a42e0`, `FUN_005a5230`) ask the selected unit
+    /// (`FUN_0059ed70()+4`) for its slot `+0x6c` sound and request it with
+    /// `FUN_005ba980(event, 0)`: bit 3 of the request (`FUN_005baa60`),
+    /// which `FUN_00613b50` turns into `DSBPLAY_LOOPING`. Each frame the
+    /// state's slot `+0x30` (`FUN_005a17e0` and its siblings) stops it while
+    /// the battle is paused (`+0x8c8`) and asks again once it runs; leaving
+    /// the state stops it (`FUN_0059e990`, `FUN_005bab10`), as does losing
+    /// the unit (`FUN_005ad870`). `None` when nothing should hum.
+    #[must_use]
+    pub fn selection_hum(&self) -> Option<TacticalSelectionHum> {
+        if self.paused || !self.selection_state_open || self.winner.is_some() {
+            return None;
+        }
+        if let Some(index) = self
+            .selected_ship
+            .filter(|&index| self.unit_in_the_fight(OriginalFighterTarget::Capital(index)))
+        {
+            return Some(TacticalSelectionHum {
+                unit: TacticalUnitRef::Ship(index),
+                cue: TacticalAudioCue::from_variant(
+                    TacticalAudioEvent::capital_hum(self.ships[index].hull_max),
+                    0,
+                ),
+            });
+        }
+        let group = self.selected_fighter_group?;
+        let (index, fighter) = self.fighters.iter().enumerate().find(|&(index, fighter)| {
+            fighter.selected
+                && fighter.fighter_group == group
+                && self.unit_in_the_fight(OriginalFighterTarget::Fighter(index))
+        })?;
+        Some(TacticalSelectionHum {
+            unit: TacticalUnitRef::Fighter(index),
+            cue: TacticalAudioCue::from_variant(
+                TacticalAudioEvent::fighter_hum(fighter.identity.is_alliance),
+                0,
+            ),
+        })
+    }
+
+    /// `FUN_005a6d60`, the opening flight of the viewer's side (`+0x8e8`,
+    /// state `+0x8b4` = 2 from `FUN_005aacb0`): on its first frame (`+0xea0`
+    /// still 0.0, `0x0066c254`) each of that side's units in the fight (not
+    /// in a hangar, `FUN_005b69f0`) asks for `0x1c` when it is a fighter
+    /// group (slot `+0x20` = 1), else `0x1e`. All of them land in the
+    /// effects class (`FUN_005bae60`: every event below `0x20` is class 2),
+    /// which plays at most 5 at once (`+0x24`); a request beyond waits 225
+    /// ms (`+0x44`) and is dropped (`FUN_005bab50`), and the sounds outlast
+    /// that. A0 TAC-01-C012: WAVE 13064 starts 0.95 s after Take Command.
+    /// port: the side's capital ships, then its fighter groups, as the side's
+    /// list order (`+0x70`) is not kept.
+    pub fn queue_arrival_sounds(&mut self) {
+        let player = self.player_is_attacker;
+        let ships = (0..self.ships.len())
+            .filter(|&index| {
+                self.ships[index].is_attacker == player
+                    && self.unit_in_the_fight(OriginalFighterTarget::Capital(index))
+            })
+            .map(|_| TacticalAudioEvent::CapitalArrival);
+        let fighters = (0..self.fighters.len())
+            .filter(|&index| {
+                self.fighters[index].is_attacker == player
+                    && !self.fighters[index].in_hangar
+                    && self.unit_in_the_fight(OriginalFighterTarget::Fighter(index))
+            })
+            .map(|_| TacticalAudioEvent::FighterArrival);
+        let cues = ships
+            .chain(fighters)
+            .take(ORIGINAL_TACTICAL_EFFECT_CHANNELS)
+            .map(|event| TacticalAudioCue::from_variant(event, 0))
+            .collect::<Vec<_>>();
+        self.pending_audio_cues.extend(cues);
     }
 
     pub fn take_pending_voice_cues(&mut self) -> Vec<TacticalVoiceCue> {

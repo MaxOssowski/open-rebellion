@@ -486,7 +486,7 @@
     },
     {
       "slug": "production-tactical-audio-routing",
-      "description": "Recovered MDATA.307 score, all 22 TACTICAL.DLL weapon variants, and all 285 source-proven faction tactical voices routed through the production audio engine while the harness remains muted",
+      "description": "Recovered MDATA.307 score, all 36 TACTICAL.DLL weapon variants, the nine unit sounds (13054-13059, 13061, 13062, 13064), and all 285 source-proven faction tactical voices routed through the production audio engine while the harness remains muted",
       "fixture_codes": {
         "alliance": 65828,
         "empire": 66084

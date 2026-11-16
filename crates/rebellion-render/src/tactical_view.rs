@@ -2040,7 +2040,8 @@ impl TacticalState {
     }
 
     /// Queue every recovered weapon-event variant so the muted browser journey
-    /// can prove the TACTICAL.DLL weapon bank: 13000-13017 and 13030-13053.
+    /// can prove the TACTICAL.DLL weapon bank: 13000-13017 and 13030-13053,
+    /// then the unit sounds 13054-13059, 13061, 13062 and 13064.
     #[cfg(feature = "interface-test-fixtures")]
     pub fn configure_tactical_audio_fixture(&mut self) {
         let Some(session) = self.session.as_mut() else {
@@ -2060,6 +2061,15 @@ impl TacticalState {
             TacticalAudioEvent::HullHit,
             TacticalAudioEvent::LaserHullHit,
             TacticalAudioEvent::IonHullHit,
+            TacticalAudioEvent::SuperlaserBeam,
+            TacticalAudioEvent::ImperialFighterHum,
+            TacticalAudioEvent::AllianceFighterHum,
+            TacticalAudioEvent::LargeCapitalHum,
+            TacticalAudioEvent::MediumCapitalHum,
+            TacticalAudioEvent::SmallCapitalHum,
+            TacticalAudioEvent::FighterLaunch,
+            TacticalAudioEvent::FighterArrival,
+            TacticalAudioEvent::CapitalArrival,
         ] {
             for variant in 0..event.variant_count() {
                 session
@@ -2440,6 +2450,16 @@ impl TacticalState {
         self.session
             .as_mut()
             .map_or_else(Vec::new, BattleSession::take_pending_audio_cues)
+    }
+
+    /// The looping hum the application should hold now
+    /// (`BattleSession::selection_hum`): none behind the Battle Alert or
+    /// with no battle.
+    pub fn selection_hum(&self) -> Option<rebellion_core::tactical::TacticalSelectionHum> {
+        if self.battle_alert_open {
+            return None;
+        }
+        self.session.as_ref().and_then(BattleSession::selection_hum)
     }
 
     /// Drain exact VOICEFXA/VOICEFXE tactical acknowledgements for the
@@ -4460,6 +4480,8 @@ fn select_task_force(session: &mut BattleSession, group: u8) -> usize {
     session.selected_fighter_group = None;
     // The task-force state (`0x66bc48`): orders go to the whole force.
     session.task_force_selection = Some(group);
+    // Its slot `+0x3c` (`FUN_005a42e0`) hums the selected unit.
+    session.selection_state_open = true;
     session.ships.iter().filter(|ship| ship.selected).count()
 }
 
@@ -4494,6 +4516,9 @@ fn select_clicked_ship(session: &mut BattleSession, index: usize, control: bool)
     session.selected_ship = Some(index);
     session.selected_fighter_group = None;
     session.task_force_selection = None;
+    // The one-unit and enemy states hum their unit (`FUN_005a1770`,
+    // `FUN_005a1110`); the several-unit state has no slot `+0x3c` sound.
+    session.selection_state_open = !joins;
     for fighter in &mut session.fighters {
         fighter.selected = false;
     }
@@ -4525,6 +4550,7 @@ fn select_navigation_point(
     session.selected_ship = None;
     session.selected_fighter_group = None;
     session.task_force_selection = None;
+    session.selection_state_open = false;
     *selected_navigation_point = Some(point);
 }
 
@@ -4591,6 +4617,9 @@ fn select_fighter_group(session: &mut BattleSession, group: u8) -> bool {
     session.selected_ship = None;
     session.selected_fighter_group = Some(group);
     session.task_force_selection = None;
+    // hyp: the group state is `0x66bbf8`, whose slot `+0x3c`
+    // (`FUN_005a5230`) hums the group's unit (`FUN_005c6070`).
+    session.selection_state_open = true;
     true
 }
 
@@ -4625,6 +4654,8 @@ fn cycle_selected_capital(session: &mut BattleSession, step: isize) -> Option<(u
     }
     session.selected_ship = Some(next);
     session.selected_fighter_group = None;
+    // A one-unit state for the next ship (`FUN_005a1770`).
+    session.selection_state_open = true;
     Some((current, next, group))
 }
 
@@ -9890,6 +9921,11 @@ fn draw_original_battle_alert(
                         "[battle_alert] command=take_command resource={} status=paused_tactical",
                         skin.buttons[2][0]
                     );
+                    // The tactical view opens with its side's arrival
+                    // (`FUN_005aacb0` state 2, `FUN_005a6d60`).
+                    if let Some(session) = state.session.as_mut() {
+                        session.queue_arrival_sounds();
+                    }
                     TacticalAction::BeginCombat
                 }
             };
@@ -11911,6 +11947,7 @@ fn handle_combat_input(
             session.selected_ship = None;
             session.selected_fighter_group = None;
             session.task_force_selection = None;
+            session.selection_state_open = false;
             for fighter in &mut session.fighters {
                 fighter.selected = false;
             }
@@ -12474,6 +12511,7 @@ mod tests {
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
+            selection_state_open: false,
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
             member_states: Vec::new(),
@@ -17838,6 +17876,9 @@ mod tests {
     fn tactical_audio_fixture_queues_every_weapon_and_voice_resource_once() {
         // The fixture mirrors FUN_005bae60's complete source-event mapping,
         // grouped by the two owned resource DLLs for deterministic loading.
+        // The unit sounds follow the weapons: 0x14..0x19 (13054-13059,
+        // FUN_005ba520, FUN_005b8df0, FUN_005b0100), 0x1b (13061,
+        // FUN_005a9170), 0x1c and 0x1e (13062, 13064, FUN_005a6d60).
         let mut state = TacticalState {
             session: Some(test_session(Vec::new(), Vec::new(), true)),
             ..TacticalState::default()
@@ -17854,7 +17895,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             (13_000..=13_017)
                 .chain(13_030..=13_038)
-                .chain(13_045..=13_053)
+                .chain(13_045..=13_059)
+                .chain([13_061, 13_062, 13_064])
                 .collect::<Vec<_>>()
         );
         let voice_resources = session
@@ -22786,6 +22828,73 @@ mod tests {
     // 0x005a2c70: several selected units form one new force in the first
     // free group slot (0x0059f610), found before they leave their own; with
     // none free each takes a force of its own and the 0x84 line plays.
+    #[test]
+    fn the_selection_states_that_hum_open_on_a_click_or_key_and_close_on_empty_space() {
+        // FUN_005a1110 (enemy unit), FUN_005a1770 (one unit), FUN_005a42e0
+        // (task force) and FUN_005a5230 hum their unit through slot +0x3c;
+        // the several-unit state 0x66bc98 has no such sound, and the empty
+        // state (FUN_00595b70(0, 0)) ends the selection's (FUN_0059e990).
+        let mut ships = vec![
+            test_ship(64, 0, true, true),
+            test_ship(65, 1, true, true),
+            test_ship(66, 2, false, true),
+        ];
+        ships[0].hull_max = 2_400;
+        ships[0].task_force = 0;
+        ships[1].hull_max = 900;
+        ships[1].task_force = 0;
+        let mut wing = test_fighter(128, true);
+        wing.fighter_group = 0;
+        let mut session = test_session(ships, vec![wing], true);
+        session.paused = false;
+        let hum = |session: &BattleSession| session.selection_hum().map(|hum| hum.cue.resource_id);
+        assert_eq!(hum(&session), None);
+        assert_eq!(select_task_force(&mut session, 0), 2);
+        assert_eq!(hum(&session), Some(13_057));
+        select_clicked_ship(&mut session, 1, true);
+        assert_eq!(hum(&session), None);
+        select_clicked_ship(&mut session, 1, false);
+        assert_eq!(hum(&session), Some(13_059));
+        select_clicked_ship(&mut session, 2, false);
+        assert!(session.selection_state_open);
+        assert!(select_fighter_group(&mut session, 0));
+        assert_eq!(hum(&session), Some(13_056));
+        let mut point = None;
+        select_navigation_point(&mut session, &mut point, TacticalWorldPosition::ORIGIN);
+        assert_eq!(hum(&session), None);
+        session.selected_ship = Some(0);
+        assert_eq!(hum(&session), None);
+        select_task_force(&mut session, 0);
+        assert_eq!(
+            cycle_selected_capital(&mut session, 1).map(|(_, next, _)| next),
+            Some(1)
+        );
+        assert_eq!(hum(&session), Some(13_059));
+    }
+
+    #[test]
+    fn no_unit_hums_behind_the_battle_alert() {
+        // The tactical view, and so its selection states, starts only after
+        // the Battle Alert's Take Command (FUN_00450540).
+        let mut ship = test_ship(64, 0, true, true);
+        ship.hull_max = 1_500;
+        let mut session = test_session(vec![ship], Vec::new(), true);
+        session.paused = false;
+        session.selection_state_open = true;
+        session.selected_ship = Some(0);
+        let mut state = TacticalState {
+            session: Some(session),
+            ..TacticalState::default()
+        };
+        state.battle_alert_open = true;
+        assert_eq!(state.selection_hum(), None);
+        state.battle_alert_open = false;
+        assert_eq!(
+            state.selection_hum().map(|hum| hum.cue.resource_id),
+            Some(13_058)
+        );
+    }
+
     #[test]
     fn selected_units_form_a_task_force_in_the_first_free_slot() {
         let ships = (0..4)

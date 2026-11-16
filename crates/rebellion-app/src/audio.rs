@@ -155,9 +155,12 @@ pub const MENU_SFX_ASSETS: &[(SfxKind, &str, u32)] = &[
 ];
 
 /// The weapon sounds' variants in `FUN_005bae60`'s table (the fire sounds
-/// 0..5 and the shield and hull hits 0x0c..0x0e and 0x11..0x13), with the jump
-/// events `0x1d` (a fighter group) and `0x1f` (a capital ship) that
-/// `FUN_005a6b40` queues. Each row is `(event_id, variant, runtime_path,
+/// 0..5 and the shield and hull hits 0x0c..0x0e and 0x11..0x13), then the
+/// unit sounds: the superlaser beam `0x14` (`FUN_005ba520`), the hums
+/// `0x15`..`0x19` (slot `+0x6c`, `FUN_005b8df0`, `FUN_005b0100`), the launch
+/// `0x1b` (`FUN_005a9170`), the arrivals `0x1c` / `0x1e` (`FUN_005a6d60`)
+/// and the jumps `0x1d` / `0x1f` (`FUN_005a6b40`). `0x1a` (13060) has no
+/// caller in REBEXE. Each row is `(event_id, variant, runtime_path,
 /// TACTICAL.DLL WAVE resource)`.
 pub const TACTICAL_SFX_ASSETS: &[(u8, u8, &str, u32)] = &[
     (0x00, 0, "sfx/tactical_event_00_0.wav", 13_000),
@@ -196,7 +199,16 @@ pub const TACTICAL_SFX_ASSETS: &[(u8, u8, &str, u32)] = &[
     (0x13, 0, "sfx/tactical_event_13_0.wav", 13_051),
     (0x13, 1, "sfx/tactical_event_13_1.wav", 13_052),
     (0x13, 2, "sfx/tactical_event_13_2.wav", 13_053),
+    (0x14, 0, "sfx/tactical_event_14_0.wav", 13_054),
+    (0x15, 0, "sfx/tactical_event_15_0.wav", 13_055),
+    (0x16, 0, "sfx/tactical_event_16_0.wav", 13_056),
+    (0x17, 0, "sfx/tactical_event_17_0.wav", 13_057),
+    (0x18, 0, "sfx/tactical_event_18_0.wav", 13_058),
+    (0x19, 0, "sfx/tactical_event_19_0.wav", 13_059),
+    (0x1b, 0, "sfx/tactical_event_1b_0.wav", 13_061),
+    (0x1c, 0, "sfx/tactical_event_1c_0.wav", 13_062),
     (0x1d, 0, "sfx/tactical_event_1d_0.wav", 13_063),
+    (0x1e, 0, "sfx/tactical_event_1e_0.wav", 13_064),
     (0x1f, 0, "sfx/tactical_event_1f_0.wav", 13_065),
 ];
 
@@ -300,6 +312,10 @@ pub struct AudioEngine {
     /// The advisor's clip voices keyed by staged DLL directory and WAVE ID.
     advisor_voice: HashMap<(String, u16), Sound>,
 
+    /// The selected unit's looping hum: its WAVE and its playback
+    /// (`FUN_005ba980(event, 0)`, `DSBPLAY_LOOPING` in `FUN_00613b50`).
+    tactical_loop: Option<(u32, quad_snd::Playback)>,
+
     /// Currently loaded music track + which track it is.
     music: Option<(Sound, MusicTrack)>,
 
@@ -319,6 +335,7 @@ impl AudioEngine {
             tactical_sfx: HashMap::new(),
             tactical_voice: HashMap::new(),
             advisor_voice: HashMap::new(),
+            tactical_loop: None,
             music: None,
             music_playing: false,
             missing_music_logged: HashSet::new(),
@@ -659,6 +676,39 @@ impl AudioEngine {
         }
     }
 
+    /// Start one tactical WAVE looping in place of the running loop (the
+    /// selected unit's hum). Returns whether the WAVE was loaded; with the
+    /// effects silent nothing plays but the loop is still held.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "Audio gains are bounded values; the playback API takes f32."
+    )]
+    pub fn start_tactical_loop(&mut self, resource_id: u32, vol_state: &AudioVolumeState) -> bool {
+        self.stop_tactical_loop();
+        let vol = vol_state.effective_sfx_volume() as f32;
+        let Some(sound) = self.tactical_sfx.get(&resource_id) else {
+            return false;
+        };
+        if vol > 0.0 {
+            let playback = sound.play(
+                &self.ctx,
+                quad_snd::PlaySoundParams {
+                    looped: true,
+                    volume: vol,
+                },
+            );
+            self.tactical_loop = Some((resource_id, playback));
+        }
+        true
+    }
+
+    /// Stop the running tactical loop (`FUN_005bab10`), if any.
+    pub fn stop_tactical_loop(&mut self) {
+        if let Some((_, playback)) = self.tactical_loop.take() {
+            playback.stop(&self.ctx);
+        }
+    }
+
     /// Play one exact tactical voice at the current SFX volume.
     #[expect(
         clippy::cast_possible_truncation,
@@ -824,6 +874,45 @@ impl AudioEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tactical_bank_stages_every_unit_sound_but_the_callerless_0x1a() {
+        // FUN_005bae60's WAVE table; 0x14..0x1f have one WAVE each from
+        // 13054. No FUN_005ba980 call in REBEXE passes 0x1a, and no slot
+        // +0x6c returns it (FUN_005b8df0, FUN_005b0100).
+        for &(event, variant, path, wave) in TACTICAL_SFX_ASSETS {
+            assert_eq!(
+                wave,
+                rebellion_core::tactical::original_audio_resource_base(event) + u32::from(variant),
+                "{path}"
+            );
+            assert_eq!(
+                path,
+                format!("sfx/tactical_event_{event:02x}_{variant}.wav")
+            );
+        }
+        let unit_events = TACTICAL_SFX_ASSETS
+            .iter()
+            .filter(|&&(event, ..)| event >= 0x14)
+            .map(|&(event, _, _, wave)| (event, wave))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            unit_events,
+            [
+                (0x14, 13_054),
+                (0x15, 13_055),
+                (0x16, 13_056),
+                (0x17, 13_057),
+                (0x18, 13_058),
+                (0x19, 13_059),
+                (0x1b, 13_061),
+                (0x1c, 13_062),
+                (0x1d, 13_063),
+                (0x1e, 13_064),
+                (0x1f, 13_065),
+            ]
+        );
+    }
 
     #[test]
     fn an_original_track_plays_its_staged_mdata_file() {

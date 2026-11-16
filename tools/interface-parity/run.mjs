@@ -5961,10 +5961,15 @@ function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
     return { event: Number.parseInt(match[1], 16), wave: Number(match[2]) };
   });
   const span = (first, last) => Array.from({ length: last - first + 1 }, (_, index) => first + index);
+  // Then the unit sounds, one WAVE each: the superlaser beam 0x14
+  // (FUN_005ba520), the hums 0x15/0x16 (FUN_005b8df0) and 0x17..0x19
+  // (FUN_005b0100), the launch 0x1b (FUN_005a9170) and the arrivals
+  // 0x1c/0x1e (FUN_005a6d60). 0x1a (13060) has no caller.
   assert.deepEqual(routed.map(({ wave }) => wave),
-    [...span(13000, 13017), ...span(13030, 13038), ...span(13045, 13053)]);
+    [...span(13000, 13017), ...span(13030, 13038), ...span(13045, 13059), 13061, 13062, 13064]);
   assert.deepEqual([...new Set(routed.map(({ event }) => event))],
-    [0, 1, 2, 3, 4, 5, 0x0c, 0x0d, 0x0e, 0x11, 0x12, 0x13]);
+    [0, 1, 2, 3, 4, 5, 0x0c, 0x0d, 0x0e, 0x11, 0x12, 0x13,
+      0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1b, 0x1c, 0x1e]);
   const voiceLogs = consoleLines.filter(({ text }) =>
     text.includes("[audio] context=combat voice_event=") && text.includes("routed=true"));
   const voices = voiceLogs.map(({ text }) => {
@@ -5992,6 +5997,7 @@ function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
     tactical_wave_first: 13000,
     tactical_wave_last: 13053,
     tactical_wave_variants: 36,
+    tactical_unit_waves: [...span(13054, 13059), 13061, 13062, 13064],
     tactical_voice_variants: 285,
     music_log: music.text,
     cue_logs: cueLogs.map(({ text }) => text),

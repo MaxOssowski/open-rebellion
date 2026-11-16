@@ -1789,6 +1789,8 @@ async fn main() {
         audio_vol.backend_available = browser_menu_audio.is_some();
     }
     let mut tactical_music_active = false;
+    // The selected unit's looping hum now held (`TacticalState::selection_hum`).
+    let mut tactical_hum: Option<rebellion_core::tactical::TacticalSelectionHum> = None;
     let mut screen_music_playing: Option<rebellion_render::MusicTrack> = None;
 
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
@@ -10143,6 +10145,46 @@ async fn main() {
             }
         }
 
+        // The selected unit's hum: a selection state asks it while the
+        // battle runs and stops it on pause or when the state ends
+        // (`FUN_005a11e0`, `FUN_005a17e0`, `FUN_0059e990`).
+        let wanted_hum = if tactical_audio_context {
+            tactical_state.selection_hum()
+        } else {
+            None
+        };
+        if wanted_hum != tactical_hum {
+            if let Some(held) = tactical_hum.take() {
+                #[cfg(not(target_arch = "wasm32"))]
+                audio_engine.stop_tactical_loop();
+                #[cfg(target_arch = "wasm32")]
+                if let Some(engine) = browser_menu_audio.as_mut() {
+                    engine.stop_tactical_loop();
+                }
+                macroquad::logging::info!(
+                    "[audio] context=combat hum_stop event=0x{:02x} wave={}",
+                    held.cue.event.event_id(),
+                    held.cue.resource_id
+                );
+            }
+            if let Some(hum) = wanted_hum {
+                #[cfg(not(target_arch = "wasm32"))]
+                let loaded = audio_engine.start_tactical_loop(hum.cue.resource_id, &audio_vol);
+                #[cfg(target_arch = "wasm32")]
+                let loaded = browser_menu_audio.as_mut().is_some_and(|engine| {
+                    engine.start_tactical_loop(hum.cue.resource_id, &audio_vol)
+                });
+                macroquad::logging::info!(
+                    "[audio] context=combat hum event=0x{:02x} wave={} unit={:?} looped=true routed=true loaded={} muted={}",
+                    hum.cue.event.event_id(),
+                    hum.cue.resource_id,
+                    hum.unit,
+                    loaded,
+                    audio_vol.muted
+                );
+            }
+            tactical_hum = wanted_hum;
+        }
         if tactical_audio_context {
             for cue in tactical_state.take_pending_audio_cues() {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -16037,6 +16079,7 @@ mod tactical_ground_tests {
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
             task_force_formations: Default::default(),
+            selection_state_open: false,
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
             member_states: Vec::new(),

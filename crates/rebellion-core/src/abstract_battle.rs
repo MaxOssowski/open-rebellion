@@ -2065,6 +2065,7 @@ mod tests {
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
+            selection_state_open: false,
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
             member_states: Vec::new(),
@@ -5934,6 +5935,218 @@ mod tests {
         assert!((tactical.ships[0].source_position.z - (exit - 400.0)).abs() < 1e-3);
         assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
         assert!((tactical.fighters[0].source_position.z - (exit - 400.0)).abs() < 1e-3);
+    }
+
+    // FUN_005bae60 gives events 0x14..0x1f one WAVE each from 13054; the
+    // callers are FUN_005ba520 (0x14), FUN_005b8df0 (0x15/0x16),
+    // FUN_005b0100 (0x17..0x19), FUN_005a9170 (0x1b) and FUN_005a6d60
+    // (0x1c/0x1e).
+    #[test]
+    fn the_unit_sound_events_take_waves_13054_to_13064() {
+        use crate::tactical::TacticalAudioEvent as E;
+        let events = [
+            (E::SuperlaserBeam, 0x14, 13_054),
+            (E::ImperialFighterHum, 0x15, 13_055),
+            (E::AllianceFighterHum, 0x16, 13_056),
+            (E::LargeCapitalHum, 0x17, 13_057),
+            (E::MediumCapitalHum, 0x18, 13_058),
+            (E::SmallCapitalHum, 0x19, 13_059),
+            (E::FighterLaunch, 0x1b, 13_061),
+            (E::FighterArrival, 0x1c, 13_062),
+            (E::CapitalArrival, 0x1e, 13_064),
+        ];
+        for (event, id, wave) in events {
+            assert_eq!(
+                (event.event_id(), event.resource_base()),
+                (id, wave),
+                "{event:?}"
+            );
+            assert_eq!(event.variant_count(), 1, "{event:?}");
+        }
+    }
+
+    // FUN_005b0100: a capital ship's hum by its full hull +0x3c8, below
+    // 1100.0 (0x0066c47c) 0x19, below 2000.0 (0x0066c480) 0x18, else 0x17.
+    // FUN_005b8df0: a fighter group's is 0x16 - (side +0x168 != 0), the
+    // Alliance being side 0.
+    #[test]
+    fn a_units_hum_follows_its_full_hull_or_its_side() {
+        use crate::tactical::TacticalAudioEvent as E;
+        assert_eq!(E::capital_hum(1_099), E::SmallCapitalHum);
+        assert_eq!(E::capital_hum(1_100), E::MediumCapitalHum);
+        assert_eq!(E::capital_hum(1_999), E::MediumCapitalHum);
+        assert_eq!(E::capital_hum(2_000), E::LargeCapitalHum);
+        assert_eq!(E::fighter_hum(true), E::AllianceFighterHum);
+        assert_eq!(E::fighter_hum(false), E::ImperialFighterHum);
+    }
+
+    // FUN_005a1110 / FUN_005a11e0 and the selection states' slots +0x3c ask
+    // the selected unit's slot +0x6c sound with FUN_005ba980(event, 0) (a
+    // looping request, FUN_005baa60 bit 3 -> FUN_00613b50); slot +0x30
+    // (FUN_005a17e0) stops it while paused (+0x8c8). A0 TAC-01-C012: no hum
+    // after the first unpause until task force 1 is selected, then 13057
+    // from 0.4 s later; silent while Game Options pauses the battle.
+    #[test]
+    fn the_selected_unit_hums_only_in_a_selection_state_while_the_battle_runs() {
+        use crate::tactical::{TacticalAudioCue, TacticalAudioEvent as E, TacticalUnitRef};
+        let mut big = ship(true, TacticalWeaponArc::default(), 0.0);
+        big.hull_max = 2_400;
+        // Ahead of the selected squadron: one of its group not selected, and
+        // one selected but out of the fight.
+        let mut idle = fighter(true, TacticalWeaponArc::default());
+        idle.fighter_group = 1;
+        let mut lost = fighter(true, TacticalWeaponArc::default());
+        lost.selected = true;
+        lost.fighter_group = 1;
+        lost.alive = false;
+        let mut wing = fighter(false, TacticalWeaponArc::default());
+        wing.selected = true;
+        wing.fighter_group = 1;
+        let mut tactical = session(vec![big], vec![idle, lost, wing]);
+        tactical.selected_ship = Some(0);
+        tactical.paused = false;
+        // The opening selection is no selection state.
+        assert_eq!(tactical.selection_hum(), None);
+        tactical.selection_state_open = true;
+        let hum = tactical.selection_hum().expect("the ship hums");
+        assert_eq!(hum.unit, TacticalUnitRef::Ship(0));
+        assert_eq!(
+            hum.cue,
+            TacticalAudioCue::from_variant(E::LargeCapitalHum, 0)
+        );
+        assert_eq!(hum.cue.resource_id, 13_057);
+        tactical.paused = true;
+        assert_eq!(tactical.selection_hum(), None);
+        tactical.paused = false;
+        // A unit out of the fight is no longer asked (FUN_005ad870).
+        tactical.ships[0].alive = false;
+        assert_eq!(tactical.selection_hum(), None);
+        tactical.selected_ship = None;
+        tactical.selected_fighter_group = Some(1);
+        let hum = tactical.selection_hum().expect("the group hums");
+        assert_eq!(hum.unit, TacticalUnitRef::Fighter(2));
+        assert_eq!(hum.cue.resource_id, 13_055);
+        tactical.winner = Some(CombatWinner::Attacker);
+        assert_eq!(tactical.selection_hum(), None);
+    }
+
+    // FUN_005a6d60's first frame: each of the viewer's units in the fight
+    // asks 0x1c (fighter group) or 0x1e (capital ship); one in a hangar
+    // (FUN_005b69f0) does not, nor does the other side. A0 TAC-01-C012:
+    // WAVE 13064 at 0.95 s after Take Command.
+    #[test]
+    fn take_command_sounds_each_player_unit_in_the_fight_arriving() {
+        use crate::tactical::{TacticalAudioCue, TacticalAudioEvent as E};
+        let mut session = carrier_battle();
+        session.pending_audio_cues.clear();
+        let player = session.player_is_attacker;
+        let ships = session
+            .ships
+            .iter()
+            .filter(|ship| ship.is_attacker == player && ship.alive)
+            .count();
+        let out = session
+            .fighters
+            .iter()
+            .filter(|fighter| fighter.is_attacker == player && fighter.alive && !fighter.in_hangar)
+            .count();
+        assert!(session
+            .fighters
+            .iter()
+            .any(|fighter| fighter.is_attacker == player && fighter.in_hangar));
+        assert_eq!((ships, out), (1, 2));
+        session.queue_arrival_sounds();
+        assert_eq!(
+            session.take_pending_audio_cues(),
+            vec![
+                TacticalAudioCue::from_variant(E::CapitalArrival, 0),
+                TacticalAudioCue::from_variant(E::FighterArrival, 0),
+                TacticalAudioCue::from_variant(E::FighterArrival, 0),
+            ]
+        );
+    }
+
+    // FUN_005bae60 puts every event below 0x20 in class 2, which plays at
+    // most 5 at once (+0x24); FUN_005bab50 drops a request that waited 225
+    // ms (+0x44), shorter than any arrival sound.
+    #[test]
+    fn at_most_five_arrival_sounds_play() {
+        use crate::tactical::{TacticalAudioEvent as E, ORIGINAL_TACTICAL_EFFECT_CHANNELS};
+        let ships = (0..7)
+            .map(|_| ship(true, TacticalWeaponArc::default(), 0.0))
+            .collect();
+        let mut tactical = session(ships, Vec::new());
+        tactical.queue_arrival_sounds();
+        let cues = tactical.take_pending_audio_cues();
+        assert_eq!(ORIGINAL_TACTICAL_EFFECT_CHANNELS, 5);
+        assert_eq!(cues.len(), 5);
+        assert!(cues.iter().all(|cue| cue.event == E::CapitalArrival));
+        // The other side's squadrons do not arrive.
+        let mut tactical = session(
+            vec![ship(true, TacticalWeaponArc::default(), 0.0)],
+            vec![
+                fighter(true, TacticalWeaponArc::default()),
+                fighter(false, TacticalWeaponArc::default()),
+                fighter(false, TacticalWeaponArc::default()),
+            ],
+        );
+        tactical.queue_arrival_sounds();
+        assert_eq!(
+            tactical
+                .take_pending_audio_cues()
+                .iter()
+                .map(|cue| cue.event)
+                .collect::<Vec<_>>(),
+            [E::CapitalArrival, E::FighterArrival]
+        );
+    }
+
+    // FUN_005b8c70 -> FUN_005a9170: a launch ends with event 0x1b (WAVE
+    // 13061). A0 TAC-01-C012: 13061 alone at 47.38 s, before any order.
+    #[test]
+    fn a_launch_sounds_once() {
+        use crate::tactical::{TacticalAudioCue, TacticalAudioEvent as E, TacticalTurnEvent};
+        let mut session = carrier_battle();
+        session.pending_audio_cues.clear();
+        let first = session.ships[0].hangar[0];
+        session.run_turn_event(TacticalTurnEvent::FighterLaunch {
+            carrier: 0,
+            fighter: first,
+        });
+        assert_eq!(
+            session.take_pending_audio_cues(),
+            vec![TacticalAudioCue::from_variant(E::FighterLaunch, 0)]
+        );
+        // A squadron recovering stays inside, silent.
+        let second = session.ships[0].hangar[0];
+        session.fighters[second].order = TacticalOrder::Recover;
+        session.run_turn_event(TacticalTurnEvent::FighterLaunch {
+            carrier: 0,
+            fighter: second,
+        });
+        assert!(session.take_pending_audio_cues().is_empty());
+    }
+
+    // FUN_005ba520 (event 0x44): with the target still in the fight
+    // (FUN_005ad870) the beam sounds, event 0x14 (WAVE 13054).
+    #[test]
+    fn the_superlaser_beam_sounds_at_a_target_in_the_fight() {
+        use crate::tactical::{TacticalAudioCue, TacticalAudioEvent as E, TacticalTurnEvent};
+        let mut tactical = session(
+            vec![
+                ship(true, TacticalWeaponArc::default(), 0.0),
+                ship(true, TacticalWeaponArc::default(), 0.0),
+            ],
+            Vec::new(),
+        );
+        tactical.ships[1].alive = false;
+        tactical.run_turn_event(TacticalTurnEvent::DeathStarBeam { target: 0 });
+        assert_eq!(
+            tactical.take_pending_audio_cues(),
+            vec![TacticalAudioCue::from_variant(E::SuperlaserBeam, 0)]
+        );
+        tactical.run_turn_event(TacticalTurnEvent::DeathStarBeam { target: 1 });
+        assert!(tactical.take_pending_audio_cues().is_empty());
     }
 
     // 0x5a69b0..0x5a6a7c: each factor carries its unit its distance by the
