@@ -589,8 +589,10 @@ pub fn jabba_captures_message(
 /// reads "Needa was captured by the Alliance at Umgul." over `0x419`.
 /// messages-day633/capture-palpatine reads the same case for the Emperor;
 /// that save builds its messages for the Empire behind an Alliance
-/// cockpit. port: the Jabba case 5 is [`jabba_captures_message`]; Han's
-/// capture with `+0xb0` bit 2 (no message) is not modelled.
+/// cockpit. port: the Jabba case 5 is [`jabba_captures_message`]. Han with
+/// `+0xb0` bit 2 ([`Character::bounty_captured`]) gets no message.
+///
+/// [`Character::bounty_captured`]: rebellion_core::world::Character::bounty_captured
 #[must_use]
 pub fn captured_message(
     at: Option<rebellion_core::ids::SystemKey>,
@@ -601,6 +603,11 @@ pub fn captured_message(
     tick: u64,
     texts: &HashMap<u16, String>,
 ) -> Option<GameMessage> {
+    // FUN_00490340 (0x490690): Han Solo (0x33000243) taken by the bounty
+    // hunters (+0xb0 bit 2) gets no message; FUN_0048fa00 reports him.
+    if character.dat_id.index() == 0x243 && character.bounty_captured {
+        return None;
+    }
     let reader_is_alliance = reader == CockpitFaction::Alliance;
     let (title, body) = if character.is_alliance == reader_is_alliance {
         (0x7158, 0x7159)
@@ -6240,6 +6247,55 @@ mod tests {
             &HashMap::new()
         )
         .is_none());
+    }
+
+    #[test]
+    fn han_taken_by_the_bounty_hunters_gets_no_captured_message() {
+        // FUN_00490340 (disassembly 0x4905d6..0x49069a): for a capture
+        // (+0x98 == 0) outside Jabba's Palace, Han Solo (0x33000243) with
+        // CapturedByBountyHunters (+0xb0 bit 2, FUN_00572700) jumps to
+        // LAB_0049069a and clears +0x40, so no 0x1e0 message is shown. His
+        // capture is reported by FUN_0048fa00's "Han Solo Captured by Bounty
+        // Hunters" alone.
+        let texts: HashMap<u16, String> = [
+            (0x7158, "{1:1} Captured"),
+            (0x7159, "{1:1} was captured by the {3:1} at {2:1}."),
+            (0x715a, "{1:1} Captured"),
+            (0x715b, "{1:1} was captured at {2:1}."),
+            (0x4d50, "Alliance"),
+            (0x4d51, "Empire"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mut han = rebellion_core::world::Character {
+            name: "Han Solo".into(),
+            dat_id: rebellion_core::ids::DatId::new(0x3300_0243),
+            is_major: true,
+            is_alliance: true,
+            is_captive: true,
+            bounty_captured: true,
+            ..Default::default()
+        };
+        for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            assert!(
+                captured_message(None, &han, false, "Tatooine", reader, 7, &texts).is_none(),
+                "{reader:?}"
+            );
+        }
+        // Han taken by the Empire's own missions still reads cases 3 and 4.
+        han.bounty_captured = false;
+        let taken = captured_message(
+            None,
+            &han,
+            false,
+            "Yavin",
+            CockpitFaction::Alliance,
+            7,
+            &texts,
+        )
+        .expect("message");
+        assert_eq!(taken.text, "Han Solo was captured by the Empire at Yavin.");
     }
 
     #[test]
