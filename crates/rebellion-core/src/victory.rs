@@ -208,7 +208,8 @@ pub fn conditions_word(
 /// `0x128` (`FUN_00532f90`).
 ///
 /// port: the original runs the check from its galaxy handlers; the port
-/// runs it each day.
+/// runs it after each day's step and, for the orders that run between
+/// day steps, before the clock moves ([`word_change_pending`]).
 pub fn advance_conditions_word(
     state: &mut VictoryState,
     world: &GameWorld,
@@ -223,26 +224,27 @@ pub fn advance_conditions_word(
     Some((old, new))
 }
 
-/// Whether the world now ends a game whose stored word does not yet say
-/// so: the word would gain its game-over bit `0x10000000`.
+/// Whether the world has changed the word since it was stored, in a game
+/// not yet resolved.
 ///
-/// The original stores the word when the event that ends the game is
+/// The original stores the word when the event that changes it is
 /// handled (`FUN_005180e0` from the galaxy's handlers, such as
-/// `Event300_GameObjExistingChanged_Handle` -> `FUN_00517cd0`, in
-/// `FUN_0051df30`'s pass), and reads the bit before every sub-tick
-/// (`FUN_0041e390` -> `FUN_0051de80` ahead of `FUN_0051dea0`, the day's
-/// only writer). So a win between day steps holds the clock on its own
-/// day. port: the app's orders run at once, between day steps.
+/// `Event300_GameObjExistingChanged_Handle` = `FUN_005140c0` ->
+/// `FUN_00517cd0`, in `FUN_0051df30`'s pass), posts its `0x128` in the same
+/// pass (`FUN_0051e050` -> `FUN_00518460`), and reads the game-over bit
+/// before every sub-tick (`FUN_0041e390` -> `FUN_0051de80` ahead of
+/// `FUN_0051dea0`, the day's only writer). So every bit, and a win's hold
+/// on the clock, takes effect on the event's own day. port: the app's
+/// orders run at once, between day steps.
 #[must_use]
-pub fn game_over_pending(
+pub fn word_change_pending(
     state: &VictoryState,
     world: &GameWorld,
     victory_conditions: VictoryConditions,
 ) -> bool {
     !state.resolved
-        && state.conditions_word & WORD_GAME_OVER == 0
         && conditions_word(state, world, victory_conditions)
-            .is_some_and(|word| word & WORD_GAME_OVER != 0)
+            .is_some_and(|word| word != state.conditions_word)
 }
 
 // ---------------------------------------------------------------------------
@@ -282,7 +284,7 @@ impl VictorySystem {
     }
 
     /// [`check`](Self::check) without a day step: the outcome once the word
-    /// ends the game, for a win between day steps ([`game_over_pending`]).
+    /// ends the game, for a win between day steps ([`word_change_pending`]).
     #[must_use]
     pub fn outcome(
         state: &VictoryState,
@@ -541,26 +543,31 @@ mod tests {
     }
 
     #[test]
-    fn a_win_between_day_steps_is_pending_until_the_word_records_it() {
-        // FUN_005180e0 stores 0x10000000 when the event that ends the game
-        // is handled; FUN_0041e390 reads it (FUN_0051de80) before the next
-        // sub-tick. Only the game-over bit is pending: the HQ alone in a
-        // standard game is not.
+    fn a_change_between_day_steps_is_pending_until_the_word_records_it() {
+        // FUN_005180e0 stores the word when the event that changes it is
+        // handled (FUN_005140c0 -> FUN_00517cd0), every bit and not only
+        // 0x10000000, which FUN_0041e390 reads (FUN_0051de80) before the
+        // next sub-tick. The HQ alone in a standard game is pending too.
         let (mut world, mut state, _) = word_world();
+        let standard = VictoryConditions::Standard;
         let hq_only = VictoryConditions::HeadquartersOnly;
-        assert!(!game_over_pending(&state, &world, hq_only));
+        assert!(!word_change_pending(&state, &world, hq_only));
         world.systems[state.alliance_hq].is_destroyed = true;
-        assert!(!game_over_pending(
-            &state,
-            &world,
-            VictoryConditions::Standard
-        ));
-        assert!(game_over_pending(&state, &world, hq_only));
+        assert!(word_change_pending(&state, &world, standard));
+        assert!(VictorySystem::outcome(&state, &world, standard).is_none());
+        advance_conditions_word(&mut state, &world, standard);
+        assert_eq!(state.conditions_word, WORD_HQ_LOST);
+        assert!(!word_change_pending(&state, &world, standard));
+        // The same loss ends a headquarters-only game.
+        assert!(word_change_pending(&state, &world, hq_only));
         assert!(VictorySystem::outcome(&state, &world, hq_only).is_some());
         advance_conditions_word(&mut state, &world, hq_only);
-        assert!(!game_over_pending(&state, &world, hq_only));
+        assert!(!word_change_pending(&state, &world, hq_only));
         state.resolved = true;
         assert!(VictorySystem::outcome(&state, &world, hq_only).is_none());
+        // A resolved game settles nothing more.
+        world.systems[state.empire_hq].is_destroyed = true;
+        assert!(!word_change_pending(&state, &world, hq_only));
     }
 
     #[test]

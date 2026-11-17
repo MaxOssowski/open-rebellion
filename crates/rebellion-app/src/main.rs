@@ -3002,19 +3002,12 @@ async fn main() {
 
         // ── Tick the clock (Galaxy mode only) ────────────────────────────────
         let galaxy_before_ticks = game_mode == GameMode::Galaxy;
-        // A win between day steps (the player's orders run at once) settles
-        // the word before the clock moves, so the game ends on its own day
-        // (rebellion_core::victory::game_over_pending; A0 2026-11-17
-        // edited-saves-5 run 2: Coruscant taken on day 94, still 94 at the
-        // victory film).
-        if game_mode == GameMode::Galaxy
-            && rebellion_core::victory::game_over_pending(
-                &victory_state,
-                &world,
-                campaign_config.victory_conditions,
-            )
-        {
-            settle_victory_word(
+        // A change between day steps (the player's orders run at once)
+        // settles the word before the clock moves, so a win ends the game
+        // on its own day (A0 2026-11-17 edited-saves-5 run 2: Coruscant
+        // taken on day 94, still 94 at the victory film).
+        if game_mode == GameMode::Galaxy {
+            settle_victory_word_between_days(
                 &mut victory_state,
                 &world,
                 campaign_config.victory_conditions,
@@ -16239,6 +16232,47 @@ fn settle_victory_word(
     }
 }
 
+/// The word settled between day steps, before the clock moves.
+///
+/// The original stores the word when the event that changes it is
+/// handled (`Event300_GameObjExistingChanged_Handle` = `FUN_005140c0` ->
+/// `FUN_00517cd0` -> `FUN_005180e0`, in `FUN_0051df30`'s pass), posts its
+/// `0x128` in the same pass (`FUN_0051e050` -> `FUN_00518460`), and reads
+/// the game-over bit before every sub-tick (`FUN_0041e390` ->
+/// `FUN_0051de80`). port: the app's orders run at once, between day
+/// steps; the day's own changes settle after its step.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the word's change reaches the movies, the log, the advisor and the ending"
+)]
+fn settle_victory_word_between_days(
+    victory_state: &mut VictoryState,
+    world: &GameWorld,
+    victory_conditions: VictoryConditions,
+    message_texts: &std::collections::HashMap<u16, String>,
+    msg_log: &mut MessageLog,
+    advisor_schedule: Option<&mut rebellion_render::advisor_schedule::AdvisorSchedule>,
+    advisor_now: u32,
+    pending_ending: &mut Option<u32>,
+    player_is_alliance: bool,
+    tick: u64,
+) {
+    if rebellion_core::victory::word_change_pending(victory_state, world, victory_conditions) {
+        settle_victory_word(
+            victory_state,
+            world,
+            victory_conditions,
+            message_texts,
+            msg_log,
+            advisor_schedule,
+            advisor_now,
+            pending_ending,
+            player_is_alliance,
+            tick,
+        );
+    }
+}
+
 fn victory_winner_is_alliance(outcome: &rebellion_core::victory::VictoryOutcome) -> bool {
     match outcome {
         rebellion_core::victory::VictoryOutcome::HqCaptured { winner, .. }
@@ -16514,16 +16548,9 @@ mod tactical_ground_tests {
         ));
     }
 
-    #[test]
-    fn a_win_ordered_between_day_steps_holds_the_clock_on_the_order_s_day() {
-        // FUN_005180e0 stores the word when the event that ends the game is
-        // handled (Event300_GameObjExistingChanged_Handle -> FUN_00517cd0,
-        // in FUN_0051df30's pass), and FUN_0041e390 reads its 0x10000000
-        // (FUN_0051de80) before every sub-tick; FUN_0051dea0, the day's only
-        // writer (one call, 0x41e3e9), never runs after it. A0 2026-11-17
-        // edited-saves-5 run 2: the player's assault took Coruscant on day
-        // 94 and the clock read 94 up to the victory film.
-        use rebellion_core::victory::WORD_GAME_OVER;
+    /// The Alliance's headquarters, Tokmia, and Coruscant, the Empire's,
+    /// with the four characters of the victory conditions word.
+    fn victory_word_world() -> (GameWorld, SystemKey, SystemKey) {
         let mut world = GameWorld::default();
         let sector = world.sectors.insert(Sector {
             dat_id: DatId::new(0x9200_0000),
@@ -16566,8 +16593,11 @@ mod tactical_ground_tests {
                 ..Default::default()
             });
         }
-        let conditions = VictoryConditions::HeadquartersOnly;
-        let mut victory_state = VictoryState::new(tokmia, coruscant);
+        (world, tokmia, coruscant)
+    }
+
+    /// A Fast clock half way through day 45.
+    fn clock_inside_day_45() -> (GameClock, f32) {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Fast);
         let day = GameSpeed::Fast.seconds_per_day().unwrap();
@@ -16576,25 +16606,40 @@ mod tactical_ground_tests {
             clock.advance(0.0);
         }
         assert_eq!(clock.advance(day * 0.5), []);
+        (clock, day)
+    }
+
+    #[test]
+    fn a_win_ordered_between_day_steps_holds_the_clock_on_the_order_s_day() {
+        // FUN_005180e0 stores the word when the event that ends the game is
+        // handled (Event300_GameObjExistingChanged_Handle -> FUN_00517cd0,
+        // in FUN_0051df30's pass), and FUN_0041e390 reads its 0x10000000
+        // (FUN_0051de80) before every sub-tick; FUN_0051dea0, the day's only
+        // writer (one call, 0x41e3e9), never runs after it. A0 2026-11-17
+        // edited-saves-5 run 2: the player's assault took Coruscant on day
+        // 94 and the clock read 94 up to the victory film.
+        use rebellion_core::victory::WORD_GAME_OVER;
+        let (mut world, tokmia, coruscant) = victory_word_world();
+        let conditions = VictoryConditions::HeadquartersOnly;
+        let mut victory_state = VictoryState::new(tokmia, coruscant);
+        let (mut clock, day) = clock_inside_day_45();
         // The player's Destroy System runs at once, half way through day 45.
         world.systems[tokmia].is_destroyed = true;
         let mut msg_log = MessageLog::default();
         let mut pending_ending = None;
         // The next frame: the word before the clock.
-        if rebellion_core::victory::game_over_pending(&victory_state, &world, conditions) {
-            settle_victory_word(
-                &mut victory_state,
-                &world,
-                conditions,
-                &std::collections::HashMap::new(),
-                &mut msg_log,
-                None,
-                advisor_now(&clock),
-                &mut pending_ending,
-                false,
-                clock.tick,
-            );
-        }
+        settle_victory_word_between_days(
+            &mut victory_state,
+            &world,
+            conditions,
+            &std::collections::HashMap::new(),
+            &mut msg_log,
+            None,
+            advisor_now(&clock),
+            &mut pending_ending,
+            false,
+            clock.tick,
+        );
         if galaxy_clock_runs(&GameMode::Galaxy, false, victory_state.conditions_word) {
             clock.advance(day);
         }
@@ -16603,6 +16648,53 @@ mod tactical_ground_tests {
         assert!(victory_state.resolved);
         // FUN_00425c90 state 0x12: the Empire player's win, MDATA.108.
         assert_eq!(pending_ending, Some(108));
+    }
+
+    #[test]
+    fn a_headquarters_lost_between_day_steps_sets_its_bit_and_film_before_the_clock_moves() {
+        // The whole word settles at the event, not only its game-over bit:
+        // Event300_GameObjExistingChanged_Handle (FUN_005140c0) ->
+        // FUN_00517cd0 -> FUN_005180e0 stores it in FUN_0051df30's pass, and
+        // FUN_0051e050 -> FUN_00518460 posts 0x128 (the caption film 102,
+        // TEXTSTRA 0x7189, FUN_0048e5a0) in the same pass, before the next
+        // sub-tick. In a Standard game the HQ alone does not end the game.
+        use rebellion_core::victory::{WORD_GAME_OVER, WORD_HQ_LOST};
+        let (mut world, tokmia, coruscant) = victory_word_world();
+        let conditions = VictoryConditions::Standard;
+        let mut victory_state = VictoryState::new(tokmia, coruscant);
+        let (mut clock, day) = clock_inside_day_45();
+        // The player's Destroy System runs at once, half way through day 45.
+        world.systems[tokmia].is_destroyed = true;
+        let texts = std::collections::HashMap::from([(0x7189, "HQ destroyed".to_string())]);
+        let mut msg_log = MessageLog::default();
+        let mut pending_ending = None;
+        // The next frame: the word before the clock.
+        settle_victory_word_between_days(
+            &mut victory_state,
+            &world,
+            conditions,
+            &texts,
+            &mut msg_log,
+            None,
+            advisor_now(&clock),
+            &mut pending_ending,
+            false,
+            clock.tick,
+        );
+        assert_eq!(clock.tick, 45);
+        assert_eq!(victory_state.conditions_word, WORD_HQ_LOST);
+        let films: Vec<u32> = msg_log.queued_story_movies().map(|m| m.movie).collect();
+        assert_eq!(films, [102], "the 0x128 film is queued on the order's day");
+        // The game goes on: the clock runs.
+        assert!(galaxy_clock_runs(
+            &GameMode::Galaxy,
+            false,
+            victory_state.conditions_word
+        ));
+        assert_eq!(clock.advance(day).len(), 1);
+        assert_eq!(victory_state.conditions_word & WORD_GAME_OVER, 0);
+        assert!(!victory_state.resolved);
+        assert_eq!(pending_ending, None);
     }
 
     #[test]

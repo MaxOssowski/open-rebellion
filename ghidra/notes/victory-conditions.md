@@ -310,10 +310,15 @@ reason.
 Ported 2026-11-17: `victory::game_over_pending` and
 `VictorySystem::outcome`; main.rs settles the word
 (`settle_victory_word`) before the clock moves whenever the world would
-newly end the game, so `galaxy_clock_runs` holds the order's day. port:
-only the game-over transition is settled between day steps; the word's
-other bits (and their `0x128` caption films) still wait for the day
-step, where the original sets them at the event. ending.mjs checks that
+newly end the game, so `galaxy_clock_runs` holds the order's day.
+A follow-up the same day settles the whole word there
+(`victory::word_change_pending`, main.rs
+`settle_victory_word_between_days`): any bit the world changed since the
+word was stored, with its `0x128` caption film (102 for the HQ lost in a
+Standard game that goes on), as `FUN_005140c0` -> `FUN_00517cd0` ->
+`FUN_005180e0` and `FUN_0051e050` -> `FUN_00518460` do in one pass.
+port: the changes a day's own step makes settle after that step, before
+the next frame's clock. ending.mjs checks that
 the day logged at the game-over word equals the day the ending film
 opens: ending-2026-11-17T10-10-38-324Z (result 0174d9865331), all four
 cases pass, word and film both on day 0 (the fixtures' win is in place at
