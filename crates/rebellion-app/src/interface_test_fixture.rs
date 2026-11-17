@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 143;
+const SCENARIO_COUNT: u8 = 144;
 
 
 extern "C" {
@@ -603,6 +603,11 @@ pub enum Scenario {
     /// Leia Organa taken by the Empire at Yavin (e-03, e-04). See
     /// [`post_capture_messages`].
     CaptureMessages = 142,
+    /// CMD-02-C024: Idle Fleets with one fleet of each side in orbit at
+    /// the primary system, which the player sees through its own fleet:
+    /// the mark is `0x27b0`, STRATEGY 10160 (`FUN_0042b330` case `0x21`;
+    /// `ghidra/notes/gid-fleet-marks.md`).
+    FleetsBothSides = 143,
 }
 
 impl Scenario {
@@ -751,6 +756,7 @@ impl Scenario {
             140 => Self::GhormanAssault,
             141 => Self::PersonnelAbode,
             142 => Self::CaptureMessages,
+            143 => Self::FleetsBothSides,
             _ => return None,
         })
     }
@@ -856,7 +862,7 @@ impl Scenario {
         match self {
             Self::DisplayOff => GidMode::DisplayOff,
             Self::Uprising => GidMode::Uprisings,
-            Self::Fleets => GidMode::IdleFleets,
+            Self::Fleets | Self::FleetsBothSides => GidMode::IdleFleets,
             Self::Personnel => GidMode::IdlePersonnel,
             Self::Energy => GidMode::AvailableEnergy,
             Self::RawMaterial => GidMode::AvailableRawMaterial,
@@ -1164,6 +1170,20 @@ pub fn apply(
         }
     }
     reconcile_fleet_orbits(movement, world);
+
+    if request.scenario == Scenario::FleetsBothSides {
+        // An enemy fleet in orbit beside the player's own (gid-fleet-marks.md):
+        // the player's fleet makes the system seen (FUN_0050ac80), so its
+        // copy of the enemy fleet is live and both count.
+        if let Some(mut enemy) = transit_fleet.and_then(|key| world.fleets.get(key)).cloned() {
+            enemy.is_alliance = !player_is_alliance;
+            enemy.location = primary;
+            enemy.characters.clear();
+            enemy.has_death_star = false;
+            world.fleets.insert(enemy);
+        }
+        reconcile_fleet_orbits(movement, world);
+    }
 
     if request.scenario == Scenario::Blockade {
         world.systems[primary].control = ControlKind::Controlled(player_control);
@@ -10863,6 +10883,42 @@ mod tests {
             Some((Some(2), false, None))
         );
         assert_eq!(report(Scenario::MissionTargeting, true), None);
+    }
+
+    #[test]
+    fn the_fleets_both_sides_scenario_puts_one_fleet_of_each_side_in_a_seen_orbit() {
+        // gid-fleet-marks.md: FUN_0042b330 case 0x21 draws 0x27b0 (STRATEGY
+        // 10160) when the player's copy of a system holds usable fleets of
+        // both sides; the player's own fleet there makes it seen
+        // (FUN_0050ac80), so the enemy fleet's copy is live.
+        assert_eq!(Scenario::decode(143), Some(Scenario::FleetsBothSides));
+        assert_eq!(Scenario::FleetsBothSides.mode(), GidMode::IdleFleets);
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let applied =
+                apply_to_loading_world_with(request(Scenario::FleetsBothSides, faction), |_| {});
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let player = faction == CockpitFaction::Alliance;
+            let sides: Vec<bool> = world.systems[primary]
+                .fleets
+                .iter()
+                .filter(|&&fleet| !applied.movement.is_in_transit(fleet))
+                .map(|&fleet| world.fleets[fleet].is_alliance)
+                .collect();
+            assert!(sides.contains(&player), "{faction:?}: {sides:?}");
+            assert!(sides.contains(&!player), "{faction:?}: {sides:?}");
+            let side = if player {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            };
+            assert!(rebellion_core::object_views::system_seen(
+                world,
+                &applied.movement,
+                side,
+                primary
+            ));
+        }
     }
 
     #[test]
