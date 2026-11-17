@@ -17,7 +17,7 @@
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node message-display.mjs [--out=DIR] [--faction=alliance|empire] [--only=CASE]
-//              [--a0-bombardment=DIR]
+//              [--a0-bombardment=DIR] [--a0-captures=DIR]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -3231,6 +3231,224 @@ async function ghormanAssault(browser, base) {
   }
 }
 
+// EVT-01-C019: a character capture as both sides read it, against A0
+// 2026-11-17-edited-saves-6 (an Alliance game whose Han Solo the Empire
+// took at Yavin, day 368; README there). Scenario::CaptureMessages (142)
+// files, for the Alliance, d-07's newest All Messages rows: the rows word
+// for word, each row's head (its category icon), the chosen first row's
+// bar, the tabs, the rail and the corners every pixel A0's. Displayed,
+// Enemy Mission Foiled (d-10, FUN_00491500), then Luke Goes to Dagobah
+// (d-11, FUN_0048d190) reached from it with the up arrow (0x9a), as A0's
+// pointer shows: FUN_00467f10 shows it through FUN_00469de0 alone, so the
+// kind-8 message keeps Display lit; then Han Solo Captured (d-08,
+// FUN_00490340 case 3, "Han Solo was captured by the Empire at Yavin.")
+// and Han Solo Injured (d-09, FUN_0048fdf0): the text word for word, the
+// picture, the title image, the rail (Display's state) and the corners
+// every pixel A0's, A0's pointer left out, the white title and body ink
+// within A0's tolerance. The Empire
+// reads Leia Organa Captured (e-04, e-03). e-* load the Alliance game as
+// the Empire by the save's header byte only, so its messages stay built
+// for the Alliance (+0x20 = 1: "by the Empire" is FUN_004f3dd0's side
+// other than the reader, and e-03 lists the Alliance's Nebulon-B
+// research): the Empire's own case 4 text "Leia Organa was captured at
+// Yavin." (0x715b) has no A0 frame, so its body ink is compared at its
+// start only. The picture (0x418, the captive's side, FUN_004edc80), the
+// title image, the rail and the corners do not follow the message's reader
+// and are every pixel A0's; e-03's row icon too.
+// `--a0-captures=DIR` reads A0 from DIR (default the repository's
+// .artifacts/a0-vm/2026-11-17-edited-saves-6).
+const CAPTURE_MESSAGES = 143;
+const A0_CAPTURES = path.resolve(args["a0-captures"]
+  ?? path.join(ROOT, ".artifacts/a0-vm/2026-11-17-edited-saves-6"));
+
+async function captureMessages(browser, base, faction) {
+  const name = `${faction.name}-capture-messages`;
+  const directory = path.join(OUT, name);
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const screen = async (label) => {
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    return PNG.sync.read(bytes);
+  };
+  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(A0_CAPTURES, file)));
+  const alliance = faction.byte === 1;
+  // A0's windows: the Alliance's at (62, 49), the Empire's at (125, 52).
+  const origin = alliance ? [62, 49] : [125, 52];
+  // Window-relative regions that differ from A0, the screen boxes in
+  // `skip` (A0's pointer and tooltip) left out.
+  const differ = (original, shown, [px, py], [xa, ya, xb, yb], skip = []) => {
+    let count = 0;
+    for (let y = ya; y < yb; y += 1) {
+      for (let x = xa; x < xb; x += 1) {
+        const [sx, sy] = [origin[0] + x, origin[1] + y];
+        if (skip.some(([x0, y0, x1, y1]) => sx >= x0 && sx < x1 && sy >= y0 && sy < y1)) continue;
+        const i = (sy * 640 + sx) * 4;
+        const j = ((py + y) * 640 + px + x) * 4;
+        if ([0, 1, 2].some((c) => original.data[i + c] !== shown.data[j + c])) count += 1;
+      }
+    }
+    return count;
+  };
+  // The bright (text) ink's box in a window-relative region.
+  const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+    let found = null;
+    for (let y = ya; y < yb; y += 1) {
+      for (let x = xa; x < xb; x += 1) {
+        const k = ((y0 + y) * png.width + x0 + x) * 4;
+        if (!(png.data[k] > 150 && png.data[k + 1] > 150 && png.data[k + 2] > 150)) continue;
+        found = found ? [Math.min(found[0], x), Math.min(found[1], y), Math.max(found[2], x), Math.max(found[3], y)]
+          : [x, y, x, y];
+      }
+    }
+    return found;
+  };
+  const near = (a, p) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+    && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+  const checks = {};
+  try {
+    await page.goto(`${base}?fixture-code=${CAPTURE_MESSAGES | (faction.byte << 8)}`);
+    const ready = await waitReport(page, () => true, "the fixture reports");
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const opened = await waitReport(page, (value) => value.index_open, "the rail opens the index");
+    const [left, top] = [Math.round(opened.window_left), Math.round(opened.window_top)];
+    const row = (index) => [left + 25 + 60, top + 108 + 21 * index + 10];
+    const showMessage = [left + (alliance ? 0x1a7 + 16 : 0x1aa + 22), top + (alliance ? 0x5d + 15 : 0x59 + 20)];
+    // All Messages (the window's (41, 64)).
+    await click(page, [left + 41 + 8, top + 64 + 4]);
+    const expected = alliance
+      ? ["Corfai Joins Enemy", "Vagran Joins Enemy", "Luke Goes to Dagobah", "Enemy Mission Foiled",
+        "Han Solo Captured", "Han Solo Injured", "Enemy Mission Foiled"]
+      : ["Leia Organa Captured"];
+    const all = await waitReport(page, (value) => value.mode === "list" && value.rows.length === expected.length,
+      "All Messages lists the scenario's rows");
+    checks.rows = all.rows;
+    await click(page, row(0));
+    const listed = await screen("index-all");
+    // The Mission icon (0x2a9e + side, FUN_00468ab0) keyed on index 0.
+    const icon = (await indexedBitmap(0x2a9e + faction.byte - 1)).filter(([, , , index]) => index !== 0);
+    if (alliance) {
+      const index = await a0("d-07-hancb1-index-all-luke-goes-to-dagobah-han-captured-han-injured-d368.png");
+      // A0's pointer stands on the All tab at the screen's (100..130, 95..140).
+      const pointer = [[100, 95, 130, 140]];
+      checks.index = {
+        origin: [left, top],
+        row_heads: expected.map((_, k) => differ(index, listed, [left, top],
+          [25, 108 + 21 * k, 25 + 32, 108 + 21 * k + 17])),
+        row_tail: differ(index, listed, [left, top], [25 + 220, 108, 25 + 352, 108 + 17]),
+        tabs: differ(index, listed, [left, top], [0, 44, 414, 88], pointer),
+        rail: differ(index, listed, [left, top], [414, 11, 468, 296]),
+        corners: differ(index, listed, [left, top], [0, 0, 30, 22])
+          + differ(index, listed, [left, top], [380, 0, 414, 40]),
+      };
+    } else {
+      // e-03: Leia Organa Captured is A0's seventh row, not chosen, so its
+      // item image holds all of the icon but its last column and row
+      // (FUN_00468ab0; the Alliance's unchosen rows above show it too);
+      // the port's row is chosen: the icon's 14 by 14 compared.
+      const index = await a0("e-03-han368-side2-empire-index-all-leia-organa-captured-row-d574.png");
+      const cell = icon.filter(([x, y]) => x < 14 && y < 14);
+      checks.index = {
+        origin: [left, top],
+        icon_a0: differing(index, [125 + 25 + 1, 52 + 108 + 21 * 6 + 1], cell),
+        icon_port: differing(listed, [left + 25 + 1, top + 108 + 1], cell),
+        rail: differ(index, listed, [left, top], [414, 11, 468, 296]),
+        corners: differ(index, listed, [left, top], [0, 0, 30, 22])
+          + differ(index, listed, [left, top], [380, 0, 414, 40]),
+      };
+    }
+    console.log(JSON.stringify({ [name]: { index: checks.index } }));
+    // Each message displayed: [row, title, text, A0 file, A0 pointer boxes,
+    // reached with the up arrow from the one before].
+    const messages = alliance
+      ? [
+        [3, "Enemy Mission Foiled", "An enemy Espionage mission to Yavin has been foiled by our forces.",
+          "d-10-hancb1-msg-enemy-mission-foiled-espionage-yavin-d368.png", [[455, 60, 490, 97]]],
+        [2, "Luke Goes to Dagobah", "Luke has been sent to Dagobah to be trained by Yoda.",
+          "d-11-hancb1-msg-luke-goes-to-dagobah-d368.png", [[435, 60, 466, 97]], true],
+        [4, "Han Solo Captured", "Han Solo was captured by the Empire at Yavin.",
+          "d-08-hancb1-msg-han-solo-captured-by-the-empire-at-yavin-alliance-view-d368.png", [[498, 150, 586, 200]]],
+        [5, "Han Solo Injured", "Han Solo has been injured.",
+          "d-09-hancb1-msg-han-solo-injured-d368.png", [[455, 60, 490, 97]]],
+      ]
+      : [
+        [0, "Leia Organa Captured", "Leia Organa was captured at Yavin.",
+          "e-04-han368-side2-empire-msg-leia-organa-captured-by-the-empire-at-yavin-d574.png",
+          [[552, 150, 640, 200]]],
+      ];
+    checks.messages = {};
+    for (const [k, title, text, file, pointer, arrow] of messages) {
+      const before = await report(page);
+      if (arrow) {
+        // 0x9a, 19 by 15 at the window's (367, 15) (FUN_004665f0).
+        await click(page, [left + 367 + 9, top + 15 + 7]);
+      } else {
+        if (before.mode === "single") {
+          await click(page, showMessage);
+          await waitReport(page, (value) => value.mode === "list", "Display Message goes back to the list");
+        }
+        await click(page, row(k));
+        await click(page, showMessage);
+      }
+      const single = await waitReport(page, (value) => value.mode === "single" && value.viewing_title === title,
+        `Display Message shows ${title}`);
+      const shown = await screen(`message-row-${k}`);
+      const original = await a0(file);
+      const [px, py] = [Math.round(single.window_left), Math.round(single.window_top)];
+      const c = {
+        a0: file.slice(0, 4),
+        text: single.viewing_text,
+        origin: [px, py],
+        picture: differ(original, shown, [px, py], [12, 33, 412, 233], pointer),
+        title_image: differ(original, shown, [px, py], [15, 16, 30, 32], pointer),
+        rail: differ(original, shown, [px, py], [414, 11, 468, 296], pointer),
+        corners: differ(original, shown, [px, py], [0, 0, 12, 12]) + differ(original, shown, [px, py], [402, 0, 414, 12]),
+        title: { a0: ink(original, origin, [32, 12, 360, 32]), port: ink(shown, [px, py], [32, 12, 360, 32]) },
+        body: { a0: ink(original, origin, [12, 234, 412, 296]), port: ink(shown, [px, py], [12, 234, 412, 296]) },
+      };
+      checks.messages[`${k} ${title}`] = c;
+      console.log(JSON.stringify({ [name]: { [`${k} ${title}`]: c } }));
+      assert.equal(single.viewing_text, text, JSON.stringify(single));
+    }
+    assert.deepEqual(checks.rows, expected, JSON.stringify(checks));
+    const r = checks.index;
+    assert.deepEqual(r.origin, origin, JSON.stringify(checks));
+    if (alliance) {
+      assert.deepEqual([r.row_heads, r.row_tail, r.tabs, r.rail, r.corners],
+        [expected.map(() => 0), 0, 0, 0, 0], JSON.stringify(checks));
+    } else {
+      assert.deepEqual([r.icon_a0, r.icon_port, r.rail, r.corners], [0, 0, 0, 0], JSON.stringify(checks));
+    }
+    for (const [key, c] of Object.entries(checks.messages)) {
+      assert.deepEqual([c.origin, c.picture, c.title_image, c.rail, c.corners], [origin, 0, 0, 0, 0],
+        `${key}: ${JSON.stringify(c)}`);
+      assert.ok(near(c.title.a0, c.title.port), `${key}: ${JSON.stringify(c)}`);
+      // The Empire's case 4 body differs from A0's Alliance-built text
+      // after "captured": only its start is A0's.
+      if (alliance) assert.ok(near(c.body.a0, c.body.port), `${key}: ${JSON.stringify(c)}`);
+      else {
+        assert.ok(c.body.a0 && c.body.port && Math.abs(c.body.a0[0] - c.body.port[0]) <= 2
+          && Math.abs(c.body.a0[1] - c.body.port[1]) <= 2, `${key}: ${JSON.stringify(c)}`);
+      }
+    }
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: faction.name, case: "capture-messages", status: "pass", checks };
+  } catch (error) {
+    await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
+    return { faction: faction.name, case: "capture-messages", status: "fail",
+      error: String(error.stack || error), checks, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -3242,7 +3460,7 @@ const browser = await chromium.launch({
 const results = [];
 try {
   // --only=<case> runs that one case (headquarters-taken, uprising-messages,
-  // jedi-training-messages, ghorman-bombardment, ghorman-assault).
+  // jedi-training-messages, ghorman-bombardment, ghorman-assault, capture-messages).
   if (!args.only) for (const faction of FACTIONS) results.push(await run(browser, base, faction));
   if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "headquarters-taken")) {
     results.push(await headquartersTaken(browser, base));
@@ -3258,6 +3476,9 @@ try {
   }
   if (FACTIONS.some(({ name }) => name === "empire") && (!args.only || args.only === "ghorman-assault")) {
     results.push(await ghormanAssault(browser, base));
+  }
+  if (!args.only || args.only === "capture-messages") {
+    for (const faction of FACTIONS) results.push(await captureMessages(browser, base, faction));
   }
 } finally {
   await browser.close();

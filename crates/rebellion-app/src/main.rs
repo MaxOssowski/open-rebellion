@@ -2305,6 +2305,12 @@ async fn main() {
         }
         interface_test_fixture::post_own_capture_message(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_capture_message(request, &world, &mut msg_log, &message_texts);
+        interface_test_fixture::post_capture_messages(
+            request,
+            &mut world,
+            &mut msg_log,
+            &message_texts,
+        );
         let reports =
             interface_test_fixture::enemy_assault(request, &mut world, &mut troop_transport_state);
         if !reports.is_empty() {

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 142;
+const SCENARIO_COUNT: u8 = 143;
 
 
 extern "C" {
@@ -595,6 +595,14 @@ pub enum Scenario {
     /// place ("Luke Skywalker - Location Unknown"). Every other character
     /// of the Alliance is not recruited.
     PersonnelAbode = 141,
+    /// EVT-01-C019: a character capture as both sides read it, as A0
+    /// 2026-11-17-edited-saves-6 shows it. The Alliance's Mission
+    /// messages hold d-07's newest rows (Corfai and Vagran Joins Enemy,
+    /// Luke Goes to Dagobah, Enemy Mission Foiled, Han Solo Captured, Han
+    /// Solo Injured, Enemy Mission Foiled; d-08..d-11); the Empire's hold
+    /// Leia Organa taken by the Empire at Yavin (e-03, e-04). See
+    /// [`post_capture_messages`].
+    CaptureMessages = 142,
 }
 
 impl Scenario {
@@ -742,6 +750,7 @@ impl Scenario {
             139 => Self::GhormanBombardment,
             140 => Self::GhormanAssault,
             141 => Self::PersonnelAbode,
+            142 => Self::CaptureMessages,
             _ => return None,
         })
     }
@@ -6984,6 +6993,114 @@ pub fn post_own_capture_message(
     }
 }
 
+/// The `CaptureMessages` scenario's messages, oldest first, so the index
+/// lists them as A0 2026-11-17-edited-saves-6 does (an Alliance game whose
+/// Han Solo the Empire took at Yavin, day 368).
+///
+/// The Alliance reads, newest first as d-07's All Messages: Corfai and
+/// Vagran Joins Enemy (`FUN_00499760`), Luke Goes to Dagobah
+/// (`FUN_0048d190`, d-11), Enemy Mission Foiled (`FUN_00491500`, an
+/// Imperial Espionage at Yavin, d-10), Han Solo Captured (`FUN_00490340`
+/// case 3, d-08), Han Solo Injured (`FUN_0048fdf0`, d-09) and Enemy
+/// Mission Foiled again.
+///
+/// The Empire reads Leia Organa taken by the Empire at Yavin
+/// (`FUN_00490340`, e-03, e-04). e-* load the same game as the Empire by
+/// its header byte only: the messages stay built for the Alliance
+/// (`+0x20` = 1; e-04's "by the Empire" is `FUN_004f3dd0`'s side other
+/// than the reader, e-03 lists the Alliance's Nebulon-B research), so the
+/// Empire's own text, case 4, has no A0 frame.
+pub fn post_capture_messages(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    log: &mut rebellion_render::MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    if request.scenario != Scenario::CaptureMessages {
+        return;
+    }
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let character = |world: &GameWorld, name: &str| {
+        world
+            .characters
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let Some(yavin) = system(world, "Yavin") else {
+        return;
+    };
+    if request.faction == CockpitFaction::Empire {
+        if let Some(leia) = character(world, "Leia Organa") {
+            if let Some(message) = rebellion_render::story_messages::captured_message(
+                Some(yavin),
+                &world.characters[leia],
+                false,
+                "Yavin",
+                request.faction,
+                0,
+                texts,
+            ) {
+                log.push(message);
+            }
+        }
+        return;
+    }
+    // push_foiled_missions reads no mission id.
+    let foiled = rebellion_core::missions::MissionEnded {
+        mission_id: u64::MAX,
+        kind: MissionKind::Espionage,
+        faction: MissionFaction::Empire,
+        character: None,
+        target_system: yavin,
+        end_code: 7,
+        tick: 0,
+        returning_to: None,
+    };
+    crate::push_foiled_missions(log, world, std::slice::from_ref(&foiled), texts);
+    if let Some(han) = character(world, "Han Solo") {
+        world.characters[han].injury = 1;
+        crate::push_character_health(log, world, han, 0, texts);
+        world.characters[han].injury = 0;
+        if let Some(message) = rebellion_render::story_messages::captured_message(
+            Some(yavin),
+            &world.characters[han],
+            false,
+            "Yavin",
+            request.faction,
+            0,
+            texts,
+        ) {
+            log.push(message);
+        }
+    }
+    crate::push_foiled_missions(log, world, &[foiled], texts);
+    if let Some(message) = rebellion_render::story_messages::luke_goes_to_dagobah(0, texts) {
+        log.push(message);
+    }
+    for name in ["Vagran", "Corfai"] {
+        if let Some(at) = system(world, name) {
+            if let Some(message) = crate::system_joins_message(
+                world,
+                at,
+                Some(Faction::Alliance),
+                Some(Faction::Empire),
+                true,
+                0,
+                texts,
+            ) {
+                log.push(message);
+            }
+        }
+    }
+}
+
 /// The EventMessages scenario's Character Captured message (`FUN_00490340`,
 /// notification `0x1e0`): the Emperor taken by the Alliance at Corfai, as
 /// A0 messages-day633 shows it, for each side's reader.
@@ -7931,6 +8048,7 @@ fn story_messages_report(
             | Scenario::JediTrainingMessages
             | Scenario::GhormanBombardment
             | Scenario::GhormanAssault
+            | Scenario::CaptureMessages
     ) {
         return None;
     }
@@ -12594,6 +12712,109 @@ mod tests {
             ),
             None
         );
+    }
+
+    // A0 2026-11-17-edited-saves-6 d-07 (sha256 in its SHA256SUMS): the
+    // Alliance's All Messages newest first; e-03 / e-04: Leia Organa
+    // Captured in the Empire cockpit. Our own fixture's order.
+    #[test]
+    fn the_capture_messages_scenario_files_d07s_rows_and_the_empires_capture_of_leia() {
+        let texts: std::collections::HashMap<u16, String> = [
+            (0x7039, "{1:1} Joins Enemy"),
+            (0x703c, "{1:1} has decided to join the {2:1}."),
+            (0x713e, "Enemy Mission Foiled"),
+            (
+                0x713f,
+                "An enemy {1:1} mission to {2:1} has been foiled by our forces.",
+            ),
+            (0x7158, "{1:1} Captured"),
+            (0x7159, "{1:1} was captured by the {3:1} at {2:1}."),
+            (0x715a, "{1:1} Captured"),
+            (0x715b, "{1:1} was captured at {2:1}."),
+            (0x7160, "{1:1} Injured"),
+            (0x7161, "{1:1} has been injured."),
+            (0x71b8, "Luke Goes to Dagobah"),
+            (
+                0x71b9,
+                "Luke has been sent to Dagobah to be trained by Yoda.",
+            ),
+            (0x4d50, "Alliance"),
+            (0x4d51, "Empire"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let prepare = |world: &mut GameWorld| {
+            let keys: Vec<_> = world.systems.keys().take(3).collect();
+            for (key, name) in keys.into_iter().zip(["Yavin", "Corfai", "Vagran"]) {
+                world.systems[key].name = name.into();
+            }
+            for name in ["Han Solo", "Leia Organa"] {
+                world.characters.insert(rebellion_core::world::Character {
+                    name: name.into(),
+                    is_alliance: true,
+                    is_major: true,
+                    ..Default::default()
+                });
+            }
+        };
+        let titles = |faction| {
+            let request = request(Scenario::CaptureMessages, faction);
+            let mut applied = apply_to_loading_world_with(request, prepare);
+            let mut log = rebellion_render::MessageLog::new();
+            post_capture_messages(request, &mut applied.world, &mut log, &texts);
+            let han = applied
+                .world
+                .characters
+                .values()
+                .find(|c| c.name == "Han Solo");
+            assert_eq!(han.map(|c| c.injury), Some(0), "the world keeps Han unhurt");
+            log.messages()
+                .iter()
+                .rev()
+                .map(|message| {
+                    (
+                        message.title.clone().unwrap_or_default(),
+                        message.text.clone(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let alliance = titles(CockpitFaction::Alliance);
+        assert_eq!(
+            alliance
+                .iter()
+                .map(|(title, _)| title.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Corfai Joins Enemy",
+                "Vagran Joins Enemy",
+                "Luke Goes to Dagobah",
+                "Enemy Mission Foiled",
+                "Han Solo Captured",
+                "Han Solo Injured",
+                "Enemy Mission Foiled",
+            ]
+        );
+        // d-08, d-09, d-10 word for word.
+        assert_eq!(
+            alliance[4].1,
+            "Han Solo was captured by the Empire at Yavin."
+        );
+        assert_eq!(alliance[5].1, "Han Solo has been injured.");
+        assert_eq!(
+            alliance[3].1,
+            "An enemy Espionage mission to Yavin has been foiled by our forces."
+        );
+        // FUN_00490340 case 4 for the captor (0x715a / 0x715b).
+        assert_eq!(
+            titles(CockpitFaction::Empire),
+            [(
+                "Leia Organa Captured".to_owned(),
+                "Leia Organa was captured at Yavin.".to_owned()
+            )]
+        );
+        assert_eq!(Scenario::decode(142), Some(Scenario::CaptureMessages));
     }
 
     // FUN_00490340: A0 alliance-game2/han-solo-captured and
