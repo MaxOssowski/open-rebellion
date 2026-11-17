@@ -286,3 +286,32 @@ Ported 2026-10-18 (plan 4):
   `FUN_0056e870`'s `param_2`; read as the mission itself, from the
   autoroute replacement of family `0x65`.
 - The capture's autorouting for other captors (`FUN_00543360`, `+0x70`).
+
+## What the player sees of the palace (read 2026-11-17, EVT-01-C018)
+
+- No message, screen or window belongs to Han being held in the palace.
+  `HanCapturedAtPalace` (`FUN_00543c40` -> `FUN_0054a2f0` -> slot `+0x1fc`,
+  `FUN_0054b840`) only writes the debug trace `FUN_004f8880` ("TRUE" /
+  "FALSE"); unlike `HanBountyAttackNotif` (`FUN_00572b40`) it posts no
+  `FUN_0053fdd0` notification, so no message class answers it
+  (disassembly `0x54b840`..`0x54b870`).
+- The palace shows only in texts and pictures of other messages
+  (TEXTSTRA RCDATA, read from the shipped TEXTSTRA.DLL):
+  - Han Solo Captured by Bounty Hunters (`FUN_0048fa00`, `0x41d` = STRATEGY
+    1053, Han before Jabba): "Han Solo was captured by bounty hunters and
+    taken to Jabba's Palace.";
+  - Rescue Attempt (`FUN_0048c4c0`): "... taken to Jabba's palace.  I will
+    be departing immediately to attempt a rescue.";
+  - Jabba Captures {1} (`FUN_00490340` case 5, `0x429` = STRATEGY 1065):
+    "{1} was captured by Jabba while attempting to rescue Han Solo.";
+  - Jabba Delivers Prisoners (`FUN_0048b6e0`, `0x42a`).
+- Case 5 tests the captive's container: `ECX = [character+0x1c]`, then
+  `FUN_004025b0` against `0x98000481` (disassembly `0x4905e4`..`0x49060b`).
+  Han's own capture happens at his system, so it is case 3/4, and Han with
+  `+0xb0` bit 2 jumps to `LAB_0049069a` (no message). His later arrival in
+  the palace changes no `+0x98`, so no `0x1e0` follows.
+- Port: `captured_message` returns nothing for Han with `bounty_captured`
+  (2026-11-17); before, the port posted "Han Solo Captured" / "... at
+  <system>" beside the bounty message. hyp: the message classes build from
+  queued notifications after the hit ends, so bit 2 is already set when
+  `0x1e0` is read; the check would be dead code otherwise.
