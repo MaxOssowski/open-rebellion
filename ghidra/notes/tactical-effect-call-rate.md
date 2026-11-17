@@ -93,9 +93,13 @@ call of render r has the counter at k·r:
 | --- | --- | --- | --- | --- |
 | 1 | No effect was running on the ship when the killing hit landed | 3360 (r 0-4/5), 3365/3366, 3370/3372, 3375 | r 11, under 3370 | 16 renders, 0.30-0.33 s |
 | 2 | One earlier hit or damage sequence was still running | 3360 (r 0-4), 3370 (r 5-7) | r 5, as 3370 appears | 8 renders, about 0.16-0.18 s |
-| 3 | A hit and then a damage sequence were both running | 3360 (r 0-4), 3375 (r 5) | r 3 or 4 | 6 renders, about 0.12 s, no big ball |
+| 3 | A hit and then a damage sequence were both running | 3360 (r 0-4) | r 3 | 5 renders, about 0.1 s, no big ball |
 
 Notes on the table:
+
+- k = 3: render 5's first call swaps to 3375, but its second call finds
+  the count reached and deletes the visual (`FUN_005d41a0` vtable 0xa4)
+  before the scene draws, so 3375 is never seen.
 
 - The image after 3360 is 3370 at r = 5 and 3372 at r = 6. The swap goes
   to r = 6 when five renders do not quite pass 0.1 s.
@@ -117,11 +121,32 @@ Game speed scales only the battle step (`_DAT_0066bae0`), not the render
 rate. So it changes k only through how often hits land. The number of
 views does not matter: there is one scene and one list.
 
-Pause is not settled. `FUN_0059a530` returns before `FUN_005c1470` on the
-`+0x8c4` and `FUN_00401300` paths, so the earlier claim that effects run
-while paused needs a recheck.
+## Pause
 
-## Port consequence (not applied)
+The Pause Battle button does not stop the render, so effects run on while
+the battle is paused.
+
+- Command 0xad22 (`FUN_0059b130`) calls `FUN_00596a10` or `FUN_00596a30`,
+  which are battle vtable 0xc and 8 (`Class_0066c2d0_vtc`/`vt8`). They
+  forward to vt0/vt4 (`FUN_005aac30`/`FUN_005aac60`), which count `+0x8c8`
+  up or down and set the button state (`FUN_005c0f80` → `FUN_0059cbe0`).
+- `FUN_0059a530` reads `+0x8c8` only on the `FUN_00401300` = 1 path.
+  `FUN_00401300` → `FUN_00416270` tests the root object's `+200`/`+0xcc`
+  and `FUN_00401c30` (`FUN_00409270`/`FUN_00409390`), the autosave state
+  that `FUN_004161b0` starts. That path returns before the render whether
+  or not the battle is paused.
+- The `+0x8c4` path is the battle's end (`battle-flow.md`).
+- The scene's own stop flag `+0x678` (`FUN_005c25b0` returns at once) is
+  set only by `FUN_0059cd60`, which also pauses the battle. It is not the
+  button's path.
+- `FUN_005c2c80` and `FUN_005d41a0` do not test `+0x8c8`.
+
+So on the normal path a paused battle still renders every 0.02 s and the
+impact counters still step. The port freezes them while paused
+(`tactical_view.rs`, `!session.paused`), and its still fixtures rely on
+that, so this is left open as a separate change.
+
+## Port consequence (applied)
 
 The port fix belongs in `crates/rebellion-core/src/tactical.rs`.
 
