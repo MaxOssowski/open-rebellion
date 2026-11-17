@@ -251,6 +251,21 @@ async function run(browser, base, faction) {
     }
     assert.ok(log.some((line) => line.includes(`[cutscene] opened path=assets/references/ref-videos/${faction.ending}.webm`)),
       "the defeat movie is the player's side's");
+    // The galaxy day stands from the word that ends the game to the ending
+    // film: FUN_0041e390 reads the word's 0x10000000 (FUN_0051de80) before
+    // every sub-tick, and FUN_0051dea0 (the day's only writer) no longer
+    // runs. A0 2026-11-17-edited-saves-5 run 2 reads 94 from the assault to
+    // the victory film (h-01, h-02, h-08); 2026-11-16-edited-saves
+    // seq-empire-victory reads 46 in its one galaxy frame between 102 and
+    // 108 (b0165), the day the Death Star's order ran.
+    const overDay = log.map((line) => line.match(/\[victory\] word=0x([0-9a-f]+) day=(\d+)/))
+      .find((m) => m && (parseInt(m[1], 16) & 0x10000000) !== 0)?.[2] ?? null;
+    const endingDay = log.map((line) => line.match(/\[cutscene\] ending=(\d+) day=(\d+)/))
+      .find((m) => m && m[1] === faction.ending)?.[2] ?? null;
+    const days = { game_over: overDay === null ? null : Number(overDay),
+      ending: endingDay === null ? null : Number(endingDay) };
+    console.log(JSON.stringify({ faction: faction.name, days }));
+    assert.ok(days.game_over !== null && days.game_over === days.ending, JSON.stringify(days));
     // The defeat movie ends: the Alliance's runs to its natural end (A0
     // empire-clean/62..64 ran the Empire's so), the Empire's is skipped
     // with Escape, as any key skips a movie; then the main menu, no dialog
@@ -366,7 +381,7 @@ async function run(browser, base, faction) {
         JSON.stringify(allianceA0));
     }
     assert.deepEqual(errors, [], errors.join("; "));
-    return { faction: faction.name, status: "pass", stems, later, shots, ...(a0 ? { a0 } : {}),
+    return { faction: faction.name, status: "pass", stems, days, later, shots, ...(a0 ? { a0 } : {}),
       ...(allianceA0 ? { alliance_a0: allianceA0 } : {}),
       ...(defeatA0 ? { defeat_a0: defeatA0 } : {}),
       menu_lines: log.filter((line) => /main_menu|game_mode|cutscene/.test(line)).slice(-12) };
