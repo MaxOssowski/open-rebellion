@@ -204,15 +204,19 @@ function blitClipped(destination, source, x, y, width = source.width, height = s
 }
 
 // The original blits button art keyed on its first DIB pixel's exact index
-// (FUN_005fd170, compared in FUN_005fc710); the keyed art here is pure blue.
+// (FUN_005fd170, compared in FUN_005fc710), the bottom-left pixel here: pure
+// blue for most of this art, magenta for the Empire's pressed Capital Ships
+// and Manufacturing (0x2877, 0x2873; A0 2026-11-17-edited-saves-5/i-04).
 function blitKeyed(destination, source, x, y, width = source.width, height = source.height) {
   const rows = Math.min(height, source.height, destination.height - y);
   const columns = Math.min(width, source.width, destination.width - x);
+  const first = (source.height - 1) * source.width * 4;
+  const key = [...source.data.subarray(first, first + 3)];
   for (let row = 0; row < rows; row += 1) {
     for (let column = 0; column < columns; column += 1) {
       const from = (row * source.width + column) * 4;
       const [red, green, blue] = source.data.subarray(from, from + 3);
-      if (red === 0 && green === 0 && blue === 255) continue;
+      if (red === key[0] && green === key[1] && blue === key[2]) continue;
       destination.data.set(source.data.subarray(from, from + 4), ((y + row) * destination.width + x + column) * 4);
     }
   }

@@ -1979,8 +1979,13 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10710..=10711
                 | 10335..=10336
                 // The Battle Summary's category buttons (`FUN_0046f360`),
-                // whose blue shows nowhere in A0 TAC-07-C005.
-                | 10345..=10364
+                // whose blue shows nowhere in A0 TAC-07-C005. The Empire's
+                // pressed Manufacturing and Capital Ships (10355, 10359)
+                // have a magenta first pixel and are keyed on it instead
+                // (`uses_first_pixel_key`).
+                | 10345..=10354
+                | 10356..=10358
+                | 10360..=10364
                 | 10370..=10377
                 // The Message Index's rail buttons: the Empire's Display
                 // Message (0x288a / 0x288b) and the posting toggle
@@ -2264,6 +2269,17 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 // pixel's grey (117, 114, 114); at x 0x19c the frame holds
                 // that grey under each of them.
                 | 10_821
+                // The Empire's pressed Manufacturing and Capital Ships
+                // category buttons 0x2873 and 0x2877, whose first DIB pixel
+                // is index 253 (magenta) where the other category buttons'
+                // is blue 252; the button keys that one index
+                // (`FUN_005fd170`): A0 2026-11-17-edited-saves-5/i-04 (the
+                // Empire's Assault Summary on Capital Ships) shows the
+                // page's white under 0x2877's one magenta pixel at the
+                // bar's (0, 40) and every other pixel 0x2877's. 0x2873 is
+                // keyed by the same rule, not seen pressed in A0.
+                | 10_355
+                | 10_359
                 // The Encyclopedia topic's previous and next arrows, resting
                 // and pressed (FUN_0045ddc0 makes 0x83 from 0x2891/0x2892
                 // and 0x84 from 0x288e/0x288f with FUN_00602150): A0
@@ -3122,6 +3138,24 @@ pub(crate) mod tests {
             assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
         }
         for id in [10_381, 10_384, 10_387] {
+            assert!(!uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+        }
+    }
+
+    #[test]
+    fn the_empires_pressed_capital_ships_button_is_keyed_on_its_magenta_first_pixel() {
+        // FUN_005fd170 keys a button's first DIB pixel index: 0x2877's is
+        // magenta (253), and A0 2026-11-17-edited-saves-5/i-04 shows the
+        // page under it, not magenta; 0x2873 has the same first pixel. The
+        // other category buttons' first pixel is blue and stays the blue
+        // matte's.
+        let blue = |id| uses_blue_screen_transparency(DllSource::Strategy, id);
+        for id in [10_355, 10_359] {
+            assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+            assert!(!blue(id), "{id}");
+        }
+        for id in [10_345, 10_354, 10_356, 10_358, 10_360, 10_364] {
+            assert!(blue(id), "{id}");
             assert!(!uses_first_pixel_key(DllSource::Strategy, id), "{id}");
         }
     }
