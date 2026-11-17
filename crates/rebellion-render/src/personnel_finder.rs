@@ -278,6 +278,24 @@ impl PersonnelFinderRow {
     }
 }
 
+/// The text a chosen row copies into the name box (case `0xca`, `0x29b` of
+/// `FUN_00464890`): for a character, its record's name (`FUN_00583c40`,
+/// `+0x34`), not the row's place and state words (A0
+/// 2026-11-17-edited-saves-6 d-02 bab3f3b8d33e: the box reads "Luke
+/// Skywalker" for the row "Luke Skywalker - Dagobah"; d-05 33acd757c002:
+/// "Han Solo" for "Han Solo - Sluis Van ( Captured )"); for a SpecForces
+/// row, its system or fleet name.
+#[must_use]
+pub fn box_name(row: &PersonnelFinderRow, world: &GameWorld) -> String {
+    match row {
+        PersonnelFinderRow::Character { key, name, .. } => world
+            .characters
+            .get(*key)
+            .map_or_else(|| name.clone(), |character| character.name.clone()),
+        PersonnelFinderRow::SpecForces { name, .. } => name.clone(),
+    }
+}
+
 /// A typed name chooses the first row it best begins, or the first row
 /// (FUN_00609650, [`crate::list_prefix::best_prefix_row`]).
 #[must_use]
@@ -1421,8 +1439,8 @@ pub fn draw_personnel_finder(
         open_window.last_clicked = Some((row, at_time));
         open_window.chosen = Some(row);
         open_window.target = Some((list[row].clone(), open_window.tab));
-        // Copy the display name into the name box.
-        open_window.name = list[row].display_name().to_owned();
+        // Copy the row's name into the name box.
+        open_window.name = box_name(&list[row], world);
     }
     // A key steps the chosen row and copies its name, as a click does (A0
     // finder-keys/, the Fleet Finder's list).
@@ -1430,7 +1448,7 @@ pub fn draw_personnel_finder(
         if let Some(row) = crate::list_prefix::stepped_row(open_window.chosen, list.len(), step) {
             open_window.chosen = Some(row);
             open_window.target = Some((list[row].clone(), open_window.tab));
-            open_window.name = list[row].display_name().to_owned();
+            open_window.name = box_name(&list[row], world);
             open_window.scroll = scrolled_to(open_window.scroll, row, list.len());
         }
     }
@@ -2298,6 +2316,52 @@ mod tests {
             PersonnelTab::Imperial,
         );
         assert_eq!(own.len(), 1);
+    }
+
+    #[test]
+    fn a_chosen_character_row_copies_only_the_characters_name_into_the_box() {
+        // FUN_00464890 case 0xca, 0x29b: FUN_00604f90 takes the record's
+        // name (FUN_00583c40); A0 2026-11-17-edited-saves-6 d-02
+        // (bab3f3b8d33e) and d-05 (33acd757c002) read "Luke Skywalker"
+        // and "Han Solo" in the box for "Luke Skywalker - Dagobah" and
+        // "Han Solo - Sluis Van ( Captured )".
+        let mut world = GameWorld::default();
+        let sluis = add_system(&mut world, "Sluis Van");
+        let dagobah = world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: rebellion_core::ids::DatId::new(0x441),
+            name: "Dagobah".into(),
+            side: Faction::Neutral,
+            special_forces: Vec::new(),
+        });
+        let mut luke = default_character();
+        luke.name = "Luke Skywalker".into();
+        luke.current_abode = Some(dagobah);
+        world.characters.insert(luke);
+        let mut han = default_character();
+        han.name = "Han Solo".into();
+        han.current_system = Some(sluis);
+        han.is_captive = true;
+        world.characters.insert(han);
+
+        let fog = FogState::new(Faction::Alliance);
+        let rows = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
+        let shown: Vec<_> = rows
+            .iter()
+            .map(|row| (row.display_name().to_owned(), box_name(row, &world)))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                (
+                    "Han Solo - Sluis Van ( Captured ) ".to_owned(),
+                    "Han Solo".to_owned()
+                ),
+                (
+                    "Luke Skywalker - Dagobah".to_owned(),
+                    "Luke Skywalker".to_owned()
+                ),
+            ]
+        );
     }
 
     #[test]
