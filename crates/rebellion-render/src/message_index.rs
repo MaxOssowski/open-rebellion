@@ -895,6 +895,10 @@ pub struct MessageIndexState {
     /// port: egui counts double clicks across widgets; the list keeps its own
     /// (same approach as `fleet_finder.rs`).
     last_clicked: Option<(usize, f64)>,
+    /// Display's face as the scroll buttons left it, for a kind-8 message
+    /// ([`Self::view_adjacent_keeping_display`]); `None` once the message
+    /// was shown from the list (`FUN_004697b0` set it).
+    carried_display: Option<Option<DisplayKind>>,
 }
 
 impl Default for MessageIndexState {
@@ -910,6 +914,7 @@ impl Default for MessageIndexState {
             text_scroll: (0.0, None),
             text_scroll_hold: None,
             last_clicked: None,
+            carried_display: None,
         }
     }
 }
@@ -987,6 +992,7 @@ impl MessageIndexState {
         if self.mode != IndexMode::List {
             self.mode = IndexMode::List;
             self.viewing = None;
+            self.carried_display = None;
         }
 
         actions
@@ -1047,6 +1053,7 @@ impl MessageIndexState {
                 let id = *self.selected.first()?;
                 self.mode = IndexMode::SingleMessage;
                 self.viewing = Some(id);
+                self.carried_display = None;
                 self.last_clicked = None;
                 Some(MessageIndexAction::MessageDisplayed(id))
             }
@@ -1080,6 +1087,23 @@ impl MessageIndexState {
         Some(MessageIndexAction::MessageDisplayed(id))
     }
 
+    /// [`Self::view_adjacent`] for the scroll buttons (`FUN_00467f10`
+    /// cases `0x96` / `0x9a`): they show the neighbour through
+    /// `FUN_00469de0` alone, which sets Display (`0x67`) for kinds 3, 4
+    /// and 5 only, so a kind-8 neighbour keeps Display's face as it was
+    /// (A0 2026-11-17-edited-saves-6 d-11). [`display_kind`] reads it back.
+    pub fn view_adjacent_keeping_display(
+        &mut self,
+        rows: &[&GameMessage],
+        forward: bool,
+    ) -> Option<MessageIndexAction> {
+        let face = display_kind(rows, self);
+        let ids: Vec<MessageId> = rows.iter().map(|message| message.id).collect();
+        let action = self.view_adjacent(&ids, forward)?;
+        self.carried_display = Some(face);
+        Some(action)
+    }
+
     /// Whether the open message has an older (`0x96`) and a newer (`0x9a`)
     /// neighbour in the category's rows (`FUN_0046a200`).
     #[must_use]
@@ -1095,6 +1119,7 @@ impl MessageIndexState {
     pub fn return_to_list(&mut self) {
         self.mode = IndexMode::List;
         self.viewing = None;
+        self.carried_display = None;
         self.last_clicked = None;
     }
 
@@ -1215,6 +1240,11 @@ pub fn display_lit(rows: &[&GameMessage], state: &MessageIndexState) -> bool {
 #[must_use]
 pub fn display_kind(rows: &[&GameMessage], state: &MessageIndexState) -> Option<DisplayKind> {
     let message = display_message(rows, state)?;
+    if let (true, IndexMode::SingleMessage, Some(face)) =
+        (message.plain, state.mode, state.carried_display)
+    {
+        return face;
+    }
     let report = message.mission.is_some()
         || message.continue_question.is_some()
         || message.assault_report.is_some();
@@ -1506,7 +1536,7 @@ pub fn draw_message_index(
         Some(0x65) => actions.extend(state.toggle_display()),
         Some(0x91) => actions.extend(state.delete_selected(&rows)),
         Some(command @ (0x96 | 0x9a)) => {
-            actions.extend(state.view_adjacent(&ids, command == 0x96));
+            actions.extend(state.view_adjacent_keeping_display(&rows, command == 0x96));
         }
         _ => {}
     }
@@ -1711,6 +1741,7 @@ fn draw_list_rows(
     if let Some(id) = display_message {
         state.mode = IndexMode::SingleMessage;
         state.viewing = Some(id);
+        state.carried_display = None;
         state.last_clicked = None;
         actions.push(MessageIndexAction::MessageDisplayed(id));
     }
@@ -2770,6 +2801,50 @@ mod tests {
             result.actions
         );
         assert!(result.actions.contains(&MessageIndexAction::Close));
+    }
+
+    #[test]
+    fn the_scroll_buttons_leave_display_as_it_was_on_a_kind_8_message() {
+        // FUN_00467f10 cases 0x96 / 0x9a show the neighbour through
+        // FUN_00469de0 alone, which sets Display (0x67) for kinds 3, 4 and
+        // 5 only; FUN_004697b0, which greys it, runs on a list choice
+        // (case 0x78). A0 2026-11-17-edited-saves-6 d-11 (sha256 in its
+        // SHA256SUMS): Luke Goes to Dagobah (kind 8) reached with the
+        // arrows from a kind-3 message keeps Display lit; chosen in the
+        // list it is grey (A0 alliance-game2/luke-goes-to-dagobah).
+        use rebellion_core::ids::SystemKey;
+        let system = SystemKey::default();
+        let mut log = MessageLog::new();
+        log.push(
+            GameMessage::at_system(1, "Enemy Mission Foiled", MessageCategory::Mission, system)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        log.push(
+            GameMessage::new(2, "Luke Goes to Dagobah", MessageCategory::Event)
+                .plain()
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        let rows = filtered_messages(&log, 0x7b, true);
+        let ids: Vec<MessageId> = rows.iter().map(|message| message.id).collect();
+        let mut state = MessageIndexState::new();
+        state.set_category(0x7b);
+        // Newest first: row 0 is the kind-8 message.
+        state.selected.insert(rows[0].id);
+        assert_eq!(display_kind(&rows, &state), None);
+        state.toggle_display();
+        assert_eq!(display_kind(&rows, &state), None);
+        // Down (0x96) to the older, kind-3 message: lit; back up (0x9a):
+        // still lit, and its press goes nowhere.
+        assert!(state.view_adjacent_keeping_display(&rows, true).is_some());
+        assert_eq!(display_kind(&rows, &state), Some(DisplayKind::Object));
+        assert!(state.view_adjacent_keeping_display(&rows, false).is_some());
+        assert_eq!(state.viewing, Some(ids[0]));
+        assert_eq!(display_kind(&rows, &state), Some(DisplayKind::Object));
+        assert_eq!(display_target(&rows, &state), None);
+        // Back to the list and Display Message again: grey (FUN_004697b0).
+        state.toggle_display();
+        state.toggle_display();
+        assert_eq!(display_kind(&rows, &state), None);
     }
 
     #[test]
