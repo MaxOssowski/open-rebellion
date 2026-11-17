@@ -347,6 +347,9 @@ pub struct GidOverlayContext<'a> {
     /// The system displays `0x92` and `0x93` mark (the briefing's action
     /// selects it, `FUN_004c0fc0`).
     pub marked_system: Option<SystemKey>,
+    /// The player's fog: a system it sees without a copy is seen live
+    /// (`viewed_contents::system_sight`).
+    pub fog: &'a rebellion_core::fog::FogState,
 }
 
 impl Default for GalaxyMapState {
@@ -789,6 +792,7 @@ fn gid_marker_for_system(
             player_is_alliance,
             mode == GidMode::FleetsEnRoute,
             gid.movement,
+            gid.fog,
         );
         if !known && counts == (0, 0) {
             return unexplored;
@@ -908,42 +912,94 @@ fn gid_shows_unexplored(mode: GidMode, system: &System) -> bool {
 
 /// The fleets the Idle Fleets (`0x21`) and Fleets Enroute (`0x22`)
 /// displays count at a system, the player's and the enemy's
-/// (`FUN_004feea0(system, side, 1 / 2)`). port: an idle fleet orbits the
-/// system; an en route one has a move order to it.
+/// (`FUN_004feea0(system, side, 1 / 2)`; `ghidra/notes/gid-fleet-marks.md`).
+///
+/// `FUN_0042b330` walks the player's copy of the system (`FUN_004f2d10`),
+/// whose children are the side's copies of the fleets there:
+/// - the player's own fleets are always live (`FUN_004f9a60`): idle are
+///   those in orbit and usable (`+0x50` bit 0: not in hyperspace; a staged
+///   spare of unfinished ships is in no list), en route those whose move names the
+///   system (bit 4; the move changes the container at once, `FUN_00556390`);
+/// - the enemy's idle fleets are those the player's copy holds: the live
+///   ones while the player sees the system, else the frozen copies as last
+///   seen (`viewed_contents::system_sight`);
+/// - an enemy fleet's copy never holds bit 4 from a move: `FUN_004fb760`
+///   clears its seen bit and freezes the copy before `FUN_004f8240` sets
+///   bit 4, and `FUN_004f9d40` then sends the frozen copy to the side's
+///   `0xf2` container (`FUN_004fca30`, `FUN_004fcb50`). So the enemy counts
+///   no fleet en route. port: the intelligence pushes (`FUN_0050d5a0`),
+///   which could copy an enemy fleet in hyperspace, keep no en route fleets.
+///
+/// The debug "see everything" mode counts every live fleet.
 fn gid_fleets(
     world: &GameWorld,
     system: SystemKey,
     player_is_alliance: bool,
     en_route: bool,
     movement: &MovementState,
+    fog: &rebellion_core::fog::FogState,
 ) -> (u32, u32) {
-    let fleets: Vec<rebellion_core::ids::FleetKey> = if en_route {
-        movement
-            .orders()
-            .iter()
-            .filter(|(_, order)| order.destination == system)
-            .map(|(&key, _)| key)
-            .collect()
+    use rebellion_core::dat::Faction;
+    let everything = viewed_contents::sees_everything(world);
+    let player = if player_is_alliance {
+        Faction::Alliance
     } else {
-        world
-            .systems
-            .get(system)
-            .map(|place| place.fleets.clone())
-            .unwrap_or_default()
+        Faction::Empire
     };
-    let mut counts = (0, 0);
-    for alliance in fleets
-        .iter()
-        .filter_map(|key| world.fleets.get(*key))
-        .map(|fleet| fleet.is_alliance)
-    {
-        if alliance == player_is_alliance {
-            counts.0 += 1;
+    let count = |alliance: bool| -> u32 {
+        let fleets: Vec<rebellion_core::ids::FleetKey> = if en_route {
+            movement
+                .orders()
+                .iter()
+                .filter(|(_, order)| order.destination == system)
+                .map(|(&key, _)| key)
+                .collect()
         } else {
-            counts.1 += 1;
+            world
+                .systems
+                .get(system)
+                .map(|place| place.fleets.clone())
+                .unwrap_or_default()
+                .into_iter()
+                // A staged spare is in no system's list (crate::products).
+                .filter(|&key| !movement.is_in_transit(key))
+                .collect()
+        };
+        let live = fleets
+            .iter()
+            .filter_map(|key| world.fleets.get(*key))
+            .filter(|fleet| fleet.is_alliance == alliance)
+            .count();
+        u32::try_from(live).unwrap_or(u32::MAX)
+    };
+    let player_count = count(player_is_alliance);
+    let enemy_count = if everything {
+        count(!player_is_alliance)
+    } else if en_route {
+        0
+    } else if rebellion_core::object_views::system_seen(world, movement, player, system) {
+        // FUN_0050ac80: the player holds the system or has a fleet there,
+        // so its copies there are live (FUN_004f9a60).
+        count(!player_is_alliance)
+    } else {
+        match viewed_contents::system_sight(world, fog, player, system) {
+            viewed_contents::SystemSight::Live => count(!player_is_alliance),
+            viewed_contents::SystemSight::Frozen(_) => world
+                .systems
+                .get(system)
+                .and_then(|value| world.object_views.system_details(player, value.dat_id))
+                .map_or(0, |details| {
+                    let copies = details
+                        .fleets
+                        .iter()
+                        .filter(|copy| copy.is_alliance != player_is_alliance)
+                        .count();
+                    u32::try_from(copies).unwrap_or(u32::MAX)
+                }),
+            viewed_contents::SystemSight::Hidden => 0,
         }
-    }
-    counts
+    };
+    (player_count, enemy_count)
 }
 
 /// The fleet displays' mark (`FUN_0042b330` cases `0x20..0x22`): both
@@ -1150,6 +1206,7 @@ fn gid_metric(
                 player_is_alliance,
                 mode == GidMode::FleetsEnRoute,
                 gid.movement,
+                gid.fog,
             )
             .0
         }
@@ -2071,6 +2128,7 @@ mod interaction_tests {
             missions: &missions,
             uprisings: &uprisings,
             marked_system: Some(loyal),
+            fog: &rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Empire),
         };
         let mark = |key, mode| {
             gid_marker_for_system(
@@ -2273,14 +2331,38 @@ mod interaction_tests {
         let second = fleet(&mut world, false, here);
         world.systems[here].fleets = vec![rebels, empire, second];
         let traveller = fleet(&mut world, true, there);
+        world.systems[there].fleets = vec![traveller];
         let mut movement = rebellion_core::movement::MovementState::new();
         assert!(movement.order(traveller, there, here, 5));
-        assert_eq!(gid_fleets(&world, here, true, false, &movement), (1, 2));
-        assert_eq!(gid_fleets(&world, here, false, false, &movement), (2, 1));
-        assert_eq!(gid_fleets(&world, here, true, true, &movement), (1, 0));
-        assert_eq!(gid_fleets(&world, there, true, true, &movement), (0, 0));
-        // The displays draw from them: both sides in orbit, the player's
-        // alone en route.
+        let alliance = rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Alliance);
+        let empire_fog = rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Empire);
+        // Each side sees `here`, where its fleets orbit (FUN_0050ac80).
+        assert_eq!(
+            gid_fleets(&world, here, true, false, &movement, &alliance),
+            (1, 2)
+        );
+        assert_eq!(
+            gid_fleets(&world, here, false, false, &movement, &empire_fog),
+            (2, 1)
+        );
+        // FUN_004feea0 mode 2: the player's own fleet in hyperspace counts
+        // at its destination (FUN_00556390 changes its container at once).
+        assert_eq!(
+            gid_fleets(&world, here, true, true, &movement, &alliance),
+            (1, 0)
+        );
+        assert_eq!(
+            gid_fleets(&world, there, true, true, &movement, &alliance),
+            (0, 0)
+        );
+        // Mode 1 asks +0x50 bit 0, usable: a fleet in hyperspace is not
+        // idle at the system it left.
+        assert_eq!(
+            gid_fleets(&world, there, true, false, &movement, &alliance),
+            (0, 0)
+        );
+        // The displays draw from them: both sides in orbit; en route only
+        // the player's own fleets, so the Empire sees nothing en route here.
         let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
         let economy = rebellion_core::economy::EconomyState::default();
         let missions = rebellion_core::missions::MissionState::new();
@@ -2292,6 +2374,7 @@ mod interaction_tests {
             missions: &missions,
             uprisings: &uprisings,
             marked_system: None,
+            fog: &empire_fog,
         };
         let mark = |mode| {
             gid_marker_for_system(
@@ -2305,10 +2388,131 @@ mod interaction_tests {
         };
         use bmp_cache::resources::strategy as art;
         assert_eq!(mark(GidMode::IdleFleets), art::GID_BOTH_SIDES);
-        assert_eq!(mark(GidMode::FleetsEnRoute), art::GID_ALLIANCE_MEDIUM);
+        assert_eq!(mark(GidMode::FleetsEnRoute), art::GID_NEUTRAL_SMALLEST);
         let metric = |mode| gid_metric(&world, here, &world.systems[here], false, mode, &gid);
         assert_eq!(metric(GidMode::IdleFleets), 2);
         assert_eq!(metric(GidMode::FleetsEnRoute), 0);
+    }
+
+    #[test]
+    fn the_fleet_displays_count_only_the_enemy_fleets_the_players_copy_holds() {
+        // FUN_0042b330 reads the player's copy of the system (FUN_004f2d10);
+        // FUN_004feea0 walks that copy's children
+        // (ghidra/notes/gid-fleet-marks.md).
+        use rebellion_core::dat::Faction;
+        use rebellion_core::object_views::{FleetDetail, SystemDetails, SystemView};
+        use rebellion_core::world::Fleet;
+        let mut world = GameWorld::default();
+        let mut system = |id| {
+            world.systems.insert(System {
+                last_arrival: None,
+                dat_id: rebellion_core::ids::DatId::new(id),
+                name: "Naboo".into(),
+                sector: Default::default(),
+                x: 0,
+                y: 0,
+                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: Vec::new(),
+                is_headquarters: false,
+                is_destroyed: false,
+                control: ControlKind::Uncontrolled,
+            })
+        };
+        let unseen = system(0x9000_0001);
+        let stale = system(0x9000_0002);
+        let origin = system(0x9000_0003);
+        let fleet = |world: &mut GameWorld, is_alliance, location| {
+            world.fleets.insert(Fleet {
+                location,
+                capital_ships: vec![],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            })
+        };
+        // An Imperial fleet orbits a system the Alliance does not see.
+        let hidden = fleet(&mut world, false, unseen);
+        world.systems[unseen].fleets = vec![hidden];
+        // An Imperial fleet flies from `origin` to `stale`; an Alliance
+        // fleet flies there too.
+        let raider = fleet(&mut world, false, origin);
+        let own = fleet(&mut world, true, origin);
+        world.systems[origin].fleets = vec![raider, own];
+        let mut movement = rebellion_core::movement::MovementState::new();
+        assert!(movement.order(raider, origin, stale, 5));
+        assert!(movement.order(own, origin, stale, 5));
+        let fog = rebellion_core::fog::FogState::new(Faction::Alliance);
+        // Unseen, no copy: the Imperial fleet is not counted.
+        assert_eq!(
+            gid_fleets(&world, unseen, true, false, &movement, &fog),
+            (0, 0)
+        );
+        // port: a system the fog reveals without a copy is seen live
+        // (viewed_contents::system_sight).
+        let mut sensed = rebellion_core::fog::FogState::new(Faction::Alliance);
+        sensed.reveal(unseen);
+        assert_eq!(
+            gid_fleets(&world, unseen, true, false, &movement, &sensed),
+            (0, 1)
+        );
+        // FUN_004fb760 freezes the raider's Alliance copy before
+        // FUN_004f8240 sets +0x50 bit 4, and FUN_004f9d40 sends the frozen
+        // copy to the side's 0xf2 container: the Alliance counts its own
+        // fleet en route, not the raider, so the display shows its own
+        // colour, never 0x27b0 (10160).
+        assert_eq!(
+            gid_fleets(&world, stale, true, true, &movement, &fog),
+            (1, 0)
+        );
+        // A frozen copy of `stale` holding an Imperial fleet seen there
+        // before counts as seen, though no fleet orbits it now.
+        let view = SystemView::of(&world, &world.systems[stale], false);
+        let id = world.systems[stale].dat_id;
+        world.object_views.alliance_systems.insert(id, view);
+        world.object_views.alliance_details.insert(
+            id,
+            SystemDetails {
+                fleets: vec![FleetDetail {
+                    serial: 1,
+                    name: "Fleet 1".into(),
+                    is_alliance: false,
+                    ships: Vec::new(),
+                    fighters: Vec::new(),
+                    troops: Vec::new(),
+                    characters: Vec::new(),
+                }],
+                missions: Vec::new(),
+                last_serial: 1,
+            },
+        );
+        assert_eq!(
+            gid_fleets(&world, stale, true, false, &movement, &fog),
+            (0, 1)
+        );
+        // The debug "see everything" mode counts every live fleet.
+        world.object_views.see_everything = true;
+        assert_eq!(
+            gid_fleets(&world, unseen, true, false, &movement, &fog),
+            (0, 1)
+        );
+        assert_eq!(
+            gid_fleets(&world, stale, true, true, &movement, &fog),
+            (1, 1)
+        );
     }
 
     #[test]
@@ -2437,17 +2641,19 @@ mod interaction_tests {
             rebellion_core::dat::Faction::Empire,
         ));
         let there = system(ControlKind::Uncontrolled);
-        let empire = world.fleets.insert(Fleet {
+        // The player's own fleet: an enemy fleet in hyperspace is in no
+        // copy of the player's (ghidra/notes/gid-fleet-marks.md).
+        let own = world.fleets.insert(Fleet {
             location: there,
             capital_ships: vec![],
             fighters: vec![],
             characters: vec![],
-            is_alliance: false,
+            is_alliance: true,
             has_death_star: false,
             special_forces: Vec::new(),
         });
         let mut movement = rebellion_core::movement::MovementState::new();
-        assert!(movement.order(empire, there, here, 5));
+        assert!(movement.order(own, there, here, 5));
         let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
         let economy = rebellion_core::economy::EconomyState::default();
         let missions = rebellion_core::missions::MissionState::new();
@@ -2459,6 +2665,7 @@ mod interaction_tests {
             missions: &missions,
             uprisings: &uprisings,
             marked_system: None,
+            fog: &rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Alliance),
         };
         use bmp_cache::resources::strategy as art;
         let mark = |world: &GameWorld, key, mode| {
@@ -2471,7 +2678,7 @@ mod interaction_tests {
                 &gid,
             )
         };
-        // Unexplored: the enemy fleet en route still shows; nothing else.
+        // Unexplored: the player's fleet en route still shows; nothing else.
         assert_eq!(
             mark(&world, here, GidMode::PopularSupport),
             art::GID_UNEXPLORED
@@ -2483,7 +2690,7 @@ mod interaction_tests {
         assert_eq!(mark(&world, here, GidMode::IdleFleets), art::GID_UNEXPLORED);
         assert_eq!(
             mark(&world, here, GidMode::FleetsEnRoute),
-            art::GID_EMPIRE_MEDIUM
+            art::GID_ALLIANCE_MEDIUM
         );
         // Fleets Enroute counting no fleet there takes side 0, whose flag
         // 0x80 (jump table 0x42c39c) draws the unexplored mark.
@@ -2511,7 +2718,7 @@ mod interaction_tests {
         );
         assert_eq!(
             mark(&world, here, GidMode::FleetsEnRoute),
-            art::GID_EMPIRE_MEDIUM
+            art::GID_ALLIANCE_MEDIUM
         );
         assert_ne!(mark(&world, here, GidMode::IdleFleets), art::GID_UNEXPLORED);
         assert_ne!(
@@ -2714,6 +2921,7 @@ mod interaction_tests {
             missions: &missions,
             uprisings: &uprisings,
             marked_system: None,
+            fog: &rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Empire),
         };
         let mark = |world: &GameWorld, mode| {
             gid_marker_for_system(
@@ -2826,6 +3034,7 @@ mod interaction_tests {
                 missions: &missions,
                 uprisings,
                 marked_system: None,
+                fog: &rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Empire),
             };
             gid_metric(
                 world,
@@ -2915,6 +3124,7 @@ mod interaction_tests {
             missions: &missions,
             uprisings: &uprisings,
             marked_system: None,
+            fog: &rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Empire),
         };
         let metric = |mode| gid_metric(&world, key, &world.systems[key], true, mode, &gid);
 
@@ -2999,6 +3209,7 @@ mod interaction_tests {
             missions: &missions,
             uprisings: &uprisings,
             marked_system: None,
+            fog: &rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Empire),
         };
         for viewer_is_alliance in [true, false] {
             let metric = |mode| {
@@ -3088,6 +3299,7 @@ mod interaction_tests {
             missions: &missions,
             uprisings: &uprisings,
             marked_system: None,
+            fog: &rebellion_core::fog::FogState::new(rebellion_core::dat::Faction::Empire),
         };
         let metric = |alliance| {
             gid_metric(

@@ -5937,6 +5937,7 @@ async fn main() {
                         missions: &mission_state,
                         uprisings: &uprising_state,
                         marked_system,
+                        fog: fog_state,
                     },
                 );
                 #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
