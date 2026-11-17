@@ -3002,6 +3002,31 @@ async fn main() {
 
         // ── Tick the clock (Galaxy mode only) ────────────────────────────────
         let galaxy_before_ticks = game_mode == GameMode::Galaxy;
+        // A win between day steps (the player's orders run at once) settles
+        // the word before the clock moves, so the game ends on its own day
+        // (rebellion_core::victory::game_over_pending; A0 2026-11-17
+        // edited-saves-5 run 2: Coruscant taken on day 94, still 94 at the
+        // victory film).
+        if game_mode == GameMode::Galaxy
+            && rebellion_core::victory::game_over_pending(
+                &victory_state,
+                &world,
+                campaign_config.victory_conditions,
+            )
+        {
+            settle_victory_word(
+                &mut victory_state,
+                &world,
+                campaign_config.victory_conditions,
+                &message_texts,
+                &mut msg_log,
+                advisor_schedule.as_mut(),
+                advisor_now(&clock),
+                &mut pending_ending,
+                player_faction == MissionFaction::Alliance,
+                clock.tick,
+            );
+        }
         let tick_events = if galaxy_clock_runs(
             &game_mode,
             tactical_state.battle_summary_open(),
@@ -4987,68 +5012,18 @@ async fn main() {
             // bit 0x1 and Coruscant Captured (FUN_0048f790) while the
             // Alliance holds Coruscant.
             if !tick_events.is_empty() {
-                if let Some((_, new)) = rebellion_core::victory::advance_conditions_word(
+                settle_victory_word(
                     &mut victory_state,
                     &world,
                     campaign_config.victory_conditions,
-                ) {
-                    for movie in rebellion_render::story_messages::victory_conditions_movies(
-                        new,
-                        &message_texts,
-                    ) {
-                        msg_log.queue_story_movie(movie);
-                    }
-                }
-            }
-            if let Some(outcome) = VictorySystem::check(
-                &victory_state,
-                &world,
-                &tick_events,
-                campaign_config.victory_conditions,
-            ) {
-                victory_state.resolved = true;
-                let msg = match &outcome {
-                    rebellion_core::victory::VictoryOutcome::HqCaptured {
-                        winner, loser, ..
-                    } => {
-                        format!(
-                            "{winner:?} captured {loser:?} headquarters! {winner:?} wins!"
-                        )
-                    }
-                    rebellion_core::victory::VictoryOutcome::HqDestroyed { .. } => {
-                        "The Empire destroyed the Alliance headquarters and secured its system. Empire wins!"
-                            .to_string()
-                    }
-                    rebellion_core::victory::VictoryOutcome::DeathStarVictory { .. } => {
-                        "The Death Star destroyed the Alliance headquarters system. Empire wins!"
-                            .to_string()
-                    }
-                };
-                msg_log.push(GameMessage::new(current_tick, msg, MessageCategory::Event));
-
-                // The word's change (0x128) reaches the advisor's slot 0x10
-                // (FUN_004c3010 / FUN_004c0f10), which schedules its win or
-                // loss speech; the speech's last clip carries the game-over
-                // action (kind 3), and only that sets the ending's state
-                // (FUN_004c3060 -> FUN_0041d830 -> FUN_00425c90). So the
-                // ending waits for the advisor's next idle end and the
-                // speech, while the word's game-over bit holds the clock
-                // ([`galaxy_clock_runs`], FUN_0051de80; A0 END-01-C003: day
-                // 45's MDATA.102, day 46, then MDATA.108). port: without
-                // the advisor's messages the end follows at once.
-                if let Some(schedule) = advisor_schedule.as_mut() {
-                    schedule.victory_word(victory_state.conditions_word, advisor_now(&clock));
-                } else {
-                    // FUN_00425c90: the end's movie for the winner and the
-                    // player's side, then the main menu. FUN_00422ce0 starts
-                    // it once the story movies the same day queued have
-                    // played (A0 empire-clean/61, 62: MDATA.103, then the
-                    // defeat).
-                    pending_ending = Some(ending_cutscene(
-                        victory_winner_is_alliance(&outcome),
-                        player_faction == MissionFaction::Alliance,
-                    ));
-                }
+                    &message_texts,
+                    &mut msg_log,
+                    advisor_schedule.as_mut(),
+                    advisor_now(&clock),
+                    &mut pending_ending,
+                    player_faction == MissionFaction::Alliance,
+                    current_tick,
+                );
             }
         }
 
@@ -5128,6 +5103,7 @@ async fn main() {
             && (!plays_story_movies || msg_log.queued_story_movies().next().is_none())
         {
             if let Some(number) = pending_ending.take() {
+                macroquad::logging::info!("[cutscene] ending={number} day={}", clock.tick);
                 game_mode = GameMode::MainMenu;
                 cutscene_player = open_cutscene(
                     Path::new(&story_cutscene_path(number)),
@@ -16194,6 +16170,75 @@ fn character_audience(world: &GameWorld, character: CharacterKey) -> Option<Rail
     }
 }
 
+/// The victory conditions word's check and the game's end.
+///
+/// The word (`FUN_005180e0`): each change is `0x128`, Alliance
+/// Headquarters Destroyed (`FUN_0048e5a0`) with bit `0x1` and Coruscant
+/// Captured (`FUN_0048f790`) while the Alliance holds Coruscant. Once it
+/// ends the game, its change reaches the advisor's slot `0x10`
+/// (`FUN_004c3010` / `FUN_004c0f10`), which schedules its win or loss
+/// speech; the speech's last clip carries the game-over action (kind 3),
+/// and only that sets the ending's state (`FUN_004c3060` -> `FUN_0041d830`
+/// -> `FUN_00425c90`). So the ending waits for the advisor's next idle end
+/// and the speech, while the word's game-over bit holds the clock
+/// ([`galaxy_clock_runs`], `FUN_0051de80`). port: without the advisor's
+/// messages the end follows at once.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the word's change reaches the movies, the log, the advisor and the ending"
+)]
+fn settle_victory_word(
+    victory_state: &mut VictoryState,
+    world: &GameWorld,
+    victory_conditions: VictoryConditions,
+    message_texts: &std::collections::HashMap<u16, String>,
+    msg_log: &mut MessageLog,
+    advisor_schedule: Option<&mut rebellion_render::advisor_schedule::AdvisorSchedule>,
+    advisor_now: u32,
+    pending_ending: &mut Option<u32>,
+    player_is_alliance: bool,
+    tick: u64,
+) {
+    if let Some((_, new)) =
+        rebellion_core::victory::advance_conditions_word(victory_state, world, victory_conditions)
+    {
+        macroquad::logging::info!("[victory] word={:#x} day={}", new, tick);
+        for movie in rebellion_render::story_messages::victory_conditions_movies(new, message_texts)
+        {
+            msg_log.queue_story_movie(movie);
+        }
+    }
+    let Some(outcome) = VictorySystem::outcome(victory_state, world, victory_conditions) else {
+        return;
+    };
+    victory_state.resolved = true;
+    let msg = match &outcome {
+        rebellion_core::victory::VictoryOutcome::HqCaptured { winner, loser, .. } => {
+            format!("{winner:?} captured {loser:?} headquarters! {winner:?} wins!")
+        }
+        rebellion_core::victory::VictoryOutcome::HqDestroyed { .. } => {
+            "The Empire destroyed the Alliance headquarters and secured its system. Empire wins!"
+                .to_string()
+        }
+        rebellion_core::victory::VictoryOutcome::DeathStarVictory { .. } => {
+            "The Death Star destroyed the Alliance headquarters system. Empire wins!".to_string()
+        }
+    };
+    msg_log.push(GameMessage::new(tick, msg, MessageCategory::Event));
+    if let Some(schedule) = advisor_schedule {
+        schedule.victory_word(victory_state.conditions_word, advisor_now);
+    } else {
+        // FUN_00425c90: the end's movie for the winner and the player's
+        // side, then the main menu. FUN_00422ce0 starts it once the story
+        // movies the same day queued have played (A0 empire-clean/61, 62:
+        // MDATA.103, then the defeat).
+        *pending_ending = Some(ending_cutscene(
+            victory_winner_is_alliance(&outcome),
+            player_is_alliance,
+        ));
+    }
+}
+
 fn victory_winner_is_alliance(outcome: &rebellion_core::victory::VictoryOutcome) -> bool {
     match outcome {
         rebellion_core::victory::VictoryOutcome::HqCaptured { winner, .. }
@@ -16467,6 +16512,97 @@ mod tactical_ground_tests {
             false,
             WORD_HQ_LOST | WORD_EMPIRE_WINS | WORD_GAME_OVER
         ));
+    }
+
+    #[test]
+    fn a_win_ordered_between_day_steps_holds_the_clock_on_the_order_s_day() {
+        // FUN_005180e0 stores the word when the event that ends the game is
+        // handled (Event300_GameObjExistingChanged_Handle -> FUN_00517cd0,
+        // in FUN_0051df30's pass), and FUN_0041e390 reads its 0x10000000
+        // (FUN_0051de80) before every sub-tick; FUN_0051dea0, the day's only
+        // writer (one call, 0x41e3e9), never runs after it. A0 2026-11-17
+        // edited-saves-5 run 2: the player's assault took Coruscant on day
+        // 94 and the clock read 94 up to the victory film.
+        use rebellion_core::victory::WORD_GAME_OVER;
+        let mut world = GameWorld::default();
+        let sector = world.sectors.insert(Sector {
+            dat_id: DatId::new(0x9200_0000),
+            name: "Churba".into(),
+            group: SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let system = |dat_id: u32, faction: Faction| System {
+            last_arrival: None,
+            dat_id: DatId::new(dat_id),
+            name: String::new(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: true,
+            is_destroyed: false,
+            control: ControlKind::Controlled(faction),
+        };
+        let tokmia = world.systems.insert(system(0x9000_0001, Faction::Alliance));
+        let coruscant = world.systems.insert(system(0x9000_0109, Faction::Empire));
+        for index in [0x242, 0x240, 0x281, 0x280] {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: DatId::new(index),
+                ..Default::default()
+            });
+        }
+        let conditions = VictoryConditions::HeadquartersOnly;
+        let mut victory_state = VictoryState::new(tokmia, coruscant);
+        let mut clock = GameClock::new();
+        clock.set_speed(GameSpeed::Fast);
+        let day = GameSpeed::Fast.seconds_per_day().unwrap();
+        clock.queue_days(45);
+        for _ in 0..45 {
+            clock.advance(0.0);
+        }
+        assert_eq!(clock.advance(day * 0.5), []);
+        // The player's Destroy System runs at once, half way through day 45.
+        world.systems[tokmia].is_destroyed = true;
+        let mut msg_log = MessageLog::default();
+        let mut pending_ending = None;
+        // The next frame: the word before the clock.
+        if rebellion_core::victory::game_over_pending(&victory_state, &world, conditions) {
+            settle_victory_word(
+                &mut victory_state,
+                &world,
+                conditions,
+                &std::collections::HashMap::new(),
+                &mut msg_log,
+                None,
+                advisor_now(&clock),
+                &mut pending_ending,
+                false,
+                clock.tick,
+            );
+        }
+        if galaxy_clock_runs(&GameMode::Galaxy, false, victory_state.conditions_word) {
+            clock.advance(day);
+        }
+        assert_eq!(clock.tick, 45, "the game ends on the order's own day");
+        assert_ne!(victory_state.conditions_word & WORD_GAME_OVER, 0);
+        assert!(victory_state.resolved);
+        // FUN_00425c90 state 0x12: the Empire player's win, MDATA.108.
+        assert_eq!(pending_ending, Some(108));
     }
 
     #[test]
