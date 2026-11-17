@@ -15433,6 +15433,106 @@ mod tests {
         assert_eq!(hulls, expected);
     }
 
+    /// Run the earlier `stages` on ship 0 for `renders_between` renders each,
+    /// then kill it and record what each later render leaves on screen.
+    fn death_frames_after_running_sequences(
+        stages: &[(WeaponKind, OriginalTacticalImpactStage)],
+        renders_between: usize,
+        renders: usize,
+    ) -> Vec<Option<(u32, bool)>> {
+        let mut session = test_session(Vec::new(), Vec::new(), true);
+        for &(weapon, stage) in stages {
+            assert!(queue_original_tactical_impact(
+                &mut session.impact_effects,
+                0,
+                weapon,
+                stage,
+            ));
+            for _ in 0..renders_between {
+                session.advance_presentational_effects(ORIGINAL_TACTICAL_RENDER_SECONDS);
+            }
+        }
+        assert!(queue_original_tactical_impact(
+            &mut session.impact_effects,
+            0,
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Destroyed,
+        ));
+        (0..renders)
+            .map(|_| {
+                session.advance_presentational_effects(ORIGINAL_TACTICAL_RENDER_SECONDS);
+                session
+                    .impact_effects
+                    .first()
+                    .map(|effect| (effect.resource_id(), effect.hull_shown()))
+            })
+            .collect()
+    }
+
+    // Source: FUN_005d3e90 adds a 0x14-byte node to the scene list +0x5e4 on
+    // every accepted state change (0x5d4013) and never removes the earlier
+    // one; FUN_005c2c80 calls FUN_005d41a0 once per node (0x5c2cd6) in each
+    // render. With a hit still running the dying ship has two nodes, so the
+    // +0x140 counter steps two per render; only a render's first call can
+    // pass the 0.1 s timer (0x5d422d), and the call at 11 deletes the hull
+    // (0x5d4358). ghidra/notes/tactical-effect-call-rate.md; footage
+    // RdDI7YURucY 29:23.2 shows 3360 then 3370 for about 0.2 s.
+    #[test]
+    fn a_ship_killed_during_a_hit_runs_its_fireball_twice_as_fast() {
+        let frames = death_frames_after_running_sequences(
+            &[(WeaponKind::LaserCannon, OriginalTacticalImpactStage::Hit)],
+            2,
+            9,
+        );
+        let mut expected = vec![Some((3360, true)); 5];
+        expected.extend([Some((3370, false)); 3]);
+        expected.push(None);
+        assert_eq!(frames, expected);
+    }
+
+    // Source: as above, with a hit and then a damage sequence running there
+    // are three nodes (FUN_005d3e90 0x5d4013, FUN_005c2c80 0x5c2cd6). The
+    // fifth render's first call swaps to 3375, and its second finds the
+    // count of 16 and deletes the visual (FUN_005d41a0 vtable 0xa4).
+    #[test]
+    fn a_ship_killed_during_a_hit_and_a_damage_sequence_shows_only_the_first_fireball_frame() {
+        let frames = death_frames_after_running_sequences(
+            &[
+                (WeaponKind::LaserCannon, OriginalTacticalImpactStage::Hit),
+                (WeaponKind::LaserCannon, OriginalTacticalImpactStage::Damage),
+            ],
+            1,
+            6,
+        );
+        let mut expected = vec![Some((3360, true)); 3];
+        expected.extend([Some((3360, false)); 2]);
+        expected.push(None);
+        assert_eq!(frames, expected);
+    }
+
+    // Source: FUN_005d3e90 0x5d4013 adds one node per accepted state change;
+    // a rejected change (same exclusive group) adds none.
+    #[test]
+    fn each_accepted_replacement_adds_one_render_call() {
+        let mut session = test_session(Vec::new(), Vec::new(), true);
+        let mut queue = |stage| {
+            queue_original_tactical_impact(
+                &mut session.impact_effects,
+                0,
+                WeaponKind::LaserCannon,
+                stage,
+            )
+        };
+        assert!(queue(OriginalTacticalImpactStage::Hit));
+        assert!(!queue(OriginalTacticalImpactStage::Hit));
+        assert!(queue(OriginalTacticalImpactStage::Damage));
+        assert!(queue(OriginalTacticalImpactStage::Destroyed));
+        assert_eq!(session.impact_effects.len(), 1);
+        assert_eq!(session.impact_effects[0].nodes, 3);
+        session.advance_presentational_effects(ORIGINAL_TACTICAL_RENDER_SECONDS);
+        assert_eq!(session.impact_effects[0].frame, 3);
+    }
+
     // Source: FUN_005d3e90 sets the hit count to 6; FUN_005d41a0 timing as above.
     #[test]
     fn a_laser_hit_holds_its_first_frame_then_shows_its_last_for_one_render() {

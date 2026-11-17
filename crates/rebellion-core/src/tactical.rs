@@ -35,10 +35,10 @@ pub const ORIGINAL_TACTICAL_EFFECT_FRAME_SECONDS: f32 = 0.1;
 /// (`FUN_005c25b0`) until its timer passes 0.02 s.
 pub const ORIGINAL_TACTICAL_RENDER_SECONDS: f32 = 0.02;
 /// port: the original renders as often as `FUN_005c1cf0` lets it, so each
-/// call comes just over 0.02 s after the last; the fifth call after a swap
-/// is the first past `FUN_005d41a0`'s 0.1 s timer. A slower machine swaps
-/// after fewer calls and so shows more of a sequence's frames.
-pub const ORIGINAL_TACTICAL_EFFECT_SWAP_CALLS: u8 = 5;
+/// render comes just over 0.02 s after the last; the fifth render after a
+/// swap is the first past `FUN_005d41a0`'s 0.1 s timer. A slower machine
+/// swaps after fewer renders and so shows more of a sequence's frames.
+pub const ORIGINAL_TACTICAL_EFFECT_SWAP_RENDERS: u8 = 5;
 /// `FUN_005d41a0` 0x5d4358: the destroyed hull goes on the call at count 11.
 pub const ORIGINAL_TACTICAL_DESTROYED_HULL_CALLS: u8 = 11;
 /// `FUN_005b1ea0` laser threshold (`ghidra/notes/tactical-projectile-field-path.md`).
@@ -1859,9 +1859,14 @@ pub struct TacticalImpactEffect {
     pub frame: u8,
     /// The counter at the last image swap: the frame on screen.
     pub shown_frame: u8,
-    /// Render calls since that swap, the `+0xf0` timer counted in calls.
-    pub calls_since_swap: u8,
-    /// Seconds toward the next render call.
+    /// Renders since that swap, the `+0xf0` timer counted in renders.
+    pub renders_since_swap: u8,
+    /// The scene list `+0x5e4` nodes for this object. `FUN_005d3e90` adds
+    /// one on every accepted state change (0x5d4013) and leaves the earlier
+    /// ones, and `FUN_005c2c80` calls `FUN_005d41a0` once per node
+    /// (0x5c2cd6), so the counter steps this many times per render.
+    pub nodes: u8,
+    /// Seconds toward the next render.
     pub frame_elapsed: f32,
 }
 
@@ -1873,7 +1878,8 @@ impl TacticalImpactEffect {
             sequence,
             frame: 0,
             shown_frame: 0,
-            calls_since_swap: 0,
+            renders_since_swap: 0,
+            nodes: 1,
             frame_elapsed: 0.0,
         }
     }
@@ -1892,17 +1898,31 @@ impl TacticalImpactEffect {
             || self.frame <= ORIGINAL_TACTICAL_DESTROYED_HULL_CALLS
     }
 
-    /// One `FUN_005d41a0` call. Returns false once the count is reached
-    /// and the sequence is removed (0x5d4301).
-    pub fn original_render_call(&mut self) -> bool {
+    /// One scene render: `FUN_005c2c80` calls `FUN_005d41a0` once for each
+    /// of this object's list nodes (0x5c2cd6). Returns false once a call
+    /// finds the count reached and the sequence is removed (0x5d4301); the
+    /// object's remaining nodes go with it.
+    pub fn original_render(&mut self) -> bool {
+        // The +0xf0 timer runs in time, so only a render's first call can
+        // find it past 0.1 s; that call resets it for the later ones.
+        self.renders_since_swap = self.renders_since_swap.saturating_add(1);
+        for _ in 0..self.nodes {
+            if !self.original_render_call() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// One `FUN_005d41a0` call.
+    fn original_render_call(&mut self) -> bool {
         if self.frame >= self.sequence.frame_count() {
             return false;
         }
-        self.calls_since_swap = self.calls_since_swap.saturating_add(1);
         // 0x5d421e..0x5d4238: the first call, or one past the 0.1 s timer.
-        if self.frame == 0 || self.calls_since_swap >= ORIGINAL_TACTICAL_EFFECT_SWAP_CALLS {
+        if self.frame == 0 || self.renders_since_swap >= ORIGINAL_TACTICAL_EFFECT_SWAP_RENDERS {
             self.shown_frame = self.frame;
-            self.calls_since_swap = 0;
+            self.renders_since_swap = 0;
         }
         self.frame += 1;
         true
@@ -2949,7 +2969,12 @@ pub fn queue_original_tactical_impact(
         {
             return false;
         }
-        *current = TacticalImpactEffect::new(target, sequence);
+        // 0x5d3ffe..0x5d4013: a new list node; the earlier ones stay.
+        let nodes = current.nodes.saturating_add(1);
+        *current = TacticalImpactEffect {
+            nodes,
+            ..TacticalImpactEffect::new(target, sequence)
+        };
     } else {
         effects.push(TacticalImpactEffect::new(target, sequence));
     }
@@ -6469,7 +6494,7 @@ impl BattleSession {
             effect.frame_elapsed += elapsed;
             while effect.frame_elapsed >= ORIGINAL_TACTICAL_RENDER_SECONDS {
                 effect.frame_elapsed -= ORIGINAL_TACTICAL_RENDER_SECONDS;
-                if !effect.original_render_call() {
+                if !effect.original_render() {
                     return false;
                 }
             }
