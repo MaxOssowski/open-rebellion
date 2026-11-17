@@ -1615,6 +1615,9 @@ async fn main() {
     // ── Cockpit chrome ───────────────────────────────────────────────────────
     let mut cockpit_state = CockpitState::new(CockpitFaction::Alliance);
     let mut game_speed_ui = GameSpeedUiState::default();
+    // The player's orders given while a pause holds the clock; they act
+    // once it runs (`rebellion_render::panels::admit_orders`).
+    let mut held_orders: Vec<PanelAction> = Vec::new();
     let mut sector_window_state = SectorWindowState::default();
     let mut system_window_state = SystemWindowState::default();
     let mut fleet_window_state = FleetWindowState::default();
@@ -5558,6 +5561,7 @@ async fn main() {
                                     );
                                     clock = GameClock::new();
                                     game_speed_ui = GameSpeedUiState::default();
+                                    held_orders.clear();
                                     mfg_state = ManufacturingState::new();
                                     mission_state = MissionState::new();
                                     event_state = EventState::new();
@@ -9961,7 +9965,14 @@ async fn main() {
             }
         }
 
-        // 5. Apply panel actions
+        // 5. Apply panel actions. A held pause keeps the player's orders
+        // until the game runs (FUN_0041e300 stops the frame step before
+        // FUN_0051df30 executes them).
+        let panel_actions = rebellion_render::panels::admit_orders(
+            &mut held_orders,
+            clock.holding(),
+            panel_actions,
+        );
         for action in panel_actions {
             match action {
                 PanelAction::SaveGame { slot, name } => {
@@ -10038,6 +10049,7 @@ async fn main() {
                 PanelAction::LoadGame { slot } => {
                     match rebellion_data::save::load_slot(&saves_dir, slot) {
                         Ok((meta, state)) => {
+                            held_orders.clear();
                             advisor_schedule = None;
                             advisor_state.clips.clear();
                             briefing_caption = None;

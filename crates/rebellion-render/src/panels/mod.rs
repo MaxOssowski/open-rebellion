@@ -241,3 +241,139 @@ pub enum PanelAction {
     /// Show count of triggered events.
     ShowEventCount,
 }
+
+impl PanelAction {
+    /// Whether this is a player's game order (the `0x2xx` order objects
+    /// `FUN_00487740` submits through `FUN_0048aa90` -> `FUN_0041cee0`),
+    /// which acts only in the frame step, not when given. Window, save and
+    /// play-test actions act at once.
+    #[must_use]
+    pub const fn is_order(&self) -> bool {
+        matches!(
+            self,
+            Self::Retire(_)
+                | Self::JoinFleet { .. }
+                | Self::SetDestination { .. }
+                | Self::Rename { .. }
+                | Self::RenameProduct { .. }
+                | Self::CreateFleet { .. }
+                | Self::MoveShips { .. }
+                | Self::DispatchFleet { .. }
+                | Self::MoveRegiment { .. }
+                | Self::MoveHeadquarters { .. }
+                | Self::MoveCharacter { .. }
+                | Self::MoveProducts { .. }
+                | Self::MoveSpecialForce { .. }
+                | Self::MoveMembers { .. }
+                | Self::MoveSquadron { .. }
+                | Self::StopProduction { .. }
+                | Self::ToggleReserved { .. }
+                | Self::BuildProduction { .. }
+                | Self::DispatchMission { .. }
+                | Self::OrderBombardment { .. }
+                | Self::OrderCommand { .. }
+                | Self::OrderAssault { .. }
+        )
+    }
+}
+
+/// The actions to apply this frame. While a pause is `holding` the clock,
+/// the orders among `actions` wait in `held`; once it runs, the held orders
+/// come first, in the order given.
+///
+/// A player's order is queued (`FUN_004360f0` -> `FUN_00536fe0`), passed to
+/// the scheduler's list `+0xa4` in phase 3 (`Class_0065b070_vt2c` ->
+/// `FUN_0041db80` -> `FUN_0051d880`) and executed in phase 5
+/// (`FUN_0051df30`, `0x51dfee`..`0x51e011`: `FUN_0051dd20` -> its slot
+/// `+0x20`). A held pause stops the frame step at phase 2 (`FUN_0041e300`),
+/// so nothing given meanwhile acts, or posts its notices (`FUN_0051eaf0`),
+/// until the game runs (`ghidra/notes/pause-order-hold.md`).
+pub fn admit_orders(
+    held: &mut Vec<PanelAction>,
+    holding: bool,
+    actions: Vec<PanelAction>,
+) -> Vec<PanelAction> {
+    if holding {
+        let (orders, now): (Vec<_>, Vec<_>) = actions.into_iter().partition(PanelAction::is_order);
+        held.extend(orders);
+        return now;
+    }
+    let mut now = std::mem::take(held);
+    now.extend(actions);
+    now
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hq() -> PanelAction {
+        PanelAction::MoveHeadquarters {
+            destination: SystemKey::default(),
+        }
+    }
+
+    fn stop() -> PanelAction {
+        PanelAction::ToggleReserved {
+            system: SystemKey::default(),
+            area: None,
+        }
+    }
+
+    fn names(actions: &[PanelAction]) -> Vec<&'static str> {
+        actions
+            .iter()
+            .map(|action| match action {
+                PanelAction::MoveHeadquarters { .. } => "hq",
+                PanelAction::ToggleReserved { .. } => "reserved",
+                PanelAction::ShowEventCount => "events",
+                PanelAction::ReloadMods => "mods",
+                _ => "other",
+            })
+            .collect()
+    }
+
+    #[test]
+    fn orders_given_while_a_pause_holds_wait_until_the_game_runs() {
+        // FUN_0041e300 holds FUN_0041dff0 at phase 2; orders act in phase 5
+        // (FUN_0051df30 -> FUN_0051dd20).
+        let mut held = Vec::new();
+        let now = admit_orders(
+            &mut held,
+            true,
+            vec![hq(), PanelAction::ShowEventCount, stop()],
+        );
+        assert_eq!(names(&now), vec!["events"]);
+        assert_eq!(names(&held), vec!["hq", "reserved"]);
+
+        // Still held: nothing more acts.
+        assert!(admit_orders(&mut held, true, Vec::new()).is_empty());
+        assert_eq!(held.len(), 2);
+
+        let now = admit_orders(&mut held, false, vec![PanelAction::ReloadMods]);
+        assert_eq!(names(&now), vec!["hq", "reserved", "mods"]);
+        assert!(held.is_empty());
+    }
+
+    #[test]
+    fn orders_given_while_the_game_runs_act_at_once() {
+        let mut held = Vec::new();
+        let now = admit_orders(&mut held, false, vec![hq(), stop()]);
+        assert_eq!(names(&now), vec!["hq", "reserved"]);
+        assert!(held.is_empty());
+    }
+
+    #[test]
+    fn window_save_and_speed_actions_are_not_orders() {
+        assert!(hq().is_order());
+        assert!(stop().is_order());
+        assert!(!PanelAction::ShowEventCount.is_order());
+        assert!(!PanelAction::FocusFleetSystem(SystemKey::default()).is_order());
+        assert!(!PanelAction::SaveGame {
+            slot: 0,
+            name: String::new()
+        }
+        .is_order());
+        assert!(!PanelAction::SetGameSpeed(rebellion_core::tick::GameSpeed::Fast).is_order());
+    }
+}

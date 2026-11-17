@@ -230,6 +230,14 @@ impl GameClock {
         self.stop_day.is_some()
     }
 
+    /// Whether a pause holds the clock at its stop day: `FUN_0041dff0`
+    /// phase 2 (`FUN_0041e300`) waits while the sub-tick is the stop, so
+    /// phases 3 to 6 do not run. A pending pause still runs its day.
+    #[must_use]
+    pub fn holding(&self) -> bool {
+        self.stop_day.is_some_and(|day| self.tick >= day)
+    }
+
     /// Ask for `days` more game-days regardless of speed or pause.
     ///
     /// port: the command palette's "advance N ticks" play-test commands; the
@@ -276,7 +284,7 @@ impl GameClock {
         let Some(seconds_per_day) = self.speed.seconds_per_day() else {
             return Vec::new();
         };
-        if dt <= 0.0 || self.stop_day.is_some_and(|day| self.tick >= day) {
+        if dt <= 0.0 || self.holding() {
             return Vec::new();
         }
 
@@ -372,6 +380,20 @@ mod tests {
         clock.queue_days(1);
         assert_eq!(clock.advance(0.0).len(), 1);
         assert_eq!(clock.sub_tick(), 23);
+    }
+
+    #[test]
+    fn a_pause_holds_only_once_its_day_has_finished() {
+        // FUN_0041e300: phase 2 waits only at the stop (FUN_0041e290).
+        let mut clock = GameClock::new();
+        clock.set_speed(GameSpeed::Medium);
+        assert!(!clock.holding());
+        assert!(clock.pause());
+        assert!(!clock.holding());
+        assert_eq!(clock.advance(3.25), vec![TickEvent { tick: 1 }]);
+        assert!(clock.holding());
+        clock.resume();
+        assert!(!clock.holding());
     }
 
     #[test]
