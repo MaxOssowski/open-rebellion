@@ -114,10 +114,66 @@ the integer 1..100 draw drops its fraction. Deterministic fixtures still
 set the rating explicitly.
 
 Exact retained-mode beam raster comparison, whole-process RNG continuity,
-audible native playback, and lossless A0 comparison remain open. The current beam shape is bounded A1 implementation
-evidence. A custom target cursor is not an open requirement:
+audible native playback, and lossless A0 comparison remain open. The beam's
+shape and timing are now traced and checked against a video of a modded game
+(see "The superlaser beam's look" below), but no A0 capture exists yet. A custom target cursor is not an open requirement:
 `FUN_005d6700` calls `LoadCursorA` with `IDC_ARROW` for the native tactical 3D
 window.
+
+## The superlaser beam's look (read 2026-11-17)
+
+`FUN_005da150` builds two meshbuilders from `IDirect3DRM::CreateMeshBuilder`
+(`DAT_006bcbd0` slot `+0x18`) and hangs both on the beam frame `+0x2c`
+(frame slot `+0x48`, AddVisual):
+
+- **Box.** `AddFaces` (`+0x5c`) with eight vertices at x, y = ±0.005,
+  z = 0 or 1, and six quads (0,3,2,1), (0,4,7,3), (0,1,5,4), (6,7,4,5),
+  (6,5,1,2), (6,2,3,7).
+- **Cone.** Nine vertices: the unit ring `(cos k45°, sin k45°, 0)` and the
+  apex `(0, 0, 1)` (index 8), and eight triangles `(k+1, 8, k)`. Then
+  Scale (`+0x34`) `(0.06e, 0.06e, 0.15e)` (`DAT_0066d4e0`, `DAT_0066d4e8`)
+  and Translate (`+0x38`) `(0, 0, -10)`.
+- **Both** take `SetQuality(0x40)` (`+0x78`) and `SetColorRGB(0, 1, 0)`
+  (`+0x64`). `0x40` is `D3DRMRENDER_WIREFRAME`: `D3DRMFILL_WIREFRAME`,
+  `D3DRMSHADE_FLAT`, `D3DRMLIGHT_OFF`. Both meshes are drawn as pure-green
+  edges, never as filled faces. The 0.01-wide box is about one pixel wide.
+
+`0x005da830` runs every frame. On the first (`+0x6c` still 0) it measures
+the distance D from the beam frame to the target frame (`+0x60`) and scales
+the box's z to t·D. Later frames scale it by t / t_prev (D3DRM scales are
+cumulative). t is the `FUN_005fbb20` timer (QueryPerformanceCounter, or
+timeGetTime), clamped to `DAT_0066d4bc` (1.0 s). Past 1.0 s it clears
+`+0x28` and the beam ends. The beam and the cone appear together, the beam
+grows linearly from the decal frame to the target in 1 s, and both vanish
+together. The kill is the type-3 event one 1000 ms turn after the beam
+starts (`docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-death-star-shot-timing/`), so the
+target explodes as the beam reaches it.
+
+The decal frame is the Death Star decal's. `FUN_005d4d10` sets that
+texture's `SetDecalOrigin(0x40, 0x40)` (texture slot `+0x48`), so the
+frame marks its texel (64, 64).
+
+Video check: Sistros's "Testing Death Stars" (YouTube `r0Pc2XALoqA`,
+2023, 1280x720 at 24 fps, dgVoodoo). It runs the original executable with
+a mod's Death Star art, and the beam code is the executable's. Seven shots
+show the same picture each time:
+
+- Each video frame of a shot shows a green 8-pointed star of one-pixel
+  lines at the dish. No ring edges show.
+- A one-pixel green line grows from the star to the target.
+- The star and the line last about 24 video frames (1.0 s).
+- In the next frame the fireball appears at the target.
+
+The ring sits 10 behind the decal frame, and the spokes reach forward to
+the apex. The ring missing from the picture fits the decal hiding what lies
+behind its depth. hyp: this depth test is inferred from the capture, not
+traced in `d3drm.dll`. The line seems to start late (about 0.5 s) because
+of perspective. The beam runs towards the camera, and while it is short it
+lies over the downward spoke.
+
+The port draws the cone as its 16 edges, one device pixel each, clipped
+at the decal centre's view depth (`death_star_beam_cone_segments`). The
+port used to draw the cone as a filled, unlit mesh.
 
 ## The Death Star shield (read 2026-10-20)
 
