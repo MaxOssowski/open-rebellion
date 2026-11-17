@@ -15611,9 +15611,13 @@ fn present_assault_reports(
             // FUN_0041d7d0 opens it. The rail mask (+0x50), its light
             // (FUN_0041db20) and the rebuild (FUN_0048a2a0) are kind 3's,
             // so it lights nothing. A0 2026-11-14-bombard-assault/41..43.
+            // Its class's kind (vtable +0x10, FUN_00497530) is 7, neither 3
+            // nor 5 nor 4, so FUN_004697b0 leaves the index's Display grey
+            // (A0 2026-11-17-edited-saves-5/i-05, the Empire's own
+            // bombardment of Ghorman chosen).
             let id = log.push(GameMessage {
                 unread: false,
-                ..message
+                ..message.plain()
             });
             summaries.open(world, report, message_texts, Some(id));
             continue;
@@ -19947,6 +19951,33 @@ mod assault_report_tests {
         assert!(message.assault_report.is_some());
         // Kind 7 lights no rail.
         assert_eq!(log.unread_mask(true), 0);
+        // FUN_004697b0: Display lights for kind 3 (or 5 with a target), so
+        // kind 7's stays grey (A0 2026-11-17-edited-saves-5/i-05).
+        assert!(message.plain);
+        // The defender's kind 3 report (FUN_00497530) keeps it lit.
+        let defended = rebellion_core::assault_report::AssaultReport::start(
+            &world,
+            &TroopTransportState::default(),
+            Faction::Alliance,
+            &[],
+            system,
+        )
+        .expect("a report");
+        let mut imperial = MessageLog::new();
+        present_assault_reports(
+            vec![defended],
+            &world,
+            MissionFaction::Empire,
+            &texts,
+            &mut summaries,
+            &mut imperial,
+            5,
+        );
+        let [filed] = imperial.messages() else {
+            panic!("one message: {:?}", imperial.messages().len());
+        };
+        assert!(!filed.plain);
+        assert!(filed.unread);
     }
 }
 #[cfg(test)]
