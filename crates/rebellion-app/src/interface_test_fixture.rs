@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 138;
+const SCENARIO_COUNT: u8 = 139;
 
 
 extern "C" {
@@ -560,6 +560,14 @@ pub enum Scenario {
     /// there (`FUN_004f9a60`); `FUN_0045bbb0` marks it from that copy
     /// (`FUN_004f3220`, `FUN_00526cf0`). For the Alliance it is `Quadrants`.
     QuadrantsHeadquartersFrozen = 137,
+    /// EVT-02-C008: as `FleetLoad` with a fleet of the other side at the
+    /// primary system holding one capital ship whose class projects a
+    /// gravity well (CAPSHPSD `gravity_well_projector`: the Empire's
+    /// Interdictor Cruiser `0x82`, the Alliance's `0x4a`). A running clock
+    /// starts a battle there, and the Battle Alert's Retreat is disabled
+    /// (`FUN_00516730`, `retreat_offered`), as A0
+    /// 2026-11-17-edited-saves-4/d-01 shows it for the Alliance.
+    GravityWellBattle = 138,
 }
 
 impl Scenario {
@@ -703,6 +711,7 @@ impl Scenario {
             135 => Self::JediTrainingDialog,
             136 => Self::JediTrainingMessages,
             137 => Self::QuadrantsHeadquartersFrozen,
+            138 => Self::GravityWellBattle,
             _ => return None,
         })
     }
@@ -719,6 +728,7 @@ impl Scenario {
                 | Self::FleetLoadFull
                 | Self::SquadronLoad
                 | Self::SquadronBattle
+                | Self::GravityWellBattle
                 | Self::FleetBombardment
                 | Self::FleetAssault
                 | Self::FleetAssaultTaken
@@ -5473,6 +5483,9 @@ fn place_loading_fleet(
             rebellion_core::squadrons::add(&mut world.systems[primary].fighters, class, 2);
         }
     }
+    if request.scenario == Scenario::GravityWellBattle {
+        place_gravity_well_fleet(world, movement, primary, target, player_is_alliance);
+    }
     if matches!(
         request.scenario,
         Scenario::FleetBombardment
@@ -5569,6 +5582,43 @@ fn place_loading_fleet(
     );
     sectors.open_for_system(world, elsewhere, request.faction);
     sectors.open_for_system(world, primary, request.faction);
+}
+
+/// The `GravityWellBattle` variant: the planets' squadrons gone, and a
+/// fleet of the other side at `primary` with one ship of that side's first
+/// class that projects a gravity well (`FUN_00516730` reads the class's
+/// `+0xa4`, `ghidra/notes/abstract-battle.md`).
+fn place_gravity_well_fleet(
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    primary: SystemKey,
+    target: SystemKey,
+    player_is_alliance: bool,
+) {
+    for system in [primary, target] {
+        world.systems[system].fighters.clear();
+    }
+    let Some((class, hull)) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| {
+            class.is_alliance != player_is_alliance && class.gravity_well_projector != 0
+        })
+        .map(|(key, class)| (key, class.hull as i32))
+    else {
+        return;
+    };
+    world.insert_fleet(rebellion_core::world::Fleet {
+        location: primary,
+        capital_ships: vec![ShipInstance::new(class, hull, !player_is_alliance)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: !player_is_alliance,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.number_ships();
+    reconcile_fleet_orbits(movement, world);
 }
 
 /// The quadrant-icon scenario. The primary system (the player's) and a
@@ -12428,6 +12478,69 @@ mod tests {
         }
     }
 
+    // FUN_00516730: an enemy capital ship whose class projects a gravity
+    // well bars the Battle Alert's Retreat (A0 2026-11-17-edited-saves-4:
+    // d-01 with the Interdictor, 10976; e-01 without it, 10974).
+    #[test]
+    fn the_gravity_well_battle_scenario_bars_the_players_retreat_by_an_enemy_projector() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let alliance = faction == CockpitFaction::Alliance;
+            let request = request(Scenario::GravityWellBattle, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                for side in [true, false] {
+                    for projector in [0, 4] {
+                        world
+                            .capital_ship_classes
+                            .insert(rebellion_core::world::CapitalShipClass {
+                                is_alliance: side,
+                                hull: 1200,
+                                hyperdrive: 80,
+                                gravity_well_projector: projector,
+                                ..Default::default()
+                            });
+                    }
+                    world
+                        .fighter_classes
+                        .insert(rebellion_core::world::FighterClass {
+                            is_alliance: side,
+                            is_empire: !side,
+                            ..Default::default()
+                        });
+                }
+            });
+            let mut world = applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let enemy: Vec<_> = world.systems[primary]
+                .fleets
+                .iter()
+                .map(|&key| &world.fleets[key])
+                .filter(|fleet| fleet.is_alliance != alliance)
+                .collect();
+            assert_eq!(enemy.len(), 1, "{faction:?}");
+            assert_eq!(enemy[0].capital_ships.len(), 1, "{faction:?}");
+            let ship = &enemy[0].capital_ships[0];
+            let class = ship.class;
+            assert_eq!(ship.hull_current, 1200, "{faction:?}");
+            assert_eq!(world.capital_ship_classes[class].is_alliance, !alliance);
+            assert_eq!(world.capital_ship_classes[class].gravity_well_projector, 4);
+            assert_eq!(rebellion_core::squadrons::on_planet(&world, primary, !alliance), 0);
+            assert_eq!(
+                rebellion_core::squadrons::sides_present(&world, primary),
+                (true, true)
+            );
+            assert!(
+                !rebellion_core::abstract_battle::retreat_offered(&world, primary, alliance),
+                "{faction:?}"
+            );
+            // The same battle without the projector offers Retreat.
+            world.capital_ship_classes[class].gravity_well_projector = 0;
+            assert!(
+                rebellion_core::abstract_battle::retreat_offered(&world, primary, alliance),
+                "{faction:?}"
+            );
+        }
+    }
+
     // port: the fixture's own layout. A product one point from its cost
     // completes on the next yard cycle (FUN_0052b960) and departs for its
     // destination (FUN_0052bee0).
@@ -15297,6 +15410,7 @@ mod tests {
                 Scenario::ShipShieldHit,
                 Scenario::SpecialForceAboard,
                 Scenario::ShipRepaired,
+                Scenario::GravityWellBattle,
             ]
         );
     }

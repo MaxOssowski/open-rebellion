@@ -31,6 +31,7 @@ const FLEET_JOIN_ENROUTE = 112;
 const PRODUCTION_DESTINATION = 54;
 const SQUADRON_LOAD = 65;
 const SQUADRON_BATTLE = 66;
+const GRAVITY_WELL_BATTLE = 139;
 const FLEET_BOMBARDMENT = 67;
 const FLEET_ASSAULT = 68;
 const FLEET_ASSAULT_TAKEN = 97;
@@ -2497,6 +2498,135 @@ const cases = [
     },
   },
   {
+    name: "gravity-well-battle",
+    code: GRAVITY_WELL_BATTLE,
+    // EVT-02-C008: the other side's fleet at the system holds a capital ship
+    // whose class projects a gravity well (CAPSHPSD +0xa4: the Empire's
+    // Interdictor Cruiser 0x82, the Alliance's 0x4a), so FUN_00516730 bars
+    // the Battle Alert's Retreat: FUN_0044f860 draws its disabled art
+    // (Alliance 10976, BATTLE_ALERT_RETREAT_EMPIRE_DISABLED 10973), gives it
+    // no tip, and a click on it does nothing. A0
+    // 2026-11-17-edited-saves-4: d-01 (Alliance Fleet 2 at Coruscant, day 9,
+    // the Imperial fleet holding the retyped Interdictor "Judicator"):
+    // Retreat 10976 at (74, 345); e-01, the same alert without the
+    // Interdictor: 10974; d-12 no tip on the disabled Retreat; d-13 two
+    // clicks change nothing.
+    async run(page, faction, setup, directory, source, log) {
+      const before = await until(page, "the enemy's gravity-well fleet waits at the system",
+        (o) => o.enemy_fleets === 1 && o.enemy_planet_squadrons === 0);
+      await shot(page, directory, "gravity-well-battle-before");
+      const alliance = faction.name === "alliance";
+      // tactical_view.rs BATTLE_WINDOW_* (A0 TAC-01-C010 and the Imperial
+      // alerts): the window's origin; Retreat's control at (12, 296),
+      // 134 by 27, Simulate's at (146, 296).
+      const origin = alliance ? [62, 49] : [125, 52];
+      const button = { x: origin[0] + 12, y: origin[1] + 296 };
+      const states = alliance ? { normal: 10974, pressed: 10975, disabled: 10976 }
+        : { normal: 10971, pressed: 10972, disabled: 10973 };
+      const art = Object.fromEntries(Object.entries(states).map(([name, id]) => [name, resource(source, id)]));
+      // Every opaque pixel of `image` (the palette-blue matte left out) at
+      // the button's place in `png`: how many differ, of how many.
+      const differ = (png, image, at = button) => {
+        let checked = 0;
+        let differing = 0;
+        for (let y = 0; y < image.height; y += 1) for (let x = 0; x < image.width; x += 1) {
+          const from = (y * image.width + x) * 4;
+          if (blueKey(image.data, from)) continue;
+          const to = ((at.y + y) * png.width + at.x + x) * 4;
+          checked += 1;
+          if ([0, 1, 2].some((c) => png.data[to + c] !== image.data[from + c])) differing += 1;
+        }
+        return { checked, differing };
+      };
+      const speed = await runFast(page, setup);
+      // The alert is up once Retreat's control shows one of its three arts
+      // whole; it must be the disabled one.
+      let alertShot = null;
+      let seen = null;
+      const started = Date.now();
+      while (!seen && Date.now() - started < 60_000) {
+        await page.waitForTimeout(250);
+        const bytes = await page.screenshot({ animations: "disabled" });
+        const png = PNG.sync.read(bytes);
+        seen = Object.keys(art).find((name) => differ(png, art[name]).differing === 0);
+        if (seen) alertShot = bytes;
+      }
+      assert.ok(seen, "no Battle Alert opened");
+      fs.writeFileSync(path.join(directory, "gravity-well-battle-alert.png"), alertShot);
+      assert.equal(seen, "disabled", `Retreat drawn ${seen}, not disabled`);
+      const disabled = differ(PNG.sync.read(alertShot), art.disabled);
+      // The disabled Retreat shows no tip (FUN_0044f860; A0 d-12); Simulate
+      // shows its own, so the pointer and the tips are live.
+      const retreatTip = await tipShows(page, { x: origin[0] + 79, y: origin[1] + 309 });
+      const simulateTip = await tipShows(page, { x: origin[0] + 213, y: origin[1] + 309 });
+      assert.equal(retreatTip, false, `the disabled Retreat shows a tip ${JSON.stringify(retreatTip)}`);
+      assert.ok(simulateTip, "Simulate shows no tip");
+      // Two clicks on the disabled Retreat route nothing (A0 d-13): no
+      // battle_alert command, Retreat still disabled, and the enemy fleet
+      // still at the system.
+      const commands = /\[battle_alert\] command=/;
+      const commandsBefore = log.countOf(commands);
+      const retreat = { x: button.x + 67, y: button.y + 13 };
+      for (let index = 0; index < 2; index += 1) {
+        await click(page, retreat);
+        await page.waitForTimeout(300);
+        await page.mouse.move(2, 2);
+        await frames(page, 5);
+      }
+      await page.waitForTimeout(500);
+      const clicked = await shot(page, directory, "gravity-well-battle-after-retreat-clicks");
+      const afterClicks = differ(PNG.sync.read(clicked.bytes), art.disabled);
+      assert.equal(log.countOf(commands), commandsBefore,
+        "a click on the disabled Retreat routed the battle");
+      assert.equal(afterClicks.differing, 0, `Retreat after the clicks: ${JSON.stringify(afterClicks)}`);
+      const held = await latest(page);
+      assert.equal(held.enemy_fleets, 1, JSON.stringify(held));
+      assert.equal(held.fleet_present, true, JSON.stringify(held));
+      assert.equal(held.fleet_system_dat_id, setup.primary_dat_id, JSON.stringify(held));
+      // Optional A0: Retreat's place in d-01 (10976) and e-01 (10974),
+      // read at run time from the owner's capture folder (never copied
+      // into Git; `--a0-edited-saves-4=DIR` names it outside this tree).
+      // The port's control must equal d-01's on the bitmap's
+      // opaque pixels and on the whole 134-by-27 control, and differ from
+      // e-01's.
+      let a0 = null;
+      const a0Folder = process.argv.find((arg) => arg.startsWith("--a0-edited-saves-4="))?.slice(20)
+        ?? path.join(root, ".artifacts/a0-vm/2026-11-17-edited-saves-4");
+      const d01 = path.join(a0Folder, "d-01-aljud-battle-at-coruscant-alert-d9.png");
+      const e01 = path.join(a0Folder, "e-01-control-unedited-alhq-d2-battle-at-coruscant-retreat-enabled-d9.png");
+      if (alliance && fs.existsSync(d01) && fs.existsSync(e01)) {
+        const port = PNG.sync.read(alertShot);
+        const whole = (png, other) => {
+          let differing = 0;
+          for (let y = button.y; y < button.y + 27; y += 1) for (let x = button.x; x < button.x + 134; x += 1) {
+            const k = (y * 640 + x) * 4;
+            if ([0, 1, 2].some((c) => png.data[k + c] !== other.data[k + c])) differing += 1;
+          }
+          return { checked: 134 * 27, differing };
+        };
+        const withDisabled = PNG.sync.read(fs.readFileSync(d01));
+        const withEnabled = PNG.sync.read(fs.readFileSync(e01));
+        a0 = {
+          d01_sha256: sha256(fs.readFileSync(d01)),
+          e01_sha256: sha256(fs.readFileSync(e01)),
+          d01_art: differ(withDisabled, art.disabled),
+          e01_art: differ(withEnabled, art.normal),
+          port_vs_d01: whole(port, withDisabled),
+          port_vs_e01: whole(port, withEnabled),
+        };
+        assert.equal(a0.d01_art.differing, 0, `d-01 is not 10976 at (74, 345): ${JSON.stringify(a0)}`);
+        assert.equal(a0.e01_art.differing, 0, `e-01 is not 10974 at (74, 345): ${JSON.stringify(a0)}`);
+        assert.equal(differ(port, art.disabled).differing, 0, `Retreat differs from A0 d-01: ${JSON.stringify(a0)}`);
+        assert.equal(a0.port_vs_d01.differing, 0, `the Retreat control differs from A0 d-01: ${JSON.stringify(a0)}`);
+        assert.ok(a0.port_vs_e01.differing > 0, `Retreat matches A0's enabled e-01: ${JSON.stringify(a0)}`);
+      }
+      // Simulate still works: the alert closes and the battle routes.
+      await click(page, { x: origin[0] + 213, y: origin[1] + 309 });
+      const simulated = await log.logged("Simulate routes the battle", /\[battle_alert\] command=simulate/);
+      return { before, speed, seen, disabled, retreatTip, simulateTip, commandsBefore, afterClicks, held, a0, simulated };
+    },
+  },
+  {
     name: "unload",
     code: FLEET_LOAD,
     // A drag out of the Troops tab released on the Defenses window (type
@@ -3940,7 +4070,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-window",
-    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, a squadron's Move from the planet onto a fleet and its drag back onto its planet, and a battle the other side's planet squadrons start with the player's fleet, on both sides",
+    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, a squadron's Move from the planet onto a fleet and its drag back onto its planet, a battle the other side's planet squadrons start with the player's fleet, and a Battle Alert whose Retreat an enemy gravity-well ship disables, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,
