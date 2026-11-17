@@ -159,10 +159,13 @@ Before this, the port left the product in the lost system: an en-route
 yard completed there on arrival.
 
 Not changed (follow-ups):
-- `DeliveryState::advance` files `lost` (Facility Lost) for a delivery that
-  reaches a destroyed system and finds no place on its first trip. By the
-  trace above that loss raises no `0x303`; only a delivery already
-  rerouted should report it.
+- Fixed the same day: `DeliveryState::advance` filed `lost` (Facility
+  Lost) for a delivery that reached a destroyed system and found no place
+  on its first trip. It now files it as `scrapped` (silent); `lost` keeps
+  only a delivery already rerouted (`Delivery::was_rerouted`, read back
+  from the trip: a reroute starts from the destroyed system it was bound
+  for). port: the `+0x42` count is not saved; a first trip whose yard is
+  destroyed while it travels reads as a reroute.
 - `products::is_alliance_of` gives a facility product `is_alliance =
   false`; the facility's side is read from its `FacilityBuild` instead.
 

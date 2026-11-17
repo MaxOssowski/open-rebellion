@@ -40,6 +40,29 @@ pub struct Delivery {
     pub name: Option<String>,
 }
 
+impl Delivery {
+    /// Whether this trip is a reroute (`+0x42`, the destination-change
+    /// count, not 0): `GameObj_vtf4` (`FUN_004faf50`) raises the count
+    /// when an object changes container while EnrouteActive, and the
+    /// arrival clears it (`FUN_004fb760`). A reroute starts from the
+    /// destroyed system it was bound for ([`DeliveryState::advance`]); a
+    /// first trip starts from its yard, or, for a product whose system
+    /// was destroyed under it, from that system itself
+    /// ([`crate::products::arrive`]).
+    ///
+    /// port: the count is not saved; it is read back from the trip. A
+    /// first trip whose yard is destroyed while it travels reads as a
+    /// reroute.
+    #[must_use]
+    pub fn was_rerouted(&self, world: &GameWorld) -> bool {
+        self.origin != self.destination
+            && world
+                .systems
+                .get(self.origin)
+                .is_none_or(|system| system.is_destroyed)
+    }
+}
+
 /// Objects travelling from their facility to their destination.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeliveryState {
@@ -51,10 +74,15 @@ pub struct DeliveryState {
 pub struct DeliveryAdvance {
     /// Deliveries that arrived, as completions at their destination.
     pub arrivals: Vec<CompletionEvent>,
-    /// Deliveries whose destination is gone and that found no other
-    /// place of their side (`GameObjDestroyedOnArrivalNotif`, event
-    /// `0x303`, `FUN_004fc080`).
+    /// Deliveries already rerouted once whose destination is gone again
+    /// and that found no other place of their side
+    /// (`GameObjDestroyedOnArrivalNotif`, event `0x303`, `FUN_004fc080`).
     pub lost: Vec<Delivery>,
+    /// Deliveries on their first trip whose destination is gone and that
+    /// found no other place of their side: destroyed with reason 2
+    /// (`FUN_00515480`, slot `+0xac`) and no `0x303`, since their
+    /// destination-change count (`+0x42`) is 0 (`FUN_004fc080`).
+    pub scrapped: Vec<Delivery>,
     /// Deliveries that found their destination destroyed and set out again
     /// for the nearest place of their side (Autorouting).
     pub rerouted: Vec<Delivery>,
@@ -216,7 +244,8 @@ impl DeliveryState {
                         result.rerouted.push(next.clone());
                         remaining.push(next);
                     }
-                    None => result.lost.push(delivery),
+                    None if delivery.was_rerouted(world) => result.lost.push(delivery),
+                    None => result.scrapped.push(delivery),
                 }
             } else {
                 result.arrivals.push(CompletionEvent {
@@ -409,10 +438,14 @@ mod tests {
         assert_eq!(state.en_route()[0].arrival_tick, 6);
     }
 
-    // FUN_004fc080: an object en route whose destination is destroyed and
-    // that finds no place of its side (FUN_005545e0) is lost.
+    // An object en route whose destination is destroyed and that finds no
+    // place of its side (FUN_005545e0) is destroyed with reason 2
+    // (FUN_00515480, slot +0xac). FUN_004fc080 raises 0x303 only for a
+    // destination-change count (+0x42) not 0: on a first trip it is
+    // scrapped silently (ghidra/notes/facility-autoroute-on-side-change.md;
+    // this test expected a loss before that trace).
     #[test]
-    fn a_delivery_to_a_destroyed_system_with_nowhere_to_go_is_lost() {
+    fn a_first_trip_to_a_destroyed_system_with_nowhere_to_go_is_scrapped_silently() {
         let (mut world, systems) = world_with_systems(&[(0, 0), (30, 40)]);
         let kind = troop(&mut slotmap::SlotMap::with_key());
         let mut state = DeliveryState::new();
@@ -420,8 +453,48 @@ mod tests {
         world.systems[systems[1]].is_destroyed = true;
         let result = state.advance(&world, &[TickEvent { tick: 10 }]);
         assert!(result.arrivals.is_empty());
-        assert_eq!(result.lost.len(), 1);
+        assert!(result.lost.is_empty());
+        assert_eq!(result.scrapped.len(), 1);
         assert!(state.en_route().is_empty());
+    }
+
+    // A product whose system was destroyed under it sets out from there
+    // (crate::products::arrive: origin and destination the same system);
+    // with no place it is on its first trip, so no 0x303 (FUN_004fc080).
+    #[test]
+    fn a_product_stranded_in_a_destroyed_system_with_nowhere_to_go_is_scrapped_silently() {
+        let (mut world, systems) = world_with_systems(&[(0, 0), (30, 40)]);
+        let kind = troop(&mut slotmap::SlotMap::with_key());
+        let mut state = DeliveryState::new();
+        state.depart(&world, &[departure(systems[1], systems[1], 3, kind)]);
+        world.systems[systems[1]].is_destroyed = true;
+        let result = state.advance(&world, &[TickEvent { tick: 10 }]);
+        assert!(result.lost.is_empty());
+        assert_eq!(result.scrapped.len(), 1);
+    }
+
+    // A rerouted object (GameObj_vtf4 FUN_004faf50 raised +0x42) whose new
+    // destination is destroyed too and that finds no place raises 0x303,
+    // GameObjDestroyedOnArrivalNotif (FUN_004fc080): Facility Lost.
+    #[test]
+    fn a_rerouted_delivery_whose_new_destination_falls_with_nowhere_to_go_is_lost() {
+        let (mut world, systems) = world_with_systems(&[(0, 0), (30, 40), (45, 60)]);
+        world.systems[systems[2]].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[systems[0]].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let kind = troop(&mut slotmap::SlotMap::with_key());
+        let mut state = DeliveryState::new();
+        state.depart(&world, &[departure(systems[0], systems[1], 0, kind)]);
+        world.systems[systems[1]].is_destroyed = true;
+        let first = state.advance(&world, &[TickEvent { tick: 10 }]);
+        assert_eq!(first.rerouted.len(), 1);
+        assert!(first.scrapped.is_empty() && first.lost.is_empty());
+        let rerouted = &state.en_route()[0];
+        assert!(rerouted.was_rerouted(&world));
+        world.systems[systems[2]].is_destroyed = true;
+        world.systems[systems[0]].control = ControlKind::Uncontrolled;
+        let second = state.advance(&world, &[TickEvent { tick: 100 }]);
+        assert!(second.scrapped.is_empty());
+        assert_eq!(second.lost.len(), 1);
     }
 
     // FUN_004fb520 -> FUN_004f8710: a completed, en-route object of a
