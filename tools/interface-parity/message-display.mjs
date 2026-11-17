@@ -17,6 +17,7 @@
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node message-display.mjs [--out=DIR] [--faction=alliance|empire] [--only=CASE]
+//              [--a0-bombardment=DIR]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -2955,6 +2956,158 @@ async function jediTrainingMessages(browser, base) {
   }
 }
 
+// EVT-01-C019: the Empire player's own bombardment message. The Alliance's
+// side is compared in fleet-window.mjs (2026-11-14-bombard-assault/17, 24);
+// the Empire's against A0 2026-11-17-edited-saves-5 (a new, unedited Empire
+// game, day 33; the windows at (125, 52)). Scenario::GhormanBombardment
+// (139) has the Empire's Fleet 1 (an Imperial Star Destroyer and an
+// Imperial Dreadnaught, i-04) carry out General Bombardment of the
+// Alliance's Ghorman with nothing lost, and the summary opens at once
+// (FUN_00497530 kind 7): i-02 (sha256 bc23a22b) "Orbital bombardment of
+// Ghorman" / "Imperial ships have conducted an orbital strike on the
+// Alliance system of Ghorman" (FUN_00496770, TEXTSTRA 0x7098 / 0x7099)
+// over 0x2b9a: the text word for word, the picture, the rail and the
+// corners every pixel A0's, A0's pointer left out, the green title and
+// body ink within A0's tolerance. Close (10) marks it read; the Message
+// Index's All Messages then lists its one row (i-05, f57cd97a), chosen:
+// the row's head (its Conflict icon), the bar right of its text, the tabs,
+// the rail (Display grey: the report's kind is 7, FUN_00497530 ->
+// FUN_004697b0) and the corners every pixel A0's. The summary's rail
+// stands at x 0x19f for the Empire (FUN_0044c630).
+// `--a0-bombardment=DIR` reads A0 from DIR (default the repository's
+// .artifacts/a0-vm/2026-11-17-edited-saves-5).
+const GHORMAN_BOMBARDMENT = 140;
+const A0_BOMBARDMENT = path.resolve(args["a0-bombardment"]
+  ?? path.join(ROOT, ".artifacts/a0-vm/2026-11-17-edited-saves-5"));
+
+async function ghormanBombardment(browser, base) {
+  const directory = path.join(OUT, "empire-ghorman-bombardment");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const screen = async (label) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    return PNG.sync.read(bytes);
+  };
+  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(A0_BOMBARDMENT, file)));
+  const observed = () => page.evaluate(() => (window.__openRebellionInterfaceFleetLoads || []).at(-1));
+  const until = async (predicate, description) => {
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      const value = await observed();
+      if (value && predicate(value)) return value;
+      if (Date.now() > deadline) throw new Error(`${description}: ${JSON.stringify(value)}`);
+      await page.waitForTimeout(100);
+    }
+  };
+  const green = (data, k) => data[k + 1] > 180 && data[k] < 100 && data[k + 2] < 100;
+  const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+    let found = null;
+    for (let y = ya; y < yb; y += 1) {
+      for (let x = xa; x < xb; x += 1) {
+        if (!green(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+        found = found ? [Math.min(found[0], x), Math.min(found[1], y), Math.max(found[2], x), Math.max(found[3], y)]
+          : [x, y, x, y];
+      }
+    }
+    return found;
+  };
+  const near = (a, p) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+    && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+  // Window-relative regions that differ from A0 in pixels, the screen
+  // boxes in `skip` left out.
+  const differ = (original, shown, [ox, oy], [xa, ya, xb, yb], skip = []) => {
+    let count = 0;
+    for (let y = ya; y < yb; y += 1) {
+      for (let x = xa; x < xb; x += 1) {
+        const [sx, sy] = [125 + x, 52 + y];
+        if (skip.some(([x0, y0, x1, y1]) => sx >= x0 && sx < x1 && sy >= y0 && sy < y1)) continue;
+        const i = (sy * 640 + sx) * 4;
+        const j = ((oy + y) * 640 + ox + x) * 4;
+        if ([0, 1, 2].some((c) => original.data[i + c] !== shown.data[j + c])) count += 1;
+      }
+    }
+    return count;
+  };
+  const checks = {};
+  try {
+    await page.goto(`${base}?fixture-code=${GHORMAN_BOMBARDMENT | (2 << 8)}`);
+    const ready = await waitReport(page, () => true, "the fixture reports");
+    const after = await until((o) => o.assault_summary?.page === "Summary", "the bombardment's summary opens at once");
+    const summary = after.assault_summary;
+    assert.equal(summary.title, "Orbital bombardment of Ghorman", JSON.stringify(summary));
+    assert.equal(summary.body, "Imperial ships have conducted an orbital strike on the Alliance system of Ghorman",
+      JSON.stringify(summary));
+    assert.equal(summary.picture, 0x2b9a, JSON.stringify(summary));
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const shown = await screen("bombardment-summary");
+    const original = await a0("i-02-ehq2-empire-view-orbital-bombardment-of-ghorman-summary-d33.png");
+    const [ox, oy] = summary.origin.map(Math.round);
+    // A0's pointer stands over the picture at the screen's (290..312,
+    // 184..206).
+    const pointer = [[286, 180, 316, 210]];
+    checks.summary = {
+      origin: [ox, oy],
+      picture: differ(original, shown, [ox, oy], [12, 13 + 25, 412, 13 + 205], pointer),
+      rail: differ(original, shown, [ox, oy], [414, 11, 468, 296]),
+      corners: differ(original, shown, [ox, oy], [0, 0, 30, 22]) + differ(original, shown, [ox, oy], [384, 0, 414, 22]),
+      title: { a0: ink(original, [125, 52], [12, 10, 412, 40]), port: ink(shown, [ox, oy], [12, 10, 412, 40]) },
+      body: { a0: ink(original, [125, 52], [20, 220, 400, 262]), port: ink(shown, [ox, oy], [20, 220, 400, 262]) },
+    };
+    console.log(JSON.stringify({ ghorman_bombardment: checks }));
+    // The Empire's Close (10) at the window's (426, 21), 44 by 41
+    // (FUN_0044c630 0x1aa, 0x15; FUN_0044df90 marks the message).
+    await click(page, [ox + 426 + 22, oy + 21 + 20]);
+    await until((o) => o.assault_summary === null, "Close closes the summary");
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const opened = await waitReport(page, (value) => value.index_open, "the Conflict rail opens the index");
+    const [left, top] = [Math.round(opened.window_left), Math.round(opened.window_top)];
+    // All Messages (the window's (41, 64)).
+    await click(page, [left + 41 + 8, top + 64 + 4]);
+    const all = await waitReport(page, (value) => value.mode === "list"
+      && value.rows.includes("Orbital bombardment of Ghorman"), "All Messages lists the bombardment");
+    await click(page, [left + 25 + 60, top + 108 + 21 * all.rows.indexOf("Orbital bombardment of Ghorman") + 10]);
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const listed = await screen("index-all-bombardment-row");
+    const index = await a0("i-05-ehq2-message-index-all-orbital-bombardment-of-ghorman-row-d33.png");
+    checks.index = {
+      origin: [left, top],
+      rows: all.rows,
+      // The chosen row (0x2aa2, 352 by 17 at the window's (25, 108)): its
+      // head up to the text, and the bar right of the text.
+      row_head: differ(index, listed, [left, top], [25, 108, 25 + 32, 108 + 17]),
+      row_tail: differ(index, listed, [left, top], [25 + 220, 108, 25 + 352, 108 + 17]),
+      // A0's pointer stands on the All tab at the screen's (167..189,
+      // 116..138).
+      tabs: differ(index, listed, [left, top], [0, 44, 414, 88], [[164, 112, 192, 140]]),
+      rail: differ(index, listed, [left, top], [414, 11, 468, 296]),
+      corners: differ(index, listed, [left, top], [0, 0, 30, 22]) + differ(index, listed, [left, top], [380, 0, 414, 40]),
+    };
+    console.log(JSON.stringify({ ghorman_bombardment: { index: checks.index } }));
+    const c = checks.summary;
+    assert.deepEqual([c.origin, c.picture, c.rail, c.corners], [[125, 52], 0, 0, 0], JSON.stringify(checks));
+    assert.ok(near(c.title.a0, c.title.port) && near(c.body.a0, c.body.port), JSON.stringify(checks));
+    const r = checks.index;
+    assert.deepEqual([r.origin, r.rows, r.row_head, r.row_tail, r.tabs, r.rail, r.corners],
+      [[125, 52], ["Orbital bombardment of Ghorman"], 0, 0, 0, 0, 0], JSON.stringify(checks));
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "empire", case: "ghorman-bombardment", status: "pass", checks };
+  } catch (error) {
+    await screen("failure").catch(() => {});
+    return { faction: "empire", case: "ghorman-bombardment", status: "fail",
+      error: String(error.stack || error), checks, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -2966,7 +3119,7 @@ const browser = await chromium.launch({
 const results = [];
 try {
   // --only=<case> runs that one case (headquarters-taken, uprising-messages,
-  // jedi-training-messages).
+  // jedi-training-messages, ghorman-bombardment).
   if (!args.only) for (const faction of FACTIONS) results.push(await run(browser, base, faction));
   if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "headquarters-taken")) {
     results.push(await headquartersTaken(browser, base));
@@ -2976,6 +3129,9 @@ try {
   }
   if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "jedi-training-messages")) {
     results.push(await jediTrainingMessages(browser, base));
+  }
+  if (FACTIONS.some(({ name }) => name === "empire") && (!args.only || args.only === "ghorman-bombardment")) {
+    results.push(await ghormanBombardment(browser, base));
   }
 } finally {
   await browser.close();

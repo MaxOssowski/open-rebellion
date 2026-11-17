@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 139;
+const SCENARIO_COUNT: u8 = 140;
 
 
 extern "C" {
@@ -568,6 +568,14 @@ pub enum Scenario {
     /// (`FUN_00516730`, `retreat_offered`), as A0
     /// 2026-11-17-edited-saves-4/d-01 shows it for the Alliance.
     GravityWellBattle = 138,
+    /// EVT-01-C019: the Empire player's own General Bombardment of the
+    /// Alliance's Ghorman, as A0 2026-11-17-edited-saves-5/i-01..i-05
+    /// shows it (a new, unedited Empire game, day 33): Fleet 1, an
+    /// Imperial Star Destroyer and an Imperial Dreadnaught, strikes; no
+    /// side loses a unit, and the summary opens at once (`FUN_00497530`
+    /// kind 7) on "Orbital bombardment of Ghorman" over `0x2b9a`, filed on
+    /// the Conflict rail. Sesswenna's sector window is open behind it.
+    GhormanBombardment = 139,
 }
 
 impl Scenario {
@@ -712,6 +720,7 @@ impl Scenario {
             136 => Self::JediTrainingMessages,
             137 => Self::QuadrantsHeadquartersFrozen,
             138 => Self::GravityWellBattle,
+            139 => Self::GhormanBombardment,
             _ => return None,
         })
     }
@@ -1433,6 +1442,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::HeadquartersTaken {
         place_headquarters_at_yavin(request, world, sectors);
+    }
+    if request.scenario == Scenario::GhormanBombardment {
+        place_ghorman_bombardment(request, world, movement, sectors);
     }
     if request.scenario == Scenario::OwnAssaultRepulsed {
         place_own_assault(world, movement, troop_transport);
@@ -3751,6 +3763,101 @@ fn place_headquarters_at_yavin(
     sectors.open_for_system(world, yavin, request.faction);
 }
 
+/// The `GhormanBombardment` scenario: Ghorman the Alliance's, explored,
+/// with no fleet in orbit, and the Empire's Fleet 1 there: an Imperial
+/// Star Destroyer and an Imperial Dreadnaught at full hull (A0
+/// 2026-11-17-edited-saves-5/i-04 lists them). Sesswenna's sector window
+/// is open, as behind A0's summary (i-02).
+fn place_ghorman_bombardment(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    sectors: &mut SectorWindowState,
+) {
+    let Some(ghorman) = clear_for_a0(world, "Ghorman") else {
+        return;
+    };
+    let ships: Vec<ShipInstance> = ["Imperial Star Destroyer", "Imperial Dreadnaught"]
+        .into_iter()
+        .filter_map(|name| {
+            world
+                .capital_ship_classes
+                .iter()
+                .find(|(_, value)| value.is_empire && value.name == name)
+                .map(|(key, value)| {
+                    ShipInstance::new(key, i32::try_from(value.hull).unwrap_or(i32::MAX), false)
+                })
+        })
+        .collect();
+    if ships.is_empty() {
+        return;
+    }
+    let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+        location: ghorman,
+        capital_ships: ships,
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.rename_fleet(fleet, "Fleet 1");
+    world.number_ships();
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    sectors.open_for_system(world, ghorman, request.faction);
+}
+
+/// The `GhormanBombardment` strike: the Empire's fleets at Ghorman carry
+/// out General Bombardment (`FUN_00487740`) with the first seed whose
+/// draws destroy nothing on either side, as A0 i-03 and i-04 list "No
+/// Casualties": the report's picture is then `0x2b9a` (`FUN_00496770`).
+/// Returns its report for the app to present.
+fn ghorman_bombardment(
+    world: &mut GameWorld,
+    troop_transport: &mut TroopTransportState,
+) -> Vec<rebellion_core::assault_report::AssaultReport> {
+    let Some(ghorman) = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Ghorman")
+        .map(|(key, _)| key)
+    else {
+        return Vec::new();
+    };
+    let fleets: Vec<FleetKey> = world
+        .fleets
+        .iter()
+        .filter(|(_, fleet)| fleet.location == ghorman && !fleet.is_alliance)
+        .map(|(key, _)| key)
+        .collect();
+    if fleets.is_empty() {
+        return Vec::new();
+    }
+    for seed in 0..256 {
+        let mut trial = world.clone();
+        let mut env = rebellion_core::bombardment::BombardEnv::new(seed, None);
+        let outcome = env
+            .bombard_reported(
+                &mut trial,
+                troop_transport,
+                Faction::Empire,
+                &fleets,
+                ghorman,
+                rebellion_core::bombardment::GENERAL,
+            )
+            .clone();
+        if outcome.destroyed.is_empty()
+            && outcome.ship_losses.is_empty()
+            && env.reports.iter().all(|report| report.picture() == 0x2b9a)
+            && !env.reports.is_empty()
+        {
+            *world = trial;
+            return env.reports;
+        }
+    }
+    Vec::new()
+}
+
 /// Whether the app opens the fixture's assault report at once, as Display
 /// on it would (`FUN_00469de0`): not in `HeadquartersTaken`, whose gate
 /// reads it from the index as A0 did (v-18).
@@ -3772,6 +3879,9 @@ pub fn enemy_assault(
     // seed whose draws give A0 2026-11-14-bombard-assault/09..11's outcome:
     // the attacking regiment destroyed, no defender lost, the system kept
     // (TEXTSTRA 0x7092).
+    if request.scenario == Scenario::GhormanBombardment {
+        return ghorman_bombardment(world, troop_transport);
+    }
     let (name, side) = match request.scenario {
         Scenario::EnemyAssaultTaken | Scenario::HeadquartersTaken => ("Yavin", Faction::Empire),
         Scenario::OwnAssaultRepulsed => ("Commenor", Faction::Alliance),
@@ -7594,13 +7704,16 @@ fn story_messages_report(
             | Scenario::HeadquartersTaken
             | Scenario::UprisingMessages
             | Scenario::JediTrainingMessages
+            | Scenario::GhormanBombardment
     ) {
         return None;
     }
     // The assault report is filed on the Conflict rail (FUN_00497530), an
     // uprising on Popular Support (FUN_00499460's class, mask 0x001).
     let rail_of = match request.scenario {
-        Scenario::HeadquartersTaken => rebellion_render::MessageRail::Conflict,
+        Scenario::HeadquartersTaken | Scenario::GhormanBombardment => {
+            rebellion_render::MessageRail::Conflict
+        }
         Scenario::UprisingMessages => rebellion_render::MessageRail::PopularSupport,
         _ => rebellion_render::story_messages::STORY_RAIL,
     };
@@ -8654,6 +8767,7 @@ impl EnemyAssaultWatch {
             request.scenario,
             Scenario::EnemyAssaultTaken
                 | Scenario::HeadquartersTaken
+                | Scenario::GhormanBombardment
                 | Scenario::FleetWindowA0
                 | Scenario::OwnAssaultRepulsed
         ) || self.last.as_ref() == Some(&assault_summary)
@@ -11098,6 +11212,85 @@ mod tests {
         let other = request(Scenario::EventMessages, CockpitFaction::Empire);
         assert!(uprising_messages(other).is_empty());
         assert_eq!(Scenario::decode(133), Some(Scenario::UprisingMessages));
+    }
+
+    #[test]
+    fn the_ghorman_bombardment_scenario_opens_the_empires_strike_on_alliance_ghorman() {
+        // A0 2026-11-17-edited-saves-5 (a new, unedited Empire game, day
+        // 33): Fleet 1 (i-04: an Imperial Star Destroyer and an Imperial
+        // Dreadnaught) bombards the Alliance's Ghorman; no side loses a
+        // unit (i-03, i-04), and the Empire's own summary opens at once
+        // (i-02, sha256 bc23a22b): "Orbital bombardment of Ghorman"
+        // (0x7098) / "Imperial ships have conducted an orbital strike on
+        // the Alliance system of Ghorman" (0x7099) over 0x2b9a.
+        let request = request(Scenario::GhormanBombardment, CockpitFaction::Empire);
+        let mut applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Ghorman".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            world.systems[here].control = ControlKind::Controlled(Faction::Empire);
+            for name in [
+                "Imperial Star Destroyer",
+                "Imperial Dreadnaught",
+                "Imperial Dreadnaught II",
+            ] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_empire: true,
+                        hull: 100,
+                        hyperdrive: 80,
+                        bombardment_modifier: 1,
+                        ..Default::default()
+                    });
+            }
+        });
+        let world = &applied.world;
+        let ghorman = world.systems.keys().next().unwrap();
+        assert_eq!(
+            world.systems[ghorman].control,
+            ControlKind::Controlled(Faction::Alliance)
+        );
+        let [fleet] = &world.systems[ghorman].fleets[..] else {
+            panic!("one fleet at Ghorman: {:?}", world.systems[ghorman].fleets);
+        };
+        let ships: Vec<_> = world.fleets[*fleet]
+            .capital_ships
+            .iter()
+            .map(|ship| world.capital_ship_classes[ship.class].name.as_str())
+            .collect();
+        assert_eq!(ships, ["Imperial Star Destroyer", "Imperial Dreadnaught"]);
+        assert!(!world.fleets[*fleet].is_alliance);
+        assert!(opens_the_assault_report(request));
+        // Only the Empire's fleets at Ghorman strike: an Alliance fleet
+        // there and an Imperial one elsewhere stay out of the report.
+        let imperial = world.fleets[*fleet].clone();
+        let elsewhere = world.systems.keys().nth(1).unwrap();
+        let mut away = imperial.clone();
+        away.location = elsewhere;
+        applied.world.insert_fleet(away);
+        let mut defender = imperial;
+        defender.is_alliance = true;
+        applied.world.insert_fleet(defender);
+        let reports = enemy_assault(request, &mut applied.world, &mut applied.transport);
+        let [report] = &reports[..] else {
+            panic!("one report: {reports:?}");
+        };
+        assert_eq!(report.system, ghorman);
+        assert_eq!(report.attacker, Faction::Empire);
+        assert_eq!(report.defender, Some(Faction::Alliance));
+        assert!(!report.assault);
+        assert!(report.opens_at_once(Faction::Empire));
+        assert_eq!(
+            (report.title(), report.body(), report.picture()),
+            (0x7098, 0x7099, 0x2b9a)
+        );
+        // Fleet 1's two ships, none lost.
+        assert_eq!(report.attackers.operational.len(), 2);
+        assert!(report.attackers.destroyed.is_empty());
+        assert_eq!(Scenario::decode(139), Some(Scenario::GhormanBombardment));
     }
 
     /// The `EnemyAssaultTaken` world: Yavin with GNPRTB as shipped, the
