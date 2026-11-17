@@ -2700,9 +2700,11 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-speed-menu-hover-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-speed-menu-hover-a0/",
+            ".artifacts/interface-parity/agent-objectives-2026-11-17T13-01-18-727Z/result.json (sha256 f5cbc8419445)",
+            ".artifacts/interface-parity/personnel-orders-2026-11-17T12-29-26-387Z-2826257/result.json (sha256 c752c10945cf)"
           ],
-          "note": "Compared with A0 on 2026-11-02 (speed2/veryslow: days 176..178 150.6 s apart under 2 s sampling; 600 x 0.25 s): agent-objectives.mjs --very-slow (Linux) chooses Very Slow from the menu and times two days at 150.02 s and 150.011 s.",
+          "note": "Compared with A0 on 2026-11-02 (speed2/veryslow: days 176..178 150.6 s apart under 2 s sampling; 600 x 0.25 s): agent-objectives.mjs --very-slow (Linux) chooses Very Slow from the menu and times two days at 150.02 s and 150.011 s. 2026-11-17 (b242): a day now lasts the rate plus one sub-ticks, because FUN_0051dea0 advances the day only after the counter passes the rate. That gives Fast 1.25 s, Medium 3.25 s, Slow 15.25 s and Very Slow 150.25 s per day (rate 600 from FUN_00487eb0). The AI runs one pass per sub-tick of the day (FUN_0041dff0 case 8). The agent-objectives and personnel-orders gates passed with the new day lengths in batch b242 (WASM 0df08016).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -2714,9 +2716,11 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-speed-menu-hover-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-speed-menu-hover-a0/",
+            ".artifacts/interface-parity/agent-objectives-2026-11-17T13-01-18-727Z/result.json (sha256 f5cbc8419445)",
+            ".artifacts/interface-parity/personnel-orders-2026-11-17T12-29-26-387Z-2826257/result.json (sha256 c752c10945cf)"
           ],
-          "note": "Compared with A0 (2026-10-31: Slow timed at about 15 s a day, 60 x 0.25 s): agent-objectives.mjs (Linux, 2026-11-02) chooses Slow from the speed menu and times three days at a median of 15.001 s.",
+          "note": "Compared with A0 (2026-10-31: Slow timed at about 15 s a day, 60 x 0.25 s): agent-objectives.mjs (Linux, 2026-11-02) chooses Slow from the speed menu and times three days at a median of 15.001 s. 2026-11-17 (b242): a day now lasts the rate plus one sub-ticks, because FUN_0051dea0 advances the day only after the counter passes the rate. That gives Fast 1.25 s, Medium 3.25 s, Slow 15.25 s and Very Slow 150.25 s per day (rate 600 from FUN_00487eb0). The AI runs one pass per sub-tick of the day (FUN_0041dff0 case 8). The agent-objectives and personnel-orders gates passed with the new day lengths in batch b242 (WASM 0df08016).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -2729,9 +2733,11 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/",
-            "tools/interface-parity/personnel-orders.mjs"
+            "tools/interface-parity/personnel-orders.mjs",
+            ".artifacts/interface-parity/agent-objectives-2026-11-17T13-01-18-727Z/result.json (sha256 f5cbc8419445)",
+            ".artifacts/interface-parity/personnel-orders-2026-11-17T12-29-26-387Z-2826257/result.json (sha256 c752c10945cf)"
           ],
-          "note": "Medium, value 12; P60 (macOS) and Linux gates personnel-orders.mjs/fleet-window.mjs choose it from the menu; A0 build-orders/13-medium.png exists but no timing or menu comparison. 2026-10-31: A0 timed Medium at 3.22 s a day (12 x 0.25 s plus the day's work); the port now runs 3 s a day (was 1.2 s). personnel-orders.mjs on Linux asserts 3 s days at Medium (measured 2.98..3.00 s). port: A0's extra ~0.2 s a day is the original's per-day work time, which depends on the machine.",
+          "note": "Medium, value 12; P60 (macOS) and Linux gates personnel-orders.mjs/fleet-window.mjs choose it from the menu; A0 build-orders/13-medium.png exists but no timing or menu comparison. 2026-10-31: A0 timed Medium at 3.22 s a day (12 x 0.25 s plus the day's work); the port now runs 3 s a day (was 1.2 s). personnel-orders.mjs on Linux asserts 3 s days at Medium (measured 2.98..3.00 s). port: A0's extra ~0.2 s a day is the original's per-day work time, which depends on the machine. 2026-11-17 (b242): a day now lasts the rate plus one sub-ticks, because FUN_0051dea0 advances the day only after the counter passes the rate. That gives Fast 1.25 s, Medium 3.25 s, Slow 15.25 s and Very Slow 150.25 s per day (rate 600 from FUN_00487eb0). The AI runs one pass per sub-tick of the day (FUN_0041dff0 case 8). The agent-objectives and personnel-orders gates passed with the new day lengths in batch b242 (WASM 0df08016).",
           "scope": "Verified against the original's code, A0 and the Linux browser build; see the note."
         },
         {
@@ -2744,9 +2750,11 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/",
-            "tools/interface-parity/agent-objectives.mjs"
+            "tools/interface-parity/agent-objectives.mjs",
+            ".artifacts/interface-parity/agent-objectives-2026-11-17T13-01-18-727Z/result.json (sha256 f5cbc8419445)",
+            ".artifacts/interface-parity/personnel-orders-2026-11-17T12-29-26-387Z-2826257/result.json (sha256 c752c10945cf)"
           ],
-          "note": "Fast, value 4; P60 (macOS) and Linux agent-objectives.mjs choose it; no A0 comparison. 2026-10-31: A0 timed Fast at 1.26 s a day (4 x 0.25 s plus the day's work); the port now runs 1 s a day (was 0.4 s). agent-objectives.mjs on Linux asserts 1 s days at Fast (median 0.999..1.000 s). port: A0's extra ~0.26 s a day is the original's per-day work time, which depends on the machine.",
+          "note": "Fast, value 4; P60 (macOS) and Linux agent-objectives.mjs choose it; no A0 comparison. 2026-10-31: A0 timed Fast at 1.26 s a day (4 x 0.25 s plus the day's work); the port now runs 1 s a day (was 0.4 s). agent-objectives.mjs on Linux asserts 1 s days at Fast (median 0.999..1.000 s). port: A0's extra ~0.26 s a day is the original's per-day work time, which depends on the machine. 2026-11-17 (b242): a day now lasts the rate plus one sub-ticks, because FUN_0051dea0 advances the day only after the counter passes the rate. That gives Fast 1.25 s, Medium 3.25 s, Slow 15.25 s and Very Slow 150.25 s per day (rate 600 from FUN_00487eb0). The AI runs one pass per sub-tick of the day (FUN_0041dff0 case 8). The agent-objectives and personnel-orders gates passed with the new day lengths in batch b242 (WASM 0df08016).",
           "scope": "Verified against the original's code, A0 and the Linux browser build; see the note."
         },
         {
