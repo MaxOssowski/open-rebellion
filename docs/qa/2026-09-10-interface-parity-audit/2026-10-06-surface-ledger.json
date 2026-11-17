@@ -8478,9 +8478,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-event-clips/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-speaker-events/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-empire-joins-and-encylopedia-tip-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-empire-killed-and-smuggling-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-empire-killed-and-smuggling-a0/",
+            ".artifacts/interface-parity/message-display-2026-11-17T04-18-06-354Z (result 3ad47a83a9c8)"
           ],
-          "note": "Several messages read differently per side and the second droid plays the side's clip (advisor-events.mjs, Arch Chromium); not compared per event in A0. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-08 (b142): per-side event messages compared in A0 on both sides now: Joins Enemy (Alliance: joins-clean, 'join the Empire'; Empire: empire-game3/joins-enemy, 'join the Alliance', 0 px in message-display.mjs), Maintenance Shortfall (1013 / 1014, both 0 px), Future Jedi (Luke's 0x717a / Vader's 0x7179, both 0 px), Informants and Enemy Mission Foiled (both sides). The bombardment and the captures are compared on one side each. Batch b142: 23 of 23 gates; tooltip.mjs --a0 (Empire) passed separately. 2026-11-08 (b144): Character Killed (0x42e / 0x433) and Smuggling Benefits now compared on both sides too. Batch b144: 23 of 23 gates.",
+          "note": "Several messages read differently per side and the second droid plays the side's clip (advisor-events.mjs, Arch Chromium); not compared per event in A0. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-08 (b142): per-side event messages compared in A0 on both sides now: Joins Enemy (Alliance: joins-clean, 'join the Empire'; Empire: empire-game3/joins-enemy, 'join the Alliance', 0 px in message-display.mjs), Maintenance Shortfall (1013 / 1014, both 0 px), Future Jedi (Luke's 0x717a / Vader's 0x7179, both 0 px), Informants and Enemy Mission Foiled (both sides). The bombardment and the captures are compared on one side each. Batch b142: 23 of 23 gates; tooltip.mjs --a0 (Empire) passed separately. 2026-11-08 (b144): Character Killed (0x42e / 0x433) and Smuggling Benefits now compared on both sides too. Batch b144: 23 of 23 gates. 2026-11-17 (b238): the Empire's own bombardment is now compared with A0 .artifacts/a0-vm/2026-11-17-edited-saves-5 i-02 and i-05 (Ghorman): message-display.mjs ghorman-bombardment (message-display-2026-11-17T04-18-06-354Z, result 3ad47a83a9c8) gives the summary text word for word, picture, rail and corners 0 px off, and the index row 'Orbital bombardment of Ghorman' 0 px off. The Empire's Assault Summary rail is now drawn at 0x19f and keyed (02952432, FUN_0044c630), and Display stays grey on the attacker's own report (89462ba4, kind 7, FUN_004697b0). Still open: the Alliance's view of the same bombardment and the i-06 Assault Summary window, which is not compared yet; the port numbers the Dreadnaught '2' where A0 i-04 says '1'.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10762,7 +10763,7 @@
         {
           "id": "END-01-C001",
           "requirement": "Alliance victory",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
@@ -10770,10 +10771,13 @@
             "ghidra/notes/victory-conditions.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/",
-            ".artifacts/interface-parity/ending-2026-11-16T20-51-14-129Z (result 81d6aeeaff8a)"
+            ".artifacts/interface-parity/ending-2026-11-16T20-51-14-129Z (result 81d6aeeaff8a)",
+            ".artifacts/a0-vm/2026-11-17-edited-saves-5/README.md",
+            ".artifacts/interface-parity/ending-2026-11-17T04-27-00-161Z (result 9364f2fe4ebd)",
+            "batch b238 (2026-11-17): 32 of 32 gates, 180 of 180 battle cases"
           ],
-          "note": "An Alliance victory for the Alliance player plays MDATA.105 (FUN_00425c90 state 0x10), then the main menu; the replacement modal is gone (unit test ending_cutscene); not yet compared with A0. 2026-11-07 (b119): ending.mjs's EndingVictory cases play 105 in the browser and return to the main menu; no A0 capture of a win. 2026-11-16 (b235): the Alliance win shares the advisor path (FUN_004c3010 message 0x56, state 0x10); ending.mjs alliance-victory now plays 105 after the advisor's kind-3 clip (day 5 at Fast). Still no A0 of an Alliance win.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "An Alliance victory for the Alliance player plays MDATA.105 (FUN_00425c90 state 0x10), then the main menu; the replacement modal is gone (unit test ending_cutscene); not yet compared with A0. 2026-11-07 (b119): ending.mjs's EndingVictory cases play 105 in the browser and return to the main menu; no A0 capture of a win. 2026-11-16 (b235): the Alliance win shares the advisor path (FUN_004c3010 message 0x56, state 0x10); ending.mjs alliance-victory now plays 105 after the advisor's kind-3 clip (day 5 at Fast). Still no A0 of an Alliance win. 2026-11-17 (b238): A0 .artifacts/a0-vm/2026-11-17-edited-saves-5 (h-04, h-10, h-13, h-15; seq-run2-ending) shows the Alliance's win at Coruscant: film 102, then 103 with its caption, then 105 and the crawl; the day counter holds at 94 after the win. The victory word reaches the advisor through slot 0x10 (FUN_004c3010, message 0x56) and the advisor now speaks under a story movie (2240e8d6), so 105 follows 103 as in A0. Browser: ending.mjs alliance-victory (ending-2026-11-17T04-27-00-161Z, result 9364f2fe4ebd): stems 102, 103, 105; the caption film box [0,78,639,419] and caption ink [4,407,380,419] equal A0, the 105 film box [0,78,639,401] equals A0. The crawl frame differs only by sample time within the same movie file (A0 9208 ink px, port 8143). The gap after 103 is one strategy frame in both (A0 660 ms under VM slow motion, port 4 ms); the long A0 'hold' was film 103 playing slowly in the VM, not a game state.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "END-01-C002",
