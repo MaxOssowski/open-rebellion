@@ -481,7 +481,6 @@ pub fn draw_system_finder(
 
             // The title, bold font 5 centred in its 350; the label font 4;
             // the tab's heading font 5; all white (0x2ffffff).
-            let font = crate::theme::gdi_font(10, scale);
             crate::theme::paint_gdi_text(
                 &painter,
                 at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 350.0, 17.0)),
@@ -570,20 +569,14 @@ pub fn draw_system_finder(
             }
 
             let name_rect = at(frame, scale, NAME_BOX);
-            // port: the caret stays inside the box, as a Windows edit
-            // control's does; egui's runs a row past its bottom.
-            let outer_clip = ui.clip_rect();
-            ui.set_clip_rect(name_rect.intersect(outer_clip));
-            let edit = ui.put(
+            // A CoolStringField in the default font 4 (crate::name_box).
+            let edit = crate::name_box::show(
+                ui,
                 name_rect,
-                egui::TextEdit::singleline(&mut name)
-                    .id(egui::Id::new("original-system-finder-name"))
-                    .frame(false)
-                    .font(font.clone())
-                    .text_color(egui::Color32::WHITE)
-                    .desired_width(name_rect.width()),
+                scale,
+                egui::Id::new("original-system-finder-name"),
+                &mut name,
             );
-            ui.set_clip_rect(outer_clip);
             if window.focus_name {
                 edit.request_focus();
             }

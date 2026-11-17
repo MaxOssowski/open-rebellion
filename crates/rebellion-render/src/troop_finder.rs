@@ -624,9 +624,9 @@ pub fn draw_troop_finder(
             paint(cache, RAIL[side_idx], RAIL_AT);
 
             // Title (TEXTSTRA 0x1900) centred in its 350 in font 5, label
-            // (0x1901) in font 4, the tab's label in font 5; the list and
-            // the name box in font 10 (A0 2026-10-29).
-            let font = crate::theme::gdi_font(10, scale);
+            // (0x1901) in font 4, the tab's label in font 5; the list in
+            // font 10 (A0 2026-10-29), the name box in font 4
+            // (crate::name_box).
             crate::theme::paint_gdi_text(
                 &painter,
                 at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 350.0, 17.0)),
@@ -732,20 +732,14 @@ pub fn draw_troop_finder(
 
             // The name box (0xcb).
             let name_rect = at(frame, scale, NAME_BOX);
-            // port: the caret stays inside the box, as a Windows edit
-            // control's does; egui's runs a row past its bottom.
-            let outer_clip = ui.clip_rect();
-            ui.set_clip_rect(name_rect.intersect(outer_clip));
-            let edit = ui.put(
+            // A CoolStringField in the default font 4 (crate::name_box).
+            let edit = crate::name_box::show(
+                ui,
                 name_rect,
-                egui::TextEdit::singleline(&mut name)
-                    .id(egui::Id::new("original-troop-finder-name"))
-                    .frame(false)
-                    .font(font.clone())
-                    .text_color(egui::Color32::WHITE)
-                    .desired_width(name_rect.width()),
+                scale,
+                egui::Id::new("original-troop-finder-name"),
+                &mut name,
             );
-            ui.set_clip_rect(outer_clip);
             if window.focus_name {
                 edit.request_focus();
             }

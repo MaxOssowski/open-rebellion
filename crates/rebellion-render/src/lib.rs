@@ -24,6 +24,7 @@ pub mod game_speed;
 mod gdi_metrics;
 pub mod gid_legend;
 pub mod list_prefix;
+mod name_box;
 pub mod list_scroll_bar;
 pub mod main_menu;
 pub mod main_menu_destinations;

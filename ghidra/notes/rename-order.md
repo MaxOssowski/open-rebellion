@@ -104,6 +104,36 @@ Constructor creates a Win32 control with class name `CoolStringField`
 | `+0xd8` | Width |
 | `+0xdc` | Height |
 
+### Font, text and caret (read 2026-11-17)
+
+- **Font.** The base window `FUN_005ff910` sets `+0x7c` from the game's
+  default font (`FUN_00603850`, font 4: Arial, 16-row cell, 13 ppem).
+  Only a caller of `vtable+0x18` (`FUN_00604f70`) changes it, as the rename
+  edit does (font 10); the four Finders' name boxes (`FUN_004637a0`,
+  `FUN_00461960`, `FUN_0046ce40`, `FUN_00460270`) do not, so they draw in
+  font 4.
+- **Text.** `WM_PAINT` (`Class_0066e038_vt14`, `FUN_00605160`) selects
+  `+0x7c` (`FUN_006002c0`) and draws with `DrawTextA` format `0x824`
+  (single line, `DT_VCENTER`, left) in (0, 0, width - `+0xe0`, `+0x3c` -
+  `+0xe0`) through `FUN_00600fd0`: first in `+0xe8` one `+0xe0` (1) down
+  and right, then in `+0xe4`. The constructor sets `+0xe0` 1, `+0xe4`
+  `0xffffff`, `+0xe8` 0 (white over a black shadow). The bitmap is blitted
+  from the scroll `+0xd4`.
+- **Selection.** With the focus and `+0xb4 != +0xb8`, the selected letters
+  are drawn opaque, `+0xe8` on `+0xe4`, without a shadow, from `+0xbc` to
+  `+0xc0`; the letters before and after are drawn as above.
+- **Caret.** `WM_SETFOCUS` (7) runs `CreateCaret(hwnd, 0, 2, +0x3c)`: 2
+  wide, the field's height. `FUN_006060f0` measures the letters before
+  `+0xcc` (`DrawTextA` `0xc24`), scrolls `+0xd4` so the caret stays inside
+  (`width - +0xe0`), and calls `SetCaretPos(x - scroll, 0)`.
+  `FUN_00604f90` sets `+0xcc` to -1: the caret goes to the text's end.
+- **A0.** 2026-11-17-edited-saves-6/d-02 (`bab3f3b8…`): "Luke Skywalker"
+  ink x 206..296, y 98..110 in the Personnel Finder's box at (205, 95);
+  finder-search/01-open (`35488d9a…`): the empty box's caret at x 205..206,
+  y 95..112, the box's blue (30, 62, 166) shown as (103, 100, 88).
+- **Port.** `crates/rebellion-render/src/name_box.rs`; gates
+  `fleet-finder.mjs` (case `name-box`) and `personnel-states.mjs` (abode).
+
 ## Commit edit (`FUN_004ac950`, vtable `+0x7c`)
 
 1. Gets the text from the edit field's `+0x98` (via `+0x138 → +0x98`).
