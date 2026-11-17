@@ -217,16 +217,18 @@ pub struct JabbaSystem;
 
 impl JabbaSystem {
     /// The rolls [`Self::advance`] draws: timer `0x393`'s delay
-    /// (`FUN_00549d60`) and the fire's chance (`FUN_00546fa0`).
+    /// (`FUN_00549d60`), or the fire's chance (`FUN_00546fa0`) and the
+    /// next delay (`FUN_005862a0`); the delay is at least a day, so both
+    /// never fall on one day.
     #[must_use]
     pub fn roll_budget() -> usize {
         2
     }
 
     /// The setup (`FUN_00549d60`: `BountyHuntersActive`, whose hook
-    /// `FUN_0054b740` arms timer `0x393`), the timer's single fire
-    /// (`FUN_0054e970` -> `FUN_00546fa0`), and the day's autorouting of
-    /// the Bounty mission's captives.
+    /// `FUN_0054b740` arms timer `0x393`), the timer's fires
+    /// (`FUN_0054e970` -> `FUN_00546fa0`, repeating by `FUN_005862a0`),
+    /// and the day's autorouting of the Bounty mission's captives.
     ///
     /// port: the setup runs on the first advance, as Dagobah's does; the
     /// game-type test on the manager's `+0x24` is not read.
@@ -269,8 +271,21 @@ impl JabbaSystem {
             state.bounty_hunters_active = false;
             state.bounty_due = None;
         }
-        if state.bounty_hunters_active && state.bounty_due.is_some_and(|due| due <= tick) {
-            state.bounty_due = None;
+        // port: a save from before timer 0x393 repeated holds an active
+        // flag with no due day; it is armed again from today.
+        if state.bounty_hunters_active && state.bounty_due.is_none() {
+            state.bounty_due = Some(
+                tick + crate::uprising::timer_delay(
+                    param(GNPRTB_BOUNTY_MIN, SHIPPED_BOUNTY_MIN),
+                    param(GNPRTB_BOUNTY_SPREAD, SHIPPED_BOUNTY_SPREAD),
+                    &mut rolls,
+                ),
+            );
+        }
+        if let Some(due) = state
+            .bounty_due
+            .filter(|&due| state.bounty_hunters_active && due <= tick)
+        {
             let chance = crate::movement::gnprtb_or_shipped(
                 world,
                 GNPRTB_BOUNTY_CHANCE,
@@ -292,6 +307,17 @@ impl JabbaSystem {
                     });
                 }
             }
+            // FUN_005862a0 (base timer slot +0x20): while the target's
+            // record (BountyHuntersActive) is unchanged, the timer fires and
+            // reschedules itself, +0x40 += FUN_00586130's GNPRTB 6148 +
+            // rand(0..=6149) days. So the hunters return until Han is held.
+            state.bounty_due = Some(
+                due + crate::uprising::timer_delay(
+                    param(GNPRTB_BOUNTY_MIN, SHIPPED_BOUNTY_MIN),
+                    param(GNPRTB_BOUNTY_SPREAD, SHIPPED_BOUNTY_SPREAD),
+                    &mut rolls,
+                ),
+            );
         }
         // FUN_00544130, FUN_005443f0, FUN_005444e0: with Han held, each
         // rescuer located and free (FUN_005439b0: not captured, not
@@ -528,27 +554,63 @@ mod tests {
     }
 
     #[test]
-    fn timer_0x393_sends_the_hunters_once_for_a_free_located_han() {
+    fn timer_0x393_sends_the_hunters_again_each_period_while_they_are_active() {
         // FUN_0054e970 -> FUN_00546fa0: chance GNPRTB 6150 (100), Han
-        // located and not captured.
+        // located and not captured. The base timer slot +0x20
+        // (FUN_005862a0) then reschedules it: +0x40 += GNPRTB 6148 (300) +
+        // rand(0..=6149 (300)) (FUN_00586130), as long as
+        // BountyHuntersActive is unchanged. Original footage: Nuby Plays
+        // "Let's Play Star Wars: Rebellion Part 1" shows a new "Han Solo
+        // Attacked by Bounty Hunters" on day 878 and again on day 1208.
         let (world, han, home, palace) = world();
         let mut state = JabbaState {
             armed: true,
             bounty_hunters_active: true,
             bounty_due: Some(40),
         };
+        let hunt = |tick| JabbaStep::BountyHunt {
+            han,
+            palace,
+            at: home,
+            tick,
+        };
         assert_eq!(day(&mut state, &world, 39, &[0.5]), []);
-        assert_eq!(
-            day(&mut state, &world, 40, &[0.5]),
-            [JabbaStep::BountyHunt {
-                han,
-                palace,
-                at: home,
-                tick: 40,
-            }]
-        );
-        assert_eq!(state.bounty_due, None);
+        // The chance roll, then the next delay: 300 + rand(0..=300).
+        assert_eq!(day(&mut state, &world, 40, &[0.5, 0.0]), [hunt(40)]);
+        assert_eq!(state.bounty_due, Some(340));
         assert_eq!(day(&mut state, &world, 41, &[0.5]), []);
+        assert_eq!(day(&mut state, &world, 339, &[0.5]), []);
+        assert_eq!(day(&mut state, &world, 340, &[0.5, 0.999]), [hunt(340)]);
+        assert_eq!(state.bounty_due, Some(940));
+        // A fire that finds Han captured elsewhere sends no one and still
+        // reschedules the timer.
+        let mut world = world;
+        world.characters[han].is_captive = true;
+        assert_eq!(day(&mut state, &world, 940, &[0.5, 0.0]), []);
+        assert_eq!(state.bounty_due, Some(1240));
+    }
+
+    #[test]
+    fn an_active_flag_without_a_due_day_arms_timer_0x393_again() {
+        // port: saves from before the timer repeated (FUN_005862a0) hold
+        // BountyHuntersActive with no due day; the timer is armed again
+        // for GNPRTB 6148 (300) + rand(0..=6149 (300)) days.
+        let (world, ..) = world();
+        let mut state = JabbaState {
+            armed: true,
+            bounty_hunters_active: true,
+            bounty_due: None,
+        };
+        assert_eq!(day(&mut state, &world, 700, &[0.0]), []);
+        assert_eq!(state.bounty_due, Some(1000));
+        // An inactive flag (Han held once) stays unarmed.
+        let mut state = JabbaState {
+            armed: true,
+            bounty_hunters_active: false,
+            bounty_due: None,
+        };
+        day(&mut state, &world, 700, &[0.0]);
+        assert_eq!(state.bounty_due, None);
     }
 
     #[test]
