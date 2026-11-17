@@ -2257,6 +2257,13 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 // stored pixel is black: A0 assault-clean/04-display and
                 // battle-clean/02 show the page's stars and flare there.
                 | 10_764..=10_765
+                // The Empire's Assault Summary / Battle Results rail 0x2a45,
+                // which FUN_0044c630 blits onto the frame with FUN_005fd0f0
+                // (keyed) at x 0x19f: A0 2026-11-17-edited-saves-5/i-02
+                // shows the frame 10336 under its 965 pixels of the first
+                // pixel's grey (117, 114, 114); at x 0x19c the frame holds
+                // that grey under each of them.
+                | 10_821
                 // The Encyclopedia topic's previous and next arrows, resting
                 // and pressed (FUN_0045ddc0 makes 0x83 from 0x2891/0x2892
                 // and 0x84 from 0x288e/0x288f with FUN_00602150): A0
@@ -3117,6 +3124,15 @@ pub(crate) mod tests {
         for id in [10_381, 10_384, 10_387] {
             assert!(!uses_first_pixel_key(DllSource::Strategy, id), "{id}");
         }
+    }
+
+    #[test]
+    fn the_empires_summary_rail_is_keyed_on_its_first_pixel() {
+        // FUN_0044c630 -> FUN_005fd0f0: A0 2026-11-17-edited-saves-5/i-02
+        // (the Empire's own Assault Summary) shows the frame through 0x2a45's
+        // first-pixel grey; the Alliance's 0x2a44 is not compared there.
+        assert!(uses_first_pixel_key(DllSource::Strategy, 10_821));
+        assert!(!uses_first_pixel_key(DllSource::Strategy, 10_820));
     }
 
     #[test]

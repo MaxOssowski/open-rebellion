@@ -34,9 +34,12 @@ pub const ASSAULT_SUMMARY_HEIGHT: f32 = 331.0;
 
 /// STRATEGY `0x285f` / `0x2860`: the frame, by the viewer's side.
 const FRAME: [u32; 2] = [10335, 10336];
-/// STRATEGY `0x2a44` / `0x2a45`: the rail, drawn at x 412.
+/// STRATEGY `0x2a44` / `0x2a45`: the rail, drawn at x `0x19c` (412) for
+/// the Alliance and `0x19f` (415) for the Empire (`FUN_0044c630`; A0
+/// 2026-11-17-edited-saves-5/i-02 and empire-clean/22, 32 show the
+/// Empire's rail three pixels right of the Battle Results window's).
 const RAIL: [u32; 2] = [10820, 10821];
-const RAIL_X: f32 = 412.0;
+const RAIL_X: [f32; 2] = [412.0, 415.0];
 /// The page art at (12, 13): two columns `0x2a09`, three columns `0x2a0a`
 /// (Personnel), Display `0x2a0b`.
 const PAGE: (f32, f32) = (12.0, 13.0);
@@ -950,7 +953,7 @@ fn draw_window(
                 }
             }
 
-            paint(cache, DllSource::Strategy, RAIL[viewer], RAIL_X, 0.0);
+            paint(cache, DllSource::Strategy, RAIL[viewer], RAIL_X[viewer], 0.0);
             let (normal, pressed, x, y, width, height) = CLOSE[viewer];
             let rect = logical_rect(local, scale, x, y, width, height);
             let response = ui.interact(rect, ui.id().with((window.serial, "close")), egui::Sense::click());
@@ -1392,6 +1395,15 @@ mod tests {
     /// One egui frame per events list, at 640 by 480; the last frame's
     /// texts are kept.
     fn run(state: &mut AssaultSummaryState, frames: Vec<Vec<egui::Event>>) -> Frame {
+        run_as(state, CockpitFaction::Alliance, frames)
+    }
+
+    /// [`run`] with `viewer`'s window.
+    fn run_as(
+        state: &mut AssaultSummaryState,
+        viewer: CockpitFaction,
+        frames: Vec<Vec<egui::Event>>,
+    ) -> Frame {
         let ctx = egui::Context::default();
         crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
@@ -1419,7 +1431,7 @@ mod tests {
                 frame.actions.extend(draw_assault_summaries(
                     ctx,
                     state,
-                    CockpitFaction::Alliance,
+                    viewer,
                     layout(),
                     &mut cache,
                 ));
@@ -1521,6 +1533,20 @@ mod tests {
             .iter()
             .find(|(each, ..)| each == text)
             .map(|(_, pos, color)| (*pos, *color))
+    }
+
+    #[test]
+    fn the_empires_rail_stands_three_pixels_right_of_the_alliances() {
+        // FUN_0044c630: the rail 0x2a44 at (0x19c, 0) for the Alliance,
+        // 0x2a45 at (0x19f, 0) for the Empire (A0 2026-11-17-edited-saves-
+        // 5/i-02, the Empire's own bombardment of Ghorman).
+        let (mut state, _) = opened(1);
+        let frame = run_as(&mut state, CockpitFaction::Alliance, vec![vec![]]);
+        assert_eq!(painted(&frame, 0x2a44), [at(412.0, 0.0)]);
+        let (mut state, _) = opened(1);
+        let frame = run_as(&mut state, CockpitFaction::Empire, vec![vec![]]);
+        assert_eq!(painted(&frame, 0x2a45), [at(415.0, 0.0)]);
+        assert!(painted(&frame, 0x2a44).is_empty());
     }
 
     #[test]
