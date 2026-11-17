@@ -2488,9 +2488,12 @@ impl TacticalAssetRenderer {
     /// (`SetColorRGB(0, 1, 0)`) box 0.01 wide from the decal centre, scaled
     /// along its look-at axis to `progress` times the distance to the
     /// target, and a green cone (8 faces round an apex) scaled
-    /// `(0.06e, 0.06e, 0.15e)` and moved 10 back along the axis. port: the
-    /// sub-pixel box is drawn as one device-pixel line, as for projectiles,
-    /// and the cone is unlit.
+    /// `(0.06e, 0.06e, 0.15e)` and moved 10 back along the axis. Both
+    /// meshes take `SetQuality(0x40)`, `D3DRMRENDER_WIREFRAME` (flat,
+    /// unlit, edges only), so the cone is drawn as its face edges, clipped
+    /// at the decal's depth (see `death_star_beam_cone_segments`). port: the
+    /// sub-pixel box and each cone edge are drawn as one device-pixel line,
+    /// as for projectiles.
     pub(crate) fn draw_death_star_beam(
         &mut self,
         aperture: (f32, f32, f32, f32),
@@ -2526,12 +2529,18 @@ impl TacticalAssetRenderer {
             ..Default::default()
         };
         let camera_matrix = camera.matrix();
-        set_camera(&camera);
-        draw_mesh(&death_star_beam_cone_mesh(origin, axis, extent));
-        set_default_camera();
+        let device_pixel = (aperture.2 / 444.0).max(1.0);
+        let view_forward = (pose.target - pose.position).normalize_or_zero();
+        for (from, to) in death_star_beam_cone_segments(origin, axis, extent, view_forward) {
+            if let (Some(from), Some(to)) = (
+                project_world_position(camera_matrix, from, aperture),
+                project_world_position(camera_matrix, to, aperture),
+            ) {
+                draw_line(from.x, from.y, to.x, to.y, device_pixel, DEATH_STAR_BEAM_COLOR);
+            }
+        }
         let start = project_world_position(camera_matrix, origin, aperture)?;
         let tip = project_world_position(camera_matrix, tip_position, aperture)?;
-        let device_pixel = (aperture.2 / 444.0).max(1.0);
         draw_line(start.x, start.y, tip.x, tip.y, device_pixel, DEATH_STAR_BEAM_COLOR);
         Some((start, tip))
     }
@@ -3256,6 +3265,53 @@ fn death_star_beam_cone_mesh(origin: Vec3, axis: Vec3, extent: f32) -> Mesh {
         indices,
         texture: None,
     }
+}
+
+/// The cone's wireframe as world segments: `FUN_005da150` gives it
+/// `SetQuality(0x40)` (IDirect3DRMMeshBuilder slot `+0x78`,
+/// `D3DRMRENDER_WIREFRAME`), so each of its eight faces draws its three
+/// edges: the eight apex-to-ring edges and the eight ring edges, each once.
+/// The Death Star decal is drawn at its frame's depth, and the cone's ring
+/// sits 10 behind that frame, so the z-buffer hides every point farther
+/// along `view_forward` than the decal's centre `origin`; each edge is
+/// clipped there. hyp: the decal's depth test is inferred from Sistros's
+/// "Testing Death Stars" capture (r0Pc2XALoqA, 27.8 s), where the original
+/// executable shows the eight spokes and no ring.
+fn death_star_beam_cone_segments(
+    origin: Vec3,
+    axis: Vec3,
+    extent: f32,
+    view_forward: Vec3,
+) -> Vec<(Vec3, Vec3)> {
+    let mesh = death_star_beam_cone_mesh(origin, axis, extent);
+    let mut edges: Vec<(u16, u16)> = Vec::new();
+    for face in mesh.indices.chunks_exact(3) {
+        for (a, b) in [(face[0], face[1]), (face[1], face[2]), (face[2], face[0])] {
+            let edge = (a.min(b), a.max(b));
+            if !edges.contains(&edge) {
+                edges.push(edge);
+            }
+        }
+    }
+    let depth = |point: Vec3| (point - origin).dot(view_forward);
+    edges
+        .into_iter()
+        .filter_map(|(a, b)| {
+            let (from, to) = (
+                mesh.vertices[a as usize].position,
+                mesh.vertices[b as usize].position,
+            );
+            let (from_depth, to_depth) = (depth(from), depth(to));
+            match (from_depth <= 0.0, to_depth <= 0.0) {
+                (true, true) => Some((from, to)),
+                (false, false) => None,
+                (from_visible, _) => {
+                    let cut = from + (to - from) * (from_depth / (from_depth - to_depth));
+                    Some(if from_visible { (from, cut) } else { (cut, to) })
+                }
+            }
+        })
+        .collect()
 }
 
 /// `FUN_6d81f86b`'s up vector for a unit axis `d` (the reference frame is
@@ -4881,6 +4937,40 @@ mod tests {
         let level = death_star_beam_cone_mesh(Vec3::ZERO, Vec3::Z, 100.0);
         let offset = (level.vertices[2].position + Vec3::Z * 10.0) / 6.0;
         assert!((offset - Vec3::Y).length() < 1e-4, "{offset:?}");
+    }
+
+    // Source: FUN_005da150 SetQuality(0x40) (meshbuilder slot +0x78,
+    // D3DRMRENDER_WIREFRAME) on the cone; the ring 10 behind the decal is
+    // hidden by its depth, as Sistros's r0Pc2XALoqA capture shows (8 spokes).
+    #[test]
+    fn the_superlaser_cone_draws_its_spokes_as_lines_and_hides_its_ring_behind_the_decal() {
+        let origin = vec3(1.0, 2.0, 3.0);
+        // The beam points at the camera: the view looks down -Z.
+        let axis = vec3(0.0, 0.0, 1.0);
+        let view_forward = vec3(0.0, 0.0, -1.0);
+        let segments = death_star_beam_cone_segments(origin, axis, 100.0, view_forward);
+        // Eight spokes; the eight ring edges lie wholly behind the decal.
+        assert_eq!(segments.len(), 8);
+        let apex = origin + axis * 5.0;
+        for (from, to) in &segments {
+            let (near, far) = if from.z > to.z { (from, to) } else { (to, from) };
+            assert!((*near - apex).length() < 1e-4, "{near:?}");
+            // Each spoke is cut at the decal's depth (z 3), a third of the
+            // way from the apex (z 8) to the ring (z -7): radius 6 * 5 / 15.
+            assert!((far.z - origin.z).abs() < 1e-4, "{far:?}");
+            let radial = vec2(far.x - origin.x, far.y - origin.y).length();
+            assert!((radial - 2.0).abs() < 1e-3, "{far:?}");
+        }
+        // Seen from behind the Death Star, nothing of the cone is in front
+        // except the ring and the spokes' far ends: all 16 edges show, cut.
+        let behind = death_star_beam_cone_segments(origin, axis, 100.0, -view_forward);
+        assert_eq!(behind.len(), 16);
+        let ring_edges = behind
+            .iter()
+            .filter(|(from, to)| (from.z - (origin.z - 10.0)).abs() < 1e-4
+                && (to.z - (origin.z - 10.0)).abs() < 1e-4)
+            .count();
+        assert_eq!(ring_edges, 8);
     }
 
     // Source: FUN_005ab650 tactical layout and lane derivation.
