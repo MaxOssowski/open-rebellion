@@ -2544,9 +2544,9 @@ async fn main() {
             }
         }
 
-        // The advisor runs while the galaxy view shows (FUN_0041cea0 checks
-        // DAT_006b14e4) on the scheduler's sub-tick ([`advisor_now`]).
-        if game_mode == GameMode::Galaxy {
+        // The advisor runs on the scheduler's sub-tick ([`advisor_now`])
+        // while the galaxy view or a story movie shows ([`advisor_runs`]).
+        if advisor_runs(&game_mode) {
             if let Some(schedule) = advisor_schedule.as_mut() {
                 let today = advisor_now(&clock);
                 schedule.set_translate(player_agent.translate());
@@ -16320,6 +16320,26 @@ fn battle_summary_mode(mode: &GameMode, summary_open: bool) -> GameMode {
 /// `FUN_0041e390` skips the sub-tick and `FUN_0051dea0` raises neither the
 /// sub-ticks `+0xc` nor the day `+0x10`. The advisor's victory speech
 /// (`FUN_004c0f10` / `FUN_004c3010`) then plays over a held galaxy.
+/// Whether the advisor's update runs this frame. `FUN_0041cea0` gates it on
+/// `DAT_006b14e4`, the 0x34-byte advisor object `FUN_00435a50` /
+/// `FUN_00435ad0` build for the game, not on the galaxy view; a story movie
+/// plays on Smacker's own thread (`FUN_005f7020`) while the app loop keeps
+/// calling the frame scheduler (`FUN_00413560` -> `FUN_00401bd0`), so the
+/// advisor's clips and speech go on under it. An ending requested then
+/// (`0x482(0, state)`) waits in `FUN_00422ce0` while the movie holds the
+/// capture (`FUN_00601340`) and starts at its end. A0 2026-11-17
+/// edited-saves-5 h-07..h-09 (END-01-C001): one strategy frame, C-3PO
+/// silent, between MDATA.103's last frame and MDATA.105.
+fn advisor_runs(mode: &GameMode) -> bool {
+    matches!(
+        mode,
+        GameMode::Galaxy
+            | GameMode::Cutscene {
+                kind: CutsceneKind::Story(_)
+            }
+    )
+}
+
 fn galaxy_clock_runs(mode: &GameMode, summary_open: bool, conditions_word: u32) -> bool {
     *mode == GameMode::Galaxy
         && !summary_open
@@ -16437,6 +16457,26 @@ mod tactical_ground_tests {
             false,
             WORD_HQ_LOST | WORD_EMPIRE_WINS | WORD_GAME_OVER
         ));
+    }
+
+    #[test]
+    fn the_advisor_keeps_speaking_while_a_story_movie_plays() {
+        // FUN_0041cea0 gates the advisor on its object DAT_006b14e4
+        // (FUN_00435a50), not on the galaxy view; the story movie runs on
+        // Smacker's thread (FUN_005f7020) while FUN_00413560 keeps ticking.
+        // A0 2026-11-17 edited-saves-5 h-07..h-09: MDATA.105 follows
+        // MDATA.103's last frame after one strategy frame, C-3PO silent.
+        assert!(advisor_runs(&GameMode::Galaxy));
+        assert!(advisor_runs(&GameMode::Cutscene {
+            kind: CutsceneKind::Story(103)
+        }));
+        // The end's movie tears the game down (FUN_00414830). port: the
+        // tactical view and the menus keep the advisor still, as before.
+        assert!(!advisor_runs(&GameMode::Cutscene {
+            kind: CutsceneKind::Ending(105)
+        }));
+        assert!(!advisor_runs(&GameMode::TacticalCombat));
+        assert!(!advisor_runs(&GameMode::MainMenu));
     }
 
     #[test]

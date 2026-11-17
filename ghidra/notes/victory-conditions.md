@@ -180,3 +180,54 @@ word has `0x10000000`. hyp: A0's one extra day (45 to 46) is the day
 step that ran before the scheduler's galaxy got the word (the views sync
 it through `FUN_005322c0`); the port's word is set in the day step itself,
 so it shows none. Not measured.
+
+## The Alliance's win in A0 and the advisor under the caption film (2026-11-17, END-01-C001)
+
+A0 2026-11-17-edited-saves-5 run 2 (edited save, Alliance "Headquarters
+Victory", Coruscant taken on day 94, no input after the summary's Close):
+caption film MDATA.103 from 02:30:21.5, ONE strategy frame (h-08, day 94,
+C-3PO standing, no balloon), MDATA.105 from 02:37:24.6, crawl, black, main
+menu at 02:39:52. The README's "last frame held ~7 minutes" is not a hold:
+
+- Every A0 frame matched against `103.webm` (5 fps, 160x81 grey, mean
+  difference 0.5..1.9 per frame): the film plays at speed for its first
+  ~12 s (s0050 = 5.6 s in at 5.7 s), then at ~0.116x (1.6 s of film per
+  13.8 s, steady) and reaches its last picture (63.2 s) at 02:37:20; its
+  black end frames with the caption run to s1864 (427.677 s), then black
+  (s1865), the strategy frame (s1866, 428.115 s), black, and 105's first
+  picture (s1868, 428.550 s): ~660 ms from 103's window to 105. Run 1
+  (seq-caption-film) is as slow (1.3 s of film per 11.2 s).
+- 105 ran at speed (s1950 is 17.8 s into the film 17.85 s after its first
+  picture); so did the Empire's caption film 102 on 2026-11-16
+  (seq-empire-victory: 55.6 s in at 63.9 s, from 8.3 s). The slow 103 is
+  the VM's run, not a rule; the port plays 103 in its 65 s.
+- hyp (not measured): the slowdown is contention in the VM. Smacker's
+  thread (`FUN_005f7020` -> `FUN_005f73f0`) spins on `FUN_005f7240`
+  (`SmackWait` with no Sleep, then `GetDC` / `SmackBufferBlit` per frame);
+  the app loop (`FUN_00413560`) spins on `PeekMessageA`; once the ending is
+  requested, `FUN_00422ce0`'s `0x482` case spins too while the movie holds
+  the capture (`FUN_00601340` sends `0x40d` each pass, then `DAT_006b14cc`
+  vt+0x2c and `FUN_00401bd0`). Its start ~12 s into the film fits the
+  advisor's speech ending then. Or `SmackWait` follows the film's sound,
+  and the guest's sound (pw-record flat, README) stalled. No click is
+  needed: run 2 had none.
+
+What A0 does settle: the ending's state was set before 103 ended, so the
+advisor's speech and its kind-3 clip ran under the caption film.
+
+- `FUN_0041cea0` gates the advisor's update on `DAT_006b14e4`
+  (`FUN_00435a40`), the 0x34-byte advisor object `FUN_00435a50` /
+  `FUN_00435ad0` build (freed by `FUN_00435b60`), not on the galaxy view.
+- A story movie plays on Smacker's thread while the app loop keeps
+  calling the frame scheduler (`movie-flow.md`, "Clock, galaxy window,
+  return"), so the agent's update and the droid's clips go on.
+- The kind-3 action reaches `FUN_00425c90` (`+0xa8`); `FUN_0042db70` posts
+  `0x482(0, state)`; the `0x482` case waits while the story movie holds the
+  capture (`FUN_00601340`; the story case took it with `FUN_00601080`
+  before `FUN_004019a0`), then `FUN_00401040(state)` starts the end at once.
+  Hence one strategy frame between the films.
+
+Ported 2026-11-17: main.rs `advisor_runs` (the galaxy view or a story
+movie), so the fixture's speech ends under 103 and 105 follows its end.
+port: the clock stays held during a story movie (movie-flow.md hyp), and the
+speech's voice plays over the film's sound; A0 has no sound to compare.
