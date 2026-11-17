@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 141;
+const SCENARIO_COUNT: u8 = 142;
 
 
 extern "C" {
@@ -584,6 +584,17 @@ pub enum Scenario {
     /// (TEXTSTRA `0x7090` / `0x7091`, `FUN_00496770`), the System Forces'
     /// regiments "None" and "No Casualties".
     GhormanAssault = 140,
+    /// OBJ-03-C011, as A0 2026-11-17-edited-saves-6 shows it. For the
+    /// Alliance, d-01 (day 368, an Alliance game): the side's eight
+    /// characters, "Chewbacca - Yavin", "Han Solo - Sluis Van ( Captured
+    /// )", "Huoba Neva - Corsin", "Jan Dodonna - Yavin", "Leia Organa -
+    /// Yavin", "Luke Skywalker - Dagobah" (in the Dagobah abode
+    /// `0x98000441`), "Mon Mothma - Chazwa", "Wedge Antilles - Yavin". For
+    /// the Empire, b-01 (day 411): Luke in the abode and the Empire's
+    /// copies of the eight Alliance characters b-01 lists, Luke's in no
+    /// place ("Luke Skywalker - Location Unknown"). Every other character
+    /// of the Alliance is not recruited.
+    PersonnelAbode = 141,
 }
 
 impl Scenario {
@@ -730,6 +741,7 @@ impl Scenario {
             138 => Self::GravityWellBattle,
             139 => Self::GhormanBombardment,
             140 => Self::GhormanAssault,
+            141 => Self::PersonnelAbode,
             _ => return None,
         })
     }
@@ -800,6 +812,7 @@ impl Scenario {
             || self == Self::UprisingTargeting
             || self == Self::BatteryStatus
             || self == Self::PersonnelStates
+            || self == Self::PersonnelAbode
             || self.targets_an_object()
             || self.opens_build_selection()
             || self == Self::Quadrants
@@ -1781,6 +1794,9 @@ pub fn apply(
     if request.scenario == Scenario::PersonnelCopied {
         place_copied_characters(request, world, movement, missions, troop_transport, primary);
     }
+    if request.scenario == Scenario::PersonnelAbode {
+        place_abode_roster(request, world);
+    }
     if request.scenario == Scenario::BatteryStatus {
         let class_dat_id = rebellion_core::ids::DatId::new(0x2200_0001);
         let battery = world.defense_facilities.insert(rebellion_core::world::DefenseFacilityInstance {
@@ -2225,6 +2241,132 @@ fn place_stale_second(
         });
     }
     world.object_views.see_everything = request.scenario == Scenario::QuadrantsStaleSeeEverything;
+}
+
+/// The `PersonnelAbode` scenario (A0 2026-11-17-edited-saves-6 d-01 and
+/// b-01): only the named Alliance characters are recruited, each free in
+/// no fleet; Luke rests in the Dagobah abode (ABODESD `0x98000441`), Han
+/// is held at Sluis Van for the Alliance. For the Empire, Han and Garm (a
+/// General) stand at Fwillsving, the others nowhere, and the Empire's
+/// copies name the places b-01 reads, Luke's in no place (`FUN_00465bb0`,
+/// `0x1895`). port: the live places back the copies, as the view sync
+/// (`object_views::record_characters`) leaves in no place a copy whose
+/// system it sees without the character.
+fn place_abode_roster(request: FixtureRequest, world: &mut GameWorld) {
+    use rebellion_core::object_views::CharacterCopy;
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, value)| (key, value.dat_id))
+    };
+    let dagobah = world
+        .abodes
+        .iter()
+        // ABODESD's entry id 0x441, the game's 0x98000441.
+        .find(|(_, abode)| abode.dat_id == rebellion_core::ids::DatId::new(0x441))
+        .map(|(key, _)| key);
+    // (name, system, held) live for the Alliance (d-01); the Empire's copy
+    // of each (system, command) for b-01.
+    let roster: &[(&str, &str, bool)] = &[
+        ("Chewbacca", "Yavin", false),
+        ("Han Solo", "Sluis Van", true),
+        ("Huoba Neva", "Corsin", false),
+        ("Jan Dodonna", "Yavin", false),
+        ("Leia Organa", "Yavin", false),
+        ("Luke Skywalker", "", false),
+        ("Mon Mothma", "Chazwa", false),
+        ("Wedge Antilles", "Yavin", false),
+    ];
+    let copies: &[(&str, &str, bool)] = &[
+        ("Chewbacca", "", false),
+        ("Garm Bel Iblis", "Fwillsving", true),
+        ("Han Solo", "Fwillsving", false),
+        ("Jan Dodonna", "", false),
+        ("Leia Organa", "", false),
+        ("Luke Skywalker", "", false),
+        ("Syub Snunb", "", false),
+        ("Wedge Antilles", "", false),
+    ];
+    let listed: Vec<&str> = if alliance {
+        roster.iter().map(|(name, _, _)| *name).collect()
+    } else {
+        copies.iter().map(|(name, _, _)| *name).collect()
+    };
+    let keys: Vec<_> = world.characters.keys().collect();
+    for key in keys {
+        let character = &world.characters[key];
+        let name = character.name.clone();
+        let named = listed.contains(&name.as_str());
+        // The scenarios' agent, the first character, took the player's
+        // side above; a named one is the Alliance's again.
+        if !character.is_alliance && !named {
+            continue;
+        }
+        let place = roster
+            .iter()
+            .find(|(listed, _, _)| *listed == name)
+            .and_then(|(_, at, held)| system(world, at).map(|(key, _)| (key, *held)));
+        let character = &mut world.characters[key];
+        character.is_alliance = true;
+        character.is_empire = false;
+        character.recruited = named;
+        character.current_fleet = None;
+        character.ship = None;
+        character.on_mission = false;
+        character.injury = 0;
+        character.command = rebellion_core::character_command::CommandKind::None;
+        character.is_captive = false;
+        character.current_abode = None;
+        character.current_system = None;
+        if name == "Luke Skywalker" {
+            character.current_abode = dagobah;
+        } else if alliance {
+            if let Some((at, held)) = place {
+                character.current_system = Some(at);
+                character.is_captive = held;
+            }
+        } else if let Some((at, general)) = copies
+            .iter()
+            .find(|(listed, _, _)| *listed == name)
+            .and_then(|(_, at, general)| system(world, at).map(|(key, _)| (key, *general)))
+        {
+            let character = &mut world.characters[key];
+            character.current_system = Some(at);
+            if general {
+                character.command = rebellion_core::character_command::CommandKind::General;
+            }
+        }
+        for fleet in world.fleets.values_mut() {
+            fleet.characters.retain(|&seated| seated != key);
+        }
+    }
+    if alliance {
+        return;
+    }
+    for (name, at, general) in copies {
+        let Some(id) = world
+            .characters
+            .values()
+            .find(|character| character.name == *name)
+            .map(|character| character.dat_id)
+        else {
+            continue;
+        };
+        let copy = CharacterCopy {
+            system: system(world, at).map(|(_, id)| id),
+            ship: None,
+        };
+        world.object_views.empire_characters.insert(id, copy);
+        if *general {
+            world
+                .object_views
+                .empire_character_commands
+                .insert(id, rebellion_core::character_command::CommandKind::General);
+        }
+    }
 }
 
 /// The `PersonnelCopied` scenario: a system other than `primary` with no
@@ -4288,7 +4430,10 @@ pub fn emit_personnel_finder(
     fog: &FogState,
     finder: &rebellion_render::personnel_finder::PersonnelFinderState,
 ) {
-    if request.scenario == Scenario::SpecForcesYavin {
+    if matches!(
+        request.scenario,
+        Scenario::SpecForcesYavin | Scenario::PersonnelAbode
+    ) {
         emit_finder_list(request, world, fog, finder);
         return;
     }
@@ -6295,6 +6440,7 @@ fn object_menu_report<'a>(
                 | Scenario::SpecialForceAboard
                 | Scenario::BatteryStatus
                 | Scenario::PersonnelStates
+                | Scenario::PersonnelAbode
                 | Scenario::BuildSelectionDefensesDestination
                 | Scenario::BuildSelectionFleetDestination
         ) =>
@@ -15726,6 +15872,145 @@ mod tests {
         assert!(texts.iter().any(|text| text == "Six - Killed"), "{texts:?}");
     }
 
+    /// A galaxy holding d-01's and b-01's characters, systems and the
+    /// Dagobah abode, plus one more Alliance character the scenario does
+    /// not recruit.
+    fn seed_abode_roster(world: &mut GameWorld) {
+        world.characters.clear();
+        let first = world.systems.keys().next().unwrap();
+        while world.systems.len() < 5 {
+            let mut copy = world.systems[first].clone();
+            copy.dat_id = rebellion_core::ids::DatId::new(0x9000_0400 + world.systems.len() as u32);
+            copy.fleets.clear();
+            world.systems.insert(copy);
+        }
+        let systems: Vec<_> = world.systems.keys().collect();
+        let names = ["Yavin", "Sluis Van", "Corsin", "Chazwa", "Fwillsving"];
+        for (key, name) in systems.iter().zip(names) {
+            world.systems[*key].name = name.into();
+        }
+        for (index, name) in [
+            "Chewbacca",
+            "Han Solo",
+            "Huoba Neva",
+            "Jan Dodonna",
+            "Leia Organa",
+            "Luke Skywalker",
+            "Mon Mothma",
+            "Wedge Antilles",
+            "Garm Bel Iblis",
+            "Syub Snunb",
+            "Talon Karrde",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: rebellion_core::ids::DatId::new(0x3000_0200 + index as u32),
+                name: name.into(),
+                is_alliance: true,
+                recruited: true,
+                current_system: Some(systems[0]),
+                ..Default::default()
+            });
+        }
+        world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: rebellion_core::ids::DatId::new(0x441),
+            name: "Dagobah".into(),
+            side: Faction::Neutral,
+            special_forces: Vec::new(),
+        });
+        // Luke rides a fleet beside an Imperial captive; the fleet drops
+        // Luke for the abode and keeps the other.
+        let vader = world.characters.insert(rebellion_core::world::Character {
+            dat_id: rebellion_core::ids::DatId::new(0x3800_0001),
+            name: "Darth Vader".into(),
+            is_empire: true,
+            recruited: true,
+            ..Default::default()
+        });
+        let luke = world
+            .characters
+            .iter()
+            .find(|(_, character)| character.name == "Luke Skywalker")
+            .map(|(key, _)| key)
+            .unwrap();
+        let fleet = world.fleets.keys().next().expect("a fleet");
+        world.fleets[fleet].characters.extend([vader, luke]);
+        world.characters[luke].current_fleet = Some(fleet);
+    }
+
+    // A0 2026-11-17-edited-saves-6 d-01 (a50b31353dcd): the Alliance's own
+    // rows, Luke in the Dagobah abode (0x98000441) named alone
+    // (FUN_00465bb0, container family 0x98..0x9f) and Han held at Sluis Van
+    // (0x8746); b-01 (c8e08a5d4c6d): the Empire's copies, Luke's in no place
+    // (0x1895 alone), Garm's a General at Fwillsving.
+    #[test]
+    fn the_personnel_abode_scenario_lists_the_a0_rows_for_each_side() {
+        let alliance = apply_to_loading_world_with(
+            request(Scenario::PersonnelAbode, CockpitFaction::Alliance),
+            seed_abode_roster,
+        );
+        let fog = rebellion_core::fog::FogState::new(Faction::Alliance);
+        let mut finder = rebellion_render::personnel_finder::PersonnelFinderState::default();
+        finder.open(CockpitFaction::Alliance);
+        assert_eq!(
+            finder.shown_character_rows(&alliance.world, &fog).unwrap(),
+            [
+                "Chewbacca - Yavin",
+                "Han Solo - Sluis Van ( Captured ) ",
+                "Huoba Neva - Corsin",
+                "Jan Dodonna - Yavin",
+                "Leia Organa - Yavin",
+                "Luke Skywalker - Dagobah",
+                "Mon Mothma - Chazwa",
+                "Wedge Antilles - Yavin",
+            ]
+        );
+        let seated: Vec<_> = alliance
+            .world
+            .fleets
+            .values()
+            .flat_map(|fleet| fleet.characters.iter())
+            .map(|&key| alliance.world.characters[key].name.as_str())
+            .collect();
+        assert_eq!(seated, ["Darth Vader"]);
+
+        let empire = apply_to_loading_world_with(
+            request(Scenario::PersonnelAbode, CockpitFaction::Empire),
+            seed_abode_roster,
+        );
+        let fog = rebellion_core::fog::FogState::new(Faction::Empire);
+        let rows = rebellion_render::personnel_finder::character_rows(
+            &empire.world,
+            &fog,
+            Faction::Empire,
+            rebellion_render::personnel_finder::PersonnelTab::Alliance,
+        );
+        let texts: Vec<_> = rows
+            .iter()
+            .map(|row| match row {
+                rebellion_render::personnel_finder::PersonnelFinderRow::Character {
+                    name, ..
+                } => name.as_str(),
+                rebellion_render::personnel_finder::PersonnelFinderRow::SpecForces { .. } => "",
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "Chewbacca - Location Unknown",
+                "Garm Bel Iblis - Fwillsving ( General ) ",
+                "Han Solo - Fwillsving",
+                "Jan Dodonna - Location Unknown",
+                "Leia Organa - Location Unknown",
+                "Luke Skywalker - Location Unknown",
+                "Syub Snunb - Location Unknown",
+                "Wedge Antilles - Location Unknown",
+            ]
+        );
+    }
+
     #[test]
     fn the_targeting_fleet_move_and_fleet_window_scenarios_report_the_object_menu() {
         let reporting: Vec<_> = (0..SCENARIO_COUNT)
@@ -15800,6 +16085,7 @@ mod tests {
                 Scenario::SpecialForceAboard,
                 Scenario::ShipRepaired,
                 Scenario::GravityWellBattle,
+                Scenario::PersonnelAbode,
             ]
         );
     }
