@@ -720,6 +720,194 @@ pub const fn is_facility(kind: BuildableKind) -> bool {
     )
 }
 
+/// What a holder change did to the facility products of a system
+/// ([`autoroute_facilities`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Autorouted {
+    /// Products put in another system of their side, with that system.
+    pub moved: Vec<(u64, SystemKey)>,
+    /// Products en route that found no place: destroyed, with no message.
+    pub removed: Vec<u64>,
+}
+
+/// The facility side a product of `kind` is built for ([`FacilityBuild`]).
+const fn facility_side(kind: BuildableKind) -> Option<bool> {
+    match kind {
+        BuildableKind::DefenseFacility(build)
+        | BuildableKind::ManufacturingFacility(build)
+        | BuildableKind::ProductionFacility(build) => Some(build.is_alliance),
+        _ => None,
+    }
+}
+
+/// The facilities `site` holds or will hold, as (taken, mines taken):
+/// built ones and facility products, unfinished or on their way
+/// (`System_vt78`, `FUN_00507750`, walks mode 3: `FUN_00539d70` and
+/// `FUN_0052d610`).
+fn facility_slots_taken(world: &GameWorld, site: SystemKey) -> (u32, u32) {
+    let Some(system) = world.systems.get(site) else {
+        return (0, 0);
+    };
+    let built = system
+        .defense_facilities
+        .iter()
+        .filter(|key| world.defense_facilities.contains_key(**key))
+        .map(|_| false)
+        .chain(
+            system
+                .manufacturing_facilities
+                .iter()
+                .filter(|key| world.manufacturing_facilities.contains_key(**key))
+                .map(|_| false),
+        )
+        .chain(
+            system
+                .production_facilities
+                .iter()
+                .filter_map(|key| world.production_facilities.get(*key))
+                .map(|facility| facility.is_mine),
+        );
+    let products = world
+        .products
+        .in_system(site)
+        .filter(|product| is_facility(product.kind))
+        .map(|product| is_mine(product.kind));
+    built.chain(products).fold((0, 0), |(all, mines), mine| {
+        (all + 1, mines + u32::from(mine))
+    })
+}
+
+/// Whether `kind` is a mine (PROFACSD family `0x2c`), which also takes a
+/// raw-material slot (`FUN_0054f5b0` row `0x2c..0x2d`).
+fn is_mine(kind: BuildableKind) -> bool {
+    matches!(kind, BuildableKind::ProductionFacility(build) if build.class.family() == 0x2c)
+}
+
+/// The autoroute search (`FUN_005545e0`) for a facility of the side
+/// `is_alliance` from `origin`: the nearest system that takes it.
+///
+/// Every candidate passes the move validator (`FUN_005571c0`), where the
+/// system's `vt74` (`System_vt74`, `FUN_005073d0`) refuses a system of
+/// another side (`FUN_00553410`, `{1, 0x24}`) or a blockaded one
+/// (`{0x90, 4}`); it clears those refusals only for a fleet (`0x08..0x10`)
+/// or a character (order `0x240`), never for a facility (`0x20..0x30`).
+/// Its `vt78` (`System_vt78`, `FUN_00507750`) gives the room: energy
+/// (`+0x5c`) less the facilities there, and for a mine raw materials
+/// (`+0x64`) less the mines there. So the neutral (`FUN_005551e0`) and
+/// enemy (`FUN_005552e0`) steps never place a facility, nor does the step
+/// of own fleets (`FUN_00554f80`; a fleet takes no facility). What is left
+/// is the nearest unblockaded system of its side with room
+/// (`FUN_00554e80`), nearest by the `FUN_0055d860` distance.
+fn facility_place(
+    world: &GameWorld,
+    is_alliance: bool,
+    origin: (i64, i64),
+    kind: BuildableKind,
+) -> Option<SystemKey> {
+    use crate::world::ControlKind;
+    let side = crate::dat::Faction::of_alliance(is_alliance);
+    let mut nearest: Vec<(i64, SystemKey)> = world
+        .systems
+        .iter()
+        .filter(|(_, s)| !s.is_destroyed)
+        .filter(|(_, s)| {
+            matches!(s.control, ControlKind::Controlled(f) | ControlKind::Uprising(f) if f == side)
+        })
+        .filter(|(_, s)| !crate::blockade::BlockadeSystem::system_is_blockaded(world, s))
+        .map(|(key, s)| {
+            let (dx, dy) = (i64::from(s.x) - origin.0, i64::from(s.y) - origin.1);
+            (crate::movement::original_isqrt(dx * dx + dy * dy), key)
+        })
+        .collect();
+    nearest.sort_by_key(|(distance, _)| *distance);
+    nearest.into_iter().map(|(_, key)| key).find(|&key| {
+        let system = &world.systems[key];
+        let (taken, mines) = facility_slots_taken(world, key);
+        u32::from(system.total_energy) > taken
+            && (!is_mine(kind) || u32::from(system.raw_materials) > mines)
+    })
+}
+
+/// A change of `system`'s holder to `holder` for the facility products in
+/// it (`FUN_004fae40` walks the system in mode 3 and calls slot `+0xb0`,
+/// `FUN_004f8680`, on each object). A facility that is not Completed, or
+/// is EnrouteActive, is not handed over: `FUN_004f8680` sets Autorouting
+/// (`FUN_004f78e0(1)`), and the `0x307` handler
+/// (`Event307_GameObjAutoroutingChanged_Handle`, `FUN_00515480`) runs the
+/// autoroute search (`FUN_005545e0`, [`facility_place`]):
+/// - found: `FUN_00556390` moves it there. An unfinished one is not
+///   Deployed (slot `+0x38`), so it changes container at once and its
+///   completion starts the trip from its yard. One en route keeps
+///   travelling (EnrouteActive stays set); its pending arrival `0x387`
+///   still fires at the old day, and `FUN_00556620` then starts the leg on
+///   to its new container. port: the new arrival day is the old one plus
+///   the transit from `system` to the new place.
+/// - not found: slot `+0xac(2)` (`FUN_004f8660`), destroyed with reason 2.
+///   No Facility Lost: `FUN_004fc080` raises `0x303` only for an object
+///   EnrouteActive whose destination-change count (`+0x42`, raised by a
+///   container change while en route, `GameObj_vtf4`, `FUN_004faf50`;
+///   cleared on arrival, `FUN_004fb760`) is not 0, and this is the
+///   facility's first trip.
+///
+/// A product of the holder's side stays (the search's first step,
+/// `FUN_00554740`, accepts its own container). port: an unfinished
+/// facility with no place stays where it is; the original destroys it
+/// too, which its manager's queue would have to follow.
+pub fn autoroute_facilities(
+    world: &mut GameWorld,
+    system: SystemKey,
+    holder: crate::dat::Faction,
+) -> Autorouted {
+    let mut out = Autorouted::default();
+    let Some(origin) = world
+        .systems
+        .get(system)
+        .map(|s| (i64::from(s.x), i64::from(s.y)))
+    else {
+        return out;
+    };
+    let ids: Vec<u64> = world
+        .products
+        .in_system(system)
+        .filter(|product| {
+            facility_side(product.kind)
+                .is_some_and(|is_alliance| crate::dat::Faction::of_alliance(is_alliance) != holder)
+        })
+        .map(|product| product.id)
+        .collect();
+    for id in ids {
+        let Some(product) = world.products.get(id).cloned() else {
+            continue;
+        };
+        let Some(is_alliance) = facility_side(product.kind) else {
+            continue;
+        };
+        let arrival = world.products.arrival(id);
+        match facility_place(world, is_alliance, origin, product.kind) {
+            Some(place) => {
+                if let Some(day) = arrival {
+                    let days = crate::delivery::transit_days(world, product.kind, system, place);
+                    for trip in &mut world.products.trips {
+                        if trip.0 == id {
+                            trip.1 = day + u64::from(days);
+                        }
+                    }
+                }
+                if let Some(value) = world.products.items.iter_mut().find(|p| p.id == id) {
+                    value.container = Container::System(place);
+                }
+                out.moved.push((id, place));
+            }
+            None if arrival.is_some() => {
+                world.products.take(id);
+                out.removed.push(id);
+            }
+            None => {}
+        }
+    }
+    out
+}
+
 /// The queued unit product `id` stands for: its yard, area and index.
 fn queue_index(
     world: &GameWorld,

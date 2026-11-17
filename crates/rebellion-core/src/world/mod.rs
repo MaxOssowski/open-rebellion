@@ -2038,7 +2038,8 @@ impl GameWorld {
     /// when its class serves that side (`FUN_004f27d0`), and is removed
     /// otherwise; so a system leaving the Alliance loses its
     /// headquarters. Returns the facilities removed. A class missing from the
-    /// catalog keeps its facility (port).
+    /// catalog keeps its facility (port). Facility products there, unfinished
+    /// or en route, autoroute ([`crate::products::autoroute_facilities`]).
     pub fn hand_over_facilities(&mut self, system: SystemKey) -> Vec<FacilityRef> {
         let Some(holder) = self
             .systems
@@ -2074,6 +2075,9 @@ impl GameWorld {
                 removed.push(facility);
             }
         }
+        // FUN_004f8680: an unfinished facility, or one en route, autoroutes
+        // instead (crate::products::autoroute_facilities).
+        crate::products::autoroute_facilities(self, system, holder);
         removed
     }
 
