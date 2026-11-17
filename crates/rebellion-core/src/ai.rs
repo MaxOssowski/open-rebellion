@@ -352,14 +352,17 @@ pub enum MissionEntry {
     Group(u8),
 }
 
-/// The AI passes in a game-day at `speed`: the speed's rate, one AI tick
-/// per sub-tick (`FUN_00485b40`, `FUN_0051dea0`).
+/// The AI passes in a game-day at `speed`: one AI tick per sub-tick
+/// (`FUN_00485b40` in `FUN_0041dff0` case 8), the speed's rate plus the
+/// rollover sub-tick ([`crate::tick::GameSpeed::sub_ticks_per_day`],
+/// `FUN_0051dea0`).
 ///
 /// port: a Paused clock runs days only for the play-test commands; they
-/// take Fast's 4.
+/// take Fast's 5.
 #[must_use]
 pub fn passes_per_day(speed: crate::tick::GameSpeed) -> u32 {
-    speed.original_rate().map_or(4, u32::from)
+    let fast = crate::tick::GameSpeed::Fast.sub_ticks_per_day();
+    speed.sub_ticks_per_day().or(fast).map_or(0, u32::from)
 }
 
 // ---------------------------------------------------------------------------
@@ -12674,16 +12677,20 @@ mod tests {
     }
 
     #[test]
-    fn a_day_has_as_many_ai_passes_as_the_speed_s_rate() {
-        // FUN_0051dea0: sub-ticks a day = side +0xc4, which the speed order
-        // 0x280 sets to the rate (FUN_00628ff0): 600, 60, 12, 4.
+    fn a_day_has_as_many_ai_passes_as_sub_ticks() {
+        // FUN_0041dff0 turns once a sub-tick (case 0, FUN_0041e390, runs
+        // FUN_0051dea0; case 2, FUN_0041e300, waits for +0xc to move) and
+        // ticks the players in case 8 (FUN_0041cf20). FUN_0051dea0 raises
+        // the day on the sub-tick after the in-day count reaches the rate,
+        // side +0xc4, which the speed order 0x280 sets (FUN_00628ff0): a
+        // day has the rate + 1 sub-ticks, 601, 61, 13, 5.
         use crate::tick::GameSpeed;
-        assert_eq!(passes_per_day(GameSpeed::VerySlow), 600);
-        assert_eq!(passes_per_day(GameSpeed::Slow), 60);
-        assert_eq!(passes_per_day(GameSpeed::Medium), 12);
-        assert_eq!(passes_per_day(GameSpeed::Fast), 4);
+        assert_eq!(passes_per_day(GameSpeed::VerySlow), 601);
+        assert_eq!(passes_per_day(GameSpeed::Slow), 61);
+        assert_eq!(passes_per_day(GameSpeed::Medium), 13);
+        assert_eq!(passes_per_day(GameSpeed::Fast), 5);
         // port: play-test days while Paused.
-        assert_eq!(passes_per_day(GameSpeed::Paused), 4);
+        assert_eq!(passes_per_day(GameSpeed::Paused), 5);
     }
 
     #[test]

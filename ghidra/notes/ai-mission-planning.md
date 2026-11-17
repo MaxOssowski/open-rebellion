@@ -571,8 +571,9 @@ flips. The port takes the first of equal entries.
   turn (`FUN_004d2730`). A day has as many sub-ticks as the larger of the
   sides' `+0xc4` (`FUN_0051dea0`), which the speed order `0x280` sets
   (`FUN_00628ff0`, its slot `+0x20`) to the speed's rate: 600 Very Slow, 60
-  Slow, 12 Medium, 4 Fast. The AI thus makes 4 to 600 strategy passes and
-  planner cycles a day, capped at 10 orders. The frame loop that calls the
+  Slow, 12 Medium, 4 Fast, plus the rollover sub-tick that raises the day
+  (corrected 2026-11-17, game-speed-timing.md). The AI thus makes 5 to 601
+  strategy passes and planner cycles a day, capped at 10 orders. The frame loop that calls the
   tick is `FUN_0041dff0`, one phase a call, 0 to `0xd` and round again:
   phase 2 (`FUN_0041e300`) holds until the scheduler's sub-tick count
   (`+0xc`, `FUN_0041e1b0`) moves past the one stored at `+0x10`, phase 8

@@ -75,5 +75,6 @@ not a Very Slow day. No A0 capture has timed a Very Slow day; the rate
 the port's day was the bare rate x 0.25 s; now
 `GameSpeed::sub_ticks_per_day` is the rate + 1 and `seconds_per_day`
 its quarter-seconds, and the clock's sub-tick count (`GameClock::sub_tick`,
-the advisor's and the messages' time) rises rate + 1 a day. port: the AI
-still makes the rate's passes a day (`ai::passes_per_day`).
+the advisor's and the messages' time) rises rate + 1 a day, as do the
+AI's passes (`ai::passes_per_day`: `FUN_0041dff0` turns once a sub-tick
+and ticks the players in case 8).
