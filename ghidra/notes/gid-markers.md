@@ -264,7 +264,11 @@ What a mark may reveal (read 2026-10-22): nothing in `FUN_0042b330` asks
 what the player knows. The counts walk the system's children
 (`FUN_00513090`, `object-state-flags.md`) for either side, so the fleet
 and personnel displays show the enemy's fleets and the people aboard
-them wherever they are. The only gate is the one at the top:
+them wherever they are. Correction (2026-11-17, `gid-fleet-marks.md`):
+the system it walks is the player's copy (`FUN_004f2d10`), so the counts
+see only the enemy objects that copy holds; an enemy fleet in hyperspace
+is in none, and an unseen system shows its frozen copy's fleets. Only the
+fleet displays are ported that way. The only gate is the one at the top:
 - unexplored (`+0x88` & 2, `System_SetExplored` in `setters.tsv`) gives
   the unexplored mark;
 - so does destroyed (`+0x50` & 8) outside `0x20..0x22`, `0x43`, `0x44`,
