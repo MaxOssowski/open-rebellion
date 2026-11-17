@@ -323,4 +323,5 @@ Aside (not ported, not this cell): by `FUN_0051dea0` a day has rate + 1
 sub-ticks (the rollover sub-tick does not count in `+0x20`): Fast 5 x
 0.25 s = 1.25 s, Medium 13 = 3.25 s, Slow 61 = 15.25 s, matching A0's
 1.26 / 3.22 / ~15 s (game-speed-timing.md, which reads the extra as the
-day's own work). The port's day is rate x 0.25 s.
+day's own work). The port's day was rate x 0.25 s; ported 2026-11-17
+(`GameSpeed::sub_ticks_per_day`, game-speed-timing.md).

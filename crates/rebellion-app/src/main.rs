@@ -12953,14 +12953,14 @@ mod advisor_now_tests {
 
     #[test]
     fn the_advisor_counts_sub_ticks_from_one() {
-        // DAT_006b28cc is FUN_004fcee0's sub-tick (FUN_0051dea0): 12 a day
-        // at Medium; hyp: the count starts at 1.
+        // DAT_006b28cc is FUN_004fcee0's sub-tick (FUN_0051dea0): 13 a day
+        // at Medium, the rate 12 and the rollover; hyp: the count starts at 1.
         let mut clock = GameClock::new();
         assert_eq!(advisor_now(&clock), 1);
         clock.set_speed(GameSpeed::Medium);
         let day = GameSpeed::Medium.seconds_per_day().unwrap();
         assert_eq!(clock.advance(day * 1.01).len(), 1);
-        assert_eq!(advisor_now(&clock), 13);
+        assert_eq!(advisor_now(&clock), 14);
     }
 }
 

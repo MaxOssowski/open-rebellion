@@ -2184,7 +2184,7 @@ async function run(browser, base, faction) {
         await waitReport(page, (value) => value.mode === "list", "the Mission list after the arrival message");
       }
 
-      // Messages clear themselves after 300 sub-ticks, 25 days at Medium
+      // Messages clear themselves after 300 sub-ticks, 23 days at Medium
       // (Class_0065c538_vt30, FUN_004c4fe0), on the walk FUN_0048a2a0 runs
       // as the index closes (FUN_0048a610(0)). A0 (a new Expert game at
       // Medium, message-expiry/): Saboteurs Strike at Corsin, first seen

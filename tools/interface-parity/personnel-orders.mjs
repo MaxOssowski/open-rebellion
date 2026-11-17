@@ -339,17 +339,18 @@ const cases = [
       await shot(page, directory, "refused");
       assert.equal(log.times(/command=0x250 destination=abort/).length, 0, "a refused Abort aborted a mission");
       await setSpeed(page, setup, SPEED_ROWS.medium);
-      // Medium is 3 s a day (12 quarter-second sub-ticks, FUN_00415e20;
-      // A0 3.22 s, ghidra/notes/game-speed-timing.md); two days start the
-      // missions, well inside Diplomacy's five-day minimum timer.
-      await page.waitForTimeout(9_600);
+      // Medium is 3.25 s a day (13 quarter-second sub-ticks, FUN_00415e20,
+      // FUN_0051dea0; A0 3.22 s, ghidra/notes/game-speed-timing.md); three
+      // days start the missions, well inside Diplomacy's five-day minimum
+      // timer.
+      await page.waitForTimeout(10_600);
       await setSpeed(page, setup, SPEED_ROWS.pause);
       // The days' wall-clock spacing at Medium ([ai] day= lines).
       const medium = log.times(/\[ai\] day=\d+ speed=Medium/);
       const spacing = medium.slice(1).map((at, index) => (at - medium[index]) / 1000);
       assert.ok(spacing.length >= 2, `Medium ran ${medium.length} days`);
-      assert.ok(spacing.every((seconds) => seconds > 2.6 && seconds < 3.4),
-        `Medium days ${JSON.stringify(spacing)} s apart, not 3 s`);
+      assert.ok(spacing.every((seconds) => seconds > 2.85 && seconds < 3.65),
+        `Medium days ${JSON.stringify(spacing)} s apart, not 3.25 s`);
       // The alert against A0 tooltip/321-resume-box-base (an Empire game;
       // REBDLOG 10622 at (114, 152), checkmark 10625 at (290, 286)): its
       // pixels outside the message's line and A0's pointer match, and the

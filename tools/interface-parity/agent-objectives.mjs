@@ -10,7 +10,7 @@
 // - the menu's Galaxy Overview row and Alt+O open the Status window on the
 //   galaxy;
 // - Alt+G's reaction plays, then at Fast speed fifty quiet sub-ticks
-//   (FUN_004fcee0; 4 a day at Fast, about 13 days) bring a
+//   (FUN_004fcee0; 5 a day at Fast, 10 days) bring a
 //   quip, an op-0x13 clip (FUN_00412c40).
 //
 // Screenshots of the menu and the window are kept for comparison with the
@@ -399,7 +399,7 @@ async function run(browser, base, faction) {
     // 0x80000000 (FUN_00439ef0) and the advisor rolls FUN_005f5700(12)
     // below 6. The port's generator rolls 6, 7, then 4 from its seed, so
     // the third idle end plays message 0x54 / 0x52, record 905 (op 0x13).
-    // The game opens paused, so Fast (1 s a day) comes from the Game
+    // The game opens paused, so Fast (1.25 s a day) comes from the Game
     // Speed menu on the day readout (FUN_0042d190, game_speed.rs).
     await click(page, faction.dayReadout, "right");
     await page.waitForTimeout(300);
@@ -450,13 +450,14 @@ async function run(browser, base, faction) {
     }
     await page.waitForTimeout(300);
     await shot("quip");
-    // Fast is 1 s a day (4 quarter-second sub-ticks, FUN_00415e20; A0 1.26
-    // s, ghidra/notes/game-speed-timing.md). A battle's alert stops the
+    // Fast is 1.25 s a day (the rate's 4 quarter-second sub-ticks,
+    // FUN_00415e20, and the rollover's fifth, FUN_0051dea0; A0 1.26 s,
+    // ghidra/notes/game-speed-timing.md). A battle's alert stops the
     // clock, so only the median spacing is asserted.
     const spacing = fastDays.slice(1).map((at, index) => (at - fastDays[index]) / 1000).sort((a, b) => a - b);
     const median = spacing[Math.floor(spacing.length / 2)];
-    assert.ok(spacing.length >= 4 && median > 0.85 && median < 1.15,
-      `Fast days ${JSON.stringify(spacing)} s apart, median ${median}, not 1 s`);
+    assert.ok(spacing.length >= 4 && median > 1.1 && median < 1.4,
+      `Fast days ${JSON.stringify(spacing)} s apart, median ${median}, not 1.25 s`);
     // The day readout at rest (FUN_00601b30, font entry 10, right-aligned
     // in its rectangle): A0 speed2/05 (the Alliance's day 166) has its red
     // digits at (125..141, 21..28). The port's day number differs.
@@ -479,7 +480,8 @@ async function run(browser, base, faction) {
       assert.ok(box && Math.abs((box[0] + box[2]) / 2 - 133) <= 1.5 && Math.abs(box[1] - 21) <= 1
         && Math.abs(box[3] - 28) <= 1, `day readout ${JSON.stringify(day)}`);
     }
-    // Slow is 60 sub-ticks of 0.25 s, 15 s a day (FUN_00415e20; A0 timed
+    // Slow is 61 sub-ticks of 0.25 s, 15.25 s a day (FUN_00415e20,
+    // FUN_0051dea0; A0 timed
     // about 15 s, evidence 2026-10-31-speed-timing-a0): the Alliance's menu
     // row two above Fast, three day intervals, their median.
     let slowMedian = null;
@@ -494,9 +496,9 @@ async function run(browser, base, faction) {
       }
       const slowSpacing = slowDays.slice(1).map((at, index) => (at - slowDays[index]) / 1000).sort((a, b) => a - b);
       slowMedian = slowSpacing[Math.floor(slowSpacing.length / 2)];
-      assert.ok(slowMedian > 14 && slowMedian < 16, `Slow days ${JSON.stringify(slowSpacing)} s apart, not 15 s`);
+      assert.ok(slowMedian > 14.5 && slowMedian < 16, `Slow days ${JSON.stringify(slowSpacing)} s apart, not 15.25 s`);
     }
-    // --very-slow: Very Slow, 600 sub-ticks of 0.25 s, 150 s a day (the
+    // --very-slow: Very Slow, 601 sub-ticks of 0.25 s, 150.25 s a day (the
     // menu's second row); two day intervals, minutes long.
     let verySlow = null;
     if (args["very-slow"] && faction.name === "alliance") {
