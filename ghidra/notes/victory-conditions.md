@@ -136,6 +136,9 @@ So the galaxy keeps running while 102 ends, the droid's idle clip ends
 and the speech plays: the extra day in A0 is that time, not a rule on
 the day tick. The number of days depends on the game speed and the
 clips' length (not measured beyond A0's one day at its speed).
+Superseded 2026-11-16 and 2026-11-17: the game-over bit holds the clock
+(next section), and A0's day 46 is the day the order ran ("The day the
+game ends", below).
 
 Ported 2026-11-16: `AdvisorSchedule::victory_word` (slot `0x10`), and
 main.rs sets the ending only on a finished clip of kind 3
@@ -176,10 +179,9 @@ day 14, with three reaction messages before the speech; A0 shows one day.
   before the update; same order of play.
 
 Ported 2026-11-16: main.rs `galaxy_clock_runs` holds the clock while the
-word has `0x10000000`. hyp: A0's one extra day (45 to 46) is the day
-step that ran before the scheduler's galaxy got the word (the views sync
-it through `FUN_005322c0`); the port's word is set in the day step itself,
-so it shows none. Not measured.
+word has `0x10000000`. The hyp that followed here (A0's day 46 as a day
+step before the scheduler's galaxy got the word through `FUN_005322c0`)
+is refuted below: the scheduler reads the master galaxy itself.
 
 ## The Alliance's win in A0 and the advisor under the caption film (2026-11-17, END-01-C001)
 
@@ -231,3 +233,94 @@ Ported 2026-11-17: main.rs `advisor_runs` (the galaxy view or a story
 movie), so the fixture's speech ends under 103 and 105 follows its end.
 port: the clock stays held during a story movie (movie-flow.md hyp), and the
 speech's voice plays over the film's sound; A0 has no sound to compare.
+
+## The day the game ends (2026-11-17, END-01-C003)
+
+The original's order within one pass of the per-frame state machine
+`FUN_0041dff0`:
+
+1. Case 0, `FUN_0041e390`: waits for the 0.25 s timer (`FUN_004010d0`),
+   reads the word's `0x10000000` (`0x41e3b3`, `FUN_0051de80`), and only
+   while it is clear runs the sub-tick `FUN_0051dea0` (`0x41e3e9`, its
+   only call site; no pointer to it in the image). `FUN_0051dea0` is the
+   only writer of the day `+0x10`: `+0xc` rises every sub-tick; when the
+   previous sub-tick set `+0x24` (in-day count `+0x20` reached the rate
+   `+0x1c`), this one clears `+0x20` and raises the day. The case moves
+   on only when the sub-tick ran (returns 1), so nothing below runs on a
+   held clock, and a pass runs at most one sub-tick.
+2. Case 5, `FUN_0041e460` -> `FUN_0051df30`, one item a frame until none
+   is due: queue `+0xb0` (events `0x300..0x37f`, posted by `FUN_0053f950`
+   or `FUN_0053fbd0` -> `FUN_0053fcd0` -> `FUN_004fd390` ->
+   `DAT_006b2af8` -> `FUN_0051d8f0`), then `+0xa8` (timers, due when `+0x40` <= the day,
+   `Class_00661fd8_vt1c` = `FUN_0054edc0`), then `+0xac` (the player's
+   orders, `FUN_005539f0` -> `DAT_006b2b00` -> `FUN_0051d8d0`), then a
+   notification from `+0xa4`. Queues `+0xac` (`0x661ff8`) and `+0xb0`
+   (`0x662018`) have slot `+0x1c` = `0x54eed0`, a jump to `0x41c210`
+   (`mov eax,[ecx+8]; ret`): their head is always due. So an order runs
+   in the first pass after it is queued, after that pass's sub-tick.
+   Destroy System is event `0x224` (`Class_00669ec8_vt4c` =
+   `FUN_00582200` builds it; `Event224_Fire` = `FUN_005637c0` runs the
+   bombardment, `FUN_0058d800`).
+3. The destruction's existing changes come back as event `0x300`
+   (`Event300_GameObjExistingChanged_Handle` = `FUN_005140c0`; an object
+   of family `0x20..0x21`, the headquarters' range in `FUN_00506110`,
+   calls `FUN_00517cd0`, which calls
+   `FUN_005180e0`) in the same case-5 loop. `FUN_005180e0` writes the word
+   to `DAT_006b2bb0 +0x74` (`thunk_FUN_00506e10`).
+4. Case 6, `FUN_0041e490` -> `FUN_0051e050` -> `FUN_00518460`: both sides'
+   copies and `0x128` (the advisor's slot `0x10`, the caption films).
+5. Case `0xd` back to 0: the bit is set, so no further sub-tick.
+
+The word the clock reads is the one `FUN_005180e0` writes: the
+scheduler's `+0xc0` is `DAT_006b2bb0`. A new game sets both in
+`FUN_005136d0` case 6 (`DAT_006b2bb0 = this`, called on `+0xc0` from
+`FUN_0051d800`); a loaded one in `FUN_00513a50`, which `FUN_0051cec0`
+calls with `+0xc0` as its out-parameter and which stores the first of
+its three galaxies in both. `FUN_005322c0` syncs the side views only.
+
+So the day stands from the event that ends the game to the ending film:
+the held day is the day the winning event ran. A0 agrees:
+
+- 2026-11-17-edited-saves-5 run 2 (Alliance, Fast; the player's
+  Planetary Assault, an order through `+0xac` as Destroy System is): day
+  94 at the assault (h-01 `a7087f65400d`), after the summary (h-02
+  `f2153378d456`) and between 103 and 105 (h-08 `99250adbb1bc`). Run 1
+  read 90 at the assault and after the summary (g-01, g-04).
+- 2026-11-16-edited-saves (Empire, Very Slow: the time bar has no lit
+  segment in x-41 `636f8642dcf9` and b0165 `9364c8b58ee7`; Slow lights
+  one in speed-timing/slow-0 `50939cd43c00`): x-41 is the bombard
+  submenu with Destroy System highlighted on day 45, before the click;
+  the next capture is already film 101 (seq-empire-victory/b0000
+  `2f5e3844875e`); the galaxy frame between 102 and 108 reads 46 (b0165,
+  67.5 s into the burst). No capture shows the galaxy between the click
+  and 101. The menu is the game's own window (`FUN_00442380`; the image
+  imports no `TrackPopupMenu`), so the clock runs while it is open, as it
+  does under Build Selection (2026-11-13-band-title-timing 43/44: 305 ->
+  308 at Slow). The day turned 45 -> 46 between x-41 and the order's
+  pass, and the Death Star's order ran on day 46. The "one extra day"
+  is the capture's timing, not a day after the word.
+
+Against the port (before 2026-11-17): the player's orders run at once
+(main.rs `OrderBombardment`, `OrderAssault`), but the word was settled
+only in the next day step, which raises the day first. So a win by an
+order ended on the order's day + 1 (A0 holds the order's day). The
+fixture (the win already in place at load) showed day 1 for the same
+reason.
+
+Ported 2026-11-17: `victory::game_over_pending` and
+`VictorySystem::outcome`; main.rs settles the word
+(`settle_victory_word`) before the clock moves whenever the world would
+newly end the game, so `galaxy_clock_runs` holds the order's day. port:
+only the game-over transition is settled between day steps; the word's
+other bits (and their `0x128` caption films) still wait for the day
+step, where the original sets them at the event. ending.mjs checks that
+the day logged at the game-over word equals the day the ending film
+opens: ending-2026-11-17T10-10-38-324Z (result 0174d9865331), all four
+cases pass, word and film both on day 0 (the fixtures' win is in place at
+load, so it now settles before the first day step).
+
+Aside (not ported, not this cell): by `FUN_0051dea0` a day has rate + 1
+sub-ticks (the rollover sub-tick does not count in `+0x20`): Fast 5 x
+0.25 s = 1.25 s, Medium 13 = 3.25 s, Slow 61 = 15.25 s, matching A0's
+1.26 / 3.22 / ~15 s (game-speed-timing.md, which reads the extra as the
+day's own work). The port's day is rate x 0.25 s.
