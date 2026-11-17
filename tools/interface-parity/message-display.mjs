@@ -3135,6 +3135,101 @@ async function ghormanBombardment(browser, base) {
   }
 }
 
+// EVT-01-C019: the Empire player's own Planetary Assault on the same
+// Ghorman, against A0 2026-11-17-edited-saves-5 i-06 (sha256 eadf68cd)
+// and i-07 (6e9ca884). Scenario::GhormanAssault (140) has Fleet 1, now
+// carrying a Stormtrooper Regiment, take the undefended Ghorman
+// (FUN_0058c120); the attacker's own report opens at once (FUN_00497530
+// kind 7): "Assault on Ghorman" / "Imperial troops have taken control of
+// the Alliance system Ghorman" (FUN_00496770, TEXTSTRA 0x7090 / 0x7091)
+// over the Empire's AT-ATs 0x2b99. As the bombardment's: the text word
+// for word, the picture, the rail and the corners every pixel A0's,
+// A0's pointer left out, the green title and body ink within A0's
+// tolerance. System Forces (0x67), Trooper Regiments: Operational "None",
+// Destroyed "No Casualties" (i-07): the columns empty, the category bar
+// every pixel A0's (A0's pointer left out), the two labels' white ink at
+// A0's place.
+const GHORMAN_ASSAULT = 141;
+
+async function ghormanAssault(browser, base) {
+  const directory = path.join(OUT, "empire-ghorman-assault");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const { screen, a0, until, ink, near, differ } = ghormanTools(page, directory);
+  const white = (data, k) => Math.min(data[k], data[k + 1], data[k + 2]) > 190;
+  const checks = {};
+  try {
+    await page.goto(`${base}?fixture-code=${GHORMAN_ASSAULT | (2 << 8)}`);
+    await waitReport(page, () => true, "the fixture reports");
+    const after = await until((o) => o.assault_summary?.page === "Summary", "the assault's summary opens at once");
+    const summary = after.assault_summary;
+    assert.equal(summary.title, "Assault on Ghorman", JSON.stringify(summary));
+    assert.equal(summary.body, "Imperial troops have taken control of the Alliance system Ghorman",
+      JSON.stringify(summary));
+    assert.equal(summary.picture, 0x2b99, JSON.stringify(summary));
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const shown = await screen("assault-summary");
+    const original = await a0("i-06-ehq2-empire-view-assault-on-ghorman-taken-d33.png");
+    const [ox, oy] = summary.origin.map(Math.round);
+    // A0's pointer stands over the picture at the screen's (439..457,
+    // 205..226).
+    const pointer = [[435, 201, 461, 230]];
+    checks.summary = {
+      origin: [ox, oy],
+      picture: differ(original, shown, [ox, oy], [12, 13 + 25, 412, 13 + 205], pointer),
+      rail: differ(original, shown, [ox, oy], [414, 11, 468, 296]),
+      corners: differ(original, shown, [ox, oy], [0, 0, 30, 22]) + differ(original, shown, [ox, oy], [384, 0, 414, 22]),
+      title: { a0: ink(original, [125, 52], [12, 10, 412, 40]), port: ink(shown, [ox, oy], [12, 10, 412, 40]) },
+      body: { a0: ink(original, [125, 52], [20, 220, 400, 262]), port: ink(shown, [ox, oy], [20, 220, 400, 262]) },
+    };
+    console.log(JSON.stringify({ ghorman_assault: checks }));
+    // System Forces (0x67, the Empire's rail at (426, 89 + 118)), then
+    // Trooper Regiments (the category bar's fifth, (36 + 248, 59)).
+    await click(page, [ox + 426 + 22, oy + 207 + 20]);
+    await until((o) => o.assault_summary?.page === "SystemForces", "System Forces opens");
+    await click(page, [ox + 36 + 248 + 24, oy + 59 + 20]);
+    const troops = await until((o) => o.assault_summary?.page === "SystemForces"
+      && o.assault_summary.category === "Troops", "System Forces shows the regiments");
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const port = await screen("assault-system-forces-troops");
+    const forces = await a0("i-07-ehq2-assault-system-forces-troops.png");
+    // A0's pointer stands right of the Trooper button at the screen's
+    // (446..470, 128..152).
+    checks.system_forces = {
+      columns: troops.assault_summary.columns,
+      bar: differ(forces, port, [ox, oy], [36, 59, 384, 100], [[442, 124, 474, 156]]),
+      subtitle: { a0: ink(forces, [125, 52], [12, 34, 412, 56]), port: ink(port, [ox, oy], [12, 34, 412, 56]) },
+      operational: { a0: ink(forces, [125, 52], [40, 136, 201, 210], white),
+        port: ink(port, [ox, oy], [40, 136, 201, 210], white) },
+      destroyed: { a0: ink(forces, [125, 52], [206, 136, 367, 210], white),
+        port: ink(port, [ox, oy], [206, 136, 367, 210], white) },
+    };
+    console.log(JSON.stringify({ ghorman_assault: { system_forces: checks.system_forces } }));
+    const c = checks.summary;
+    assert.deepEqual([c.origin, c.picture, c.rail, c.corners], [[125, 52], 0, 0, 0], JSON.stringify(checks));
+    assert.ok(near(c.title.a0, c.title.port) && near(c.body.a0, c.body.port), JSON.stringify(checks));
+    const f = checks.system_forces;
+    assert.ok(f.columns.every((column) => column.length === 0) && f.bar === 0, JSON.stringify(f));
+    assert.ok(near(f.subtitle.a0, f.subtitle.port) && near(f.operational.a0, f.operational.port)
+      && near(f.destroyed.a0, f.destroyed.port), JSON.stringify(f));
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: "empire", case: "ghorman-assault", status: "pass", checks };
+  } catch (error) {
+    await screen("failure").catch(() => {});
+    return { faction: "empire", case: "ghorman-assault", status: "fail",
+      error: String(error.stack || error), checks, errors };
+  } finally {
+    await context.close();
+  }
+}
 
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
@@ -3147,7 +3242,7 @@ const browser = await chromium.launch({
 const results = [];
 try {
   // --only=<case> runs that one case (headquarters-taken, uprising-messages,
-  // jedi-training-messages, ghorman-bombardment).
+  // jedi-training-messages, ghorman-bombardment, ghorman-assault).
   if (!args.only) for (const faction of FACTIONS) results.push(await run(browser, base, faction));
   if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "headquarters-taken")) {
     results.push(await headquartersTaken(browser, base));
@@ -3160,6 +3255,9 @@ try {
   }
   if (FACTIONS.some(({ name }) => name === "empire") && (!args.only || args.only === "ghorman-bombardment")) {
     results.push(await ghormanBombardment(browser, base));
+  }
+  if (FACTIONS.some(({ name }) => name === "empire") && (!args.only || args.only === "ghorman-assault")) {
+    results.push(await ghormanAssault(browser, base));
   }
 } finally {
   await browser.close();

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 140;
+const SCENARIO_COUNT: u8 = 141;
 
 
 extern "C" {
@@ -576,6 +576,14 @@ pub enum Scenario {
     /// kind 7) on "Orbital bombardment of Ghorman" over `0x2b9a`, filed on
     /// the Conflict rail. Sesswenna's sector window is open behind it.
     GhormanBombardment = 139,
+    /// EVT-01-C019: the same Fleet 1, carrying a Stormtrooper Regiment,
+    /// assaults the undefended Ghorman and takes it, as A0
+    /// 2026-11-17-edited-saves-5/i-06 and i-07 show it: the Empire's own
+    /// Assault Summary opens at once on "Assault on Ghorman" / "Imperial
+    /// troops have taken control of the Alliance system Ghorman"
+    /// (TEXTSTRA `0x7090` / `0x7091`, `FUN_00496770`), the System Forces'
+    /// regiments "None" and "No Casualties".
+    GhormanAssault = 140,
 }
 
 impl Scenario {
@@ -721,6 +729,7 @@ impl Scenario {
             137 => Self::QuadrantsHeadquartersFrozen,
             138 => Self::GravityWellBattle,
             139 => Self::GhormanBombardment,
+            140 => Self::GhormanAssault,
             _ => return None,
         })
     }
@@ -1443,8 +1452,14 @@ pub fn apply(
     if request.scenario == Scenario::HeadquartersTaken {
         place_headquarters_at_yavin(request, world, sectors);
     }
-    if request.scenario == Scenario::GhormanBombardment {
+    if matches!(
+        request.scenario,
+        Scenario::GhormanBombardment | Scenario::GhormanAssault
+    ) {
         place_ghorman_bombardment(request, world, movement, sectors);
+    }
+    if request.scenario == Scenario::GhormanAssault {
+        embark_ghorman_regiment(world, troop_transport);
     }
     if request.scenario == Scenario::OwnAssaultRepulsed {
         place_own_assault(world, movement, troop_transport);
@@ -3824,6 +3839,44 @@ fn place_ghorman_bombardment(
     sectors.open_for_system(world, ghorman, request.faction);
 }
 
+/// The `GhormanAssault` scenario's regiment: one Stormtrooper Regiment
+/// aboard Fleet 1 at Ghorman (hyp: A0 i-01's Fleet 1 carried "troops";
+/// which and how many is not on any capture, and the Summary page shows
+/// none of them), Ghorman's own ground left empty (A0 i-07: "None").
+fn embark_ghorman_regiment(world: &mut GameWorld, troop_transport: &mut TroopTransportState) {
+    let Some(stormtroopers) = world
+        .buildable_classes
+        .iter()
+        .find(|(class, value)| class.family() == 0x10 && value.name == "Stormtrooper Regiment")
+        .map(|(class, _)| *class)
+    else {
+        return;
+    };
+    let Some(ghorman) = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Ghorman")
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    let Some(&fleet) = world.systems[ghorman]
+        .fleets
+        .iter()
+        .find(|&&fleet| !world.fleets[fleet].is_alliance)
+    else {
+        return;
+    };
+    let regiment = world.troops.insert(TroopUnit {
+        class_dat_id: stormtroopers,
+        is_alliance: false,
+        regiment_strength: 100,
+    });
+    world.systems[ghorman].ground_units = vec![regiment];
+    let _ = troop_transport.embark(world, fleet, &[regiment]);
+    world.systems[ghorman].ground_units.clear();
+}
+
 /// The `GhormanBombardment` strike: the Empire's fleets at Ghorman carry
 /// out General Bombardment (`FUN_00487740`) with the first seed whose
 /// draws destroy nothing on either side, as A0 i-03 and i-04 list "No
@@ -3901,6 +3954,7 @@ pub fn enemy_assault(
     }
     let (name, side) = match request.scenario {
         Scenario::EnemyAssaultTaken | Scenario::HeadquartersTaken => ("Yavin", Faction::Empire),
+        Scenario::GhormanAssault => ("Ghorman", Faction::Empire),
         Scenario::OwnAssaultRepulsed => ("Commenor", Faction::Alliance),
         _ => return Vec::new(),
     };
@@ -3926,7 +3980,12 @@ pub fn enemy_assault(
         let outcome = env
             .assault(&mut trial_world, &mut trial_transport, side, &fleets, yavin)
             .clone();
-        let as_a0 = if alliance {
+        let as_a0 = if request.scenario == Scenario::GhormanAssault {
+            // A0 i-07: no regiment lost on either side; taken.
+            outcome.lost_attackers.is_empty()
+                && outcome.lost_defenders.is_empty()
+                && env.reports.iter().all(|report| report.taken)
+        } else if alliance {
             outcome.lost_attackers.len() == 1
                 && outcome.lost_defenders.is_empty()
                 && env.reports.iter().all(|report| !report.taken)
@@ -3938,7 +3997,10 @@ pub fn enemy_assault(
         if as_a0 && !env.reports.is_empty() {
             *world = trial_world;
             *troop_transport = trial_transport;
-            if request.scenario == Scenario::HeadquartersTaken {
+            if matches!(
+                request.scenario,
+                Scenario::HeadquartersTaken | Scenario::GhormanAssault
+            ) {
                 // The occupation's control change (FUN_00510d70 ->
                 // FUN_004f6f40, as `tactical_flow::occupy` makes it): the
                 // HQ, which serves the Alliance alone, ends (FUN_004f8680).
@@ -7722,13 +7784,14 @@ fn story_messages_report(
             | Scenario::UprisingMessages
             | Scenario::JediTrainingMessages
             | Scenario::GhormanBombardment
+            | Scenario::GhormanAssault
     ) {
         return None;
     }
     // The assault report is filed on the Conflict rail (FUN_00497530), an
     // uprising on Popular Support (FUN_00499460's class, mask 0x001).
     let rail_of = match request.scenario {
-        Scenario::HeadquartersTaken | Scenario::GhormanBombardment => {
+        Scenario::HeadquartersTaken | Scenario::GhormanBombardment | Scenario::GhormanAssault => {
             rebellion_render::MessageRail::Conflict
         }
         Scenario::UprisingMessages => rebellion_render::MessageRail::PopularSupport,
@@ -8785,6 +8848,7 @@ impl EnemyAssaultWatch {
             Scenario::EnemyAssaultTaken
                 | Scenario::HeadquartersTaken
                 | Scenario::GhormanBombardment
+                | Scenario::GhormanAssault
                 | Scenario::FleetWindowA0
                 | Scenario::OwnAssaultRepulsed
         ) || self.last.as_ref() == Some(&assault_summary)
@@ -11435,6 +11499,51 @@ mod tests {
                 },
             );
         }
+    }
+
+    #[test]
+    fn the_ghorman_assault_scenario_takes_the_undefended_ghorman_and_opens_the_empires_summary() {
+        // A0 2026-11-17-edited-saves-5 (a new, unedited Empire game, day
+        // 33): Fleet 1 assaults the Alliance's Ghorman, which holds no
+        // regiment; i-06 "Assault on Ghorman" / "Imperial troops have
+        // taken control of the Alliance system Ghorman" (FUN_00496770,
+        // TEXTSTRA 0x7090 / 0x7091) over the AT-ATs 0x2b99, opened at once
+        // as the attacker's own report (FUN_00497530 kind 7); i-07 System
+        // Forces' regiments "None" / "No Casualties"; i-08 Ghorman green.
+        let request = request(Scenario::GhormanAssault, CockpitFaction::Empire);
+        let mut applied = apply_to_loading_world_with(request, |world| {
+            seed_yavin_assault(world);
+            let here = world.systems.keys().next().unwrap();
+            world.systems[here].name = "Ghorman".into();
+        });
+        let ghorman = applied.world.systems.keys().next().unwrap();
+        assert!(applied.world.systems[ghorman].ground_units.is_empty());
+        let [fleet] = &applied.world.systems[ghorman].fleets[..] else {
+            panic!("one fleet at Ghorman");
+        };
+        assert_eq!(applied.transport.cargo(*fleet).len(), 1);
+        assert!(opens_the_assault_report(request));
+        let reports = enemy_assault(request, &mut applied.world, &mut applied.transport);
+        let [report] = &reports[..] else {
+            panic!("one report: {reports:?}");
+        };
+        assert!(report.assault && report.taken);
+        assert_eq!(report.attacker, Faction::Empire);
+        assert!(report.opens_at_once(Faction::Empire));
+        assert_eq!(
+            (report.title(), report.body(), report.picture()),
+            (0x7090, 0x7091, 0x2b99)
+        );
+        assert!(report.attackers.destroyed.is_empty());
+        let troops = report
+            .system_forces
+            .columns(rebellion_core::assault_report::ReportCategory::Troops);
+        assert!(troops.iter().all(Vec::is_empty), "{troops:?}");
+        assert_eq!(
+            applied.world.systems[ghorman].control,
+            ControlKind::Controlled(Faction::Empire)
+        );
+        assert_eq!(Scenario::decode(140), Some(Scenario::GhormanAssault));
     }
 
     #[test]
