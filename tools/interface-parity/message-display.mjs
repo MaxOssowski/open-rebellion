@@ -2980,16 +2980,8 @@ const GHORMAN_BOMBARDMENT = 140;
 const A0_BOMBARDMENT = path.resolve(args["a0-bombardment"]
   ?? path.join(ROOT, ".artifacts/a0-vm/2026-11-17-edited-saves-5"));
 
-async function ghormanBombardment(browser, base) {
-  const directory = path.join(OUT, "empire-ghorman-bombardment");
-  await fs.mkdir(directory, { recursive: true });
-  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
-  const page = await context.newPage();
-  const errors = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.push(String(error)));
+// The page's helpers for the Ghorman cases: A0's window at (125, 52).
+function ghormanTools(page, directory) {
   const screen = async (label) => {
     const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
     return PNG.sync.read(bytes);
@@ -3006,11 +2998,11 @@ async function ghormanBombardment(browser, base) {
     }
   };
   const green = (data, k) => data[k + 1] > 180 && data[k] < 100 && data[k + 2] < 100;
-  const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+  const ink = (png, [x0, y0], [xa, ya, xb, yb], test = green) => {
     let found = null;
     for (let y = ya; y < yb; y += 1) {
       for (let x = xa; x < xb; x += 1) {
-        if (!green(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+        if (!test(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
         found = found ? [Math.min(found[0], x), Math.min(found[1], y), Math.max(found[2], x), Math.max(found[3], y)]
           : [x, y, x, y];
       }
@@ -3034,6 +3026,20 @@ async function ghormanBombardment(browser, base) {
     }
     return count;
   };
+  return { screen, a0, until, ink, near, differ };
+}
+
+async function ghormanBombardment(browser, base) {
+  const directory = path.join(OUT, "empire-ghorman-bombardment");
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const { screen, a0, until, ink, near, differ } = ghormanTools(page, directory);
   const checks = {};
   try {
     await page.goto(`${base}?fixture-code=${GHORMAN_BOMBARDMENT | (2 << 8)}`);
@@ -3061,6 +3067,25 @@ async function ghormanBombardment(browser, base) {
       body: { a0: ink(original, [125, 52], [20, 220, 400, 262]), port: ink(shown, [ox, oy], [20, 220, 400, 262]) },
     };
     console.log(JSON.stringify({ ghorman_bombardment: checks }));
+    // The Empire's rail (0x65..0x68 at x 426, y 89 + 0/59/118/177, 44 by
+    // 41): Attackers (0x66) shows Imperial Forces on Capital Ships, as
+    // i-04 (sha256 6a290096): Fleet 1's ships are its side's first of
+    // their classes, "Imperial Star Destroyer 1" and "Imperial
+    // Dreadnaught 1" (FUN_00517760 -> FUN_005302c0: the side's count of
+    // the class plus one), none destroyed.
+    await click(page, [ox + 426 + 22, oy + 148 + 20]);
+    const forces = await until((o) => o.assault_summary?.page === "Attackers"
+      && o.assault_summary.category === "CapitalShips", "Attackers shows the capital ships");
+    checks.attackers = { columns: forces.assault_summary.columns };
+    {
+      await page.mouse.move(2, 2);
+      await frames(page, 6);
+      const port = await screen("bombardment-imperial-forces");
+      const original = await a0("i-04-ehq2-bombardment-imperial-forces-tab.png");
+      // The category bar (Capital Ships down; A0's pointer is off it).
+      checks.attackers.bar = differ(original, port, [ox, oy], [36, 59, 384, 100]);
+    }
+    console.log(JSON.stringify({ ghorman_bombardment: { attackers: checks.attackers } }));
     // The Empire's Close (10) at the window's (426, 21), 44 by 41
     // (FUN_0044c630 0x1aa, 0x15; FUN_0044df90 marks the message).
     await click(page, [ox + 426 + 22, oy + 21 + 20]);
@@ -3094,6 +3119,8 @@ async function ghormanBombardment(browser, base) {
     const c = checks.summary;
     assert.deepEqual([c.origin, c.picture, c.rail, c.corners], [[125, 52], 0, 0, 0], JSON.stringify(checks));
     assert.ok(near(c.title.a0, c.title.port) && near(c.body.a0, c.body.port), JSON.stringify(checks));
+    assert.deepEqual([checks.attackers.columns[0], checks.attackers.columns.at(-1), checks.attackers.bar],
+      [["Imperial Star Destroyer 1", "Imperial Dreadnaught 1"], [], 0], JSON.stringify(checks.attackers));
     const r = checks.index;
     assert.deepEqual([r.origin, r.rows, r.row_head, r.row_tail, r.tabs, r.rail, r.corners],
       [[125, 52], ["Orbital bombardment of Ghorman"], 0, 0, 0, 0, 0], JSON.stringify(checks));
@@ -3107,6 +3134,7 @@ async function ghormanBombardment(browser, base) {
     await context.close();
   }
 }
+
 
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);

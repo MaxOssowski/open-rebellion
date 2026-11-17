@@ -3777,16 +3777,33 @@ fn place_ghorman_bombardment(
     let Some(ghorman) = clear_for_a0(world, "Ghorman") else {
         return;
     };
+    // A0's Fleet 1 holds the side's first ship of each class ("Imperial
+    // Star Destroyer 1", "Imperial Dreadnaught 1"). The number is the
+    // side's count of the class plus one (FUN_00517760 -> FUN_005302c0),
+    // so a ship made here after the seeded ones would take the next
+    // number: the seeded first ship joins Fleet 1 instead, and only a
+    // class the seed gave none of is made new (and numbered 1).
     let ships: Vec<ShipInstance> = ["Imperial Star Destroyer", "Imperial Dreadnaught"]
         .into_iter()
         .filter_map(|name| {
-            world
+            let (class, hull) = world
                 .capital_ship_classes
                 .iter()
                 .find(|(_, value)| value.is_empire && value.name == name)
-                .map(|(key, value)| {
-                    ShipInstance::new(key, i32::try_from(value.hull).unwrap_or(i32::MAX), false)
-                })
+                .map(|(key, value)| (key, i32::try_from(value.hull).unwrap_or(i32::MAX)))?;
+            let first = format!("{name} 1");
+            let seeded = world
+                .fleets
+                .values_mut()
+                .filter(|fleet| !fleet.is_alliance)
+                .find_map(|fleet| {
+                    let at = fleet
+                        .capital_ships
+                        .iter()
+                        .position(|ship| ship.name.as_deref() == Some(first.as_str()))?;
+                    Some(fleet.capital_ships.remove(at))
+                });
+            Some(seeded.unwrap_or_else(|| ShipInstance::new(class, hull, false)))
         })
         .collect();
     if ships.is_empty() {
@@ -11291,6 +11308,76 @@ mod tests {
         assert_eq!(report.attackers.operational.len(), 2);
         assert!(report.attackers.destroyed.is_empty());
         assert_eq!(Scenario::decode(139), Some(Scenario::GhormanBombardment));
+    }
+
+    #[test]
+    fn the_ghorman_fleet_carries_the_empires_first_star_destroyer_and_dreadnaught() {
+        // A0 2026-11-17-edited-saves-5/i-04 (sha256 prefix in the gate):
+        // Fleet 1's ships read "Imperial Star Destroyer 1" and "Imperial
+        // Dreadnaught 1". A ship's number is its side's count of the class
+        // plus one (FUN_00517760 -> FUN_005302c0, never lowered), so when
+        // the seed already holds the Empire's first of each (the browser's
+        // seed 0 puts Imperial Dreadnaught 1 at Drall), Fleet 1 takes
+        // those ships rather than making a second of each.
+        let request = request(Scenario::GhormanBombardment, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Ghorman".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            let mut seeded = Vec::new();
+            // Each class its own record, so each has its own counter.
+            for (raw, name) in [
+                (0x1400_0085, "Imperial Star Destroyer"),
+                (0x1400_0087, "Imperial Dreadnaught"),
+            ] {
+                let value = rebellion_core::world::CapitalShipClass {
+                    dat_id: rebellion_core::ids::DatId::new(raw),
+                    name: name.into(),
+                    is_empire: true,
+                    hull: 100,
+                    hyperdrive: 80,
+                    bombardment_modifier: 1,
+                    ..Default::default()
+                };
+                let class = world.capital_ship_classes.insert(value);
+                seeded.push(ShipInstance::new(class, 100, false));
+            }
+            let far = world.systems.keys().nth(2).unwrap();
+            for ship in seeded {
+                let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+                    location: far,
+                    capital_ships: vec![ship],
+                    fighters: Vec::new(),
+                    characters: Vec::new(),
+                    is_alliance: false,
+                    has_death_star: false,
+                    special_forces: Vec::new(),
+                });
+                world.systems[far].fleets.push(fleet);
+            }
+            world.number_ships();
+        });
+        let world = &applied.world;
+        let ghorman = world.systems.keys().next().unwrap();
+        let [fleet] = &world.systems[ghorman].fleets[..] else {
+            panic!("one fleet at Ghorman: {:?}", world.systems[ghorman].fleets);
+        };
+        let names: Vec<_> = world.fleets[*fleet]
+            .capital_ships
+            .iter()
+            .map(|ship| ship.name.as_deref().unwrap_or_default())
+            .collect();
+        let first = ["Imperial Star Destroyer 1", "Imperial Dreadnaught 1"];
+        assert_eq!(names, first);
+        // Nobody else bears those names, and no second of either was made.
+        let all: Vec<_> = world
+            .fleets
+            .values()
+            .flat_map(|fleet| fleet.capital_ships.iter())
+            .filter_map(|ship| ship.name.as_deref())
+            .collect();
+        assert_eq!(all.len(), 2, "{all:?}");
     }
 
     /// The `EnemyAssaultTaken` world: Yavin with GNPRTB as shipped, the
