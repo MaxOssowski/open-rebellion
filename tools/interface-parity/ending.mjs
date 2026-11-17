@@ -209,6 +209,16 @@ async function run(browser, base, faction) {
           await shot("movie-108-crawl");
         }
         if (stem === faction.ending && faction.name === "alliance-victory") {
+          // The film at h-10's time: A0 h-09 (its first picture, 02:37:24.1)
+          // to h-10 (02:37:39) is about 15 s into 105. The film's lowest lit
+          // row follows the picture, so the box is measured on the same
+          // moment of the film, not on its first second.
+          await page.evaluate(() => { document.querySelector("video").playbackRate = 8; });
+          await until(page, "h-10's moment is reached",
+            () => document.querySelector("video")?.currentTime >= 15, 60_000);
+          await page.evaluate(() => { document.querySelector("video").playbackRate = 1; });
+          await page.waitForTimeout(700);
+          await shot("movie-105-film");
           // The crawl 113 s into 105: A0 h-13 matches the film at 113.0 s (105
           // ran at speed in A0: seq-run2-ending s1950 is 17.8 s in, 17.85 s
           // after its first picture); at 44 s (h-12) the crawl is off screen.
@@ -319,7 +329,7 @@ async function run(browser, base, faction) {
         read("h-10-run2-victory-film-alliance-fleet-0237-39.png"),
         read("h-13-run2-crawl-late-0239-20.png")]);
       const [portCaption, portFilm, portCrawl] = await Promise.all([
-        port("movie-103"), port("movie-105"), port("movie-105-crawl")]);
+        port("movie-103"), port("movie-105-film"), port("movie-105-crawl")]);
       const stamp = (pattern) => stamps.find(({ text }) => pattern.test(text))?.t ?? null;
       const ending = stamp(/\[cutscene\] opened path=.*\/105\.webm/);
       const gameOver = stamp(/\[advisor\] clip finished kind=3 /);
