@@ -847,11 +847,10 @@ async function runAbode(browser, base, faction) {
     assert.equal(luke.a0_grey, null, JSON.stringify(luke));
     assert.ok(!luke.port_grey || (luke.port_grey[0] >= luke.port[0] && luke.port_grey[1] >= luke.port[1]
       && luke.port_grey[2] <= luke.port[2] && luke.port_grey[3] <= luke.port[3]), JSON.stringify(luke));
-    // The box's text is the port's own edit font (fleet-finder.mjs masks
-    // the name box as such): A0's glyphs are 10 rows from x 206, the
-    // port's 8 from x 210 (open). Its ink is reported; the text is held
-    // above.
-    assert.ok(nameBox.a0 && nameBox.port, JSON.stringify(nameBox));
+    // The box is a CoolStringField in the default font 4 (FUN_005ff910,
+    // FUN_00603850), drawn white over a black shadow from its left
+    // (FUN_00605160, FUN_00600fd0): its ink against A0's.
+    assert.ok(near(nameBox.a0, nameBox.port), JSON.stringify(nameBox));
     assert.ok(others.every(({ near: ok }) => ok), JSON.stringify(others));
 
     // d-03, d-04: a right release on the chosen row: Encyclopedia and

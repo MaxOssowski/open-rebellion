@@ -43,8 +43,9 @@ const tabs = [
   { x: 88, art: [10502, 10503] },
   { x: 140, art: [10505, 10506] },
 ];
-// Text the port draws with its own font, the name box and its cursor, and
-// the list's rows stay out of the pixel check.
+// Text stays out of the pixel check against the STRATEGY.DLL art: the
+// labels, the name box and its caret (its ink is held against A0 in the
+// name-box case), and the list's rows.
 const masks = [
   { x: 36, y: 12, width: 350, height: 20, why: "title text" },
   // Font 4 (s203, as A0 shows it): "Ship Name"'s p hangs to y 63.
@@ -602,6 +603,44 @@ const cases = [
     },
   },
   {
+    name: "name-box",
+    // The name box is a CoolStringField (FUN_00604cf0) in the default
+    // font 4 (FUN_005ff910, FUN_00603850), white over a black shadow one
+    // pixel down and right, from its left (FUN_00605160, FUN_00600fd0).
+    // A0 personnel-states/09 (05acfc213c10, the Alliance): "Fleet 6"
+    // typed after F3, the window at (62, 50). The box's white ink, from
+    // the window's origin, against A0's: left within a pixel, top and
+    // bottom within two.
+    async run(page, faction, directory) {
+      await key(page, "F3");
+      const opened = await until(page, "F3 opens the Fleet Finder", (o) => o.open);
+      const text = "Fleet 6";
+      await page.keyboard.type(text, { delay: 40 });
+      await until(page, "the name box takes the text", (o, a) => o.name === a, text);
+      await page.mouse.move(2, 470);
+      await frames(page, 4);
+      const port = PNG.sync.read(await page.screenshot());
+      fs.writeFileSync(path.join(directory, "name-box.png"), PNG.sync.write(port));
+      const a0 = PNG.sync.read(fs.readFileSync(path.join(root,
+        ".artifacts/a0-vm/personnel-states/09-fleet-finder-typed-fleet6.png")));
+      // Window x 144..383, y 47..61: inside the art's dotted frame.
+      const ink = (png, [ox, oy]) => {
+        let box = null;
+        for (let y = oy + 47; y < oy + 61; y += 1) for (let x = ox + 144; x < ox + 383; x += 1) {
+          const i = (y * png.width + x) * 4;
+          if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 200) continue;
+          box = box ? [Math.min(box[0], x - ox), Math.min(box[1], y - oy), Math.max(box[2], x - ox),
+            Math.max(box[3], y - oy)] : [x - ox, y - oy, x - ox, y - oy];
+        }
+        return box;
+      };
+      const nameBox = { a0: ink(a0, [62, 50]), port: ink(port, opened.controls.origin) };
+      assert.ok(nameBox.a0 && nameBox.port && Math.abs(nameBox.a0[0] - nameBox.port[0]) <= 1
+        && [1, 3].every((k) => Math.abs(nameBox.a0[k] - nameBox.port[k]) <= 2), JSON.stringify(nameBox));
+      return { opened, name_box: nameBox };
+    },
+  },
+  {
     name: "click-and-display",
     // FUN_00462770: a click (0x29b) chooses the row and copies its name;
     // Display (0xc9) opens it. The other side's fleet at the player's
@@ -816,7 +855,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-finder",
-    scope: "test-only Fleet Finder (window type 0x15) through its original entries, the cockpit's Fleet Finder control and F3: chrome in both modes against STRATEGY.DLL, the side tabs, a typed name and Enter, a row click and Display, a double click, the Ship Finder opening a ship in its fleet's window, Close and Escape, on both sides",
+    scope: "test-only Fleet Finder (window type 0x15) through its original entries, the cockpit's Fleet Finder control and F3: chrome in both modes against STRATEGY.DLL, the side tabs, a typed name and Enter, a row click and Display, a double click, the Ship Finder opening a ship in its fleet's window, Close and Escape, and the name box's ink against A0, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,
