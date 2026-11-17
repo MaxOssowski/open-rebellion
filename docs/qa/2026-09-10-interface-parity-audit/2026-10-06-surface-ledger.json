@@ -8483,9 +8483,11 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-palace-rescue/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-bounty-hunters/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-rescue-attempt/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-injury-healing-bounty-a0/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-injury-healing-bounty-a0/README.md",
+            "ghidra/notes/jabba-palace.md",
+            "commits 3896fad0, 418dc46f (batch b246 green, WASM ad086450)"
           ],
-          "note": "Jabba's palace, bounty hunters and Rescue Attempt messages ported (jabba_captures_message, bounty_messages); seen in the browser via fixtures. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-09: A0 04-han-bounty-hunters-day372 matches the browser (Han Solo Attacked by Bounty Hunters: text word for word, picture 0x41c, title image and rail 0 px). Still partial: no A0 of Jabba's palace, the bounty capture or the Rescue Attempt. 2026-11-15 (b220): A0 .artifacts/a0-vm/2026-11-15-partial-cells 'Han Solo Captured' (885de2a03b34), the second bounty attack (25b06c1cfee3), 'Orrimaarko Captured'/'Escaped' (704310248349, 9c2e291d9b9e) and the rescue Mission Report (b114a1a92986) match the port's TEXTSTRA texts word for word (DAT-backed test). Jabba's palace still has no A0.",
+          "note": "Jabba's palace, bounty hunters and Rescue Attempt messages ported (jabba_captures_message, bounty_messages); seen in the browser via fixtures. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-09: A0 04-han-bounty-hunters-day372 matches the browser (Han Solo Attacked by Bounty Hunters: text word for word, picture 0x41c, title image and rail 0 px). Still partial: no A0 of Jabba's palace, the bounty capture or the Rescue Attempt. 2026-11-15 (b220): A0 .artifacts/a0-vm/2026-11-15-partial-cells 'Han Solo Captured' (885de2a03b34), the second bounty attack (25b06c1cfee3), 'Orrimaarko Captured'/'Escaped' (704310248349, 9c2e291d9b9e) and the rescue Mission Report (b114a1a92986) match the port's TEXTSTRA texts word for word (DAT-backed test). Jabba's palace still has no A0. 2026-11-17 trace (ghidra/notes/jabba-palace.md): Jabba's palace files no message of its own (FUN_0054b840 only writes a debug trace), so that state is excluded. A bounty capture skips the 0x1e0 Captured message for Han with +0xb0 bit 2 (FUN_00490340, 0x4905d6..0x49069a); the port posted 'Han Solo Captured' beside it and now does not (3896fad0). Correction: A0 885de2a03b34 of 2026-11-15 is the Empire's capture of Han, not the bounty capture. Timer 0x393 repeats every GNPRTB 6148 (300) + rand(6149, 300) days while BountyHuntersActive holds (FUN_005862a0, FUN_00586130; armed by FUN_0054b740/FUN_0053fa60); YouTube footage (local only, .artifacts/youtube/2026-11-17/jabba: Nuby -k6Dp8jUpJc days 878 and 1208, 37f99c672374 and 9e1e77ede3a4; Ole Cranky Gamer tx9bhuC-Bh8, 58b5fc324444) shows repeat attacks. The port armed the hunters once and now re-arms each period (418dc46f; old saves re-armed on load, save version unchanged); batch b246 green, WASM ad086450. Still partial: no A0 of the bounty capture, Jabba Captures or Delivers messages (needs an edited save).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10187,9 +10189,11 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-death-star-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-death-star-beam/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-death-star-shot-timing/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-death-star-shot-timing/",
+            "ghidra/notes/tactical-death-star-path.md",
+            "commit d3b8c51e (batch b246 green, WASM ad086450)"
           ],
-          "note": "Control 1022 and the turn-timed kill (4-6 s, A0 run frames) match, but the superlaser beam has no A0 capture and native beam pixels remain uncompared.",
+          "note": "Control 1022 and the turn-timed kill (4-6 s, A0 run frames) match, but the superlaser beam has no A0 capture and native beam pixels remain uncompared. 2026-11-17 trace (ghidra/notes/tactical-death-star-path.md): FUN_005da150 builds the beam box (+-0.005) and a cone of 9 vertices and 8 triangles, both SetQuality(0x40) wireframe and SetColorRGB(0,1,0); 0x005da830 grows the box to t*D, holds at 1.0 s and clears it; the kill comes one 1000 ms turn later. YouTube footage of the original executable with a mod's Death Star art (Sistros r0Pc2XALoqA, local only, .artifacts/youtube/2026-11-17/death-star, b42dcfc563f5) shows in seven shots a green 8-pointed star of one-pixel lines at the dish and a one-pixel green line growing to the target for about 1.0 s, then the fireball. The port now draws the cone as one-pixel wireframe edges (d3b8c51e); batch b246 green, WASM ad086450. hyp: the ring is hidden behind the decal by depth. Still partial: the footage uses mod art, so no stock A0 of the beam.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
