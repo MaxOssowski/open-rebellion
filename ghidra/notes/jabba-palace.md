@@ -23,8 +23,14 @@ original, which the mission manager runs with its `+0x58` bits, timer
   manager record `+0x64` (`FUN_0053fa60(0x393, ...)`), with GNPRTB 6148
   (300) + rand(0..=6149 (300)) days (`DAT_006bb550`, `DAT_006bb548`).
   Clearing the bit cancels the timer.
-- Timer `0x393` (vtable `0x00661f80`) fires once (`FUN_0054e970`) and runs
-  `FUN_00546fa0`. With a chance of GNPRTB 6150 (100) percent
+- Timer `0x393` (vtable `0x00661f80`) fires (`FUN_0054e970`) and runs
+  `FUN_00546fa0`. Correction (2026-11-17): it does not fire once. Its slot
+  `+0x20` is the base timer's `FUN_005862a0`, which, while the target's
+  record (BountyHuntersActive, manager `+0x64`) keeps the counter it was
+  armed with, fires and then adds `FUN_00586130` (GNPRTB 6148 + rand(0..=
+  6149)) to the due day `+0x40` (`timer-scheduler.md`, "Firing"). So the
+  hunters come back every 300..600 days until HanCapturedAtPalace clears
+  the flag. `FUN_00546fa0` itself re-arms nothing. With a chance of GNPRTB 6150 (100) percent
   (`FUN_0053e2f0`), and Han (`0x33000243`) located, not captured and
   usable, it:
   - creates a Bounty Hunters unit (SPECFCSD `0x3c000009`, TEXTSTRA 9604:
@@ -180,9 +186,10 @@ Luke, Leia or Chewbacca.
 - MJCHARSD gives Han combat 100 with no variance. RLEVADTB's rows run
   from (-20, 15) to (101, 99), and the row at 91 holds 98. So Han evades
   98 times in 100.
-- MISSNSD `0x65000083` does not repeat, and timer `0x393` fires once. So
-  the hunters strike once a game and capture Han about 1 game in 50, when
-  they fire at all (GNPRTB 6150 is 100).
+- MISSNSD `0x65000083` does not repeat, but timer `0x393` does (see
+  above), so the hunters strike every 300..600 days while Han is free and
+  each attack captures him 2 times in 100. (Before 2026-11-17 this note
+  said the timer fired once.)
 - The port's campaigns agree: in 24 seeds the hunters struck 16 times and
   Han evaded each time. The rest of the palace story follows only after a
   capture, so it is rare in play too.
@@ -315,3 +322,26 @@ Ported 2026-10-18 (plan 4):
   <system>" beside the bounty message. hyp: the message classes build from
   queued notifications after the hit ends, so bit 2 is already set when
   `0x1e0` is read; the check would be dead code otherwise.
+
+## The hunters repeat (2026-11-17)
+
+- Trace: `FUN_00549d60` sets the record's minimum GNPRTB 6148 and spread
+  6149 (`FUN_00540230`, `FUN_00540270`) and then BountyHuntersActive; its
+  hook `FUN_0054b740` calls `FUN_0053fa60(0x393, ...)`, which builds the
+  timer through `FUN_0053fb00` and schedules it after `FUN_00586130`. The
+  vtable `0x00661f80` holds `FUN_005862a0` at `+0x20` (bytes read from
+  REBEXE.EXE): fire `+0x30`, then `+0x40 += FUN_00586130()`.
+  `Timer393_Handle` (`FUN_00546fa0`) and `FUN_0054e970` re-arm nothing.
+- Fan guides' "every 1-100 days, 30%" matches no shipped value (GNPRTB
+  6148 300, 6149 300, 6150 100).
+- Footage (Nuby Plays Gaming, "Let's Play Star Wars: Rebellion Part 1",
+  https://www.youtube.com/watch?v=-k6Dp8jUpJc): "Han Solo Attacked by
+  Bounty Hunters" opens on day 878 (t=3898) and again on day 1208
+  (t=5037-5039). On day 1208 it arrives while the player builds X-wings
+  (day 1207 -> 1208) and heads the Message Index as the new message. The
+  gap, 330 days, lies in 300..600. Ole Cranky Gamer shows attacks in
+  episodes 7 and 14 of one campaign, Pravus in parts 9, 14 and END.
+- Port: `jabba.rs` reschedules `bounty_due` by GNPRTB 6148 + rand(6149)
+  after each fire, whether or not the chance holds (2026-11-17). port: a
+  save with BountyHuntersActive and no due day (saved after the old single
+  fire) is armed again from the day it loads.
