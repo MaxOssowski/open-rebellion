@@ -118,12 +118,89 @@ GameObjDestroyedOnArrivalNotif **only when** the object is EnrouteActive
 
 The A0 yard was on its first trip: it never changed container while en
 route, so its count was 0 and only `0x302` was raised. Facility Lost
-(`FUN_00497690`, TEXTSTRA `0x70b0`/`0x70b1`) therefore needs a facility
-that was already **rerouted once while en route** (a first autoroute that
-found a place) and is then destroyed while still en route (a second
-autoroute that finds none, or another destruction). This also explains the
-earlier A0 runs with no Facility Lost (ledger note: four Alliance routes,
-one Empire game, h-73, h-13).
+(`FUN_00497690`, TEXTSTRA `0x70b0`/`0x70b1`) therefore needs at least a
+facility that was already **rerouted once while en route** (a first
+autoroute that found a place) and is then destroyed while still en route.
+This also explains the earlier A0 runs with no Facility Lost (ledger note:
+four Alliance routes, one Empire game, h-73, h-13). It is not enough: a
+second side change after a reroute raises no visible Facility Lost either
+(next section).
+
+## A reroute, then a second side change (A0 part 8, 2026-11-18)
+
+A0 `.artifacts/a0-vm/2026-11-18-edited-saves-8` (README "OBJ-09-C008"),
+edited save ALHQ-d2-fac2 (065cd1ca5437; Talus the only Alliance system with
+energy room): the yard built at Talus for Corsin left on day 46; Corsin
+turned Imperial and the yard was rerouted to Talus (f-05, 5959bf3fa11e,
+the en-route art on Talus's yards tab); Talus turned Imperial on day 47
+(f-06). No Facility Lost: index All watched days 47-50 (f-07, f-07b), All
+and Manufacturing at day 94 (f-08 423a00097b63, f-09 897748b1bf99). Host
+scan of the day-94 save FAC2D94 (7398721add80) against FAC2 with
+`2026-11-17-edited-saves-4/scripts/facscan.py` over families `0x20..0x2f`:
+every new facility record is Imperial (`0x81` master) and none is in Talus
+(`0x90000092`), so the yard was neither handed over nor kept; it was
+destroyed. (The Alliance `0x24:0x6ad` in Corsin, `0x90000108`, is gone too:
+the completed-facility cascade of the Corsin flip.) f-07 also shows no
+"Talus Joins Enemy" or "Corsin Joins Enemy" row for these two flips.
+
+Traced 2026-11-18:
+
+1. **The reroute does raise the count.** `FUN_00556390` ends in slot
+   `+0xa8` in both branches (bit 16 clear: at once; set: after
+   `GameObj_SetEnrouteActive(different systems)`, skipped while
+   HyperdriveActive), so EnrouteActive stays set. Slot `+0xa8` is
+   `FUN_004f8630` -> `FUN_004f6fd0`: it re-parents the two view copies
+   (`FUN_004f9d40`) and calls the master's slot `+0xf4` (`GameObj_vtf4`,
+   `FUN_004faf50`) with the old and new containers. That raises `+0x42`
+   by one while EnrouteActive and below `DAT_0065d254` = 255 (`.rdata`,
+   REBEXE file offset `0x25ba54`), through `FUN_004f72f0`, which copies the
+   byte to each view copy (`FUN_004fa2a0`, when `FUN_005404d0` passes the
+   transaction's view mask, ctx `+8`). `vtf4` first calls
+   `GameObj_SetAutorouting(0)`, whose `0x307` the handler drops at once
+   (`param_2 == 0`, non-character). So after the reroute the count is 1.
+2. **The second loss destroys it en route.** At the Talus flip the yard is
+   Completed and EnrouteActive in Talus: `FUN_004f8680` sets Autorouting;
+   `FUN_00515480`'s Completed branch only clears `+0x54 +0xc` when it equals
+   the container (`FUN_004f6e30`, `FUN_00540450`, `FUN_004f7fa0`), the
+   search fails, `+0xac(2)`. `FUN_004f7560` sets Destroyed on the master and
+   `FUN_004fa580` copies it to each view copy and calls that copy's slot
+   `+0x184`, `FUN_004fc080`. The notifier raises nothing for the master
+   (`FUN_0053a010`: `+0x24 & 0x30`, the view index, must be set); a view
+   copy with EnrouteActive and the count raises `0x302` then `0x303`.
+3. **Where it can still drop.** `FUN_005400f0` writes the record's `+0x18`
+   = the view index (`+0x24 >> 4 & 3`, setter `FUN_00540650`), and
+   `FUN_004365d0` hands it to player 1 or 2 by it (else deletes it). The
+   `0x303` record (factory `FUN_0043eca0`, class `0x00659778`) is kind 3
+   (`FUN_00526f00`): `FUN_0051e770` files it in a group keyed by (kind,
+   code, view, ctx `+0x14`, ctx `+0x18`) (`FUN_0051e910`, `FUN_00569060`)
+   under a batch id from `FUN_004fd2e0` (hook `DAT_006b2af4`, not read).
+   `FUN_00488de0` gives the whole batch the message type of the **first**
+   record that maps. `0x302` of a non-system maps to nothing and `0x303`
+   to `0x10` (Facility Lost), but a system's `0x100` maps to 4, System
+   Joins (`FUN_00499760`), which keeps its message only when the system's
+   `+0x88 & 0x2000` is set.
+   **hyp:** the `0x303` rides in the side change's batch behind the system's
+   `0x100`; the batch maps to type 4, whose builder drops it (no "Talus
+   Joins Enemy" in f-07), and Facility Lost is never built. Not read: when
+   the queued `0x307` (`FUN_0053f950` -> `FUN_0053fcb0`, ctx kept) is
+   handled, the batch's record order, and `DAT_006b2af4`.
+4. The builder `FUN_00497690` itself: the record's object in the reader's
+   table (`FUN_004f2d10`, any family), its second key a system there
+   (`FUN_004f3220`; the copy's container), once per builder; a facility
+   (`0x20..0x2f`) always keeps it (`+0x40 = 1`), another family only with
+   `+100` set (0 from `FUN_00497560`/`FUN_004975e0`).
+
+**Recipe for an A0 Facility Lost (hyp):** a `0x303` whose batch has no
+earlier mapped record, i.e. a rerouted facility (count 1) destroyed while
+still en route by something other than a side change or a system's
+destruction (a destroyed system's `0x302` maps to `0x15` first). Candidate:
+the maintenance autoscrap (reason `0x15`; `FUN_004fc080` raises `0x302`,
+`0x303`, then `0x304`, so `0x303` maps first, `0x10` over `0xc`). Edited
+save as FAC2 but with the only free place far from Corsin (a long second
+leg), flip Corsin, then before the yard arrives push the Alliance into a
+maintenance shortfall (edit its stock or maintenance) and watch the
+Manufacturing index for Facility Lost in place of Maintenance Shortfall.
+Which object the autoscrap picks was not traced.
 
 hyp: the side-view copies (`FUN_00539fd0(1)`/`(2)`) carry their own `+0x40`
 and `+0x50` (`FUN_004fa2a0` syncs byte 2), so the notifier reads the same
@@ -158,7 +235,8 @@ product. hyp: the manager then takes its next unit; the queue walk after
   arrival day becomes the old day plus the leg from the lost system (the
   original's `0x387` still fires on the old day and `FUN_00556620` starts
   the leg on);
-- not found and en route: removed, with no message;
+- not found and en route: removed, with no message (a first trip: count
+  0; a trip already rerouted: A0 part 8 shows no message, section above);
 - not found and unfinished (2026-11-18): destroyed with no message, with
   its queued unit. port: the world holds no queues, so the product waits in
   `Products::lost` (not saved) until `products::destroy_lost` takes it and
@@ -171,6 +249,14 @@ Before this, the port left the product in the lost system: an en-route
 yard completed there on arrival.
 
 Not changed (follow-ups):
+- 2026-11-18 (part 8): the port already removes a rerouted yard with no
+  place silently; pinned by
+  `a_rerouted_facility_left_with_no_place_by_a_second_side_change_goes_without_a_message`
+  (`products_tests.rs`). Open: `DeliveryState::advance` still files
+  Facility Lost (`lost`) for a rerouted delivery whose destination is
+  destroyed again. By the hyp of step 3 that batch maps to the destroyed
+  system's `0x302` (type `0x15`) first, so the original may show none
+  there either; no A0 for it.
 - Fixed the same day: `DeliveryState::advance` filed `lost` (Facility
   Lost) for a delivery that reached a destroyed system and found no place
   on its first trip. It now files it as `scrapped` (silent); `lost` keeps
@@ -192,3 +278,14 @@ In full: `004f8680`, `004f78e0`, `004f6b50`, `00515480`, `00555410`,
 `004f8660`, `004f71d0`, `004f2ad0`, `004fb200`, `004f7560`, `004f63f0`,
 `004f6410`, `004fae40`, `GameObj_vt11c` (`004f2b50`), `0052bee0`,
 `00528890`. In part: `00550c90`, `00550de0`, `0054f5b0`.
+
+2026-11-18 (part 8), in full: `004f6fd0`, `004f8630`, `004f2ab0`,
+`004f6e30`, `00540450`, `004f7fa0`, `004ece80`, `004fba10`, `004fba70`,
+`00556620`, `00556430`, `004f8240`, `004f81c0`, `004f80e0`, `004fa2a0`,
+`004fa580`, `005404d0`, `004fd600`, `0053a010`, `0053a000`, `00540650`,
+`004f2d10`, `004f3220`, `004f6b70`, `0053fe40`, `005400f0`, `00497690`,
+`00497560`, `004975e0`, `004977b0`, `00498970`, `0043eca0`, `0043ec50`,
+`00526f00`, `0051d910`, `0051e670`, `0051e6a0`, `0051e770`, `0051e910`,
+`0051e9a0`, `00569060`, `005690b0`, `004365d0`, `004bef90`, `004befe0`,
+`00488b50`, `0053f9c0`, `0053f950`, `0052bee0`. In part: `00488de0`,
+`00489740`, `00568de0`, `00499760`.
