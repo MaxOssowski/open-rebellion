@@ -10197,17 +10197,19 @@
         {
           "id": "TAC-05-C019",
           "requirement": "Death Star laser fired",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-death-star-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-death-star-beam/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-death-star-shot-timing/",
             "ghidra/notes/tactical-death-star-path.md",
-            "commit d3b8c51e (batch b246 green, WASM ad086450)"
+            "commit d3b8c51e (batch b246 green, WASM ad086450)",
+            ".artifacts/a0-vm/2026-11-18-edited-saves-8/README.md (local only)",
+            "commits b53067a1, b278ca9e, f262259b (batch b253)"
           ],
-          "note": "Control 1022 and the turn-timed kill (4-6 s, A0 run frames) match, but the superlaser beam has no A0 capture and native beam pixels remain uncompared. 2026-11-17 trace (ghidra/notes/tactical-death-star-path.md): FUN_005da150 builds the beam box (+-0.005) and a cone of 9 vertices and 8 triangles, both SetQuality(0x40) wireframe and SetColorRGB(0,1,0); 0x005da830 grows the box to t*D, holds at 1.0 s and clears it; the kill comes one 1000 ms turn later. YouTube footage of the original executable with a mod's Death Star art (Sistros r0Pc2XALoqA, local only, .artifacts/youtube/2026-11-17/death-star, b42dcfc563f5) shows in seven shots a green 8-pointed star of one-pixel lines at the dish and a one-pixel green line growing to the target for about 1.0 s, then the fireball. The port now draws the cone as one-pixel wireframe edges (d3b8c51e); batch b246 green, WASM ad086450. hyp: the ring is hidden behind the decal by depth. Still partial: the footage uses mod art, so no stock A0 of the beam.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Control 1022 and the turn-timed kill (4-6 s, A0 run frames) match, but the superlaser beam has no A0 capture and native beam pixels remain uncompared. 2026-11-17 trace (ghidra/notes/tactical-death-star-path.md): FUN_005da150 builds the beam box (+-0.005) and a cone of 9 vertices and 8 triangles, both SetQuality(0x40) wireframe and SetColorRGB(0,1,0); 0x005da830 grows the box to t*D, holds at 1.0 s and clears it; the kill comes one 1000 ms turn later. YouTube footage of the original executable with a mod's Death Star art (Sistros r0Pc2XALoqA, local only, .artifacts/youtube/2026-11-17/death-star, b42dcfc563f5) shows in seven shots a green 8-pointed star of one-pixel lines at the dish and a one-pixel green line growing to the target for about 1.0 s, then the fireball. The port now draws the cone as one-pixel wireframe edges (d3b8c51e); batch b246 green, WASM ad086450. hyp: the ring is hidden behind the decal by depth. Still partial: the footage uses mod art, so no stock A0 of the beam. 2026-11-18 A0 .artifacts/a0-vm/2026-11-18-edited-saves-8 runs l1/l2 (stock art, edited save EHQDS37 6a8842437d06): a green wireframe star at the dish and a 1-px (0,255,0) line growing to the target for about 1.02 s, star and line gone together, fireball after (l-06 2fab1d20497c .. l-10 93bdf03e596b; l-07z/l-08z 1be7f2af1a0f). Two port fixes from the trace (b53067a1): FUN_005d4d10 puts the decal on frame +0x50 and gives its child +0x4c (0, 0.11e, -0.09e) to FUN_005da150 for the beam, so the beam now leaves from the dish, not the decal centre; the line part behind the decal's depth is drawn under the decal and the cone clipped at the decal centre's depth. The Empire laser journey checks the beam leaves from the dish above the sphere's centre with every beam pixel (0,255,0) (b278ca9e); a unit test at a camera fitted to l-07 (f262259b) puts the port's star within 1 px of A0's (bbox 13x10 vs 13x11, 44 of 44 port pixels within 1 px of A0, 43 of 47 A0 pixels within 1 px of the port; hyp: fitted target depth and extent). Timing: growth 1.0 s (DAT_0066d4bc), kill one 1 s turn after the beam starts. Batch b253 green after the gid reruns noted under END-01-C013; WASM 12fbdf96.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "TAC-05-C020",
@@ -10992,16 +10994,19 @@
         {
           "id": "END-01-C013",
           "requirement": "failed trench run",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "crates/rebellion-render/src/video_player.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
-            "commit 9171ba55 (batch b249 green)"
+            "commit 9171ba55 (batch b249 green)",
+            ".artifacts/a0-vm/2026-11-18-edited-saves-8/README.md (local only)",
+            "tools/interface-parity/run.mjs (production-trench-run-failure A0 checks)",
+            "commit aad4e041 (batch b253)"
           ],
-          "note": "As the successful run, with 202; the browser plays it since 2026-10-30; not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-failure (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 202.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-40-880Z-3418826). No A0 capture of a trench run. 2026-11-18: the failed run follows the corrected FUN_005d04e0 rules (9171ba55); its browser fixture keeps the failure with 0 torpedoes and still routes through 202 on both sides (batch b249). No A0 of film 202: every edited-save attempt in .artifacts/a0-vm/2026-11-18-edited-saves-7 succeeded; a reduced setup (ALHQ-d2-trench2 df78f1d09f4c) lost its fighters before Attack Death Star became available.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "As the successful run, with 202; the browser plays it since 2026-10-30; not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-failure (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 202.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-40-880Z-3418826). No A0 capture of a trench run. 2026-11-18: the failed run follows the corrected FUN_005d04e0 rules (9171ba55); its browser fixture keeps the failure with 0 torpedoes and still routes through 202 on both sides (batch b249). No A0 of film 202: every edited-save attempt in .artifacts/a0-vm/2026-11-18-edited-saves-7 succeeded; a reduced setup (ALHQ-d2-trench2 df78f1d09f4c) lost its fighters before Attack Death Star became available. 2026-11-18 A0 .artifacts/a0-vm/2026-11-18-edited-saves-8 run w (edited save ALHQ-d2-trench1-awing 48a8dc7ed4b6: Fleet 3's Y-wing squadron retyped to A-wings, 0 torpedoes): Attack Death Star lit and confirmed (w-07..w-09), film 202 (about 22 s; frames w-11..w-13 match 202.webm, not 201, by scripts/filmmatch.py), then the tactical view returns and the battle keeps running with the failed group gone from the bar and no result screen (w-14 8654c858a694, w-15 7d682a51310c). The port's failure case (aad4e041) resumes after the film with no Battle Summary within 3 s (b6a88bf3: no forced pause); the empty fighter-group buttons 2..4 equal w-15 (0 of 1914 px) and the running pause control equals it (0 of 1520 px). Film 202 itself is checked by identity. Batch b253: tests green, 180 battle cases pass, 31 of 32 gates; two gid cases (alliance popular-support and fleets, 1280x800) failed while three agents built in parallel and passed on rerun (.artifacts/interface-parity/2026-11-18T18-24-19-614Z-4008132, ...T18-25-02-558Z-4008958). WASM 12fbdf96. Failure odds are not compared (edited save).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         }
       ]
     },
