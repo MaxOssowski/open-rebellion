@@ -5012,6 +5012,111 @@ mod tests {
     // A0 2026-11-18-edited-saves-8 l-07 (377f230464ae): the beam's line
     // leaves the dish behind the Death Star decal, which hides it up to the
     // sphere's rim; a beam towards the camera stays in front.
+    // A0 2026-11-18-edited-saves-8 l-07 (377f230464ae, run 2 of
+    // seq-l2-beam): the superlaser's star at the dish, 13 x 11 pixels at
+    // (417..429, 220..230) on a 42-pixel sphere, the ring in front of the
+    // decal, and the line hidden by the sphere up to x 401 then visible.
+    // The camera is fitted to that frame's holocube (pitch 30, yaw 180,
+    // 21 zoom-outs: mean edge distance 2.2 px) and the Death Star decal to
+    // its sphere (frame offset (0.13e, 0)); the target is fitted on the ray
+    // through l-08's tip (237, 230) and the extent to the star (hyp: 120,
+    // the -10 translate is in world units). The beam is drawn by the port's
+    // geometry (death_star_beam_cone_segments, split_at_decal_depth); the
+    // sphere's opaque pixels are A0's 21-pixel disc.
+    #[test]
+    fn the_superlaser_star_matches_a0_l07_at_its_fitted_camera() {
+        let e = 120.0_f32;
+        let mut camera = OriginalTacticalCamera::new(true, e);
+        camera.pitch_degrees = 30;
+        camera.yaw_degrees = 180;
+        for _ in 0..21 {
+            camera.zoom_out();
+        }
+        let pose = camera.pose();
+        let aperture = tactical_scene_viewport((16.0, 28.0, 444.0, 439.0));
+        // Camera3D::matrix for this pose (its Default needs a window).
+        let matrix = Mat4::perspective_rh_gl(pose.fovy_radians, aperture.2 / aperture.3, pose.near, pose.far)
+            * Mat4::look_at_rh(pose.position, pose.target, pose.up);
+        let project = |point: Vec3| project_world_position(matrix, point, aperture);
+        let decal = vec3(-2.0 * e, 0.13 * e, 0.0);
+        let dish = vec3(-2.0 * e, 0.24 * e, 0.09 * e);
+        let target = vec3(0.0, 0.229 * e, 0.013 * e);
+        let sphere = project(decal).unwrap();
+        // The fitted decal lands on A0's sphere centre (418, 238.8).
+        assert!((sphere - vec2(418.0, 238.8)).length() < 1.0, "{sphere:?}");
+        let view_forward = (pose.target - pose.position).normalize();
+        let axis = (target - dish).normalize();
+        let tip = dish + (target - dish) * 0.5;
+        let (line_front, line_behind) = split_at_decal_depth(dish, tip, decal, view_forward);
+        let mut pixels = std::collections::BTreeSet::new();
+        let mut plot = |from: Vec3, to: Vec3, under_decal: bool| {
+            for step in 0..=400 {
+                let point = from + (to - from) * (step as f32 / 400.0);
+                let Some(screen) = project(point) else { continue };
+                if under_decal && screen.distance(sphere) < 21.0 {
+                    continue;
+                }
+                pixels.insert((screen.x.floor() as i32, screen.y.floor() as i32));
+            }
+        };
+        for (from, to) in death_star_beam_cone_segments(dish, axis, e, view_forward, decal)
+            .into_iter()
+            .chain(line_front)
+        {
+            plot(from, to, false);
+        }
+        if let Some((from, to)) = line_behind {
+            plot(from, to, true);
+        }
+        // The star: the pixels near the dish.
+        let star: Vec<_> = pixels
+            .iter()
+            .filter(|(x, y)| (405..440).contains(x) && (212..236).contains(y))
+            .collect();
+        let bbox = star.iter().fold((i32::MAX, i32::MAX, i32::MIN, i32::MIN), |b, &&(x, y)| {
+            (b.0.min(x), b.1.min(y), b.2.max(x), b.3.max(y))
+        });
+        // A0 l-07's star pixels, (0, 255, 0), by row.
+        let a0_rows: [(i32, &[i32]); 11] = [
+            (220, &[425, 426, 427]),
+            (221, &[422, 423, 424, 425, 427]),
+            (222, &[420, 421, 428]),
+            (223, &[426, 427, 428, 429]),
+            (224, &[418, 419, 420, 421, 422, 423, 424, 425, 429]),
+            (225, &[417, 429]),
+            (226, &[417, 418, 429]),
+            (227, &[419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429]),
+            (228, &[428]),
+            (229, &[422, 427]),
+            (230, &[423, 424, 425, 426]),
+        ];
+        let a0_star: Vec<(i32, i32)> = a0_rows
+            .iter()
+            .flat_map(|&(y, xs)| xs.iter().map(move |&x| (x, y)))
+            .collect();
+        let near = |p: (i32, i32), set: &[(i32, i32)]| {
+            set.iter().any(|q| (q.0 - p.0).abs() <= 1 && (q.1 - p.1).abs() <= 1)
+        };
+        let star_points: Vec<(i32, i32)> = star.iter().map(|&&p| p).collect();
+        // Every port pixel lies within a pixel of A0's, and nine in ten of
+        // A0's within a pixel of the port's (measured: 44 of 44, 43 of 47).
+        assert!(star_points.iter().all(|&p| near(p, &a0_star)), "{star_points:?}");
+        let covered = a0_star.iter().filter(|&&p| near(p, &star_points)).count();
+        assert!(covered * 10 >= a0_star.len() * 9, "{covered} of {}", a0_star.len());
+        let a0 = (417, 220, 429, 230);
+        assert!(
+            (bbox.0 - a0.0).abs() <= 1
+                && (bbox.1 - a0.1).abs() <= 1
+                && (bbox.2 - a0.2).abs() <= 1
+                && (bbox.3 - a0.3).abs() <= 1,
+            "star {bbox:?} against A0 {a0:?}"
+        );
+        // The line: hidden by the sphere from the star to x 401, then
+        // drawn on row 226 (A0: x 395..400 visible, 401..416 hidden).
+        assert!((395..=400).all(|x| pixels.iter().any(|&(px, py)| px == x && (225..=227).contains(&py))));
+        assert!(!pixels.iter().any(|&(x, y)| (403..=414).contains(&x) && (224..=228).contains(&y)));
+    }
+
     #[test]
     fn the_superlaser_line_behind_the_decal_is_kept_for_the_pass_under_it() {
         let origin = vec3(0.0, 0.0, 0.0);
