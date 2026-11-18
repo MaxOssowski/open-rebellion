@@ -2484,8 +2484,9 @@ impl TacticalAssetRenderer {
     /// Draw the retained projectile meshes constructed by `FUN_005ee590` at
     /// their source-to-moving-target interpolation point from `LAB_005eeb90`.
     /// Draw the superlaser beam `FUN_005da150` builds on the Death Star's
-    /// decal frame and `0x005da830` grows each frame: a pure green
-    /// (`SetColorRGB(0, 1, 0)`) box 0.01 wide from the decal centre, scaled
+    /// dish frame `origin` (`FUN_005d59e0` passes the decal frame's child
+    /// `+0x4c`) and `0x005da830` grows each frame: a pure green
+    /// (`SetColorRGB(0, 1, 0)`) box 0.01 wide from that frame, scaled
     /// along its look-at axis to `progress` times the distance to the
     /// target, and a green cone (8 faces round an apex) scaled
     /// `(0.06e, 0.06e, 0.15e)` and moved 10 back along the axis. Both
@@ -2493,14 +2494,20 @@ impl TacticalAssetRenderer {
     /// unlit, edges only), so the cone is drawn as its face edges, clipped
     /// at the decal's depth (see `death_star_beam_cone_segments`). port: the
     /// sub-pixel box and each cone edge are drawn as one device-pixel line,
-    /// as for projectiles.
+    /// as for projectiles. The box is depth-tested like the cone: its part
+    /// behind the decal's depth is drawn with `behind` before the decal, so
+    /// the decal's opaque pixels hide it (A0 2026-11-18-edited-saves-8
+    /// l-07, 377f230464ae: the line stops at the sphere's rim), and its
+    /// front part with the cone after the decal.
     pub(crate) fn draw_death_star_beam(
         &mut self,
         aperture: (f32, f32, f32, f32),
         origin: Vec3,
+        decal_center: Vec3,
         target: Vec3,
         progress: f32,
         extent: f32,
+        behind: bool,
     ) -> Option<(Vec2, Vec2)> {
         let aperture = tactical_scene_viewport(aperture);
         let source_camera = self.source_camera?;
@@ -2531,7 +2538,17 @@ impl TacticalAssetRenderer {
         let camera_matrix = camera.matrix();
         let device_pixel = (aperture.2 / 444.0).max(1.0);
         let view_forward = (pose.target - pose.position).normalize_or_zero();
-        for (from, to) in death_star_beam_cone_segments(origin, axis, extent, view_forward) {
+        let (line_front, line_behind) =
+            split_at_decal_depth(origin, tip_position, decal_center, view_forward);
+        let segments = if behind {
+            line_behind.into_iter().collect::<Vec<_>>()
+        } else {
+            death_star_beam_cone_segments(origin, axis, extent, view_forward, decal_center)
+                .into_iter()
+                .chain(line_front)
+                .collect()
+        };
+        for (from, to) in segments {
             if let (Some(from), Some(to)) = (
                 project_world_position(camera_matrix, from, aperture),
                 project_world_position(camera_matrix, to, aperture),
@@ -2541,7 +2558,6 @@ impl TacticalAssetRenderer {
         }
         let start = project_world_position(camera_matrix, origin, aperture)?;
         let tip = project_world_position(camera_matrix, tip_position, aperture)?;
-        draw_line(start.x, start.y, tip.x, tip.y, device_pixel, DEATH_STAR_BEAM_COLOR);
         Some((start, tip))
     }
 
@@ -3271,10 +3287,10 @@ fn death_star_beam_cone_mesh(origin: Vec3, axis: Vec3, extent: f32) -> Mesh {
 /// `SetQuality(0x40)` (IDirect3DRMMeshBuilder slot `+0x78`,
 /// `D3DRMRENDER_WIREFRAME`), so each of its eight faces draws its three
 /// edges: the eight apex-to-ring edges and the eight ring edges, each once.
-/// The Death Star decal is drawn at its frame's depth, and the cone's ring
-/// sits 10 behind that frame, so the z-buffer hides every point farther
-/// along `view_forward` than the decal's centre `origin`; each edge is
-/// clipped there. hyp: the decal's depth test is inferred from Sistros's
+/// The Death Star decal is drawn at its frame's depth (`decal_center`, the
+/// dish frame's parent), so the z-buffer hides every point farther along
+/// `view_forward` than it; each edge is clipped there. hyp: the decal's
+/// depth test is inferred from Sistros's
 /// "Testing Death Stars" capture (r0Pc2XALoqA, 27.8 s), where the original
 /// executable shows the eight spokes and no ring.
 fn death_star_beam_cone_segments(
@@ -3282,6 +3298,7 @@ fn death_star_beam_cone_segments(
     axis: Vec3,
     extent: f32,
     view_forward: Vec3,
+    decal_center: Vec3,
 ) -> Vec<(Vec3, Vec3)> {
     let mesh = death_star_beam_cone_mesh(origin, axis, extent);
     let mut edges: Vec<(u16, u16)> = Vec::new();
@@ -3293,25 +3310,44 @@ fn death_star_beam_cone_segments(
             }
         }
     }
-    let depth = |point: Vec3| (point - origin).dot(view_forward);
     edges
         .into_iter()
         .filter_map(|(a, b)| {
-            let (from, to) = (
+            split_at_decal_depth(
                 mesh.vertices[a as usize].position,
                 mesh.vertices[b as usize].position,
-            );
-            let (from_depth, to_depth) = (depth(from), depth(to));
-            match (from_depth <= 0.0, to_depth <= 0.0) {
-                (true, true) => Some((from, to)),
-                (false, false) => None,
-                (from_visible, _) => {
-                    let cut = from + (to - from) * (from_depth / (from_depth - to_depth));
-                    Some(if from_visible { (from, cut) } else { (cut, to) })
-                }
-            }
+                decal_center,
+                view_forward,
+            )
+            .0
         })
         .collect()
+}
+
+/// A segment's parts in front of and behind the plane through the decal's
+/// centre `origin` facing the view (`view_forward`): the decal is drawn at
+/// that depth, so the z-buffer lets it hide only what lies behind.
+fn split_at_decal_depth(
+    from: Vec3,
+    to: Vec3,
+    origin: Vec3,
+    view_forward: Vec3,
+) -> (Option<(Vec3, Vec3)>, Option<(Vec3, Vec3)>) {
+    let depth = |point: Vec3| (point - origin).dot(view_forward);
+    let (from_depth, to_depth) = (depth(from), depth(to));
+    match (from_depth <= 0.0, to_depth <= 0.0) {
+        (true, true) => (Some((from, to)), None),
+        // An end on the plane goes with the other end.
+        _ if from_depth >= 0.0 && to_depth >= 0.0 => (None, Some((from, to))),
+        (from_visible, _) => {
+            let cut = from + (to - from) * (from_depth / (from_depth - to_depth));
+            if from_visible {
+                (Some((from, cut)), Some((cut, to)))
+            } else {
+                (Some((cut, to)), Some((from, cut)))
+            }
+        }
+    }
 }
 
 /// `FUN_6d81f86b`'s up vector for a unit axis `d` (the reference frame is
@@ -4948,7 +4984,7 @@ mod tests {
         // The beam points at the camera: the view looks down -Z.
         let axis = vec3(0.0, 0.0, 1.0);
         let view_forward = vec3(0.0, 0.0, -1.0);
-        let segments = death_star_beam_cone_segments(origin, axis, 100.0, view_forward);
+        let segments = death_star_beam_cone_segments(origin, axis, 100.0, view_forward, origin);
         // Eight spokes; the eight ring edges lie wholly behind the decal.
         assert_eq!(segments.len(), 8);
         let apex = origin + axis * 5.0;
@@ -4963,7 +4999,7 @@ mod tests {
         }
         // Seen from behind the Death Star, nothing of the cone is in front
         // except the ring and the spokes' far ends: all 16 edges show, cut.
-        let behind = death_star_beam_cone_segments(origin, axis, 100.0, -view_forward);
+        let behind = death_star_beam_cone_segments(origin, axis, 100.0, -view_forward, origin);
         assert_eq!(behind.len(), 16);
         let ring_edges = behind
             .iter()
@@ -4971,6 +5007,36 @@ mod tests {
                 && (to.z - (origin.z - 10.0)).abs() < 1e-4)
             .count();
         assert_eq!(ring_edges, 8);
+    }
+
+    // A0 2026-11-18-edited-saves-8 l-07 (377f230464ae): the beam's line
+    // leaves the dish behind the Death Star decal, which hides it up to the
+    // sphere's rim; a beam towards the camera stays in front.
+    #[test]
+    fn the_superlaser_line_behind_the_decal_is_kept_for_the_pass_under_it() {
+        let origin = vec3(0.0, 0.0, 0.0);
+        let view_forward = vec3(0.0, 0.0, -1.0);
+        // Away from the camera and to the left: wholly behind.
+        let far = vec3(-50.0, 0.0, -30.0);
+        assert_eq!(
+            split_at_decal_depth(origin, far, origin, view_forward),
+            (None, Some((origin, far)))
+        );
+        // Towards the camera: wholly in front.
+        let near = vec3(-50.0, 0.0, 30.0);
+        assert_eq!(
+            split_at_decal_depth(origin, near, origin, view_forward),
+            (Some((origin, near)), None)
+        );
+        // Through the plane: cut where it crosses the decal's depth.
+        let (front, behind) = split_at_decal_depth(
+            vec3(0.0, 0.0, 10.0),
+            vec3(0.0, 0.0, -10.0),
+            origin,
+            view_forward,
+        );
+        assert_eq!(front, Some((vec3(0.0, 0.0, 10.0), Vec3::ZERO)));
+        assert_eq!(behind, Some((Vec3::ZERO, vec3(0.0, 0.0, -10.0))));
     }
 
     // Source: FUN_005ab650 tactical layout and lane derivation.

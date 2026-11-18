@@ -205,7 +205,17 @@ turn clock is `timeGetTime`, so the overdue kill runs on the first update
 after Resume (fire within about 0.13 s of it). See
 `tactical-effect-call-rate.md` "The turn clock across a pause".
 
-The decal frame is the Death Star decal's. `FUN_005d4d10` sets that
+The beam's frame is not the decal's (corrected 2026-11-18): `FUN_005d4d10`
+creates the frame `+0x50` at `(-2e, r, r)` and its child `+0x4c` at
+`(0, 0.11e, -0.09e)`; `Class_0066d278_vt8` (`0x005d5970`) adds the decal
+texture `+0x64` to `+0x50`, and `FUN_005d59e0` hands `+0x4c` to
+`FUN_005da150`, so the beam leaves from the child, above the decal's
+centre. A0 2026-11-18-edited-saves-8 l-07 (`377f230464ae`, seq-l2-beam)
+shows the star 13 px above the 42 px sphere's centre and the line leaving
+from it, hidden by the sphere where it lies behind the decal's depth. The
+port had the decal on the child and the beam at the decal's centre.
+
+`FUN_005d4d10` sets the decal
 texture's `SetDecalOrigin(0x40, 0x40)` (texture slot `+0x48`), so the
 frame marks its texel (64, 64).
 

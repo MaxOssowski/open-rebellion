@@ -11528,6 +11528,32 @@ fn death_star_beam_progress(beam: &rebellion_core::tactical::TacticalDeathStarBe
         .then(|| beam.elapsed / DEATH_STAR_BEAM_GROW_SECONDS)
 }
 
+/// The beam's part behind the Death Star decal's depth, drawn just before
+/// the decal so its opaque pixels hide it (`draw_death_star_beam`).
+fn draw_tactical_death_star_beam_behind(state: &mut TacticalState, aperture: (f32, f32, f32, f32)) {
+    let Some(session) = state.session.as_ref() else {
+        return;
+    };
+    let Some(beam) = session.death_star_beam else {
+        return;
+    };
+    let Some(progress) = death_star_beam_progress(&beam) else {
+        return;
+    };
+    let extent = session.source_layout.battle_extent;
+    let offsets = state.backdrop_offsets(extent).death_star;
+    let (decal, _) = death_star_backdrop_source(extent, offsets);
+    state.asset_renderer.draw_death_star_beam(
+        aperture,
+        death_star_dish_source(extent, offsets).rendered(),
+        decal.rendered(),
+        beam.target_position.rendered(),
+        progress,
+        extent,
+        true,
+    );
+}
+
 fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32, f32, f32)) {
     let Some(session) = state.session.as_ref() else {
         return;
@@ -11539,13 +11565,16 @@ fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32,
         return;
     };
     let extent = session.source_layout.battle_extent;
-    let (origin, _) = death_star_backdrop_source(extent, state.backdrop_offsets(extent).death_star);
+    let offsets = state.backdrop_offsets(extent).death_star;
+    let (decal, _) = death_star_backdrop_source(extent, offsets);
     let drawn = state.asset_renderer.draw_death_star_beam(
         aperture,
-        origin.rendered(),
+        death_star_dish_source(extent, offsets).rendered(),
+        decal.rendered(),
         beam.target_position.rendered(),
         progress,
         extent,
+        false,
     );
     if !state.logged_death_star_beam {
         macroquad::logging::info!(
@@ -11582,21 +11611,35 @@ fn planet_backdrop_source(extent: f32, offset: (f32, f32)) -> (TacticalWorldPosi
 }
 
 /// Where `FUN_005d4d10` hangs the Death Star decal, in source coordinates,
-/// and its width, for a battle extent `e`: a frame at
+/// and its width, for a battle extent `e`: the frame `+0x50` at
 /// `(-2e, rand(0.4e) - 0.2e, rand(0.4e) - 0.2e)` (`DAT_0066d248` -2,
-/// `DAT_0066d244` 0.2), opposite the planet, with a child at
-/// `(0, 0.11e, -0.09e)` carrying a `0.5e` decal. `offset` is the frame's
-/// (y, z) offset, drawn from the clock-seeded stream by
-/// [`BackdropOffsets::from_clock`].
+/// `DAT_0066d244` 0.2), opposite the planet, which carries the `0.5e`
+/// decal (`Class_0066d278_vt8`, `0x005d5970`: AddVisual of the texture
+/// `+0x64` on `+0x50`). `offset` is the frame's (y, z) offset, drawn from
+/// the clock-seeded stream by [`BackdropOffsets::from_clock`].
 fn death_star_backdrop_source(extent: f32, offset: (f32, f32)) -> (TacticalWorldPosition, f32) {
     (
         TacticalWorldPosition {
             x: -2.0 * extent,
-            y: offset.0 + 0.11 * extent,
-            z: offset.1 - 0.09 * extent,
+            y: offset.0,
+            z: offset.1,
         },
         0.5 * extent,
     )
+}
+
+/// The dish the superlaser leaves from: `FUN_005d4d10`'s child frame `+0x4c`
+/// at `(0, 0.11e, -0.09e)` (`DAT_0066d258`, `DAT_0066d250`) on the decal's
+/// frame, the frame `FUN_005d59e0` hands `FUN_005da150` for the beam. A0
+/// 2026-11-18-edited-saves-8 l-07 (377f230464ae) shows the beam's star and
+/// line leaving above the sphere's centre.
+fn death_star_dish_source(extent: f32, offset: (f32, f32)) -> TacticalWorldPosition {
+    let (decal, _) = death_star_backdrop_source(extent, offset);
+    TacticalWorldPosition {
+        y: decal.y + 0.11 * extent,
+        z: decal.z - 0.09 * extent,
+        ..decal
+    }
 }
 
 fn draw_tactical_death_star_backdrop(state: &mut TacticalState, aperture: (f32, f32, f32, f32)) {
@@ -11610,6 +11653,7 @@ fn draw_tactical_death_star_backdrop(state: &mut TacticalState, aperture: (f32, 
     let (center, size) =
         death_star_backdrop_source(extent, state.backdrop_offsets(extent).death_star);
     let resource_id = death_star.resource_id();
+    draw_tactical_death_star_beam_behind(state, aperture);
     let drawn = state
         .asset_renderer
         .draw_decal(aperture, resource_id, center.rendered(), size);
@@ -22155,20 +22199,32 @@ mod tests {
     // Source: FUN_005d4d10 (DAT_0066d244 0.2, DAT_0066d248 -2.0,
     // DAT_0066d250 0.09, DAT_0066d258 0.11, DAT_0066d260 0.5). Its
     // SetPosition passes -2e as x (0x005d5598), and A0 TAC-03-C020 shows the
-    // decal where the camera sees -x.
+    // decal where the camera sees -x. Class_0066d278_vt8 (0x005d5970) adds
+    // the decal to the frame +0x50; FUN_005d59e0 builds the beam on the
+    // child +0x4c.
     #[test]
     fn the_death_star_hangs_behind_the_battle_opposite_the_planet() {
         let (center, size) = death_star_backdrop_source(400.0, (0.0, 0.0));
         assert!((center.x + 800.0).abs() < 1e-3);
-        assert!((center.y - 44.0).abs() < 1e-3);
-        assert!((center.z + 36.0).abs() < 1e-3);
+        assert!(center.y.abs() < 1e-3);
+        assert!(center.z.abs() < 1e-3);
         assert_eq!(size, 200.0);
         let (planet, _) = planet_backdrop_source(400.0, (0.0, 0.0));
         assert_eq!(planet.x, -center.x);
-        // The frame's random offsets move the child with it.
+        // The frame's random offsets move the decal and its dish child.
         let (moved, _) = death_star_backdrop_source(400.0, (-3.0, 5.0));
-        assert!((moved.y - 41.0).abs() < 1e-3);
-        assert!((moved.z + 31.0).abs() < 1e-3);
+        assert!((moved.y + 3.0).abs() < 1e-3);
+        assert!((moved.z - 5.0).abs() < 1e-3);
+    }
+
+    // A0 2026-11-18-edited-saves-8 l-07 (377f230464ae): the superlaser's
+    // star and line leave above the Death Star sphere's centre.
+    #[test]
+    fn the_superlaser_leaves_from_the_dish_child_above_the_decal() {
+        let dish = death_star_dish_source(400.0, (-3.0, 5.0));
+        assert!((dish.x + 800.0).abs() < 1e-3);
+        assert!((dish.y - 41.0).abs() < 1e-3);
+        assert!((dish.z + 31.0).abs() < 1e-3);
     }
 
     #[test]
