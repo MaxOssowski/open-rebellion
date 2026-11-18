@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 145;
+const SCENARIO_COUNT: u8 = 146;
 
 
 extern "C" {
@@ -617,6 +617,14 @@ pub enum Scenario {
     /// Dodonna - Yavin", "Mon Mothma - Chazwa", "Wedge Antilles - Yavin".
     /// See [`place_palace_prisoners`].
     PersonnelPalace = 144,
+    /// OBJ-03-C011: the Empire's Personnel Finder with a retired
+    /// character, as A0 2026-11-18-edited-saves-9 d-03 (b9ea91b80dbb, an
+    /// unedited Empire game, day 132) shows it: "Ozzel - Retired" (0x8799,
+    /// `FUN_00465bb0`) sixth of eight, beside "Darth Vader - Yavin ( On
+    /// Mission ) ", "Emperor Palpatine - Coruscant", "Menndo - Corfai" and
+    /// "Veers - Coruscant". port: Jerjerrod, Needa and Piett, aboard ships
+    /// in A0, stand at Coruscant here. See [`place_retired_roster`].
+    PersonnelRetired = 145,
 }
 
 impl Scenario {
@@ -767,6 +775,7 @@ impl Scenario {
             142 => Self::CaptureMessages,
             143 => Self::FleetsBothSides,
             144 => Self::PersonnelPalace,
+            145 => Self::PersonnelRetired,
             _ => return None,
         })
     }
@@ -838,6 +847,7 @@ impl Scenario {
             || self == Self::BatteryStatus
             || self == Self::PersonnelStates
             || self == Self::PersonnelAbode
+            || self == Self::PersonnelRetired
             || self.targets_an_object()
             || self.opens_build_selection()
             || self == Self::Quadrants
@@ -1839,6 +1849,9 @@ pub fn apply(
     if request.scenario == Scenario::PersonnelPalace {
         place_palace_prisoners(world, movement, missions, troop_transport);
     }
+    if request.scenario == Scenario::PersonnelRetired {
+        place_retired_roster(world);
+    }
     if request.scenario == Scenario::BatteryStatus {
         let class_dat_id = rebellion_core::ids::DatId::new(0x2200_0001);
         let battery = world.defense_facilities.insert(rebellion_core::world::DefenseFacilityInstance {
@@ -2407,6 +2420,65 @@ fn place_abode_roster(request: FixtureRequest, world: &mut GameWorld) {
                 .object_views
                 .empire_character_commands
                 .insert(id, rebellion_core::character_command::CommandKind::General);
+        }
+    }
+}
+
+/// The `PersonnelRetired` scenario (A0 2026-11-18-edited-saves-9 d-03):
+/// only d-03's eight Imperial characters are recruited, free in no fleet.
+/// Vader is on a mission at Yavin, Palpatine and Veers stand at Coruscant,
+/// Menndo at Corfai, and Ozzel is retired (destroyed with a Retire's
+/// reason, `FUN_00534c00`). port: Jerjerrod, Needa and Piett stand at
+/// Coruscant, not aboard d-03's ships.
+fn place_retired_roster(world: &mut GameWorld) {
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let roster: &[(&str, &str)] = &[
+        ("Darth Vader", "Yavin"),
+        ("Emperor Palpatine", "Coruscant"),
+        ("Jerjerrod", "Coruscant"),
+        ("Menndo", "Corfai"),
+        ("Needa", "Coruscant"),
+        ("Ozzel", ""),
+        ("Piett", "Coruscant"),
+        ("Veers", "Coruscant"),
+    ];
+    let keys: Vec<_> = world.characters.keys().collect();
+    for key in keys {
+        let name = world.characters[key].name.clone();
+        let place = roster.iter().find(|(listed, _)| *listed == name);
+        if place.is_none() {
+            // Every other character of the Empire's stays off its list.
+            if !world.characters[key].is_alliance {
+                world.characters[key].recruited = false;
+            }
+            continue;
+        }
+        let at = place.and_then(|(_, at)| system(world, at));
+        for fleet in world.fleets.values_mut() {
+            fleet.characters.retain(|&seated| seated != key);
+        }
+        let character = &mut world.characters[key];
+        character.is_alliance = false;
+        character.is_empire = true;
+        character.recruited = true;
+        character.current_fleet = None;
+        character.ship = None;
+        character.current_abode = None;
+        character.on_mission = name == "Darth Vader";
+        character.injury = 0;
+        character.command = rebellion_core::character_command::CommandKind::None;
+        character.is_captive = false;
+        character.captured_by = None;
+        character.current_system = at;
+        if name == "Ozzel" {
+            character.mark_killed();
+            character.is_retired = true;
         }
     }
 }
@@ -4556,7 +4628,10 @@ pub fn emit_personnel_finder(
 ) {
     if matches!(
         request.scenario,
-        Scenario::SpecForcesYavin | Scenario::PersonnelAbode | Scenario::PersonnelPalace
+        Scenario::SpecForcesYavin
+            | Scenario::PersonnelAbode
+            | Scenario::PersonnelPalace
+            | Scenario::PersonnelRetired
     ) {
         emit_finder_list(request, world, fog, finder);
         return;
@@ -6565,6 +6640,7 @@ fn object_menu_report<'a>(
                 | Scenario::BatteryStatus
                 | Scenario::PersonnelStates
                 | Scenario::PersonnelAbode
+                | Scenario::PersonnelRetired
                 | Scenario::BuildSelectionDefensesDestination
                 | Scenario::BuildSelectionFleetDestination
         ) =>
@@ -16364,6 +16440,64 @@ mod tests {
         });
     }
 
+    fn seed_retired_roster(world: &mut GameWorld) {
+        seed_abode_roster(world);
+        let systems: Vec<_> = world.systems.keys().collect();
+        world.systems[systems[1]].name = "Coruscant".into();
+        world.systems[systems[2]].name = "Corfai".into();
+        for (index, name) in [
+            "Emperor Palpatine",
+            "Jerjerrod",
+            "Menndo",
+            "Needa",
+            "Ozzel",
+            "Piett",
+            "Veers",
+            "Mara Jade",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: rebellion_core::ids::DatId::new(0x3000_0300 + index as u32),
+                name: name.into(),
+                is_alliance: false,
+                is_empire: true,
+                recruited: true,
+                current_system: Some(systems[4]),
+                ..Default::default()
+            });
+        }
+    }
+
+    // A0 2026-11-18-edited-saves-9 d-03 (b9ea91b80dbb, an unedited Empire
+    // game, day 132): the Imperial tab lists "Ozzel - Retired" (0x8799,
+    // FUN_00465bb0) among d-03's eight; the three aboard ships in A0
+    // stand at Coruscant here.
+    #[test]
+    fn the_personnel_retired_scenario_lists_d03s_imperial_rows() {
+        let applied = apply_to_loading_world_with(
+            request(Scenario::PersonnelRetired, CockpitFaction::Empire),
+            seed_retired_roster,
+        );
+        let fog = rebellion_core::fog::FogState::new(Faction::Empire);
+        let mut finder = rebellion_render::personnel_finder::PersonnelFinderState::default();
+        finder.open(CockpitFaction::Empire);
+        assert_eq!(
+            finder.shown_character_rows(&applied.world, &fog).unwrap(),
+            [
+                "Darth Vader - Yavin ( On Mission ) ",
+                "Emperor Palpatine - Coruscant",
+                "Jerjerrod - Coruscant",
+                "Menndo - Corfai",
+                "Needa - Coruscant",
+                "Ozzel - Retired",
+                "Piett - Coruscant",
+                "Veers - Coruscant",
+            ]
+        );
+    }
+
     // A0 2026-11-18-edited-saves-7 b-19 (e4f53d49b065, day 31): the
     // Alliance's copies of its four prisoners stay in Jabba's Palace
     // (FUN_004eec60, FUN_004f9a60) and read the abode's name alone
@@ -16490,6 +16624,7 @@ mod tests {
                 Scenario::ShipRepaired,
                 Scenario::GravityWellBattle,
                 Scenario::PersonnelAbode,
+                Scenario::PersonnelRetired,
             ]
         );
     }

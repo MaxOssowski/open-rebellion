@@ -35,9 +35,14 @@
 // 2026-11-18-edited-saves-7 b-19 (EVT-01-C018): four prisoners the
 // Alliance's copies hold in Jabba's Palace, read "Name - Jabba's Palace".
 //
+// And for the Empire, the PersonnelRetired fixture (code 146) against A0
+// 2026-11-18-edited-saves-9 d-03..d-08 (OBJ-03-C011): "Ozzel - Retired",
+// the row chosen with the name box left empty, its menu's grey items
+// ignoring clicks.
+//
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node personnel-states.mjs [--out=DIR] [--faction=alliance|empire]
-//              [--only=specforces|copied|abode|palace]
+//              [--only=specforces|copied|abode|palace|retired]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -1035,6 +1040,178 @@ async function runPalace(browser, base) {
   }
 }
 
+// OBJ-03-C011: the PersonnelRetired fixture (code 146) against A0
+// 2026-11-18-edited-saves-9 (an unedited Empire game, day 132; not
+// committed, sha256 prefixes cited). d-03 (b9ea91b80dbb): the Imperial tab
+// lists "Ozzel - Retired" sixth (FUN_00465bb0, destroyed with a Retire's
+// reason, 0x8799); each row whose text the fixture shares with A0 is held
+// to A0's grey ink. d-08 (2f1d872c5a2e): a chosen Ozzel row is white and
+// the name box stays empty (FUN_00464890 case 0xca/0x29b copies a name
+// only for an existing object, +0x50 bit 6). d-04 (5b7a43b193d5): the
+// row's menu, Encyclopedia and Status both grey, 90 wide. d-05..d-07
+// (d97755577429, caa8d80955c3, 7186ada10060): a click on either grey item
+// opens nothing and the menu stays open (FUN_004aba60).
+const PERSONNEL_RETIRED = 146;
+const RETIRED_A0 = ".artifacts/a0-vm/2026-11-18-edited-saves-9";
+const RETIRED_ROWS = ["Darth Vader - Yavin ( On Mission ) ", "Emperor Palpatine - Coruscant",
+  "Jerjerrod - Coruscant", "Menndo - Corfai", "Needa - Coruscant", "Ozzel - Retired",
+  "Piett - Coruscant", "Veers - Coruscant"];
+// The rows whose text d-03 shares; Jerjerrod, Needa and Piett ride ships
+// in A0 ("Victory Destroyer 1", "Galleon 1 ( Enroute )", "Galleon 2").
+const RETIRED_SHARED = [0, 1, 3, 5, 7];
+
+async function runRetired(browser, base) {
+  const label = "empire-retired";
+  const directory = path.join(OUT, label);
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  const steps = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(ROOT, RETIRED_A0, file)));
+  const grab = async (name) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${name}.png`) });
+    steps.push({ label: name, sha256: createHash("sha256").update(bytes).digest("hex") });
+    return PNG.sync.read(bytes);
+  };
+  // FUN_00465540's grey (A0 (117, 114, 114)) and the chosen row's white.
+  const grey = (png, i) => png.data[i] >= 100 && png.data[i] <= 200 && Math.abs(png.data[i] - png.data[i + 2]) <= 20;
+  const white = (png, i) => Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > 200;
+  const ink = (png, [x0, y0, x1, y1], test) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+      if (!test(png, (y * png.width + x) * 4)) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+    return box;
+  };
+  // As runAbode: left within a pixel, top and bottom within two (the
+  // accepted text deviation; the right edge is reported, not held).
+  const near = (a, p) => Boolean(a && p) && Math.abs(a[0] - p[0]) <= 1
+    && Math.abs(a[1] - p[1]) <= 2 && Math.abs(a[3] - p[3]) <= 2;
+  // The Empire's list: rows 20 high from y 194, x from 163 (A0 d-03: ink
+  // from x 167, tops 201..341).
+  const rowArea = (row) => [163, 194 + 20 * row, 503, 214 + 20 * row];
+  const menuFrames = () => page.evaluate(() => window.__openRebellionInterfaceObjectMenu ?? null);
+  try {
+    await page.goto(`${base}?fixture-code=${PERSONNEL_RETIRED | (2 << 8)}`);
+    const deadline = Date.now() + 30_000;
+    while ((await ready(page))?.status !== "ready") {
+      if (Date.now() > deadline) throw new Error("the PersonnelRetired fixture never reported");
+      await page.waitForTimeout(100);
+    }
+    await frames(page, 6);
+    await page.locator("#glcanvas").focus();
+    await page.mouse.move(2, 470);
+    await frames(page, 4);
+    await page.keyboard.press("F5");
+    const shown = await until(page, "F5 opens the Imperial tab", (o) => o.tab === "imperial" && o.rows.length > 0);
+    steps.push({ label: "rows", rows: shown.rows, chosen: shown.chosen, name: shown.name });
+    assert.deepEqual(shown.rows, RETIRED_ROWS, JSON.stringify(shown.rows));
+    assert.deepEqual([shown.chosen, shown.name], [null, ""], JSON.stringify(shown));
+    await frames(page, 4);
+    const listed = await grab("rows");
+    const d03 = await a0("d-03-slot5-unedited-finder-imperial-ozzel-retired-vader-on-mission-d132.png");
+    const rows = RETIRED_SHARED.map((row) => {
+      const box = { row, text: RETIRED_ROWS[row], a0: ink(d03, rowArea(row), grey), port: ink(listed, rowArea(row), grey) };
+      return { ...box, near: near(box.a0, box.port) };
+    });
+    steps.push({ label: "rows-vs-d-03", rows });
+    assert.ok(rows.every(({ near: ok }) => ok), JSON.stringify(rows));
+
+    // d-08: a click on Ozzel's row whitens it; the name box stays empty.
+    await click(page, [200, 303]);
+    await page.waitForTimeout(300);
+    const chosen = await until(page, "Ozzel's row is chosen", (o) => o.chosen === 5);
+    steps.push({ label: "chosen", chosen: chosen.chosen, name: chosen.name });
+    assert.equal(chosen.name, "", JSON.stringify(chosen));
+    await page.mouse.move(2, 470);
+    await frames(page, 4);
+    const picked = await grab("row-chosen");
+    const d08 = await a0("d-08-slot5-unedited-finder-ozzel-retired-row-chosen-d133.png");
+    const ozzel = { a0: ink(d08, rowArea(5), white), port: ink(picked, rowArea(5), white) };
+    // Inside the name box (x 269..508 below its white top edge, y 97, on
+    // the Empire's window): no white ink.
+    const boxArea = [269, 98, 508, 111];
+    const nameBox = { a0: ink(d08, boxArea, white), port: ink(picked, boxArea, white) };
+    steps.push({ label: "chosen-vs-d-08", ozzel, name_box: nameBox });
+    assert.ok(near(ozzel.a0, ozzel.port), JSON.stringify(ozzel));
+    assert.deepEqual([nameBox.a0, nameBox.port], [null, null], JSON.stringify(nameBox));
+
+    // d-04: a right release on the row opens Encyclopedia and Status, both
+    // grey, in a frame 90 by 42.
+    await page.mouse.move(215, 305);
+    await frames(page);
+    await page.mouse.down({ button: "right" });
+    await frames(page);
+    await page.mouse.up({ button: "right" });
+    await page.waitForTimeout(300);
+    await frames(page, 4);
+    const menu = await menuFrames();
+    assert.ok(menu, "the right release opened no menu");
+    steps.push({ label: "menu", menu: { left: menu.left, top: menu.top, width: menu.width,
+      height: menu.height, row_states: menu.row_states } });
+    assert.deepEqual(menu.row_states, [["Encyclopedia", false], ["Status", false]], JSON.stringify(menu));
+    assert.deepEqual([menu.width, menu.height], [90, 42], JSON.stringify(menu));
+    await page.mouse.move(2, 470);
+    await frames(page, 4);
+    const opened = await grab("menu");
+
+    // d-05..d-07: clicks on the grey Encyclopedia (twice) and Status
+    // choose nothing; the menu stays and the screen does not change.
+    const items = [["encyclopedia", menu.top + 11], ["encyclopedia-again", menu.top + 11], ["status", menu.top + 31]];
+    for (const [name, y] of items) {
+      await click(page, [menu.left + 30, y]);
+      await page.waitForTimeout(300);
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = null; });
+      await page.mouse.move(2, 470);
+      await frames(page, 6);
+      const still = await menuFrames();
+      const finder = await until(page, `the Finder stays after ${name}`, (o) => o.rows.length > 0);
+      const after = await grab(`after-${name}`);
+      let changed = 0;
+      for (let i = 0; i < opened.data.length; i += 4) {
+        if ([0, 1, 2].some((c) => opened.data[i + c] !== after.data[i + c])) changed += 1;
+      }
+      steps.push({ label: `click-${name}`, menu_open: Boolean(still), chosen: finder.chosen,
+        name: finder.name, changed_pixels: changed });
+      assert.ok(still, `the menu closed after the grey ${name}`);
+      assert.deepEqual(still.row_states, menu.row_states, JSON.stringify(still));
+      assert.deepEqual([finder.chosen, finder.name], [5, ""], JSON.stringify(finder));
+      assert.equal(changed, 0, `the grey ${name} changed ${changed} pixels`);
+    }
+
+    // d-08: a click outside the menu closes it; Ozzel stays chosen.
+    await click(page, [340, 80]);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = null; });
+    await page.mouse.move(2, 470);
+    await frames(page, 6);
+    assert.equal(await menuFrames(), null, "the menu stayed open after a click outside it");
+    const closed = await until(page, "the Finder stays after the menu closes", (o) => o.rows.length > 0);
+    steps.push({ label: "closed", chosen: closed.chosen, name: closed.name });
+    assert.deepEqual([closed.chosen, closed.name], [5, ""], JSON.stringify(closed));
+    const last = await grab("menu-closed");
+    let changed = 0;
+    for (let i = 0; i < picked.data.length; i += 4) {
+      if ([0, 1, 2].some((c) => picked.data[i + c] !== last.data[i + c])) changed += 1;
+    }
+    steps.push({ label: "closed-vs-chosen", changed_pixels: changed });
+    assert.equal(changed, 0, `closing the menu left ${changed} pixels changed`);
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: label, status: "pass", steps };
+  } catch (error) {
+    await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
+    return { faction: label, status: "fail", error: String(error.stack || error), steps, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -1045,6 +1222,9 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
+  if (args.only === "retired") {
+    results.push(await runRetired(browser, base));
+  } else {
   if (args.only !== "abode" && args.only !== "palace") {
     if (args.only !== "specforces" && args.only !== "copied") {
       for (const faction of FACTIONS) results.push(await run(browser, base, faction));
@@ -1058,6 +1238,10 @@ try {
     for (const faction of FACTIONS) results.push(await runAbode(browser, base, faction));
   }
   if (!args.faction || args.faction === "alliance") results.push(await runPalace(browser, base));
+  if (args.only !== "palace" && (!args.faction || args.faction === "empire")) {
+    results.push(await runRetired(browser, base));
+  }
+  }
 } finally {
   await browser.close();
   server.close();
