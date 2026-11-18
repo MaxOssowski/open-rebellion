@@ -1729,6 +1729,7 @@ fn an_own_captive_keeps_the_copy_it_froze_with_in_the_palace_until_the_side_sees
         to: coruscant,
         arrival: 2,
         abode: None,
+        ship: None,
     });
     day(&mut setup, &missions);
     assert_eq!(copy(&setup), Some(in_palace.clone()));
@@ -1870,6 +1871,7 @@ fn an_own_captive_in_hyperspace_or_on_a_trip_is_copied_only_by_its_own_trip() {
             to,
             arrival: 9,
             abode: None,
+            ship: None,
         });
     }
     day(&mut setup, &missions);

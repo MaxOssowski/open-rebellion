@@ -381,6 +381,13 @@ pub struct ActiveMission {
     /// (`+0x6c` of family `0x98`), in place of [`Self::origin`]: the Bounty
     /// Hunters leave Jabba's Palace (save v77).
     pub origin_abode: Option<crate::ids::AbodeKey>,
+    /// The capital ship the lead character rode when phase 2 settled the
+    /// location: its `+0x70`, the container it joined from (`Role_vt268`
+    /// `FUN_00536490` -> `FUN_004f6b70`). port: not saved (the save's
+    /// nested layout migrates only by appended tails), so a game loaded
+    /// mid-mission sends a Pickup's prisoners to [`Self::origin`].
+    #[serde(skip)]
+    pub origin_ship: Option<(crate::ids::FleetKey, u64)>,
 }
 
 /// The phase that starts every member's transit (`FUN_00520b20`).
@@ -429,6 +436,7 @@ impl ActiveMission {
             target_abode: None,
             target_fleet: None,
             origin_abode: None,
+            origin_ship: None,
             first_training_day: None,
             succeeded: false,
         }
@@ -1777,6 +1785,15 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
             MissionEffect::MemberMoved { member, to } => move_member(world, *member, *to),
             MissionEffect::MemberAvailable { member } => set_on_mission(world, *member, false),
             MissionEffect::MemberBoarded { member, fleet } => board_fleet(world, *member, *fleet),
+            MissionEffect::MemberSeated { character, ship } => {
+                let aboard = world.characters.get(*character).and_then(|c| c.current_fleet);
+                let held = aboard.and_then(|fleet| world.fleets.get(fleet)).is_some_and(|fleet| {
+                    fleet.capital_ships.iter().any(|s| s.id == *ship && s.alive)
+                });
+                if held {
+                    world.characters[*character].ship = Some(*ship);
+                }
+            }
             MissionEffect::AdriftSettled { character } => {
                 if let Some(c) = world.characters.get_mut(*character) {
                     c.adrift = false;
@@ -2043,6 +2060,15 @@ pub struct EscapeeTransit {
     /// Bounty mission destination, family `0x65`, to Jabba's Palace; a trip
     /// to an abode takes 1 day, `FUN_00555b30`; save v77).
     pub abode: Option<crate::ids::AbodeKey>,
+    /// The capital ship (its fleet and [`ShipInstance::id`]) it travels
+    /// to, in place of `to`: a picked-up prisoner takes Vader's `+0x70`,
+    /// the container he joined the Pickup from (`FUN_0056da80`,
+    /// `Role_vt268` `FUN_00536490`), a ship when he rode a fleet. Such a
+    /// trip lands the tick it starts, so it is not saved.
+    ///
+    /// [`ShipInstance::id`]: crate::world::ShipInstance::id
+    #[serde(skip)]
+    pub ship: Option<(crate::ids::FleetKey, u64)>,
 }
 
 /// All active missions across the galaxy.
@@ -2140,6 +2166,7 @@ impl MissionState {
             to: from,
             arrival: now + 1,
             abode: Some(abode),
+            ship: None,
         });
     }
 
@@ -2587,6 +2614,12 @@ pub enum MissionEffect {
     MemberBoarded {
         member: MissionMember,
         fleet: crate::ids::FleetKey,
+    },
+    /// A character aboard a fleet takes the capital ship numbered `ship`
+    /// as its container, when the fleet still holds it.
+    MemberSeated {
+        character: CharacterKey,
+        ship: u64,
     },
     /// A member moved for its mission: off the map when it starts a transit
     /// (`to: None`), into the target system when it lands (`FUN_00556390`).
@@ -3852,12 +3885,20 @@ impl MissionSystem {
         // palace's (its own side +0x24): FUN_004ef260 runs its slot +0x218
         // (FUN_004ef5b0, status 2) and sets Autorouting, and the
         // autorouting's first fitting candidate is its +0x70
-        // (FUN_00554ab0), Vader's. port: Vader's +0x70 is the system he
-        // left from.
+        // (FUN_00554ab0), Vader's: the container he joined from
+        // (FUN_00536490), a capital ship when he rode a fleet. A0
+        // 2026-11-18-edited-saves-9 c-14 (88e1928e1f1a) has them aboard
+        // Victory Destroyer 1 the day of Jabba Delivers Prisoners.
+        // hyp: FUN_00555b30 finds no system for the palace end, so the
+        // trip to a ship takes 0 days. port: a system keeps the 1-day trip.
         if let Some(home) = mission
             .origin
             .filter(|_| mission.kind == MissionKind::Pickup)
         {
+            let ship = mission
+                .origin_ship
+                .filter(|(fleet, _)| world.fleets.contains_key(*fleet));
+            let to = ship.map_or(home, |(fleet, _)| world.fleets[fleet].location);
             for effect in own_effects() {
                 if let MissionEffect::PrisonerPickedUp { character } = *effect {
                     out.effects.push(MissionEffect::MemberMoved {
@@ -3866,9 +3907,10 @@ impl MissionSystem {
                     });
                     state.escapees.push(EscapeeTransit {
                         character,
-                        to: home,
-                        arrival: now + 1,
+                        to,
+                        arrival: if ship.is_some() { now } else { now + 1 },
                         abode: None,
+                        ship,
                     });
                 }
             }
@@ -3921,6 +3963,7 @@ impl MissionSystem {
                 to,
                 arrival: now + 1,
                 abode: None,
+                ship: None,
             });
         }
     }
@@ -3955,6 +3998,11 @@ impl MissionSystem {
                     .members()
                     .find_map(|member| member_location(world, member));
                 mission.origin = origin;
+                let origin_ship = mission.members().find_map(|member| {
+                    let c = world.characters.get(member.character()?)?;
+                    Some((c.current_fleet?, c.ship?))
+                });
+                mission.origin_ship = origin_ship;
                 mission.origin_abode = if origin.is_none() {
                     mission
                         .members()
@@ -4750,16 +4798,34 @@ impl MissionSystem {
             .into_iter()
             .partition(|transit| transit.arrival <= now);
         state.escapees = travelling;
-        effects.extend(arrived.into_iter().map(|transit| match transit.abode {
-            Some(abode) => MissionEffect::MemberEnteredAbode {
-                member: MissionMember::Character(transit.character),
-                abode,
-            },
-            None => MissionEffect::MemberMoved {
-                member: MissionMember::Character(transit.character),
-                to: Some(transit.to),
-            },
-        }));
+        for transit in arrived {
+            let member = MissionMember::Character(transit.character);
+            if let Some(abode) = transit.abode {
+                effects.push(MissionEffect::MemberEnteredAbode { member, abode });
+                continue;
+            }
+            // A trip to a ship lands aboard it, wherever its fleet is now.
+            let aboard = transit.ship.and_then(|(fleet, ship)| {
+                Some((fleet, ship, world.fleets.get(fleet)?.location))
+            });
+            match aboard {
+                Some((fleet, ship, at)) => effects.extend([
+                    MissionEffect::MemberMoved {
+                        member,
+                        to: Some(at),
+                    },
+                    MissionEffect::MemberBoarded { member, fleet },
+                    MissionEffect::MemberSeated {
+                        character: transit.character,
+                        ship,
+                    },
+                ]),
+                None => effects.push(MissionEffect::MemberMoved {
+                    member,
+                    to: Some(transit.to),
+                }),
+            }
+        }
 
         // CanEscape (+0xac bit 0x100) follows Captured (FUN_004f1a80); the
         // Final Battle clears it while the character stays held
@@ -4841,6 +4907,7 @@ impl MissionSystem {
                     to,
                     arrival: now + u64::from(days),
                     abode: None,
+                    ship: None,
                 });
             }
         }
@@ -11090,6 +11157,103 @@ mod tests {
         let c = &world.characters[han];
         assert!(c.is_captive);
         assert_eq!((c.current_system, c.current_abode), (Some(home), None));
+    }
+
+    #[test]
+    fn the_pickup_puts_the_prisoners_aboard_vader_s_ship_the_same_day() {
+        // A role's +0x70 is the container it joined its mission from
+        // (Role_vt268 FUN_00536490 -> FUN_004f6b70 -> FUN_00534390); a
+        // character aboard a fleet has a capital ship as its container.
+        // FUN_0056da80 gives each picked-up prisoner Vader's +0x70, and
+        // A0 2026-11-18-edited-saves-9 c-14 (88e1928e1f1a, the day of
+        // c-13's Jabba Delivers Prisoners) lists "Han Solo - Victory
+        // Destroyer 1 ( Captured )".
+        let (mut world, _, han, other, _, palace) = palace_world(0, 0);
+        world.mission_records = vec![pickup_record()];
+        world.characters[other].on_mission = true;
+        let base = system_at(&mut world, 50);
+        let ship = |id| crate::world::ShipInstance {
+            id,
+            ..crate::world::ShipInstance::new(Default::default(), 100, false)
+        };
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: base,
+            capital_ships: vec![ship(1), ship(2)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let vader = agent_at(&mut world, base, false);
+        world.characters[vader].dat_id = crate::ids::DatId::new(0x281);
+        board_fleet(&mut world, MissionMember::Character(vader), fleet);
+        world.characters[vader].ship = Some(2);
+        let mut state = MissionState::new();
+        let pickup = crate::jabba::JabbaStep::Pickup {
+            vader,
+            from: base,
+            palace,
+            tick: 1,
+        };
+        crate::jabba::perform(&pickup, &mut state, &mut world).expect("dispatched");
+        let mut ended_on = None;
+        for today in 1..10 {
+            let advance = step(&mut state, &world, today, &[]);
+            for result in &advance.results {
+                apply_advance_effects(&mut world, &result.effects);
+            }
+            apply_advance_effects(&mut world, &advance.effects);
+            if !advance.ended.is_empty() {
+                ended_on = Some(today);
+                break;
+            }
+        }
+        let day = ended_on.expect("ended");
+        let arrived = MissionSystem::advance_escapes(&mut state, &world, day, &[]);
+        apply_advance_effects(&mut world, &arrived);
+        let c = &world.characters[han];
+        assert!(c.is_captive);
+        assert_eq!(
+            (c.current_fleet, c.ship, c.current_system, c.current_abode),
+            (Some(fleet), Some(2), Some(base), None)
+        );
+        assert!(world.fleets[fleet].characters.contains(&han));
+    }
+
+    #[test]
+    fn a_seat_needs_a_living_ship_of_the_character_s_fleet() {
+        // Our own helper: MemberSeated keeps the seat board_fleet gave when
+        // the named ship is gone or dead.
+        let mut world = minimal_world();
+        let at = system_at(&mut world, 0);
+        let ship = |id, alive| crate::world::ShipInstance {
+            id,
+            alive,
+            ..crate::world::ShipInstance::new(Default::default(), 100, false)
+        };
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: at,
+            capital_ships: vec![ship(1, true), ship(2, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let c = agent_at(&mut world, at, false);
+        board_fleet(&mut world, MissionMember::Character(c), fleet);
+        world.characters[c].ship = Some(1);
+        for absent in [2, 3] {
+            apply_advance_effects(
+                &mut world,
+                &[MissionEffect::MemberSeated {
+                    character: c,
+                    ship: absent,
+                }],
+            );
+            assert_eq!(world.characters[c].ship, Some(1), "ship {absent}");
+        }
     }
 
     #[test]

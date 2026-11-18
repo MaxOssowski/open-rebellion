@@ -684,6 +684,7 @@ mod tests {
             to: home,
             arrival: 9,
             abode: None,
+            ship: None,
         });
         assert!(!han_captured_at_palace(&world, &routing));
         world.characters[han].is_killed = true;
@@ -742,6 +743,7 @@ mod tests {
             to: home,
             arrival: 9,
             abode: None,
+            ship: None,
         });
         assert_eq!(darth_pickup(&world, &routing, palace, 3), None);
         // The day's advance sends it after the rescues (none: all held).
@@ -815,6 +817,7 @@ mod tests {
             to: home,
             arrival: 9,
             abode: None,
+            ship: None,
         });
         let steps =
             JabbaSystem::advance(&mut state, &world, &routing, &[TickEvent { tick: 8 }], &[]);

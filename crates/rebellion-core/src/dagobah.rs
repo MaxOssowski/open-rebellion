@@ -339,6 +339,7 @@ mod tests {
             to: world.characters[luke].current_system.unwrap(),
             arrival: 9,
             abode: None,
+            ship: None,
         });
         assert_eq!(
             DagobahSystem::advance(

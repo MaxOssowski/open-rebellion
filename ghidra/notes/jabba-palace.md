@@ -499,16 +499,32 @@ pictures and Finder rows are the game's own.
 | c-05 (beade2998fe9), c-10 (6e3778ef8d15) | captured: "Han Solo Captured by Bounty Hunters" (`0x716d`), "Han Solo Injured"; no Locate row, no `0x1e0` row | `0x716c`/`0x716d` for both sides, no Locate on a capture, no `0x1e0` for `bounty_captured` | match |
 | c-07 (57d11956dd41), c-08 (457ba1e94604), c-09 (c4cd5029694e) | "Jabba Captures Leia Organa" / "... Luke Skywalker", the Alliance's text, each with an "Injured" row | `jabba_captures_message` (both sides) | match; settles the "not seen in A0" above |
 | c-12 (ecf5493e2ebb), c-13 (8aa20451a9f9) | "Jabba Delivers Prisoners", the fixed four-name text | `jabba_delivers_message` (both sides) | match |
-| c-14 (88e1928e1f1a) | Finder Alliance right after (day 531): "Han Solo / Leia Organa / Luke Skywalker - Victory Destroyer 1 ( Captured )", "Chewbacca - Yavin" | the prisoners travel to the system Vader left from (`mission.origin`) and land the next day | mismatch, open (below) |
+| c-14 (88e1928e1f1a) | Finder Alliance right after (day 531): "Han Solo / Leia Organa / Luke Skywalker - Victory Destroyer 1 ( Captured )", "Chewbacca - Yavin" | the prisoners travelled to the system Vader left from (`mission.origin`) and landed the next day | fixed 2026-11-18, below |
+
+The Pickup's destination (traced 2026-11-18):
+
+- `FUN_0056da80` gives each picked-up prisoner the hit member's `+0x70`
+  (`FUN_00535760` on Vader, `FUN_00534390`). A role's `+0x70` is written
+  only by `Role_vt268` (`FUN_00536490`): joining a mission stores the
+  role's container (`FUN_004f6b70`) through `FUN_00534390`; leaving
+  clears it (`FUN_00546370` passes a null key). So the destination is the
+  container Vader joined the Pickup from. A character aboard a fleet has a
+  capital ship as its container (`FUN_004fe160`), which c-14's "Victory
+  Destroyer 1" shows.
+- `FUN_00555b30` (trip days): 0 when it finds no system for one end
+  (`FUN_0053efd0`/`FUN_00555540` null) or both ends share one; 1 when an
+  end is not a system object; else the distance. The palace end gives 0
+  (hyp: `FUN_00555540` finds no system for the palace), matching c-14 on
+  the day of c-13. Not settled against the Dagobah note's 1-day trip from
+  an abode.
+- Port: `ActiveMission::origin_ship` (the lead character's fleet and ship
+  when phase 2 settles the location) and `EscapeeTransit::ship`; a Pickup
+  whose Vader rode a ship sends the prisoners aboard it, landing the same
+  tick (`MemberBoarded`, `MemberSeated`). Neither field is saved (no save
+  change): a game loaded mid-Pickup falls back to the system and the
+  1-day trip. A Vader at a system keeps the system and 1 day.
 
 Open after part 9:
-
-- The Pickup's prisoners land on a ship the same day (c-14). That fits the
-  `+0x70` object of Vader being a capital ship (Victory Destroyer 1) and a
-  trip whose end is not a system taking 0 ticks (`FUN_00555b30`). The port
-  keeps the system and a 1-day trip. Vader's container before the Pickup is
-  not in a frame; the fix needs it (the ship's fleet and number on the
-  mission record, a save change).
 - `DarthPickup` ran with Chewbacca free at Yavin by the Empire's Finder
   (c-06, c-14), but `FUN_005445d0` needs his `+0xac` bit 0 or `+0x50` bit 3.
   Either the Empire's copy of Chewbacca is stale (he is held or destroyed in

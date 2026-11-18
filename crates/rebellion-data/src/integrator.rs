@@ -1542,6 +1542,12 @@ impl PerceptionIntegrator {
                 rebellion_core::missions::move_member(world, *member, *to);
             } else if let MissionEffect::MemberEnteredAbode { member, abode } = effect {
                 rebellion_core::missions::enter_abode(world, *member, *abode);
+            } else if matches!(
+                effect,
+                MissionEffect::MemberBoarded { .. } | MissionEffect::MemberSeated { .. }
+            ) {
+                // A Pickup's prisoner lands aboard Vader's ship.
+                rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             } else if let MissionEffect::CharacterEscaped {
                 character,
                 escaped_to_alliance,
@@ -2112,6 +2118,7 @@ fn apply_mission_effects_inner(
             | MissionEffect::EscapeBarred { .. }
             | MissionEffect::MemberOnMission { .. }
             | MissionEffect::MemberBoarded { .. }
+            | MissionEffect::MemberSeated { .. }
             | MissionEffect::AdriftSettled { .. }
             | MissionEffect::DiedOfInjury { .. } => {
                 rebellion_core::missions::apply_advance_effects(
