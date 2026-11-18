@@ -579,5 +579,12 @@ Open after part 9:
   is the PersonnelPickup fixture (code 147) and personnel-states.mjs
   `--only=pickup` (9661c779): the eight c-14 rows' text equal, ink boxes
   within 1 px left and 2 px top/bottom, no row icons.
-- Still open: no A0 of the `0x42b` Delivers background (the side record's
-  Luke `+0xb0` bit 3, after Dagobah).
+- The `0x42b` Delivers background: `FUN_004f3e50(side)` is
+  `FUN_0053ef00(0x32000242, side)`, the reader side's Luke; bit 3 of
+  `+0xb0` is DagobahCompleted, set by `Luke_SetDagobahCompleted`
+  (`FUN_0056f730`, Dagobah phase `0xb`, `FUN_005751d0`), which syncs both
+  copies while live (`Luke_SyncDagobahCompleted`, `FUN_005404d0`); a copy
+  going live is rebuilt with it (`FUN_0056f970`). Luke is the Alliance's
+  own on leaving Dagobah and the Empire's captive at the Pickup, so both
+  readers' copies hold the master's bit. Port: `jabba_delivers_message`
+  picks `0x42b` from the master's bit (491f7278). No A0 of `0x42b` yet.
