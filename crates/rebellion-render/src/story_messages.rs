@@ -549,8 +549,9 @@ pub fn final_battle_message(
 /// the Palace mission's failed rescuer (`FUN_0056e870`). TEXTSTRA
 /// `0x7156` / `0x7157` name it (`+0x30`) on background `0x429`.
 ///
-/// Its sound is `0x478`. port: posted to both sides, as the class's case 5
-/// reads no side.
+/// Its sound is `0x478`. Posted to both sides, as the class's case 5
+/// reads no side: A0 2026-11-18-edited-saves-9 c-08, c-09 (457ba1e94604,
+/// c4cd5029694e) show the Empire reading the Alliance's text.
 #[must_use]
 pub fn jabba_captures_message(
     character: &rebellion_core::world::Character,
@@ -2258,8 +2259,9 @@ pub fn near_uprising_message(
 /// `0x42b` when Luke's `+0xb0` bit 3 (`DagobahCompleted`, `FUN_004f3e50`)
 /// is set; its sounds follow the same bit ([`MessageSounds::jabba_delivers`]).
 ///
-/// port: posted to both sides (`story-message-classes.md` row 15) on
-/// `0x42a`.
+/// Posted to both sides (`story-message-classes.md` row 15; A0
+/// 2026-11-18-edited-saves-9 c-13 8aa20451a9f9: the Empire reads it).
+/// port: always on `0x42a`.
 #[must_use]
 pub fn jabba_delivers_message(
     luke_dagobah: bool,
@@ -6295,6 +6297,9 @@ mod tests {
         assert_eq!(attacked[0].advisor_event, [0x19; 2]);
         assert_eq!(attacked[1].advisor_event, [0x2d; 2]);
 
+        // A0 2026-11-18-edited-saves-9 c-05 (beade2998fe9), c-10
+        // (6e3778ef8d15): on a capture the Empire reads Captured by Bounty
+        // Hunters and no Locate row; c-03 (3a7c88a53872) its Locate.
         world.characters[han].is_captive = true;
         let captured = bounty_messages(&world, han, 3, &texts);
         assert_eq!(captured.len(), 1);
