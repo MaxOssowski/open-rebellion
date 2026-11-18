@@ -4168,7 +4168,9 @@ async function probeTacticalDeathStarLaserJourney(
     "Death Star beam event did not run at its turn");
   // 0x005da830 grows the beam for 1 s (DAT_0066d4bc), then it ends. From
   // the Death Star at -2e x it enters the first Imperial view after ~0.85 s.
-  // Its timer only advances in unpaused frames, so the probe pauses near
+  // In the fixture build its timer only advances in unpaused frames
+  // (freeze_paused_effects_for_fixture; the original keeps it growing
+  // while paused), so the probe pauses near
   // that time and inspects still frames, resuming a frame or two at a time
   // until the beam shows, instead of racing a moving frame.
   const drawnLine = `[tactical_3d] death_star_beam target_object_id=${targetObjectId}`;

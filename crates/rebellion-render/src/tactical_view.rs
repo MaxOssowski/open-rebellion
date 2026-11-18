@@ -841,6 +841,10 @@ pub struct TacticalState {
     proof_resource_2560: bool,
     #[cfg(feature = "interface-test-fixtures")]
     proof_lod_follows_zoom: bool,
+    /// Still fixtures only: hold the presentational effects while paused,
+    /// which the original does not (see `advance_tactical_frame`).
+    #[cfg(feature = "interface-test-fixtures")]
+    freeze_paused_effects: bool,
 }
 
 /// The ships' positions and forwards and the fighter groups' positions at
@@ -973,6 +977,8 @@ impl Default for TacticalState {
             proof_resource_2560: false,
             #[cfg(feature = "interface-test-fixtures")]
             proof_lod_follows_zoom: false,
+            #[cfg(feature = "interface-test-fixtures")]
+            freeze_paused_effects: false,
         }
     }
 }
@@ -1096,6 +1102,26 @@ impl TacticalState {
         self.render_pyrotechnics = flags[2];
         self.asset_renderer.set_high_detail(flags[3]);
         self.display_holocube = flags[4];
+    }
+
+    /// Hold the impact, projectile, field and superlaser effects while the
+    /// battle is paused, so a paused fixture's frames stay still. The
+    /// original keeps them running (`advance_tactical_frame`); this never
+    /// enters a production build.
+    #[cfg(feature = "interface-test-fixtures")]
+    pub fn freeze_paused_effects_for_fixture(&mut self) {
+        self.freeze_paused_effects = true;
+    }
+
+    fn freezes_paused_effects(&self) -> bool {
+        #[cfg(feature = "interface-test-fixtures")]
+        {
+            self.freeze_paused_effects
+        }
+        #[cfg(not(feature = "interface-test-fixtures"))]
+        {
+            false
+        }
     }
 
     /// Pin the second that seeds the backdrop framing; `None` centres both
@@ -10297,6 +10323,50 @@ pub fn draw_tactical_view(
     action
 }
 
+/// One frame of the battle's clocks, `dt` seconds long.
+///
+/// The Pause Battle button (command 0xad22, `FUN_0059b130`) only counts
+/// `+0x8c8` up or down (`FUN_005aac30`/`FUN_005aac60`); it does not stop
+/// the scene render `FUN_005c25b0`. Each render still runs `FUN_005c2c80`,
+/// which steps the field frames (`FUN_005d3cc0`), the impact sequences
+/// (`FUN_005d41a0`) and the superlaser beam (`0x005da830`), none of which
+/// tests `+0x8c8`, and moves the scene (`IDirect3DRMFrame::Move`, "Moving
+/// scene failed"), whose move callback `LAB_005eeb90` carries each
+/// projectile on its own wall-clock timer. So those presentational
+/// effects run on while paused; the combat steps do not.
+/// `freeze_paused_effects` is the still fixtures' switch only.
+fn advance_tactical_frame(
+    session: &mut BattleSession,
+    previous_poses: &mut Option<TacticalPoses>,
+    dt: f32,
+    freeze_paused_effects: bool,
+) {
+    if session.phase != BattlePhase::Combat {
+        return;
+    }
+    // FUN_005ada10 runs on every manager update, paused or not.
+    session.advance_voice_announcer(dt * 1000.0);
+    if !(session.paused && freeze_paused_effects) {
+        session.advance_presentational_effects(dt);
+    }
+    if session.paused {
+        return;
+    }
+    // Step at ~4 ticks per second (at 60fps), scaled by combat_speed.
+    print_battle_diagnostics(session);
+    let ticks_per_sec = 4.0 * session.combat_speed as f32;
+    session.step_accumulator += dt * ticks_per_sec;
+    while session.step_accumulator >= 1.0 {
+        session.step_accumulator -= 1.0;
+        *previous_poses = Some(TacticalPoses::of(session));
+        session.step();
+        print_battle_diagnostics(session);
+        if session.phase == BattlePhase::Results {
+            break;
+        }
+    }
+}
+
 /// The battle screens' frame, without the tooltip.
 #[expect(
     clippy::too_many_lines,
@@ -10332,28 +10402,14 @@ fn draw_tactical_frame(
 
     // 0. Advance combat if in Combat phase (mutable borrow).
     {
+        let freeze_paused_effects = state.freezes_paused_effects();
         let session = state.session.as_mut().unwrap();
-        if session.phase == BattlePhase::Combat {
-            // FUN_005ada10 runs on every manager update, paused or not.
-            session.advance_voice_announcer(get_frame_time() * 1000.0);
-        }
-        if session.phase == BattlePhase::Combat && !session.paused {
-            // Step at ~4 ticks per second (at 60fps), scaled by combat_speed.
-            let dt = get_frame_time();
-            session.advance_presentational_effects(dt);
-            print_battle_diagnostics(session);
-            let ticks_per_sec = 4.0 * session.combat_speed as f32;
-            session.step_accumulator += dt * ticks_per_sec;
-            while session.step_accumulator >= 1.0 {
-                session.step_accumulator -= 1.0;
-                state.previous_poses = Some(TacticalPoses::of(session));
-                session.step();
-                print_battle_diagnostics(session);
-                if session.phase == BattlePhase::Results {
-                    break;
-                }
-            }
-        }
+        advance_tactical_frame(
+            session,
+            &mut state.previous_poses,
+            get_frame_time(),
+            freeze_paused_effects,
+        );
     }
 
     if state
@@ -15731,6 +15787,117 @@ mod tests {
         assert_eq!(session.weapon_effects.len(), 1);
         session.advance_presentational_effects(0.002);
         assert!(session.weapon_effects.is_empty());
+    }
+
+    /// A paused battle with one live effect of each kind: a hit sequence,
+    /// a projectile, a tractor field and a fired superlaser beam.
+    fn paused_session_with_every_effect() -> BattleSession {
+        let ships = vec![test_ship(64, 0, true, true), test_ship(128, 0, false, true)];
+        let mut session = test_session(ships, Vec::new(), true);
+        queue_original_tactical_impact(
+            &mut session.impact_effects,
+            1,
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Hit,
+        );
+        assert!(queue_original_tactical_projectile(
+            &mut session.weapon_effects,
+            &session.ships,
+            0,
+            1,
+            WeaponKind::LaserCannon,
+            ORIGINAL_LASER_PROJECTILE_THRESHOLD,
+        ));
+        assert!(set_original_tactical_field(
+            &mut session.field_effects,
+            0,
+            TacticalUnitRef::Ship(1),
+            OriginalTacticalFieldKind::Tractor,
+            true,
+        ));
+        session.death_star_beam = Some(rebellion_core::tactical::TacticalDeathStarBeam {
+            target: 1,
+            source_position: TacticalWorldPosition { x: 0.0, y: 0.0, z: 0.0 },
+            target_position: TacticalWorldPosition { x: 0.0, y: 0.0, z: 0.0 },
+            fired: true,
+            elapsed: 0.0,
+        });
+        session.paused = true;
+        session
+    }
+
+    // Source: the Pause Battle command 0xad22 (FUN_0059b130) only counts
+    // +0x8c8 (FUN_005aac30/FUN_005aac60). The render FUN_005c25b0 still runs
+    // FUN_005c2c80 -> FUN_005d3cc0, FUN_005d41a0 and 0x005da830, none of
+    // which tests +0x8c8, and moves the scene, whose callback LAB_005eeb90
+    // carries each projectile on its own timer.
+    #[test]
+    fn a_paused_battle_keeps_its_effects_running_but_not_its_combat() {
+        let mut session = paused_session_with_every_effect();
+        session.voice_announcer.state =
+            rebellion_core::tactical::TacticalVoiceAnnouncerState::Waiting;
+        session.voice_announcer.countdown_ms = 1000.0;
+        let mut previous_poses = None;
+        advance_tactical_frame(&mut session, &mut previous_poses, 0.11, false);
+        // FUN_005ada10 runs on every manager update, paused or not.
+        assert_eq!(session.voice_announcer.countdown_ms, 890.0);
+        assert!(session.impact_effects[0].frame > 0);
+        assert_eq!(session.weapon_effects[0].progress(), 0.11);
+        assert_eq!(session.field_effects[0].frame, 1);
+        assert_eq!(session.death_star_beam.unwrap().elapsed, 0.11);
+        assert_eq!(session.combat_tick, 0);
+        assert_eq!(session.step_accumulator, 0.0);
+        assert!(previous_poses.is_none());
+    }
+
+    #[test]
+    fn the_still_fixture_switch_holds_a_paused_battles_effects() {
+        let mut session = paused_session_with_every_effect();
+        let before = (
+            session.impact_effects[0].frame,
+            session.weapon_effects[0].elapsed,
+            session.field_effects[0].frame,
+        );
+        advance_tactical_frame(&mut session, &mut None, 0.11, true);
+        assert_eq!(
+            (
+                session.impact_effects[0].frame,
+                session.weapon_effects[0].elapsed,
+                session.field_effects[0].frame,
+            ),
+            before
+        );
+        assert_eq!(session.death_star_beam.unwrap().elapsed, 0.0);
+        // Unpaused, the switch holds nothing.
+        session.paused = false;
+        advance_tactical_frame(&mut session, &mut None, 0.1, true);
+        assert_eq!(session.weapon_effects[0].progress(), 0.1);
+    }
+
+    #[test]
+    fn a_player_battle_never_holds_its_effects_while_paused() {
+        assert!(!TacticalState::default().freezes_paused_effects());
+    }
+
+    #[cfg(feature = "interface-test-fixtures")]
+    #[test]
+    fn the_fixture_switch_holds_effects_once_set() {
+        let mut state = TacticalState::default();
+        state.freeze_paused_effects_for_fixture();
+        assert!(state.freezes_paused_effects());
+    }
+
+    #[test]
+    fn an_unpaused_frame_steps_combat_four_times_a_second_per_speed_unit() {
+        let mut session = paused_session_with_every_effect();
+        session.paused = false;
+        session.combat_speed = 2;
+        let mut previous_poses = None;
+        advance_tactical_frame(&mut session, &mut previous_poses, 0.3, true);
+        assert_eq!(session.combat_tick, 2);
+        assert!((session.step_accumulator - 0.4).abs() < 1e-5);
+        assert!(previous_poses.is_some());
+        assert_eq!(session.death_star_beam.map(|beam| beam.elapsed), Some(0.3));
     }
 
     // Source: FUN_005b24d0 through FUN_005b2550 field effects.

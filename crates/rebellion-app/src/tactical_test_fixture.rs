@@ -925,6 +925,12 @@ pub(crate) fn apply(
         game_mode,
     )
     .map_err(|error| format!("fixture battle entry failed: {error:?}"))?;
+    // The original keeps a paused battle's impact, projectile, field and
+    // superlaser effects running (FUN_005c2c80 does not test +0x8c8). The
+    // still gates compare paused frames byte for byte and inspect effects
+    // at chosen frames, so every tactical fixture holds them while paused.
+    #[cfg(feature = "interface-test-fixtures")]
+    tactical.freeze_paused_effects_for_fixture();
     // The backdrop's framing follows the clock second (FUN_005f5750). A0
     // TAC-01-C008's planet is one of its draws; the other scenarios keep
     // both frames centred so their pictures do not change between runs.
