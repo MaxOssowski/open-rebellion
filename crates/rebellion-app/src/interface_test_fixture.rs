@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 144;
+const SCENARIO_COUNT: u8 = 145;
 
 
 extern "C" {
@@ -608,6 +608,15 @@ pub enum Scenario {
     /// the mark is `0x27b0`, STRATEGY 10160 (`FUN_0042b330` case `0x21`;
     /// `ghidra/notes/gid-fleet-marks.md`).
     FleetsBothSides = 143,
+    /// EVT-01-C018: the Alliance's Personnel Finder after Jabba delivered
+    /// his prisoners, as A0 2026-11-18-edited-saves-7 b-19 (e4f53d49b065,
+    /// day 31) shows it: "Chewbacca", "Han Solo", "Leia Organa" and "Luke
+    /// Skywalker - Jabba's Palace" (the Alliance's copies, frozen in the
+    /// palace; `FUN_004eec60`, `FUN_00465bb0`'s abode rule) while the
+    /// prisoners stand at Coruscant, beside "Huoba Neva - Corsin", "Jan
+    /// Dodonna - Yavin", "Mon Mothma - Chazwa", "Wedge Antilles - Yavin".
+    /// See [`place_palace_prisoners`].
+    PersonnelPalace = 144,
 }
 
 impl Scenario {
@@ -757,6 +766,7 @@ impl Scenario {
             141 => Self::PersonnelAbode,
             142 => Self::CaptureMessages,
             143 => Self::FleetsBothSides,
+            144 => Self::PersonnelPalace,
             _ => return None,
         })
     }
@@ -1826,6 +1836,9 @@ pub fn apply(
     if request.scenario == Scenario::PersonnelAbode {
         place_abode_roster(request, world);
     }
+    if request.scenario == Scenario::PersonnelPalace {
+        place_palace_prisoners(world, movement, missions, troop_transport);
+    }
     if request.scenario == Scenario::BatteryStatus {
         let class_dat_id = rebellion_core::ids::DatId::new(0x2200_0001);
         let battery = world.defense_facilities.insert(rebellion_core::world::DefenseFacilityInstance {
@@ -2396,6 +2409,88 @@ fn place_abode_roster(request: FixtureRequest, world: &mut GameWorld) {
                 .insert(id, rebellion_core::character_command::CommandKind::General);
         }
     }
+}
+
+/// The `PersonnelPalace` scenario (A0 2026-11-18-edited-saves-7 b-19): only
+/// b-19's eight Alliance characters are recruited. Huoba Neva, Jan
+/// Dodonna, Mon Mothma and Wedge Antilles stand free at their systems.
+/// Chewbacca, Han, Leia and Luke are the Empire's captives in Jabba's
+/// Palace when the day's view step runs (`object_views::advance_extras`:
+/// the Alliance's copies take them there, `record_own_captives`), then
+/// stand at Coruscant, as the Pickup leaves them (`jabba.rs`), and a
+/// second step keeps the copies in the palace: the Alliance does not see
+/// Coruscant. port: the copies come from the port's own view step, not
+/// from data written here.
+fn place_palace_prisoners(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    missions: &MissionState,
+    troop_transport: &TroopTransportState,
+) {
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let palace = world
+        .abodes
+        .iter()
+        .find(|(_, abode)| abode.name == "Jabba's Palace")
+        .map(|(key, _)| key);
+    let free: &[(&str, &str)] = &[
+        ("Huoba Neva", "Corsin"),
+        ("Jan Dodonna", "Yavin"),
+        ("Mon Mothma", "Chazwa"),
+        ("Wedge Antilles", "Yavin"),
+    ];
+    let held = ["Chewbacca", "Han Solo", "Leia Organa", "Luke Skywalker"];
+    let keys: Vec<_> = world.characters.keys().collect();
+    let mut prisoners = Vec::new();
+    for key in keys {
+        let name = world.characters[key].name.clone();
+        let named = held.contains(&name.as_str()) || free.iter().any(|(n, _)| *n == name);
+        // The scenarios' agent, the first character, took the player's
+        // side above; a named one is the Alliance's again.
+        if !world.characters[key].is_alliance && !named {
+            continue;
+        }
+        let at = free
+            .iter()
+            .find(|(listed, _)| *listed == name)
+            .and_then(|(_, at)| system(world, at));
+        for fleet in world.fleets.values_mut() {
+            fleet.characters.retain(|&seated| seated != key);
+        }
+        let character = &mut world.characters[key];
+        character.is_alliance = true;
+        character.is_empire = false;
+        character.recruited = named;
+        character.current_fleet = None;
+        character.ship = None;
+        character.on_mission = false;
+        character.injury = 0;
+        character.command = rebellion_core::character_command::CommandKind::None;
+        character.is_captive = false;
+        character.captured_by = None;
+        character.current_abode = None;
+        character.current_system = at;
+        if held.contains(&name.as_str()) {
+            character.is_captive = true;
+            character.captured_by = Some(Faction::Empire);
+            character.current_abode = palace;
+            prisoners.push(key);
+        }
+    }
+    rebellion_core::object_views::advance_extras(world, movement, missions, troop_transport);
+    let coruscant = system(world, "Coruscant");
+    for key in prisoners {
+        let character = &mut world.characters[key];
+        character.current_abode = None;
+        character.current_system = coruscant;
+    }
+    rebellion_core::object_views::advance_extras(world, movement, missions, troop_transport);
 }
 
 /// The `PersonnelCopied` scenario: a system other than `primary` with no
@@ -4461,7 +4556,7 @@ pub fn emit_personnel_finder(
 ) {
     if matches!(
         request.scenario,
-        Scenario::SpecForcesYavin | Scenario::PersonnelAbode
+        Scenario::SpecForcesYavin | Scenario::PersonnelAbode | Scenario::PersonnelPalace
     ) {
         emit_finder_list(request, world, fog, finder);
         return;
@@ -16286,6 +16381,73 @@ mod tests {
                 "Wedge Antilles - Location Unknown",
             ]
         );
+    }
+
+    /// b-19's characters, systems and Jabba's Palace, plus one more
+    /// Alliance character the scenario does not recruit.
+    fn seed_palace_roster(world: &mut GameWorld) {
+        seed_abode_roster(world);
+        let systems: Vec<_> = world.systems.keys().collect();
+        world.systems[systems[1]].name = "Coruscant".into();
+        world.systems[systems[1]].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        world.abodes.insert(rebellion_core::world::Abode {
+            dat_id: rebellion_core::ids::DatId::new(0x443),
+            name: "Jabba's Palace".into(),
+            side: Faction::Empire,
+            special_forces: Vec::new(),
+        });
+    }
+
+    // A0 2026-11-18-edited-saves-7 b-19 (e4f53d49b065, day 31): the
+    // Alliance's copies of its four prisoners stay in Jabba's Palace
+    // (FUN_004eec60, FUN_004f9a60) and read the abode's name alone
+    // (FUN_00465bb0), though the prisoners stand at Coruscant.
+    #[test]
+    fn the_personnel_palace_scenario_lists_b19s_rows() {
+        let applied = apply_to_loading_world_with(
+            request(Scenario::PersonnelPalace, CockpitFaction::Alliance),
+            seed_palace_roster,
+        );
+        let fog = rebellion_core::fog::FogState::new(Faction::Alliance);
+        let mut finder = rebellion_render::personnel_finder::PersonnelFinderState::default();
+        finder.open(CockpitFaction::Alliance);
+        assert_eq!(
+            finder.shown_character_rows(&applied.world, &fog).unwrap(),
+            [
+                "Chewbacca - Jabba's Palace",
+                "Han Solo - Jabba's Palace",
+                "Huoba Neva - Corsin",
+                "Jan Dodonna - Yavin",
+                "Leia Organa - Jabba's Palace",
+                "Luke Skywalker - Jabba's Palace",
+                "Mon Mothma - Chazwa",
+                "Wedge Antilles - Yavin",
+            ]
+        );
+        let luke = applied
+            .world
+            .characters
+            .values()
+            .find(|character| character.name == "Luke Skywalker")
+            .unwrap();
+        assert!(luke.is_captive && luke.current_abode.is_none());
+        assert_eq!(
+            luke.current_system
+                .map(|system| applied.world.systems[system].name.as_str()),
+            Some("Coruscant")
+        );
+        // Only the listed characters are touched: Vader stays the
+        // Empire's, seated in the fleet the prisoners left.
+        let seated: Vec<_> = applied
+            .world
+            .fleets
+            .values()
+            .flat_map(|fleet| fleet.characters.iter())
+            .map(|&key| &applied.world.characters[key])
+            .map(|character| (character.name.as_str(), character.is_alliance))
+            .collect();
+        assert_eq!(seated, [("Darth Vader", false)]);
     }
 
     #[test]

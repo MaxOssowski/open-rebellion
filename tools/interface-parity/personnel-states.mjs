@@ -31,9 +31,13 @@
 // row, chosen, its menu and Display) and b-01 (the Empire's "Location
 // Unknown" for Luke), OBJ-03-C011.
 //
+// Last, for the Alliance, the PersonnelPalace fixture (code 145) against A0
+// 2026-11-18-edited-saves-7 b-19 (EVT-01-C018): four prisoners the
+// Alliance's copies hold in Jabba's Palace, read "Name - Jabba's Palace".
+//
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node personnel-states.mjs [--out=DIR] [--faction=alliance|empire]
-//              [--only=specforces|copied|abode]
+//              [--only=specforces|copied|abode|palace]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -902,6 +906,135 @@ async function runAbode(browser, base, faction) {
   }
 }
 
+// EVT-01-C018: the PersonnelPalace fixture (code 145) against A0
+// 2026-11-18-edited-saves-7 b-19 (the original game, not committed;
+// e4f53d49b065, day 31). The Alliance's copies of Chewbacca, Han, Leia and
+// Luke stay in its copy of Jabba's Palace after the Pickup took them to
+// Coruscant (Character_SetCaptured FUN_004ee800 syncs the Captured bit,
+// then FUN_004eec60 gives them the Empire's side and FUN_004f9a60 freezes
+// the copies), and an abode container reads its name alone
+// (FUN_00465bb0): "Luke Skywalker - Jabba's Palace". Each row's grey ink
+// against A0's; no row has an icon (the ink starts at the text's left in
+// both). Display on Luke's row closes the Finder and opens nothing
+// (FUN_00429440's abode branch; FUN_00464890 case 0xc9 closes).
+const PERSONNEL_PALACE = 145;
+const PALACE_A0 = ".artifacts/a0-vm/2026-11-18-edited-saves-7/"
+  + "b-19-bntyd7-finder-alliance-luke-han-leia-chewbacca-jabbas-palace-d31.png";
+const PALACE_ROWS = ["Chewbacca - Jabba's Palace", "Han Solo - Jabba's Palace", "Huoba Neva - Corsin",
+  "Jan Dodonna - Yavin", "Leia Organa - Jabba's Palace", "Luke Skywalker - Jabba's Palace",
+  "Mon Mothma - Chazwa", "Wedge Antilles - Yavin"];
+
+async function runPalace(browser, base) {
+  const label = "alliance-palace";
+  const directory = path.join(OUT, label);
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  const steps = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const grab = async (name) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${name}.png`) });
+    steps.push({ label: name, sha256: createHash("sha256").update(bytes).digest("hex") });
+    return PNG.sync.read(bytes);
+  };
+  // FUN_00465540's grey (A0 (117, 114, 114), the palette step of 0x787878).
+  const grey = (png, i) => png.data[i] >= 100 && png.data[i] <= 200 && Math.abs(png.data[i] - png.data[i + 2]) <= 20;
+  const ink = (png, [x0, y0, x1, y1], test) => {
+    let box = null;
+    let count = 0;
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+      if (!test(png, (y * png.width + x) * 4)) continue;
+      count += 1;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+    return box && { box, count };
+  };
+  // As runAbode: left within a pixel, top and bottom within two (the
+  // accepted text deviation: the port's glyphs are 8 rows to A0's 10 and
+  // narrower, so the right edge is reported, not held).
+  const near = (a, p) => Boolean(a && p) && Math.abs(a.box[0] - p.box[0]) <= 1
+    && Math.abs(a.box[1] - p.box[1]) <= 2 && Math.abs(a.box[3] - p.box[3]) <= 2;
+  try {
+    const code = PERSONNEL_PALACE | (1 << 8);
+    await page.goto(`${base}?fixture-code=${code}`);
+    const deadline = Date.now() + 30_000;
+    while ((await ready(page))?.status !== "ready") {
+      if (Date.now() > deadline) throw new Error("the PersonnelPalace fixture never reported");
+      await page.waitForTimeout(100);
+    }
+    await frames(page, 6);
+    await page.locator("#glcanvas").focus();
+    await page.mouse.move(2, 470);
+    await frames(page, 4);
+    const before = await grab("before-finder");
+    await page.keyboard.press("F5");
+    const shown = await until(page, "F5 opens the Alliance tab", (o) => o.tab === "alliance" && o.rows.length > 0);
+    steps.push({ label: "rows", rows: shown.rows, chosen: shown.chosen, name: shown.name });
+    assert.deepEqual(shown.rows, PALACE_ROWS, JSON.stringify(shown.rows));
+    await frames(page, 4);
+    const listed = await grab("rows");
+    const ref = PNG.sync.read(await fs.readFile(path.join(ROOT, PALACE_A0)));
+    // Rows 20 high from y 194, x from 100 (b-19 has d-01's geometry).
+    const rows = [...Array(8).keys()].map((row) => {
+      const area = [100, 194 + 20 * row, 440, 214 + 20 * row];
+      const box = { row, text: PALACE_ROWS[row], a0: ink(ref, area, grey), port: ink(listed, area, grey) };
+      return { ...box, near: near(box.a0, box.port) };
+    });
+    steps.push({ label: "rows-vs-b-19", rows });
+    assert.ok(rows.every(({ near: ok }) => ok), JSON.stringify(rows));
+    // No row icon: nothing grey between the list's left edge and the
+    // text, in A0 or the port.
+    const icons = [...Array(8).keys()].map((row) => {
+      const area = [100, 194 + 20 * row, 102, 214 + 20 * row];
+      return { row, a0: ink(ref, area, grey), port: ink(listed, area, grey) };
+    });
+    steps.push({ label: "row-icons-vs-b-19", icons });
+    assert.ok(icons.every(({ a0, port }) => !a0 && !port), JSON.stringify(icons));
+    // The row band's pixels: reported, not held (the list shows the map
+    // behind it, which the fixture's galaxy does not share with A0's).
+    let differing = 0;
+    let total = 0;
+    for (let y = 194; y < 354; y += 1) for (let x = 100; x < 440; x += 1) {
+      const i = (y * 640 + x) * 4;
+      total += 1;
+      if ([0, 1, 2].some((c) => Math.abs(ref.data[i + c] - listed.data[i + c]) > 8)) differing += 1;
+    }
+    steps.push({ label: "row-band-pixels-vs-b-19", differing, total });
+
+    // Display on Luke's row (the sixth): nothing opens.
+    await click(page, [140, 303]);
+    const chosen = await until(page, "Luke's row is chosen", (o) => o.chosen === 5);
+    assert.equal(chosen.name, "Luke Skywalker", JSON.stringify(chosen));
+    await page.mouse.move(2, 470);
+    await frames(page, 4);
+    await grab("row-chosen");
+    await click(page, [500, 158]);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__openRebellionInterfacePersonnelFinder = null; });
+    await page.mouse.move(2, 470);
+    await frames(page, 8);
+    assert.equal(await latest(page), null, "the Finder stayed open after Display");
+    const after = await grab("after-display");
+    let changed = 0;
+    for (let i = 0; i < before.data.length; i += 4) {
+      if ([0, 1, 2].some((c) => before.data[i + c] !== after.data[i + c])) changed += 1;
+    }
+    steps.push({ label: "display-opens-nothing", changed_pixels: changed });
+    assert.equal(changed, 0, `Display changed ${changed} pixels against the screen before F5`);
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: label, status: "pass", steps };
+  } catch (error) {
+    await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
+    return { faction: label, status: "fail", error: String(error.stack || error), steps, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -912,7 +1045,7 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  if (args.only !== "abode") {
+  if (args.only !== "abode" && args.only !== "palace") {
     if (args.only !== "specforces" && args.only !== "copied") {
       for (const faction of FACTIONS) results.push(await run(browser, base, faction));
     }
@@ -921,7 +1054,10 @@ try {
     }
     for (const faction of FACTIONS) results.push(await runCopied(browser, base, faction));
   }
-  for (const faction of FACTIONS) results.push(await runAbode(browser, base, faction));
+  if (args.only !== "palace") {
+    for (const faction of FACTIONS) results.push(await runAbode(browser, base, faction));
+  }
+  if (!args.faction || args.faction === "alliance") results.push(await runPalace(browser, base));
 } finally {
   await browser.close();
   server.close();
