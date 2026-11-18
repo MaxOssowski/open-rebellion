@@ -2087,7 +2087,7 @@ mod tests {
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
-            trench_run_success_rating: 1,
+            trench_run_success_rating: 1.0,
             alliance_commander_term: 1.0,
             trench_run_pending_outcome: None,
             trench_run_participants: Vec::new(),
@@ -4687,17 +4687,17 @@ mod tests {
     fn a_tactical_session_takes_the_alliance_commanders_rating() {
         // FUN_005ad7e0 reads the commander slot +0x950 that FUN_005a93e0
         // fills from the person FUN_0040c200 flags (+0x58): +0x50 + 1.0,
-        // clamped to 1..9, else 1. The trench run's integer draw drops the
-        // fraction.
+        // clamped to 1..9, else 1. FUN_005d04e0 adds it to the torpedo term
+        // before __ftol (0x5d06b8), so its fraction is kept.
         use crate::character_command::CommandKind::Commander;
         let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
         let rating = |world: &GameWorld| {
             BattleSession::new(world, battle, alliance, empire, true, 0, 1)
                 .trench_run_success_rating
         };
-        assert_eq!(rating(&world), 1);
+        assert_eq!(rating(&world), 1.0);
         officer(&mut world, true, Commander, 107, Some(alliance), battle);
-        assert_eq!(rating(&world), 6);
+        assert_eq!(rating(&world), 107.0 / 20.0 + 1.0);
     }
 
     // FUN_00509330 starts from the system's own side's Commander; a fleet's
@@ -5903,7 +5903,13 @@ mod tests {
             Some(crate::tactical::ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS);
         tactical.prepare_original_trench_run();
         assert!(tactical.trench_run_pending_outcome.is_some());
-        assert!(tactical.fighters[0].hull_current < hull);
+        // port: the run's draws work on a copy of the hulls
+        // (prepare_original_trench_run), so a hit taken during the run
+        // stands for the damage the abort gives back (FUN_005cfec0 state
+        // 8: +0x3d0 -> +0x3cc).
+        assert_eq!(tactical.fighters[0].hull_current, hull);
+        tactical.fighters[0].hull_current -= 8.0;
+        tactical.fighters[0].refresh_craft_count();
         // The other side's withdrawal leaves the run alone, even with the
         // runner still flying it.
         let mut flying = tactical.clone();

@@ -1423,15 +1423,24 @@ impl TacticalState {
         session.fighters[index].fighter_group = 0;
         session.fighters[index].order = TacticalOrder::AttackDeathStar;
         session.fighters[index].maneuverability = 9;
+        // FUN_005d04e0's shot: a 1..100 draw at or under (hull / full hull
+        // x torpedoes x 0.5333 + the rating) x 0.5.
         match outcome {
             TacticalTrenchRunOutcome::Success => {
-                // Seed 15 yields a maneuver draw of 8 and a success draw of 6.
-                session.trench_run_success_rating = 9;
+                // Seed 15 yields a maneuver draw of 8 and a shot draw of 6;
+                // six torpedoes at full hull and rating 9 give (3.2 + 9) x
+                // 0.5, a threshold of 6.
+                session.fighters[index].torpedo_strength =
+                    session.fighters[index].torpedo_strength.max(6);
+                session.trench_run_success_rating = 9.0;
                 session.tactical_rng = OriginalTacticalRng::new(15);
             }
             TacticalTrenchRunOutcome::Failure => {
-                // Seed 1 yields a maneuver draw of 2 and a success draw of 68.
-                session.trench_run_success_rating = 1;
+                // No torpedoes and rating 1: (0 + 1) x 0.5, a threshold of
+                // 0, so every shot misses until the maneuver hits destroy
+                // the group.
+                session.fighters[index].torpedo_strength = 0;
+                session.trench_run_success_rating = 1.0;
                 session.tactical_rng = OriginalTacticalRng::new(1);
             }
         };
@@ -12583,7 +12592,7 @@ mod tests {
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
-            trench_run_success_rating: 1,
+            trench_run_success_rating: 1.0,
             alliance_commander_term: 1.0,
             trench_run_pending_outcome: None,
             trench_run_participants: Vec::new(),
@@ -22304,7 +22313,7 @@ mod tests {
         fighter.order = TacticalOrder::AttackDeathStar;
         fighter.maneuverability = 9;
         let mut session = test_session(Vec::new(), vec![fighter], true);
-        session.trench_run_success_rating = 9;
+        session.trench_run_success_rating = 9.0;
         session.tactical_rng = OriginalTacticalRng::new(15);
         session.selected_fighter_group = Some(0);
         session.death_star = Some(TacticalDeathStar {
@@ -22384,7 +22393,7 @@ mod tests {
             .collect::<Vec<_>>();
         fighters[0].selected = true;
         let mut session = test_session(Vec::new(), fighters, true);
-        session.trench_run_success_rating = 9;
+        session.trench_run_success_rating = 9.0;
         session.tactical_rng = OriginalTacticalRng::new(15);
         session.death_star = Some(TacticalDeathStar {
             resource: DEATH_STAR_TACTICAL_RESOURCE,
@@ -22413,6 +22422,229 @@ mod tests {
         assert!(session.fighters[2].alive);
         assert!(session.fighters[3].alive);
         assert!(session.death_star.unwrap().destroyed);
+    }
+
+    fn trench_run_session(fighter: TacticalFighter, rating: f32, seed: u32) -> BattleSession {
+        let mut session = test_session(Vec::new(), vec![fighter], true);
+        session.trench_run_success_rating = rating;
+        session.tactical_rng = OriginalTacticalRng::new(seed);
+        session.death_star = Some(TacticalDeathStar {
+            resource: DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition::ORIGIN,
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
+        session
+    }
+
+    // Source: FUN_005d04e0 0x5d06b1..0x5d06e3: the shot is a 1..100 draw
+    // at or under (FUN_005b23a0 + the commander rating) x 0.5, where
+    // FUN_005b23a0 is hull / full hull x torpedoes x 0.5333 (FUN_005b1770,
+    // DAT_0066c4cc). A first visit (no maneuver hit: maneuverability 9
+    // against a draw under 10) with 400 torpedoes, (213.3 + 1.0) x 0.5,
+    // cannot miss, though the rating alone (1) almost always would.
+    #[test]
+    fn the_trench_run_shot_adds_the_torpedo_term_before_halving() {
+        let seed = (1..10_000)
+            .find(|&seed| {
+                let mut rng = OriginalTacticalRng::new(seed);
+                rng.inclusive(1, 10) < 10 && rng.inclusive(1, 100) > 1
+            })
+            .unwrap();
+        let mut fighter = test_fighter(3, true);
+        fighter.order = TacticalOrder::AttackDeathStar;
+        fighter.maneuverability = 9;
+        fighter.torpedo_strength = 400;
+        let mut session = trench_run_session(fighter, 1.0, seed);
+        session.commit_original_trench_run();
+        assert_eq!(
+            session.trench_run_pending_outcome,
+            Some(TacticalTrenchRunOutcome::Success)
+        );
+        // Two draws: the maneuver and the shot.
+        let mut expected = OriginalTacticalRng::new(seed);
+        expected.inclusive(1, 10);
+        expected.inclusive(1, 100);
+        assert_eq!(session.tactical_rng, expected);
+    }
+
+    // Source: FUN_005d04e0 0x5d05cd..0x5d061e: a maneuver hit draws 1..(hull
+    // / 8.0) for 8.0 each; on success the loop before LAB_005d076a gives
+    // every member back the hull and shields FUN_005d08d0 kept at state 5
+    // (+0x3d0 -> +0x3cc, +0x3c4 -> +0x3c0).
+    #[test]
+    fn a_successful_trench_run_leaves_its_maneuver_hit_no_damage() {
+        // Maneuverability 0 (effective 1): a maneuver draw over 1 hits; a
+        // hull of 96 gives a 1..12 damage draw. At 6 or under, 48 hull or
+        // more is left, and the shot, (48 / 96 x 213.3 + 1.0) x 0.5, is 53
+        // or more.
+        let seed = (1..10_000)
+            .find(|&seed| {
+                let mut rng = OriginalTacticalRng::new(seed);
+                rng.inclusive(1, 10) > 1 && rng.inclusive(1, 12) <= 6 && rng.inclusive(1, 100) <= 53
+            })
+            .unwrap();
+        let mut fighter = test_fighter(3, true);
+        fighter.order = TacticalOrder::AttackDeathStar;
+        fighter.maneuverability = 0;
+        fighter.torpedo_strength = 400;
+        fighter.shield = 3.0;
+        let mut session = trench_run_session(fighter, 1.0, seed);
+        session.commit_original_trench_run();
+        assert_eq!(
+            session.trench_run_pending_outcome,
+            Some(TacticalTrenchRunOutcome::Success)
+        );
+        let mut expected = OriginalTacticalRng::new(seed);
+        expected.inclusive(1, 10);
+        expected.inclusive(1, 12);
+        expected.inclusive(1, 100);
+        assert_eq!(session.tactical_rng, expected);
+        let fighter = &session.fighters[0];
+        assert!(fighter.alive);
+        assert_eq!(fighter.hull_current, 96.0);
+        assert_eq!(fighter.shield, 3.0);
+    }
+
+    fn trench_seed(predicate: impl Fn(&mut OriginalTacticalRng) -> bool) -> u32 {
+        (1..100_000)
+            .find(|&seed| predicate(&mut OriginalTacticalRng::new(seed)))
+            .unwrap()
+    }
+
+    fn trench_stream_after(seed: u32, draws: usize) -> OriginalTacticalRng {
+        let mut stream = OriginalTacticalRng::new(seed);
+        for _ in 0..draws {
+            stream.inclusive(1, 10);
+        }
+        stream
+    }
+
+    fn trench_runner(maneuverability: u32, hull: f32, torpedoes: u32) -> TacticalFighter {
+        let mut fighter = test_fighter(3, true);
+        fighter.order = TacticalOrder::AttackDeathStar;
+        fighter.maneuverability = maneuverability;
+        fighter.hull_max = 96.0;
+        fighter.hull_current = hull;
+        fighter.torpedo_strength = torpedoes;
+        fighter.refresh_craft_count();
+        fighter
+    }
+
+    // Source: FUN_005d04e0 0x5d06b1..0x5d06e3. At half hull, 30 torpedoes
+    // give 48 / 96 x 30 x 0.5333 = 8 (FUN_005b23a0); with rating 2 the
+    // threshold is (8 + 2) x 0.5 = 5: a shot draw of 5 hits at the first
+    // visit (two draws), a 6 misses and the run goes on.
+    #[test]
+    fn the_trench_run_shot_threshold_is_the_halved_torpedo_and_rating_sum() {
+        for (shot, hits) in [(5, true), (6, false)] {
+            let seed = trench_seed(|rng| rng.inclusive(1, 10) < 10 && rng.inclusive(1, 100) == shot);
+            let mut session = trench_run_session(trench_runner(9, 48.0, 30), 2.0, seed);
+            session.commit_original_trench_run();
+            assert_eq!(
+                session.tactical_rng == trench_stream_after(seed, 2),
+                hits,
+                "shot draw {shot}"
+            );
+        }
+    }
+
+    // Source: FUN_005d04e0 0x5d05cd..0x5d061e. Maneuverability 0 (effective
+    // 1) is hit on a draw over 1; a hull of 96 gives a 1..12 damage draw.
+    // A 6 takes 48 (6 x 8.0), so the shot is (48 / 96 x 16 + 2) x 0.5 = 5:
+    // a 5 hits after three draws, a 6 does not.
+    #[test]
+    fn a_maneuver_hit_takes_eight_hull_per_point_of_its_draw() {
+        for (shot, hits) in [(5, true), (6, false)] {
+            let seed = trench_seed(|rng| {
+                rng.inclusive(1, 10) > 1 && rng.inclusive(1, 12) == 6 && rng.inclusive(1, 100) == shot
+            });
+            let mut session = trench_run_session(trench_runner(0, 96.0, 30), 2.0, seed);
+            session.commit_original_trench_run();
+            assert_eq!(
+                session.tactical_rng == trench_stream_after(seed, 3),
+                hits,
+                "shot draw {shot}"
+            );
+        }
+    }
+
+    // Source: FUN_005d04e0 0x5d0620 and 0x5d0662: a member under two units
+    // of 8.0 hit takes 100 000.0, has no hull left, takes no shot and is
+    // not queued again, so the run ends failed after one draw.
+    #[test]
+    fn a_member_hit_with_under_two_units_of_hull_takes_no_shot() {
+        let seed = trench_seed(|rng| rng.inclusive(1, 10) > 1);
+        let mut session = trench_run_session(trench_runner(0, 15.0, 30), 9.0, seed);
+        session.commit_original_trench_run();
+        assert_eq!(
+            session.trench_run_pending_outcome,
+            Some(TacticalTrenchRunOutcome::Failure)
+        );
+        assert_eq!(session.tactical_rng, trench_stream_after(seed, 1));
+    }
+
+    // Source: FUN_005d04e0 0x5d06e9..0x5d06f7: the visit count fails the
+    // run once it passes 0x3e8. A hull no hit can end, with no torpedoes
+    // and rating 1 (threshold 0), is visited 1001 times: a maneuver draw,
+    // a damage draw on a 10, and a shot each.
+    #[test]
+    fn the_trench_run_fails_after_its_1001st_visit() {
+        let seed = 7;
+        let mut runner = trench_runner(9, 96.0, 0);
+        runner.hull_max = 1.0e30;
+        runner.hull_current = 1.0e30;
+        let mut session = trench_run_session(runner, 1.0, seed);
+        session.commit_original_trench_run();
+        assert_eq!(
+            session.trench_run_pending_outcome,
+            Some(TacticalTrenchRunOutcome::Failure)
+        );
+        let mut expected = OriginalTacticalRng::new(seed);
+        for _ in 0..1001 {
+            if expected.inclusive(1, 10) > 9 {
+                expected.inclusive(1, 2);
+            }
+            expected.inclusive(1, 100);
+        }
+        assert_eq!(session.tactical_rng, expected);
+    }
+
+    // Source: FUN_005d04e0 takes the group's members (FUN_005c6100 on
+    // +0x1c), the fighters on the Death Star mission that oppose it; only
+    // an operational Death Star (hull left, not destroyed) is attacked.
+    #[test]
+    fn the_trench_run_takes_only_living_fighters_against_a_living_death_star() {
+        let runner = trench_runner(9, 96.0, 0);
+        let mut idle = runner.clone();
+        idle.order = TacticalOrder::None;
+        let mut imperial = runner.clone();
+        imperial.is_attacker = false;
+        let mut dead = runner.clone();
+        dead.alive = false;
+        let mut empty = runner.clone();
+        empty.squad_count = 0;
+        let mut session = trench_run_session(runner.clone(), 1.0, 7);
+        session.fighters = vec![runner.clone(), idle, imperial, dead, empty];
+        session.commit_original_trench_run();
+        assert_eq!(session.trench_run_participants, vec![0]);
+
+        for (hull, destroyed) in [(0.0, false), (100.0, true)] {
+            let mut session = trench_run_session(runner.clone(), 1.0, 7);
+            if let Some(death_star) = session.death_star.as_mut() {
+                death_star.hull = hull;
+                death_star.destroyed = destroyed;
+            }
+            session.commit_original_trench_run();
+            assert_eq!(session.trench_run_pending_outcome, None);
+            assert_eq!(session.tactical_rng, OriginalTacticalRng::new(7));
+        }
     }
 
     // Source: FUN_005bae60 Death Star attack failure voice event.
@@ -22450,8 +22682,14 @@ mod tests {
             action_committed: false,
         });
         begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
+        // The defender's first shot hits with the stream two draws on; the
+        // run's own draws (FUN_005d04e0's queue) take a varying count.
+        let mut stream = session.tactical_rng;
+        stream.inclusive(1, 10);
+        stream.inclusive(1, 100);
         // The approach ends: state 5 (FUN_005cfec0), the run committed.
         session.commit_original_trench_run();
+        session.tactical_rng = stream;
 
         // The weapons fire at the turn's updates, step 4 (0x005a9de0); the
         // hit event runs at turn 6, step 24 (FUN_005b3f10: +0x87c + 2.0).

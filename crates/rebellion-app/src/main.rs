@@ -17017,7 +17017,7 @@ mod tactical_ground_tests {
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
-            trench_run_success_rating: 1,
+            trench_run_success_rating: 1.0,
             alliance_commander_term: 1.0,
             trench_run_pending_outcome: None,
             trench_run_participants: vec![],

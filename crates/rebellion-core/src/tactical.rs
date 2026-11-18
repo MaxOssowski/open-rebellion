@@ -5,6 +5,8 @@
 //! runs the same tactical module for an abstract battle). Drawing, input,
 //! and the battle windows stay in the render crate.
 
+use std::collections::VecDeque;
+
 use crate::ids::{CapitalShipKey, DatId, FighterKey, FleetKey, SystemKey};
 use crate::pictures::planet_picture_id;
 use crate::tactical_resources::{
@@ -230,8 +232,21 @@ pub const PORT_MOVER_FRAME_MILLISECONDS: f32 = 1000.0 / 60.0;
 /// The approach move's arrival radius, 0.2 (`FUN_005c6610` pushes
 /// `0x3e4ccccd` at `0x005c68f0` for the mover's slot `+0xc`).
 pub const ORIGINAL_TRENCH_RUN_APPROACH_RADIUS: f32 = 0.2;
-/// `_DAT_0066d078` scales the maneuver-failure damage draw in `FUN_005d04e0`.
+/// `_DAT_0066d078` scales the maneuver-failure damage draw in `FUN_005d04e0`
+/// and divides the hull into its range.
 pub const ORIGINAL_TRENCH_RUN_DAMAGE_SCALE: f32 = 8.0;
+/// `FUN_005d04e0` pushes `0x47c35000` (100 000.0) for a member whose hull
+/// is under two damage units.
+pub const ORIGINAL_TRENCH_RUN_LETHAL_DAMAGE: f32 = 100_000.0;
+/// `FUN_005d04e0` caps the commander rating at `_DAT_0066d0a0` (9.0) for the
+/// shot (`0x5d0688`..`0x5d06a9`).
+pub const ORIGINAL_TRENCH_RUN_COMMANDER_CAP: f32 = 9.0;
+/// `FUN_005d04e0` halves the shot's sum with `_DAT_0066d0a4` (0.5) before
+/// `__ftol` (`0x5d06d4`).
+pub const ORIGINAL_TRENCH_RUN_SUCCESS_SCALE: f32 = 0.5;
+/// `FUN_005d04e0` fails the run once its visit count passes `0x3e8`
+/// (`0x5d06ee`): 1001 visits.
+pub const ORIGINAL_TRENCH_RUN_VISITS: u32 = 1000;
 /// `FUN_005d04e0` silent chatter slot.
 pub const ORIGINAL_TRENCH_RUN_SILENT_EVENT: u16 = 0x13d;
 /// `FUN_005d04e0` success chatter, one slot per 10% of the timer.
@@ -1660,8 +1675,9 @@ pub struct BattleSession {
     /// minus -1.0 (`DAT_0066c27c`), or 1.0 with none. These are the abstract
     /// battle's person and constants, so a session takes
     /// [`crate::abstract_battle::trench_commander_term`]. The trench run
-    /// compares an integer 1..100 draw with it, so the fraction drops.
-    pub trench_run_success_rating: u8,
+    /// adds it to the shot's torpedo term before halving (`FUN_005d04e0`),
+    /// so its fraction counts.
+    pub trench_run_success_rating: f32,
     /// `FUN_005ad7e0(0)`: the Alliance's commander term, 1 through 9, as a
     /// fighter's speed adds it (`0x5ba190`). The Empire's side has no
     /// flagged commander (`FUN_0040c200`), so its term is 1.0.
@@ -4430,13 +4446,8 @@ impl BattleSession {
             .systems
             .get(system)
             .map_or(1, |system| planet_picture_id(system.dat_id));
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "the term is clamped to 1.0..9.0; the draw it meets is an integer"
-        )]
         let alliance_commander_term = crate::abstract_battle::trench_commander_term(world, system);
-        let trench_run_success_rating = alliance_commander_term as u8;
+        let trench_run_success_rating = alliance_commander_term;
 
         let mut ships = Vec::new();
         let mut fighters = Vec::new();
@@ -8358,6 +8369,19 @@ impl BattleSession {
     /// Run `FUN_005d04e0` when state 5 begins. The source consumes maneuver
     /// and success draws immediately, then retains the selected result while
     /// `FUN_005d03f0` advances the presentation chatter.
+    ///
+    /// The members are a queue (`FUN_005c6100`, `0x5d0584`..`0x5d0715`):
+    /// the front one is taken; one whose maneuverability (slot `+0xbc`) is
+    /// under a 1..10 draw is hit, its hull `+0x3cc` / 8.0 as an integer
+    /// `h`: with `h` <= 1 its hull goes to 0, else it takes (1..`h`) x 8.0
+    /// (`Class_0066c560_vtc0` lowers the hull and zeroes the shields
+    /// `+0x3c0`). A member left with hull tries the shot: a 1..100 draw at
+    /// or under (`FUN_005b23a0` + `FUN_005ad7e0(0)` capped at 9.0) x 0.5
+    /// (`DAT_0066d0a4`), as an integer, succeeds; else it goes to the back
+    /// (`FUN_005c5f20`). After the 1001st visit, or with no member left,
+    /// the run fails. On success every member gets back the hull and
+    /// shields `FUN_005d08d0` kept at state 5 (`+0x3d0` -> `+0x3cc`,
+    /// `+0x3c4` -> `+0x3c0`, the decompile's loop before `LAB_005d076a`).
     pub fn prepare_original_trench_run(&mut self) {
         let Some(death_star) = self
             .death_star
@@ -8376,11 +8400,10 @@ impl BattleSession {
                     && fighter.order == TacticalOrder::AttackDeathStar
             })
             .map(|(index, _)| index)
-            .take(1001)
             .collect::<Vec<_>>();
 
         // `FUN_005d08d0`: the participants' hull and shields are kept for
-        // an abort.
+        // an abort (and, in the original, for a success).
         self.trench_run_saved = participants
             .iter()
             .map(|&index| {
@@ -8388,30 +8411,53 @@ impl BattleSession {
                 (index, fighter.hull_current, fighter.shield)
             })
             .collect();
+        // The members' hulls as the draws leave them. port: the draws work
+        // on this copy. The original writes them to the members, which its
+        // trench state (+0x170 = 10, FUN_005d08d0) keeps in the run until
+        // the result whatever their hull; a port fighter at hull 0 leaves
+        // the battle at once. Success gives the kept hulls back, and the
+        // failed run's result destroys every member (state 7), so the
+        // copy decides the same outcome and chatter.
+        let mut hulls = participants
+            .iter()
+            .map(|&index| self.fighters[index].hull_current)
+            .collect::<Vec<_>>();
         let mut success = false;
         let mut maneuver_damage = false;
-        for &index in &participants {
-            let maneuverability = self.fighters[index]
+        let mut queue = (0..participants.len()).collect::<VecDeque<_>>();
+        let mut visits = 0;
+        while let Some(member) = queue.pop_front() {
+            let fighter = &self.fighters[participants[member]];
+            let maneuverability = fighter
                 .effective_maneuverability()
                 .round()
                 .clamp(0.0, 9.0) as u32;
             if maneuverability < self.tactical_rng.inclusive(1, 10) {
                 maneuver_damage = true;
-                let damage = if maneuverability <= 1 {
-                    100_000.0
+                let hits = (hulls[member] / ORIGINAL_TRENCH_RUN_DAMAGE_SCALE) as u32;
+                let damage = if hits <= 1 {
+                    ORIGINAL_TRENCH_RUN_LETHAL_DAMAGE
                 } else {
-                    self.tactical_rng.inclusive(1, maneuverability) as f32
-                        * ORIGINAL_TRENCH_RUN_DAMAGE_SCALE
+                    self.tactical_rng.inclusive(1, hits) as f32 * ORIGINAL_TRENCH_RUN_DAMAGE_SCALE
                 };
-                self.fighters[index].hull_current -= damage;
-                self.fighters[index].refresh_craft_count();
+                hulls[member] = (hulls[member] - damage).max(0.0);
             }
-            if !self.fighters[index].alive {
-                continue;
+            if hulls[member] > 0.0 {
+                let torpedoes = hulls[member]
+                    * (fighter.torpedo_strength as f32 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH)
+                    / fighter.hull_max;
+                let commander = self
+                    .trench_run_success_rating
+                    .min(ORIGINAL_TRENCH_RUN_COMMANDER_CAP);
+                let draw = self.tactical_rng.inclusive(1, 100);
+                if draw <= ((torpedoes + commander) * ORIGINAL_TRENCH_RUN_SUCCESS_SCALE) as u32 {
+                    success = true;
+                    break;
+                }
+                queue.push_back(member);
             }
-            let success_rating = u32::from(self.trench_run_success_rating.clamp(1, 9));
-            if self.tactical_rng.inclusive(1, 100) <= success_rating {
-                success = true;
+            visits += 1;
+            if visits > ORIGINAL_TRENCH_RUN_VISITS {
                 break;
             }
         }

@@ -84,13 +84,55 @@ state, `FUN_005caf50` forwards it to the active tactical result object, and
 | 6 | `FUN_005c0fb0` / `FUN_0059cc60` | `0x71` | `MDATA.201` | Successful trench run; Death Star destroyed |
 | 7 | `FUN_005c0ff0` / `FUN_0059cc80` | `0x70` | `MDATA.202` | Failed trench run; attacking fighter participants destroyed |
 
-`FUN_005cfec0` initializes a 120,000 ms timer. `FUN_005d04e0` retains at most
-1,001 active Alliance participants, draws maneuver failure from 1 through 10,
-and applies either 100,000 damage at maneuverability 0 or 1, or an inclusive
-1-through-maneuverability draw multiplied by `_DAT_0066d078 = 8`. Each survivor
-then compares an inclusive 1-through-100 draw with `FUN_005ad7e0`'s commander
-rating. The rating is clamped to 1 through 9; the source returns 1 when the
-tactical commander slot is unassigned.
+`FUN_005cfec0` initializes a 120,000 ms timer. At state 5 it calls
+`FUN_005d08d0` (keeps each member's hull `+0x3cc` in `+0x3d0` and shields
+`+0x3c0` in `+0x3c4`) and then `FUN_005d04e0`.
+
+`FUN_005d04e0` (corrected 2026-11-18 from the disassembly
+`0x5d0570..0x5d0768`; the decompile hides the x87 operands of its
+`__ftol` calls) is the displayed battle's copy of the abstract
+`FUN_005aefc0` (`abstract-battle.md`):
+
+1. The group's members (`FUN_005c6100` on `+0x1c`) form a queue. The front
+   member is taken (`FUN_005f54d0`, `0x5d0588`).
+2. `m` = maneuverability (slot `+0xbc`, `__ftol`). If a 1..10 draw is over
+   `m`, the member is hit: `h` = `__ftol(hull / 8.0)` (`0x5d05cd`, the
+   hull, not the maneuverability). With `h` 0 or 1 it takes 100,000.0
+   (`0x47c35000`); else (1..`h`) x 8.0 (`_DAT_0066d078`); a hull left at 0
+   or below also takes 100,000.0. The damage slot `+0xc0` of the fighter
+   group vtable `0x66c560` is `Class_0066c560_vtc0` (`0x5b5700`): it lowers
+   the hull, zeroes the shields `+0x3c0`, clamps at 0, and queues no voice.
+3. A member with hull over 0 shoots: `c` = `FUN_005ad7e0(0)`, kept when
+   under 9.0 (`_DAT_0066d0a0`), else 9.0 (`0x41100000`). The threshold is
+   `__ftol((FUN_005b23a0(member) + c) x 0.5)` (`_DAT_0066d0a4`, `0x5d06d4`);
+   `FUN_005b23a0` is hull / full hull x torpedoes `+0x134` x 0.5333. A
+   1..100 draw at or under it succeeds. A miss puts the member at the back
+   of the queue (`FUN_005c5f20`, `0x5d0703`); a member at hull 0 is not
+   put back.
+4. Each visit counts; past `0x3e8` (the 1001st visit) or with the queue
+   empty the run fails: state 10 (`+0x2c`), the failure chatter.
+5. On success the chatter is the success one (its damaged variant if any
+   member was hit), state 9, and every member gets back the hull and
+   shields `FUN_005d08d0` kept (`+0x3d0` -> `+0x3cc`, `+0x3c4` -> `+0x3c0`):
+   the hits of a successful run leave no damage.
+
+Ported 2026-11-18 (`BattleSession::prepare_original_trench_run`). `port:`
+the draws work on a copy of the members' hulls. The original writes them,
+and its trench state (`+0x170` = 10, set by `FUN_005d08d0`) keeps a member
+at hull 0 in the run until the result; a port fighter at hull 0 leaves the
+battle at once, which ended the battle before the failure film. A success
+gives the hulls back and a failure's state 7 destroys every member, so the
+copy gives the same outcome, chatter and draws. Only the hull bars during
+a failed run's two minutes differ (the port shows the hulls of state 5).
+
+The port's earlier reading (a single pass over at most 1,001 participants,
+a 1..maneuverability damage draw, and a 1..100 draw against the rating
+alone) gave a run with no commander (rating 1) a 1 in 100 shot per
+squadron. A0 2026-11-18-edited-saves-7 runs c, d and e (no
+commander in d and e; five X-wing squadrons) succeeded each time, which fits
+the torpedo term: an X-wing squadron at full hull adds its torpedoes x
+0.5333 before the halving. The commander rating is clamped to 1 through 9;
+the source returns 1 when the tactical commander slot is unassigned.
 
 The result object selects one of three exact nine-slot chatter sequences. The
 slots occur at 10% intervals over the two-minute timer; `0x13d` is the silent
