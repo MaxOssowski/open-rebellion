@@ -40,9 +40,14 @@
 // the row chosen with the name box left empty, its menu's grey items
 // ignoring clicks.
 //
+// And for the Empire, the PersonnelPickup fixture (code 147) against A0
+// 2026-11-18-edited-saves-9 c-14 (EVT-01-C018): the Alliance tab after
+// Jabba Delivers Prisoners, three prisoners "Name - Victory Destroyer 1
+// ( Captured )" and Chewbacca, killed, read from a frozen copy at Yavin.
+//
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node personnel-states.mjs [--out=DIR] [--faction=alliance|empire]
-//              [--only=specforces|copied|abode|palace|retired]
+//              [--only=specforces|copied|abode|palace|retired|pickup]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -1212,6 +1217,106 @@ async function runRetired(browser, base) {
   }
 }
 
+// EVT-01-C018: the PersonnelPickup fixture (code 147) against A0
+// 2026-11-18-edited-saves-9 c-14 (88e1928e1f1a; an Empire game from an
+// edited save, day 531, right after "Jabba Delivers Prisoners"; not
+// committed). The Empire's Alliance tab: Han, Leia and Luke aboard the ship
+// Vader joined the Pickup from, "Name - Victory Destroyer 1 ( Captured )"
+// (FUN_0056da80, FUN_00465bb0, 0x8746), read live; Chewbacca, destroyed
+// (FUN_005445d0 accepts him destroyed), and four others from the Empire's
+// frozen copies: "Chewbacca - Yavin", "Jan Dodonna - Location Unknown"
+// (0x1895), "Ma'w'shiye - Yavin ( Enroute )" (0x8744). Each row is held to
+// A0's grey ink as the retired case holds d-03's; no row icon in either.
+const PERSONNEL_PICKUP = 147;
+const PICKUP_A0 = ".artifacts/a0-vm/2026-11-18-edited-saves-9/"
+  + "c-14-e508b512-finder-alliance-han-leia-luke-victory-destroyer-1-captured-chewbacca-yavin-d531.png";
+const PICKUP_ROWS = ["Chewbacca - Yavin", "Han Solo - Victory Destroyer 1 ( Captured ) ",
+  "Jan Dodonna - Location Unknown", "Leia Organa - Victory Destroyer 1 ( Captured ) ",
+  "Luke Skywalker - Victory Destroyer 1 ( Captured ) ", "Ma'w'shiye - Yavin ( Enroute ) ",
+  "Tura Raftican - Yavin", "Wedge Antilles - Yavin"];
+
+async function runPickup(browser, base) {
+  const label = "empire-pickup";
+  const directory = path.join(OUT, label);
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  const steps = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const grab = async (name) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${name}.png`) });
+    steps.push({ label: name, sha256: createHash("sha256").update(bytes).digest("hex") });
+    return PNG.sync.read(bytes);
+  };
+  // FUN_00465540's grey (A0 (117, 114, 114)).
+  const grey = (png, i) => png.data[i] >= 100 && png.data[i] <= 200 && Math.abs(png.data[i] - png.data[i + 2]) <= 20;
+  // The port's ink also counts the strokes its 8-row glyphs blend into
+  // the list's blue when drawn 10 rows high (the accepted text deviation:
+  // "Tura Raftican"'s T bar reads (76, 82, 112) at x 167, A0's grey).
+  const blended = (png, i) => png.data[i] >= 60 && png.data[i] <= 200 && png.data[i + 2] - png.data[i] <= 40;
+  const ink = (png, [x0, y0, x1, y1], test) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+      if (!test(png, (y * png.width + x) * 4)) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+    return box;
+  };
+  // As runRetired: left within a pixel, top and bottom within two (the
+  // accepted text deviation; the right edge is reported, not held).
+  const near = (a, p) => Boolean(a && p) && Math.abs(a[0] - p[0]) <= 1
+    && Math.abs(a[1] - p[1]) <= 2 && Math.abs(a[3] - p[3]) <= 2;
+  // The Empire's list: rows 20 high from y 194, x from 163.
+  const rowArea = (row) => [163, 194 + 20 * row, 503, 214 + 20 * row];
+  try {
+    await page.goto(`${base}?fixture-code=${PERSONNEL_PICKUP | (2 << 8)}`);
+    const deadline = Date.now() + 30_000;
+    while ((await ready(page))?.status !== "ready") {
+      if (Date.now() > deadline) throw new Error("the PersonnelPickup fixture never reported");
+      await page.waitForTimeout(100);
+    }
+    await frames(page, 6);
+    await page.locator("#glcanvas").focus();
+    await page.mouse.move(2, 470);
+    await frames(page, 4);
+    await page.keyboard.press("F5");
+    const own = await until(page, "F5 opens the Imperial tab", (o) => o.tab === "imperial");
+    await click(page, own.tabs[0]);
+    await page.waitForTimeout(300);
+    await page.mouse.move(2, 470);
+    const shown = await until(page, "the Alliance tab shows", (o) => o.tab === "alliance" && o.rows.length > 0);
+    steps.push({ label: "rows", rows: shown.rows, chosen: shown.chosen, name: shown.name });
+    assert.deepEqual(shown.rows, PICKUP_ROWS, JSON.stringify(shown.rows));
+    await frames(page, 4);
+    const listed = await grab("rows");
+    const ref = PNG.sync.read(await fs.readFile(path.join(ROOT, PICKUP_A0)));
+    const rows = PICKUP_ROWS.map((text, row) => {
+      const box = { row, text, a0: ink(ref, rowArea(row), grey), port: ink(listed, rowArea(row), blended) };
+      return { ...box, near: near(box.a0, box.port) };
+    });
+    steps.push({ label: "rows-vs-c-14", rows });
+    assert.ok(rows.every(({ near: ok }) => ok), JSON.stringify(rows));
+    // No row icon: nothing grey between the list's left edge and the text.
+    const icons = PICKUP_ROWS.map((_, row) => {
+      const area = [163, 194 + 20 * row, 165, 214 + 20 * row];
+      return { row, a0: ink(ref, area, grey), port: ink(listed, area, grey) };
+    });
+    steps.push({ label: "row-icons-vs-c-14", icons });
+    assert.ok(icons.every(({ a0, port }) => !a0 && !port), JSON.stringify(icons));
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: label, status: "pass", steps };
+  } catch (error) {
+    await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
+    return { faction: label, status: "fail", error: String(error.stack || error), steps, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -1224,6 +1329,8 @@ const results = [];
 try {
   if (args.only === "retired") {
     results.push(await runRetired(browser, base));
+  } else if (args.only === "pickup") {
+    results.push(await runPickup(browser, base));
   } else {
   if (args.only !== "abode" && args.only !== "palace") {
     if (args.only !== "specforces" && args.only !== "copied") {
@@ -1240,6 +1347,7 @@ try {
   if (!args.faction || args.faction === "alliance") results.push(await runPalace(browser, base));
   if (args.only !== "palace" && (!args.faction || args.faction === "empire")) {
     results.push(await runRetired(browser, base));
+    results.push(await runPickup(browser, base));
   }
   }
 } finally {

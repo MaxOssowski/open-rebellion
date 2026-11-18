@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 146;
+const SCENARIO_COUNT: u8 = 147;
 
 
 extern "C" {
@@ -625,6 +625,17 @@ pub enum Scenario {
     /// "Veers - Coruscant". port: Jerjerrod, Needa and Piett, aboard ships
     /// in A0, stand at Coruscant here. See [`place_retired_roster`].
     PersonnelRetired = 145,
+    /// EVT-01-C018: the Empire's Personnel Finder, Alliance tab, right
+    /// after Jabba delivered his prisoners, as A0
+    /// 2026-11-18-edited-saves-9 c-14 (88e1928e1f1a, day 531) shows it:
+    /// "Han Solo", "Leia Organa" and "Luke Skywalker - Victory Destroyer 1
+    /// ( Captured ) " (aboard the ship Vader joined the Pickup from,
+    /// `FUN_0056da80`), "Chewbacca - Yavin" (killed, read from the
+    /// Empire's frozen copy: `FUN_005445d0` accepts him destroyed), "Jan
+    /// Dodonna - Location Unknown", "Ma'w'shiye - Yavin ( Enroute ) ",
+    /// "Tura Raftican - Yavin" and "Wedge Antilles - Yavin". See
+    /// [`place_pickup_roster`].
+    PersonnelPickup = 146,
 }
 
 impl Scenario {
@@ -776,6 +787,7 @@ impl Scenario {
             143 => Self::FleetsBothSides,
             144 => Self::PersonnelPalace,
             145 => Self::PersonnelRetired,
+            146 => Self::PersonnelPickup,
             _ => return None,
         })
     }
@@ -1852,6 +1864,9 @@ pub fn apply(
     if request.scenario == Scenario::PersonnelRetired {
         place_retired_roster(world);
     }
+    if request.scenario == Scenario::PersonnelPickup {
+        place_pickup_roster(world);
+    }
     if request.scenario == Scenario::BatteryStatus {
         let class_dat_id = rebellion_core::ids::DatId::new(0x2200_0001);
         let battery = world.defense_facilities.insert(rebellion_core::world::DefenseFacilityInstance {
@@ -2480,6 +2495,146 @@ fn place_retired_roster(world: &mut GameWorld) {
             character.mark_killed();
             character.is_retired = true;
         }
+    }
+}
+
+/// The `PersonnelPickup` scenario (A0 2026-11-18-edited-saves-9 c-14):
+/// only c-14's eight Alliance characters are recruited.
+/// - Han, Leia and Luke are the Empire's prisoners aboard "Victory
+///   Destroyer 1" in an Imperial fleet at Coruscant, which the Empire
+///   sees, so its Finder reads them live with the Captured word
+///   (`FUN_0056da80` gives them Vader's `+0x70`, his ship).
+/// - Chewbacca is killed: `DarthPickup` (`FUN_005445d0`) ran, so he was
+///   captive or destroyed, and a capture would have synced the Captured
+///   bit and the captor's side into the Empire's copy
+///   (`Character_SetCaptured` `FUN_004ee800`, `FUN_004eec60`). The
+///   Empire's copy of him stands frozen at Yavin, where it last synced: a
+///   frozen copy takes the destroyed bit only when it next syncs
+///   (`per-side-object-views.md`). hyp: he died of a failed rescue's
+///   injury (slot `+0x2e0` of the minor class before `FUN_004ef480`'s
+///   capture); A0 does not show how.
+/// - The Empire's copies of the other four, frozen too: Dodonna's in no
+///   place, Ma'w'shiye's at Yavin with the en route bit (`+0x50` bit 4),
+///   Tura Raftican's and Wedge's at Yavin.
+/// - Coruscant is the Empire's (seen live), Yavin the Alliance's, seen
+///   by the Empire through a frozen copy.
+///
+/// port: the copies are written here, as `place_copied_characters` does,
+/// not taken by the view step; the ship is named as A0 shows it.
+fn place_pickup_roster(world: &mut GameWorld) {
+    use rebellion_core::object_views::{CharacterCopy, CharacterCopyState, SystemView};
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    const PRISONERS: [&str; 3] = ["Han Solo", "Leia Organa", "Luke Skywalker"];
+    // Each copied character and its copy's system ("" for none) and en
+    // route bit.
+    const COPIED: [(&str, &str, bool); 5] = [
+        ("Chewbacca", "Yavin", false),
+        ("Jan Dodonna", "", false),
+        ("Ma'w'shiye", "Yavin", true),
+        ("Tura Raftican", "Yavin", false),
+        ("Wedge Antilles", "Yavin", false),
+    ];
+    let (Some(coruscant), Some(yavin)) = (system(world, "Coruscant"), system(world, "Yavin"))
+    else {
+        return;
+    };
+    // Coruscant the Empire's, which it sees live; Yavin the Alliance's,
+    // seen by the Empire only through its frozen copy.
+    world.systems[coruscant].control = ControlKind::Controlled(Faction::Empire);
+    world.systems[yavin].control = ControlKind::Controlled(Faction::Alliance);
+    let Some(class) = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, value)| !value.is_alliance && value.name == "Victory Destroyer")
+        .map(|(key, value)| (key, i32::try_from(value.hull).unwrap_or(i32::MAX)))
+    else {
+        return;
+    };
+    let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+        location: coruscant,
+        capital_ships: vec![rebellion_core::world::ShipInstance::new(class.0, class.1, false)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.systems[coruscant].fleets.push(fleet);
+    world.number_ships();
+    let ship = {
+        let ship = &mut world.fleets[fleet].capital_ships[0];
+        ship.name = Some("Victory Destroyer 1".into());
+        ship.id
+    };
+    let keys: Vec<_> = world.characters.keys().collect();
+    for key in keys {
+        let name = world.characters[key].name.clone();
+        let prisoner = PRISONERS.contains(&name.as_str());
+        let copied = COPIED.iter().any(|(listed, _, _)| *listed == name);
+        if !world.characters[key].is_alliance && !prisoner && !copied {
+            continue;
+        }
+        for value in world.fleets.values_mut() {
+            value.characters.retain(|&seated| seated != key);
+        }
+        let character = &mut world.characters[key];
+        character.is_alliance = true;
+        character.is_empire = false;
+        character.recruited = prisoner || copied;
+        character.current_fleet = None;
+        character.ship = None;
+        character.current_abode = None;
+        character.current_system = Some(yavin);
+        character.on_mission = false;
+        character.injury = 0;
+        character.command = rebellion_core::character_command::CommandKind::None;
+        character.is_captive = false;
+        character.captured_by = None;
+        if prisoner {
+            character.is_captive = true;
+            character.captured_by = Some(Faction::Empire);
+            character.escape_barred = true;
+            character.current_system = None;
+            character.current_fleet = Some(fleet);
+            character.ship = Some(ship);
+            world.fleets[fleet].characters.push(key);
+        } else if name == "Chewbacca" {
+            character.mark_killed();
+        }
+    }
+    let frozen = SystemView::of(world, &world.systems[yavin], false);
+    let yavin_id = world.systems[yavin].dat_id;
+    world.object_views.empire_systems.insert(yavin_id, frozen);
+    for (name, at, enroute) in COPIED {
+        let Some(id) = world
+            .characters
+            .values()
+            .find(|character| character.name == name)
+            .map(|character| character.dat_id)
+        else {
+            continue;
+        };
+        let copy = CharacterCopy {
+            system: system(world, at).map(|key| world.systems[key].dat_id),
+            ship: None,
+        };
+        let views = &mut world.object_views;
+        views.empire_characters.insert(id, copy);
+        views.empire_character_commands.remove(&id);
+        views.empire_character_states.insert(
+            id,
+            CharacterCopyState {
+                on_mission: false,
+                hidden_mission: false,
+                enroute,
+            },
+        );
     }
 }
 
@@ -4632,6 +4787,7 @@ pub fn emit_personnel_finder(
             | Scenario::PersonnelAbode
             | Scenario::PersonnelPalace
             | Scenario::PersonnelRetired
+            | Scenario::PersonnelPickup
     ) {
         emit_finder_list(request, world, fog, finder);
         return;
@@ -16420,6 +16576,121 @@ mod tests {
                 "Luke Skywalker - Location Unknown",
                 "Syub Snunb - Location Unknown",
                 "Wedge Antilles - Location Unknown",
+            ]
+        );
+    }
+
+    /// c-14's characters, Coruscant, Yavin and a Victory Destroyer class,
+    /// plus Alliance characters the scenario does not recruit.
+    fn seed_pickup_roster(world: &mut GameWorld) {
+        seed_abode_roster(world);
+        let systems: Vec<_> = world.systems.keys().collect();
+        world.systems[systems[1]].name = "Coruscant".into();
+        world.systems[systems[1]].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass {
+                name: "Victory Destroyer".into(),
+                hull: 30,
+                ..Default::default()
+            });
+        for (index, name) in ["Ma'w'shiye", "Tura Raftican"].into_iter().enumerate() {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: rebellion_core::ids::DatId::new(0x3000_0280 + index as u32),
+                name: name.into(),
+                is_alliance: true,
+                recruited: true,
+                current_system: Some(systems[2]),
+                ..Default::default()
+            });
+        }
+    }
+
+    // A0 2026-11-18-edited-saves-9 c-14 (88e1928e1f1a, day 531): the
+    // Empire's Alliance tab right after Jabba Delivers Prisoners: the three
+    // prisoners aboard Vader's ship read live with the Captured word
+    // (FUN_0056da80, FUN_00465bb0), Chewbacca (destroyed, FUN_005445d0)
+    // and four others from the Empire's frozen copies.
+    #[test]
+    fn the_personnel_pickup_scenario_lists_c14s_alliance_rows() {
+        let applied = apply_to_loading_world_with(
+            request(Scenario::PersonnelPickup, CockpitFaction::Empire),
+            seed_pickup_roster,
+        );
+        let fog = rebellion_core::fog::FogState::new(Faction::Empire);
+        let rows = rebellion_render::personnel_finder::character_rows(
+            &applied.world,
+            &fog,
+            Faction::Empire,
+            rebellion_render::personnel_finder::PersonnelTab::Alliance,
+        );
+        let texts: Vec<_> = rows
+            .iter()
+            .map(|row| match row {
+                rebellion_render::personnel_finder::PersonnelFinderRow::Character {
+                    name, ..
+                } => name.as_str(),
+                rebellion_render::personnel_finder::PersonnelFinderRow::SpecForces { .. } => "",
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "Chewbacca - Yavin",
+                "Han Solo - Victory Destroyer 1 ( Captured ) ",
+                "Jan Dodonna - Location Unknown",
+                "Leia Organa - Victory Destroyer 1 ( Captured ) ",
+                "Luke Skywalker - Victory Destroyer 1 ( Captured ) ",
+                "Ma'w'shiye - Yavin ( Enroute ) ",
+                "Tura Raftican - Yavin",
+                "Wedge Antilles - Yavin",
+            ]
+        );
+        let chewbacca = applied
+            .world
+            .characters
+            .values()
+            .find(|character| character.name == "Chewbacca")
+            .unwrap();
+        assert!(chewbacca.is_killed);
+        // Each fleet's seated characters and its first ship's class: Vader
+        // stays the Empire's in the fleet he rode; the prisoners ride the
+        // new fleet's Victory Destroyer.
+        let mut seated: Vec<(Vec<(&str, bool)>, &str)> = applied
+            .world
+            .fleets
+            .values()
+            .filter(|fleet| !fleet.characters.is_empty())
+            .map(|fleet| {
+                let names = fleet
+                    .characters
+                    .iter()
+                    .map(|&key| &applied.world.characters[key])
+                    .map(|character| (character.name.as_str(), character.is_alliance))
+                    .collect();
+                let class = fleet
+                    .capital_ships
+                    .first()
+                    .map_or("", |ship| {
+                        applied.world.capital_ship_classes[ship.class].name.as_str()
+                    });
+                (names, class)
+            })
+            .collect();
+        seated.sort();
+        assert_eq!(
+            seated,
+            [
+                (vec![("Darth Vader", false)], ""),
+                (
+                    vec![
+                        ("Han Solo", true),
+                        ("Leia Organa", true),
+                        ("Luke Skywalker", true)
+                    ],
+                    "Victory Destroyer"
+                ),
             ]
         );
     }
