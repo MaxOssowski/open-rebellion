@@ -102,6 +102,12 @@ pub enum MessageRail {
     Conflict,
     Advice,
     Chat,
+    /// No category: a class whose constructor leaves `+0x34` at the base's
+    /// 0 (`FUN_004c4d90` stores `FUN_006158b0`, `xor eax,eax; ret`), as
+    /// Rescue Attempt's (`FUN_0048c3a0`) does. Its row has no icon
+    /// (`FUN_00468ab0`), only All Messages lists it (`FUN_00468f20`), and
+    /// it lights no rail control. Not a rail control itself.
+    Unfiled,
 }
 
 impl MessageRail {
@@ -131,6 +137,7 @@ impl MessageRail {
             Self::Fleet => 0x080,
             Self::Conflict => 0x100,
             Self::Advice => 0x200,
+            Self::Unfiled => 0,
         }
     }
 }

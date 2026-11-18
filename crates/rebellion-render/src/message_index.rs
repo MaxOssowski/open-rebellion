@@ -1348,6 +1348,8 @@ pub const fn row_icon(rail: MessageRail, faction: CockpitFaction) -> Option<u32>
         MessageRail::Resource => 0x2ad6,
         MessageRail::Conflict => 0x2ad7,
         MessageRail::Advice => 0x2ad8 + side,
+        // A mask of 0 matches none of the tests: no icon.
+        MessageRail::Unfiled => return None,
     })
 }
 
@@ -3125,6 +3127,55 @@ mod tests {
         // Newest first (FUN_00468ab0 from the last node; A0 2026-10-29).
         assert_eq!(texts, ["Mission done", "Built ship", "Fleet arrived"]);
         assert!(!rows.iter().any(|m| m.rail == Some(MessageRail::Advice)));
+    }
+
+    #[test]
+    fn a_rescue_attempt_has_no_category_icon_and_lists_under_all_messages_alone() {
+        // FUN_0048c3a0 leaves the class's +0x34 at FUN_004c4d90's 0
+        // (FUN_006158b0 is `xor eax,eax; ret`): FUN_00468ab0 draws no
+        // icon, FUN_00468f20 shows it only under All (0x79), and it lights
+        // no rail control. A0 2026-11-18-edited-saves-7 b-03/b-11: the
+        // Rescue Attempt rows have no icon, the Jabba rows the Mission one.
+        let texts: std::collections::HashMap<u16, String> = [
+            (0x71ea, "{1:1} Rescue Attempt"),
+            (0x71eb, "taken to Jabba's palace."),
+            (0x7156, "Jabba Captures {1:1}"),
+            (0x7157, "{1:1} was captured by Jabba."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let chewbacca = rebellion_core::world::Character {
+            name: "Chewbacca".into(),
+            dat_id: rebellion_core::ids::DatId::new(0x343),
+            is_alliance: true,
+            is_major: true,
+            ..Default::default()
+        };
+        let rescue =
+            crate::story_messages::rescue_attempt_message(&chewbacca, 9, &texts).expect("rescue");
+        let jabba =
+            crate::story_messages::jabba_captures_message(&chewbacca, 21, &texts).expect("jabba");
+        assert_eq!(rescue.rail.and_then(|rail| row_icon(rail, CockpitFaction::Alliance)), None);
+        assert_eq!(
+            jabba.rail.and_then(|rail| row_icon(rail, CockpitFaction::Alliance)),
+            Some(0x2a9e)
+        );
+        let mut log = MessageLog::new();
+        log.push(rescue);
+        log.push(jabba);
+        let titles = |category| -> Vec<String> {
+            filtered_messages(&log, category, true)
+                .iter()
+                .filter_map(|m| m.title.clone())
+                .collect()
+        };
+        assert_eq!(
+            titles(0x79),
+            ["Jabba Captures Chewbacca", "Chewbacca Rescue Attempt"]
+        );
+        assert_eq!(titles(0x7c), ["Jabba Captures Chewbacca"]);
+        assert_eq!(log.unread_mask(true), MessageRail::Mission.mask());
     }
 
     #[test]

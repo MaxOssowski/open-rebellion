@@ -823,7 +823,12 @@ pub fn rescue_attempt_message(
             fill_message_text(texts.get(&0x71eb)?, &parameters),
             MessageCategory::Event,
         )
-        .on_rail(STORY_RAIL, RailAudience::Alliance)
+        // FUN_0048c3a0 sets no category (+0x34 stays 0, FUN_004c4d90): no
+        // row icon, listed under All Messages alone. A0 2026-11-18-edited-
+        // saves-7 b-03/b-11: the Rescue Attempt rows have no icon, the
+        // Jabba and Injured rows the Mission one; b-06 has none left of
+        // its title.
+        .on_rail(MessageRail::Unfiled, RailAudience::Alliance)
         // Kind 8 (vtable +0x10 0x48ad30): Display grey.
         .plain()
         .with_title(fill_message_text(texts.get(&0x71ea)?, &parameters))
