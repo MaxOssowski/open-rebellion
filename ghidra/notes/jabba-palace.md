@@ -369,19 +369,56 @@ TEXTSTRA RCDATA (`textstra-messages.json`).
 | b-14, b-16, b-18 | "X Injured", `0x41a` | as b-05 | match |
 | b-19 (e4f53d49b065) | Personnel Finder on day 31: "Chewbacca - Jabba's Palace", "Han Solo - Jabba's Palace", "Leia Organa - Jabba's Palace", "Luke Skywalker - Jabba's Palace", no "( Captured )" | the abode rule of `character_text` gives the same text while they are in the palace | text matches; state differs, see below |
 
-Open (b-19): the Pickup's hit was on day 22 (Jabba Delivers Prisoners first
-listed on day 22, b-11), and on day 31 the Finder still places all four in
-the palace. The in-game save of the same run at day 34
-(`BNTY7D34`, 349f49a6506e) has no u32 `0x98000481` anywhere, and each of
-the four master character records (save offset `+0x3c`, the field that holds
-`0x92000121` Yavin for them on day 2) holds `0x90000109`, Coruscant, as does
-Vader's. So they leave the palace for Coruscant (Vader's `+0x70` home)
-between day 31 and day 34, 9 to 12 days after the hit (hyp: Coruscant
-is Vader's `+0x70`, where the Pickup's prisoners autoroute). The port moves them
-off the map the day after the hit (`EscapeeTransit`, arrival `now + 1`), so
-on day 31 its Finder reads "Luke Skywalker - Coruscant ( Captured )". What
-holds them (the Pickup's end, the Autorouting event's timing, or an abode
-trip's length) is not traced; the port is not changed.
+b-19, the Finder's palace rows after the Pickup (traced 2026-11-18). The
+prisoners do not stay at the palace; the Alliance's Finder shows its own
+stale copies of them:
+
+- The in-game save of the same run at day 34 (`BNTY7D34`, 349f49a6506e)
+  writes each object's children after it. In the master section the four
+  master records (key-and-side `0x80000081`: side bits `0x80`, the captor's,
+  `FUN_004eec60`) stand among Coruscant's children with Vader and the
+  Emperor (0x191e2..0x195ae), and their container field (save `+0x3c`,
+  `0x92000121` Yavin on day 2) holds `0x90000109`. The master palace
+  (0x23783) has no child. The Empire's view section (`0x800000a1`) has
+  them under Coruscant too (0x4c1a6..0x4c46e).
+- The Alliance's view section (`0x80000092`) holds its copy of the palace
+  (0x38a1b) followed by its copies of Leia (0x38a5b), Luke (0x38aeb), Han
+  (0x38b7b) and Chewbacca (0x38c07): the Alliance still has all four in
+  the palace on day 34.
+- The Finder lists the side's view objects (`FUN_004f3d50`), and a
+  captive carries its captor's side, so the Alliance reads a copy that
+  no longer syncs; the abode rule then gives "Name - Jabba's Palace" with
+  no words. b-19 is that copy, not the master's container.
+- The move itself: the Pickup's hit (phase 10) and its end (phase `0xb`)
+  run in one tick, and a trip with an end that is not a system takes 0
+  ticks (`FUN_00555b30`, `build-delivery.md`). So nothing found holds the
+  prisoners at the palace; their departure day is not seen in A0 (between
+  the hit, day 22, and day 34). The port's `EscapeeTransit` (arrival the
+  day after the hit, to the system Vader left from, Coruscant here) agrees
+  with the day-34 state and is not changed.
+- Port gap, not changed: the port's Finder reads a captive of the
+  player's own side live ("Luke Skywalker - Coruscant ( Captured )"), as
+  `character_rows_travelling` picks the copy by home side
+  (`Character::is_alliance`), and `object_views` keeps no copy of an abode
+  or of an own captive. Matching b-19 needs the side test on the captor's
+  side and a copy of the palace and its prisoners frozen when they leave
+  it; when the Alliance's copy last synced is not traced, and A0
+  personnel-captured/finder-day628 ("Jan Dodonna - Punisher ( Captured )")
+  shows a captive's row with its Captured word, which the port's copies do
+  not keep.
+
+The Empire's copies of the messages (traced 2026-11-18):
+
+- Jabba Delivers Prisoners: `FUN_0048b6e0` has no side test; it builds for
+  any message object (`+0x20` side) that receives `0x231` with its argument
+  set, and the Pickup's hit notifies both sides (`FUN_00539fd0(1)`, `(2)`).
+  The port's posting to both sides matches. Its background reads the
+  reader side's object of Luke (`FUN_004f3e50(+0x20)`, `+0xb0` bit 3).
+- Jabba Captures: `FUN_00490340` reads the reader side's object of the
+  character (`FUN_004f2d10(+0x20, key)`); case 5 needs that object
+  captive (`+0x98 == 0`) and in the palace. The Empire's view had the
+  prisoners live, so it likely reads it too; not seen in A0, port (both
+  sides) not changed.
 
 Not shown by these frames: the Empire's copies of Jabba Captures and Jabba
 Delivers Prisoners (the port posts both to both sides), the `0x42b` variant
