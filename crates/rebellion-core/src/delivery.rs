@@ -77,6 +77,9 @@ pub struct DeliveryAdvance {
     /// Deliveries already rerouted once whose destination is gone again
     /// and that found no other place of their side
     /// (`GameObjDestroyedOnArrivalNotif`, event `0x303`, `FUN_004fc080`).
+    /// hyp: no A0 shows this message; for a facility rerouted by a side
+    /// change and then lost by a second one, A0 shows none
+    /// (`crate::products::autoroute_facilities`).
     pub lost: Vec<Delivery>,
     /// Deliveries on their first trip whose destination is gone and that
     /// found no other place of their side: destroyed with reason 2

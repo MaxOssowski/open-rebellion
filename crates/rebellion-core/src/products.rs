@@ -857,8 +857,13 @@ fn facility_place(
 ///   No Facility Lost: `FUN_004fc080` raises `0x303` only for an object
 ///   EnrouteActive whose destination-change count (`+0x42`, raised by a
 ///   container change while en route, `GameObj_vtf4`, `FUN_004faf50`;
-///   cleared on arrival, `FUN_004fb760`) is not 0, and this is the
-///   facility's first trip.
+///   cleared on arrival, `FUN_004fb760`) is not 0, so a first trip raises
+///   none. A trip an earlier autoroute moved has the count at 1 (the move
+///   is slot `+0xa8`, `FUN_004f6fd0`, which calls slot `+0xf4`), yet A0
+///   shows no Facility Lost for it either (2026-11-18 edited saves part 8,
+///   f-05..f-09); hyp: the message batch of the side change maps to
+///   another message first (`FUN_00488de0`), see
+///   `ghidra/notes/facility-autoroute-on-side-change.md`.
 ///
 ///   An unfinished one is not EnrouteActive, so it raises no `0x303`
 ///   either; its manager no longer takes it as its current product
