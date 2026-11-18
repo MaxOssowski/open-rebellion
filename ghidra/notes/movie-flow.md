@@ -81,6 +81,17 @@ MDATA\MDATA.NNN (no extension in the real name; "MDATA.000" etc.).
   - Port: `rebellion_render::movie_error_box`, `VideoPlayer::unopened`,
     `answer_movie_error_box` (main.rs). The browser's `<video>` error
     (FAILED) opens the same box.
+  (2026-11-18) Ending film missing, A0 `.artifacts/a0-vm/2026-11-18-edited-saves-9`
+  f-04..f-12 (Empire HQ-victory game, edited save, MDATA.108 renamed away):
+  caption film 102, one strategy frame, one black frame, the box with
+  `C:\Games\Rebellion\MDATA\MDATA.108` on black (f-09), held 45 s until OK,
+  one black frame, then the main menu (f-11). No crawl: the crawl is drawn
+  inside MDATA.108 itself (nothing is drawn by code), so a film that never
+  opens has none. 0x403 reaches the 0x405 handler with id 0x6d like a
+  played 108, so state 3 (main menu) follows. Port: the same path
+  (`CutsceneKind::Ending` -> `GameMode::MainMenu` when the box is
+  answered); gate `tools/interface-parity/ending.mjs` case
+  `empire-victory-missing` compares the box with f-09.
 
 ## App state machine
 FUN_00414330(state) (jump tables 0x414694/0x4146c4); FUN_00401040 is the

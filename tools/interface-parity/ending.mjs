@@ -37,13 +37,25 @@ const FACTIONS = [
   { name: "empire", byte: 2, ending: "107", code: ENDING_DEFEAT },
   { name: "alliance-victory", byte: 1, ending: "105", code: ENDING_VICTORY },
   { name: "empire-victory", byte: 2, ending: "108", code: ENDING_VICTORY },
+  // END-01-C011: the Empire's victory film cannot be opened (its file
+  // answers 404, as MDATA.108 renamed away in A0).
+  { name: "empire-victory-missing", byte: 2, ending: "108", code: ENDING_VICTORY, missing: true },
 ].filter(({ name }) => !args.faction || name.startsWith(args.faction));
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".webm": "video/webm", ".orpk": "application/octet-stream" };
 
+// Paths the server answers 404, as a missing movie file (the
+// empire-victory-missing case).
+const REFUSED = new Set();
+
 function serve(root) {
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost");
+    if (REFUSED.has(url.pathname)) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
     const file = path.join(root, decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     try {
       const bytes = await fs.readFile(file);
@@ -160,6 +172,53 @@ function measure(bytes) {
   return { white, colour, outside };
 }
 
+// END-01-C011 against A0 2026-11-18-edited-saves-9 (an Empire
+// "Headquarters Victory" game, edited save, MDATA.108 renamed away): after
+// the caption film 102 (f-05), one strategy frame (f-06) and one black frame
+// (f-07), FUN_005f6920 cannot open the film and FUN_0060a9e0 shows
+// MessageBoxA(path, "PathName unknown to VideoManager", 0x1010) on black
+// (f-09 0760ddb1bd49: the frame (173, 171)..(472, 319) with
+// "C:\Games\Rebellion\MDATA\MDATA.108"). It stays until OK (45 s); then one
+// black frame (f-10) and the main menu (f-11 589e631179b4), with no film and
+// no crawl: the crawl is part of the film (ghidra/notes/movie-flow.md), and
+// 0x403 ends state 0x12 as the film's end would (FUN_00421790: 0x405 and
+// the callback, state 3).
+const A0_MISSING = path.join(A0_VM, "2026-11-18-edited-saves-9",
+  "f-09-pathname-unknown-to-videomanager-mdata108-box.png");
+async function missingEnding(page, shot, log, stems) {
+  assert.deepEqual(stems, ["102"], `only the caption film plays: ${stems}`);
+  const boxLine = log.find((line) => line.includes("[cutscene] error_box path="));
+  assert.match(boxLine, /error_box path=\S*108\.webm caption=PathName unknown to VideoManager/);
+  await page.waitForTimeout(1500);
+  const beeps = log.filter((line) => line.includes("[audio] movie_error_beep "));
+  assert.equal(beeps.length, 1, `one beep: ${JSON.stringify(beeps)}`);
+  const png = PNG.sync.read(await shot("box"));
+  const a0 = PNG.sync.read(await fs.readFile(A0_MISSING));
+  const boxes = { a0: litBox(a0), port: litBox(png) };
+  // The rows are A0's; the width follows the path, which is the port's own
+  // file (port: data/video/108.webm), so the columns are taken from each
+  // box's own left (L) and right (R) edges.
+  assert.ok(boxes.a0 && boxes.port && boxes.a0[1] === boxes.port[1] && boxes.a0[3] === boxes.port[3],
+    JSON.stringify(boxes));
+  const parts = (image, [L, , R]) => {
+    const at = (x, y) => Array.from(image.data.slice((y * image.width + x) * 4, (y * image.width + x) * 4 + 3));
+    return {
+      outside: at(100, 100), frame_left: at(L, 250), title: at(L + 13, 190), body: at(L + 40, 210),
+      band: at(L + 40, 300), frame_right: at(R, 250), ok_left: at(R - 92, 296), ok_right: at(R - 18, 296),
+      below: at(L + 40, 320),
+    };
+  };
+  const pixels = { a0: parts(a0, boxes.a0), port: parts(png, boxes.port) };
+  assert.deepEqual(pixels.port, pixels.a0, JSON.stringify(pixels));
+  // The box waits for OK: no film behind it and no menu.
+  await page.waitForTimeout(2000);
+  assert.equal(await page.evaluate(() => document.querySelector("video")), null, "no film plays under the box");
+  const later = PNG.sync.read(await shot("box-later"));
+  assert.deepEqual(litBox(later), boxes.port, "the box stays until OK");
+  await page.keyboard.press("Enter");
+  return { boxes, pixels, box_log: boxLine, beep_log: beeps[0] };
+}
+
 async function run(browser, base, faction) {
   const directory = path.join(OUT, faction.name);
   await fs.mkdir(directory, { recursive: true });
@@ -180,6 +239,8 @@ async function run(browser, base, faction) {
     shots.push({ label, sha256: createHash("sha256").update(bytes).digest("hex") });
     return bytes;
   };
+  const refused = `/data/video/${faction.ending}.webm`;
+  if (faction.missing) REFUSED.add(refused);
   try {
     await page.goto(`${base}?fixture-code=${faction.code | (faction.byte << 8)}`);
     await page.locator("#glcanvas").focus().catch(() => {});
@@ -189,6 +250,10 @@ async function run(browser, base, faction) {
     const deadline = Date.now() + 180_000;
     for (;;) {
       if (Date.now() > deadline) throw new Error(`no defeat movie: ${stems}`);
+      // The ending film's file is missing: its error box stands where the
+      // film would play.
+      if (faction.missing && log.some((line) => line.includes("[cutscene] error_box path=")
+        && line.includes(`${faction.ending}.webm`))) break;
       const stem = await page.evaluate(() => {
         const c = window.__openRebellionCutscene;
         const v = document.querySelector("video");
@@ -251,6 +316,7 @@ async function run(browser, base, faction) {
     }
     assert.ok(log.some((line) => line.includes(`[cutscene] opened path=assets/references/ref-videos/${faction.ending}.webm`)),
       "the defeat movie is the player's side's");
+    const missing = faction.missing ? await missingEnding(page, shot, log, stems) : null;
     // The galaxy day stands from the word that ends the game to the ending
     // film: FUN_0041e390 reads the word's 0x10000000 (FUN_0051de80) before
     // every sub-tick, and FUN_0051dea0 (the day's only writer) no longer
@@ -270,7 +336,7 @@ async function run(browser, base, faction) {
     // empire-clean/62..64 ran the Empire's so), the Empire's is skipped
     // with Escape, as any key skips a movie; then the main menu, no dialog
     // and no other movie.
-    if (!faction.natural) await page.keyboard.press("Escape");
+    if (!faction.natural && !faction.missing) await page.keyboard.press("Escape");
     await until(page, "the defeat movie ends", () => !document.querySelector("video"), 200_000);
     await page.waitForTimeout(1500);
     const menu = await shot("after");
@@ -380,8 +446,18 @@ async function run(browser, base, faction) {
       assert.ok(allianceA0.gap_after_103_ms.port !== null && allianceA0.gap_after_103_ms.port <= 1000,
         JSON.stringify(allianceA0));
     }
-    assert.deepEqual(errors, [], errors.join("; "));
+    if (faction.missing) {
+      // f-11: the main menu follows the box's OK; the film and its crawl
+      // never start (the last video state is still the failed load).
+      assert.equal(await page.evaluate(() => window.__openRebellionCutscene?.state), 3,
+        "no movie starts after the box");
+      assert.ok(log.some((line) => line.includes("[cutscene] error_box answered path=")), "OK answers the box");
+    }
+    // The missing case's own refused file is its one expected error.
+    const unexpected = errors.filter((text) => !(faction.missing && text.includes("status of 404")));
+    assert.deepEqual(unexpected, [], unexpected.join("; "));
     return { faction: faction.name, status: "pass", stems, days, later, shots, ...(a0 ? { a0 } : {}),
+      ...(missing ? { missing } : {}),
       ...(allianceA0 ? { alliance_a0: allianceA0 } : {}),
       ...(defeatA0 ? { defeat_a0: defeatA0 } : {}),
       menu_lines: log.filter((line) => /main_menu|game_mode|cutscene/.test(line)).slice(-12) };
@@ -389,6 +465,7 @@ async function run(browser, base, faction) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
   } finally {
+    REFUSED.delete(refused);
     await fs.writeFile(path.join(directory, "console.log"), log.join("\n"));
     await context.close();
   }
