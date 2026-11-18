@@ -10617,25 +10617,19 @@ fn draw_tactical_frame(
                 let fields = session
                     .field_effects
                     .iter()
+                    .filter(|effect| shows_field_cloud(effect.target))
                     .filter_map(|effect| {
-                        // The cloud sits on its unit (`FUN_005c1360`), a
-                        // ship or a fighter group, with the unit's id.
-                        let (object_id, position) = match effect.target {
-                            TacticalUnitRef::Ship(index) => {
-                                session.ships.get(index)?;
-                                (
-                                    u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1),
-                                    ship_pose(index).0,
-                                )
-                            }
-                            TacticalUnitRef::Fighter(index) => {
-                                session.fighters.get(index)?;
-                                (
-                                    u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1001),
-                                    fighter_position(index),
-                                )
-                            }
+                        // The cloud sits on its ship (`FUN_005c1360`), with
+                        // the ship's id; a fighter group shows none
+                        // ([`shows_field_cloud`]).
+                        let TacticalUnitRef::Ship(index) = effect.target else {
+                            return None;
                         };
+                        session.ships.get(index)?;
+                        let (object_id, position) = (
+                            u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1),
+                            ship_pose(index).0,
+                        );
                         Some(TacticalDecalRenderObject {
                             object_id,
                             resource_id: effect.resource_id()?,
@@ -11594,6 +11588,16 @@ fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32,
         );
         state.logged_death_star_beam = true;
     }
+}
+
+/// Whether a field (tractor or gravity) on `target` shows its cloud.
+/// `FUN_005c1360` asks the unit's scene object for vtable `0x24`. Only the
+/// capital ship class `0x66d198` has `FUN_005d3ac0` there (its one pointer,
+/// `0x66d1bc`); the fighter group class `0x66d1f8` (`FUN_005d43c0`, built
+/// by `FUN_005c1fc0`) has `0x403ef0`, a bare `ret 8`. The field still
+/// holds the group; only the cloud is missing.
+const fn shows_field_cloud(target: TacticalUnitRef) -> bool {
+    matches!(target, TacticalUnitRef::Ship(_))
 }
 
 /// Where `FUN_005d4d10` hangs the planet decal, in source coordinates, and
@@ -15459,6 +15463,15 @@ mod tests {
         let session = state.session.as_ref().unwrap();
         assert!(!session.ships[0].retreated && !session.ships[1].retreated);
         assert_eq!(battle_report(session, &GameWorld::default(), None).withdrawn, None);
+    }
+
+    // Source: FUN_005c1360 calls the scene object's vtable 0x24. The ship
+    // class 0x66d198 has FUN_005d3ac0 there (0x66d1bc); the fighter group
+    // class 0x66d1f8 (FUN_005d43c0) has 0x403ef0, a bare `ret 8`.
+    #[test]
+    fn a_fighter_group_held_by_a_field_shows_no_cloud() {
+        assert!(shows_field_cloud(TacticalUnitRef::Ship(0)));
+        assert!(!shows_field_cloud(TacticalUnitRef::Fighter(0)));
     }
 
     // Source: FUN_005d3e90 effect dispatcher; FUN_005a7500 hit ordering;

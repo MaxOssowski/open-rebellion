@@ -141,7 +141,8 @@ every frame from the current camera (the hull turns little in 0.1 s).
   pointer to it, `0x66d1bc`). The fighter group class `0x66d1f8`
   (`FUN_005d43c0`, from `FUN_005c1fc0`) has `0x403ef0` there, a bare
   `ret 8`. So `FUN_005c1360` shows no cloud on a fighter group. The port
-  still draws one there; not changed.
+  now draws none there either (`shows_field_cloud`, `tactical_view.rs`,
+  2026-11-19); the field still holds the group.
 
 This note records conclusions only. The saved Ghidra database, generated
 decompilation output, and proprietary resource bytes remain untracked.
