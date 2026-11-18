@@ -2,6 +2,7 @@
 """Find which TACTICAL destroyed frame (3360..3375) an A0 fireball shows.
 
 usage: python3 -I tools/interface-parity/fireball-frame-a0.py A0.png RUNTIME_DIR
+           [--window=X0,Y0,X1,Y1] [--frames=FIRST-LAST] [--shape]
 
 A0.png is a 640 x 480 capture (TAC-03-C004). RUNTIME_DIR is the decoded
 TACTICAL3D runtime folder (data/base/ui/tactical-dll/TACTICAL3D/runtime) with
@@ -15,6 +16,10 @@ pixels of size and position. A pixel counts as fire when its colour is one
 of the frames' palette colours. Per frame the best fit is printed as JSON:
 pixels with the same colour, fire of another colour, fire only in A0, and
 fire only in the frame.
+
+--window replaces the default window (TAC-03-C004's fire), --frames limits
+the frames tried, and --shape ranks fits by outline alone (fire of another
+colour counts as a hit), for captures whose colours the 8-bit display moved.
 """
 import json
 import os
@@ -51,7 +56,7 @@ def load_runtime(runtime):
 
 def score(frame, a0fire, size, cx, cy, confusion=None):
     width, height, pixels = frame
-    x0, y0, x1, y1 = WINDOW
+    x0, y0, x1, y1 = WINDOW_IN_USE
     left, top = cx - size / 2.0, cy - size / 2.0
     same = other = a0_only = frame_only = 0
     for y in range(y0, y1):
@@ -79,12 +84,24 @@ def score(frame, a0fire, size, cx, cy, confusion=None):
     return same, other, a0_only, frame_only
 
 
+WINDOW_IN_USE = WINDOW
+
+
 def main():
+    global WINDOW_IN_USE
     a0_path, runtime = sys.argv[1], sys.argv[2]
-    frames = load_runtime(runtime)
+    first, last, shape = 3360, 3375, False
+    for option in sys.argv[3:]:
+        if option.startswith("--window="):
+            WINDOW_IN_USE = tuple(int(v) for v in option[9:].split(","))
+        elif option.startswith("--frames="):
+            first, last = (int(v) for v in option[9:].split("-"))
+        elif option == "--shape":
+            shape = True
+    frames = {k: v for k, v in load_runtime(runtime).items() if first <= k <= last}
     fire = {c for _, _, px in frames.values() for c in px if c is not None}
     a0 = Image.open(a0_path).convert("RGB")
-    x0, y0, x1, y1 = WINDOW
+    x0, y0, x1, y1 = WINDOW_IN_USE
     a0fire = {}
     for y in range(y0, y1):
         for x in range(x0, x1):
@@ -114,7 +131,10 @@ def main():
             for dx in range(-3, 4):
                 for dy in range(-3, 4):
                     counts = score(frame, a0fire, size, ocx + dx, ocy + dy)
-                    fit = counts[0] - counts[1] - counts[2] - counts[3]
+                    if shape:
+                        fit = counts[0] + counts[1] - counts[2] - counts[3]
+                    else:
+                        fit = counts[0] - counts[1] - counts[2] - counts[3]
                     if best is None or fit > best[0]:
                         best = (fit, size, ocx + dx, ocy + dy, counts)
         _, size, cx, cy, (same, other, a0_only, frame_only) = best
