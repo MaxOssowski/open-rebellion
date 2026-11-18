@@ -10342,8 +10342,11 @@ pub fn draw_tactical_view(
 /// tests `+0x8c8`, and moves the scene (`IDirect3DRMFrame::Move`, "Moving
 /// scene failed"), whose move callback `LAB_005eeb90` carries each
 /// projectile on its own wall-clock timer. So those presentational
-/// effects run on while paused; the combat steps do not.
-/// `freeze_paused_effects` is the still fixtures' switch only.
+/// effects run on while paused; the combat steps do not. The turn clock
+/// runs on too (`BattleSession::resume_paused_turn_clock`), so a turn that
+/// fell due during the pause begins on the resumed frame.
+/// `freeze_paused_effects` is the still fixtures' switch only; it also
+/// holds that clock.
 fn advance_tactical_frame(
     session: &mut BattleSession,
     previous_poses: &mut Option<TacticalPoses>,
@@ -10359,11 +10362,15 @@ fn advance_tactical_frame(
         session.advance_presentational_effects(dt);
     }
     if session.paused {
+        if !freeze_paused_effects && session.turn_clock_started() {
+            session.paused_turn_seconds += dt;
+        }
         return;
     }
     // Step at ~4 ticks per second (at 60fps), scaled by combat_speed.
     print_battle_diagnostics(session);
     let ticks_per_sec = 4.0 * session.combat_speed as f32;
+    session.resume_paused_turn_clock(ticks_per_sec);
     session.step_accumulator += dt * ticks_per_sec;
     while session.step_accumulator >= 1.0 {
         session.step_accumulator -= 1.0;
@@ -12619,6 +12626,7 @@ mod tests {
             paused: true,
             combat_speed: 1,
             step_accumulator: 0.0,
+            paused_turn_seconds: 0.0,
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
@@ -15907,6 +15915,145 @@ mod tests {
         assert!((session.step_accumulator - 0.4).abs() < 1e-5);
         assert!(previous_poses.is_some());
         assert_eq!(session.death_star_beam.map(|beam| beam.elapsed), Some(0.3));
+    }
+
+    /// A battle whose Death Star beam has just started (turn 4's first
+    /// step, `0x005ba520`), with its target one turn from the kill.
+    fn session_with_a_beam_just_fired() -> BattleSession {
+        let mut session = test_session(vec![test_ship(64, 0, true, true)], Vec::new(), false);
+        session.death_star = Some(TacticalDeathStar {
+            resource: DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition::ORIGIN,
+            hull: 100.0,
+            laser_charge: 100.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        assert!(session.commit_death_star_shot(0));
+        session.paused = false;
+        for _ in 0..16 {
+            session.step();
+        }
+        assert!(session.death_star_beam.unwrap().fired);
+        session
+    }
+
+    fn advance_for(session: &mut BattleSession, poses: &mut Option<TacticalPoses>, seconds: f32) {
+        // Renders of 0.02 s (FUN_005c1cf0).
+        for _ in 0..(seconds / 0.02).round() as u32 {
+            advance_tactical_frame(session, poses, 0.02, false);
+        }
+    }
+
+    // Source: A0 TAC-03-C004, .artifacts/a0-vm/2026-11-18-edited-saves-8
+    // seq-p2-paused-beam and seq-p3-resume-kill (run 4): the beam started
+    // 0.20 s before Pause Battle; paused, it grew to full length (p-05, dt
+    // 0.810 s) and vanished with the target intact (p-06, dt 0.841 s), and
+    // nothing changed for 6 s (p-07). After Resume the target's fire showed
+    // within 0.13 s of the resume (k0048 button, k0076 first fire pixel).
+    // Trace: 0x005da830 grows the beam on its own timer; FUN_005aacb0
+    // skips the manager (0x005aad2e) while +0x8c8 is set; FUN_005bea30
+    // cuts an overdue turn to elapsed % 1000 + 1000 (0x005beb48).
+    #[test]
+    fn a_beam_paused_mid_flight_ends_while_paused_and_kills_on_resume() {
+        let mut session = session_with_a_beam_just_fired();
+        let mut poses = None;
+        advance_for(&mut session, &mut poses, 0.2);
+        let tick = session.combat_tick;
+        let phase = session.step_accumulator;
+        session.paused = true;
+        advance_for(&mut session, &mut poses, 0.6);
+        let beam = session.death_star_beam.unwrap();
+        assert!(death_star_beam_progress(&beam).is_some_and(|share| share > 0.75));
+        advance_for(&mut session, &mut poses, 0.3);
+        assert_eq!(death_star_beam_progress(&session.death_star_beam.unwrap()), None);
+        advance_for(&mut session, &mut poses, 6.0);
+        // No combat step while paused: the target lives and nothing moves
+        // (the drawn fraction stays where the pause left it).
+        assert!(session.ships[0].alive);
+        assert_eq!(session.combat_tick, tick);
+        assert_eq!(session.step_accumulator, phase);
+        session.paused = false;
+        advance_tactical_frame(&mut session, &mut poses, 0.02, false);
+        assert!(!session.ships[0].alive);
+        assert_eq!(session.impact_effects.len(), 1);
+    }
+
+    // Source: A0 TAC-03-C004 seq-p1-paused-projectiles (run 3, p-01): Pause
+    // Battle 0.12 s after a laser shot; the projectiles moved on and were
+    // gone 0.89 s after the press, and no ship moved. Trace: LAB_005eeb90
+    // (FUN_005ee590) on its own timer +0x40, cleared once t passes +0x58.
+    #[test]
+    fn projectiles_in_flight_finish_while_paused_and_ships_hold_still() {
+        let mut session = paused_session_with_every_effect();
+        session.death_star_beam = None;
+        let positions: Vec<_> = session.ships.iter().map(|ship| ship.source_position).collect();
+        let mut poses = None;
+        advance_for(&mut session, &mut poses, 0.12);
+        assert_eq!(session.weapon_effects.len(), 1);
+        advance_for(&mut session, &mut poses, 0.9);
+        assert!(session.weapon_effects.is_empty());
+        advance_for(&mut session, &mut poses, 4.0);
+        let after: Vec<_> = session.ships.iter().map(|ship| ship.source_position).collect();
+        assert_eq!(after, positions);
+        assert_eq!(session.combat_tick, 0);
+        assert!(poses.is_none());
+    }
+
+    // Source: FUN_005bea30 cuts an elapsed time of a turn or more to
+    // elapsed % turn + turn (0x005beb48-0x005beb52), then starts the next
+    // turn at now - remainder.
+    #[test]
+    fn a_long_pause_owes_one_turn_and_keeps_the_remainder_as_its_phase() {
+        let mut session = test_session(vec![test_ship(64, 0, true, true)], Vec::new(), false);
+        session.combat_tick = 5;
+        session.step_accumulator = 0.5;
+        // 1.5 steps of the turn done; 10.25 s paused is 41 steps.
+        session.paused_turn_seconds = 10.25;
+        session.resume_paused_turn_clock(4.0);
+        // Phase 42.5 steps -> 42.5 % 4 + 4 = 6.5; one step was already run.
+        assert_eq!(session.step_accumulator, 5.5);
+        assert_eq!(session.paused_turn_seconds, 0.0);
+        // A short pause is plain elapsed time.
+        session.step_accumulator = 0.5;
+        session.paused_turn_seconds = 0.25;
+        session.resume_paused_turn_clock(4.0);
+        assert_eq!(session.step_accumulator, 1.5);
+        // Exactly a turn is overdue: the turn begins now, phase 0.
+        session.step_accumulator = 0.0;
+        session.paused_turn_seconds = 0.75;
+        session.resume_paused_turn_clock(4.0);
+        assert_eq!(session.step_accumulator, 3.0);
+        // No pause leaves the clock alone.
+        session.resume_paused_turn_clock(4.0);
+        assert_eq!(session.step_accumulator, 3.0);
+    }
+
+    // Source: FUN_005bea30's first update (+0x8c0 set) stores the turn
+    // start +0x89c (0x005bea8a); before it there is no clock to run on.
+    #[test]
+    fn a_pause_before_the_first_combat_frame_owes_no_turn() {
+        let mut session = test_session(vec![test_ship(64, 0, true, true)], Vec::new(), true);
+        assert!(!session.turn_clock_started());
+        let mut poses = None;
+        advance_for(&mut session, &mut poses, 3.0);
+        assert_eq!(session.paused_turn_seconds, 0.0);
+        session.paused = false;
+        advance_tactical_frame(&mut session, &mut poses, 0.02, false);
+        assert!(session.turn_clock_started());
+        assert_eq!(session.combat_tick, 0);
+        session.combat_tick = 1;
+        session.step_accumulator = 0.0;
+        assert!(session.turn_clock_started());
+        // The fixture switch holds the clock with the effects.
+        session.paused = true;
+        advance_tactical_frame(&mut session, &mut poses, 0.5, true);
+        assert_eq!(session.paused_turn_seconds, 0.0);
+        advance_tactical_frame(&mut session, &mut poses, 0.5, false);
+        assert_eq!(session.paused_turn_seconds, 0.5);
     }
 
     // Source: FUN_005b24d0 through FUN_005b2550 field effects.

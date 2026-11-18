@@ -1743,6 +1743,11 @@ pub struct BattleSession {
     pub combat_speed: u32,
     /// Accumulator for sub-frame combat stepping.
     pub step_accumulator: f32,
+    /// Seconds the battle has been paused since the last combat frame. The
+    /// manager times its turns with `timeGetTime` against `+0x89c`
+    /// (`FUN_005bea30`), a clock the pause does not stop
+    /// (`resume_paused_turn_clock`).
+    pub paused_turn_seconds: f32,
     /// Winner once battle ends (None during combat).
     pub winner: Option<CombatWinner>,
     /// Each side's retreat order from the battle choice (Alliance, Empire;
@@ -4627,6 +4632,7 @@ impl BattleSession {
             paused: true,
             combat_speed: 1,
             step_accumulator: 0.0,
+            paused_turn_seconds: 0.0,
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
@@ -6521,6 +6527,48 @@ impl BattleSession {
         if let Some(beam) = self.death_star_beam.as_mut().filter(|beam| beam.fired) {
             beam.elapsed += elapsed;
         }
+    }
+
+    /// Whether the manager's turn clock has started. Its first update
+    /// (`FUN_005bea30` with `+0x8c0` set) stores the start `+0x89c`
+    /// (`0x005bea8a`); a battle paused before its first combat frame has
+    /// no clock yet, so that pause does not count.
+    ///
+    /// port: the first unpaused combat frame adds to the step accumulator.
+    #[must_use]
+    pub fn turn_clock_started(&self) -> bool {
+        self.combat_tick > 0 || self.step_accumulator > 0.0
+    }
+
+    /// The turn clock after a pause, before the resumed frame's steps.
+    ///
+    /// While the battle is paused (`+0x8c8`, `0x005aad2e`) `FUN_005aacb0`
+    /// skips the manager's update (vtable slot `+0x9c`: `FUN_005bea30`,
+    /// `FUN_005c0500`), but that update times its turns with
+    /// `timeGetTime` against the turn start `+0x89c`, so the paused time
+    /// still counts. On the first update after the pause an elapsed time
+    /// of a turn (`+0x8a8`, 1000 ms) or more is cut to
+    /// `elapsed % turn + turn` (`0x005beb48`-`0x005beb52`): the overdue
+    /// turn begins at once, and its successor keeps the remainder as its
+    /// start (`+0x89c = now - remainder`). A0 TAC-03-C004 (2026-11-18,
+    /// run 4): a superlaser beam that started 0.20 s before the pause
+    /// kills its target about 0.13 s after the resume, not a turn's rest
+    /// later.
+    ///
+    /// port: a turn is `ORIGINAL_TACTICAL_TURN_STEPS` steps, so the cut is
+    /// applied to the turn's phase in steps.
+    pub fn resume_paused_turn_clock(&mut self, steps_per_second: f32) {
+        let paused = std::mem::take(&mut self.paused_turn_seconds);
+        if paused <= 0.0 {
+            return;
+        }
+        let turn = ORIGINAL_TACTICAL_TURN_STEPS as f32;
+        let done = (self.combat_tick % ORIGINAL_TACTICAL_TURN_STEPS) as f32;
+        let mut phase = done + self.step_accumulator + paused * steps_per_second;
+        if phase >= turn {
+            phase = phase % turn + turn;
+        }
+        self.step_accumulator = phase - done;
     }
 
     /// `+0x878`: the event turns begun so far.

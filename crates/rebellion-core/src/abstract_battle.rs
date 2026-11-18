@@ -2114,6 +2114,7 @@ mod tests {
             paused: false,
             combat_speed: 1,
             step_accumulator: 0.0,
+            paused_turn_seconds: 0.0,
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
