@@ -521,7 +521,15 @@ pub fn character_rows_travelling(
         // shows one.
         let mut copy_text = None;
         let mut copy_place = None;
-        if character.is_alliance != player_is_alliance
+        // The player's own captive carries its captor's side (FUN_004eec60),
+        // so the player reads its copy, frozen where the player last saw it
+        // (object_views::record_own_captives; A0 2026-11-18-edited-saves-7
+        // b-19 e4f53d49b065: "Luke Skywalker - Jabba's Palace" after the
+        // Pickup). Without a copy (none taken yet) the row reads it live.
+        let own_captive = character.is_alliance == player_is_alliance
+            && character.is_captive
+            && !character.is_killed;
+        let other_unseen = character.is_alliance != player_is_alliance
             && !character
                 .current_system
                 .or_else(|| {
@@ -530,8 +538,8 @@ pub fn character_rows_travelling(
                         .and_then(|fleet| world.fleets.get(fleet))
                         .map(|fleet| fleet.location)
                 })
-                .is_some_and(|system| opposing_contents_visible(world, fog, player, system))
-        {
+                .is_some_and(|system| opposing_contents_visible(world, fog, player, system));
+        if own_captive || other_unseen {
             if let Some(copy) = world.object_views.character(player, character.dat_id) {
                 // FUN_00465bb0 on the side's copy: its container's name, a
                 // copied ship or a system, else 0x1895 "Location Unknown"
@@ -552,10 +560,15 @@ pub fn character_rows_travelling(
                 // The copy's state word, On Mission before Enroute, then the
                 // command word its +0x96 held when it last synced
                 // (FUN_004ee350 -> FUN_004f04f0), only with a place
-                // (FUN_00465bb0 jumps past the words without one). port: the
-                // copy keeps no Captured or Injured word.
+                // (FUN_00465bb0 jumps past the words without one; an abode
+                // copy has none). port: an other side's copy keeps no
+                // Captured or Injured word.
                 let state = world.object_views.character_state(player, character.dat_id);
-                let word = if state.on_mission {
+                // An own captive's copy took +0xac bit 0 before it froze
+                // (Character_SetCaptured FUN_004ee800 syncs it first).
+                let word = if own_captive {
+                    Some("Captured")
+                } else if state.on_mission {
                     Some("On Mission")
                 } else if state.enroute {
                     Some("Enroute")
@@ -590,7 +603,7 @@ pub fn character_rows_travelling(
                             CopyPlace::Fleet,
                         ),
                 });
-            } else {
+            } else if other_unseen {
                 let Some(system) = copied.get(&character.dat_id) else {
                     continue;
                 };
@@ -2207,6 +2220,102 @@ mod tests {
                 "Griff - Kuat ( Enroute )  ( Admiral ) ",
                 // No container: no words at all (0x465cb5 -> 0x46606f).
                 "Needa - Location Unknown",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_own_captives_row_reads_the_players_frozen_copy_of_it() {
+        // FUN_00464e10 hands FUN_00465bb0 the player's side's copy
+        // (FUN_004f2ec0); a captive carries its captor's side
+        // (FUN_004eec60), so the Alliance's copy froze where it last saw
+        // him. A0 2026-11-18-edited-saves-7 b-19 (e4f53d49b065), day 31:
+        // "Luke Skywalker - Jabba's Palace" (an abode copy: its name alone)
+        // while the master stands at Coruscant; A0 personnel-captured/
+        // finder-day628: "Jan Dodonna - Punisher ( Captured )".
+        use rebellion_core::object_views::CharacterCopy;
+        let mut world = GameWorld::default();
+        let coruscant = add_system(&mut world, "Coruscant");
+        let yavin = add_system(&mut world, "Yavin");
+        let yavin_id = world.systems[yavin].dat_id;
+        for (raw, name, copy) in [
+            (
+                0x3000_0041,
+                "Luke Skywalker",
+                Some(CharacterCopy {
+                    system: None,
+                    ship: Some("Jabba's Palace".into()),
+                }),
+            ),
+            (
+                0x3000_0042,
+                "Jan Dodonna",
+                Some(CharacterCopy {
+                    system: Some(yavin_id),
+                    ship: Some("Punisher".into()),
+                }),
+            ),
+            // No copy taken yet: read live.
+            (0x3000_0043, "Wedge Antilles", None),
+        ] {
+            world.characters.insert(Character {
+                dat_id: DatId::new(raw),
+                name: name.into(),
+                is_captive: true,
+                current_system: Some(coruscant),
+                ..default_character()
+            });
+            if let Some(copy) = copy {
+                world
+                    .object_views
+                    .alliance_characters
+                    .insert(DatId::new(raw), copy);
+            }
+        }
+        let rows = character_rows(
+            &world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Alliance,
+        );
+        let texts: Vec<_> = rows.iter().map(PersonnelFinderRow::display_name).collect();
+        assert_eq!(
+            texts,
+            [
+                "Jan Dodonna - Punisher ( Captured ) ",
+                "Luke Skywalker - Jabba's Palace",
+                "Wedge Antilles - Coruscant ( Captured ) ",
+            ]
+        );
+        // The palace copy opens nothing (FUN_00429440's abode branch).
+        let luke = rows
+            .iter()
+            .find(|row| row.display_name().starts_with("Luke"))
+            .unwrap();
+        assert!(matches!(
+            luke,
+            PersonnelFinderRow::Character {
+                copy: Some(CopyPlace::Nowhere),
+                ..
+            }
+        ));
+        // Freed, the player's own character reads live even with a copy.
+        for (_, character) in &mut world.characters {
+            character.is_captive = false;
+        }
+        let rows = character_rows(
+            &world,
+            &FogState::new(Faction::Alliance),
+            Faction::Alliance,
+            PersonnelTab::Alliance,
+        );
+        let texts: Vec<_> = rows.iter().map(PersonnelFinderRow::display_name).collect();
+        assert_eq!(
+            texts,
+            [
+                "Jan Dodonna - Coruscant",
+                "Luke Skywalker - Coruscant",
+                "Wedge Antilles - Coruscant",
             ]
         );
     }

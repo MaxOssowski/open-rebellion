@@ -791,7 +791,9 @@ pub struct CharacterCopy {
     /// live without it.
     pub system: Option<DatId>,
     /// The name of the ship it rode as copied, when aboard. port: a
-    /// character not seated on a ship names its fleet.
+    /// character not seated on a ship names its fleet; a side's own
+    /// captive copied in an abode names the abode, with no system
+    /// ([`record_own_captives`]).
     pub ship: Option<String>,
 }
 
@@ -829,7 +831,11 @@ impl CharacterCopyState {
 
 /// The other side's living characters at `system` as `side` copies them
 /// now: those aboard its fleets in orbit (with their ships' names) and
-/// those on the planet, in id order.
+/// those on the planet, in id order. The side's own captives count with
+/// them: a capture gives the captive its captor's side (`FUN_004eec60`
+/// from `Character_SetCaptured` `FUN_004ee800` -> vtable `+0x34c`), so
+/// the side's copy of it is live only where the side sees it
+/// (`FUN_004f9a60`).
 #[must_use]
 pub fn character_copies(
     world: &GameWorld,
@@ -842,7 +848,7 @@ pub fn character_copies(
         return Vec::new();
     };
     let other = |character: &crate::world::Character| {
-        character.is_alliance != alliance && !character.is_killed
+        (character.is_alliance != alliance || character.is_captive) && !character.is_killed
     };
     let mut copies: Vec<(DatId, CharacterCopy)> = Vec::new();
     for (key, fleet) in &world.fleets {
@@ -855,17 +861,7 @@ pub fn character_copies(
             .filter_map(|character| world.characters.get(*character))
             .filter(|character| other(character))
         {
-            let ship = character
-                .ship
-                .and_then(|seat| {
-                    let index = fleet
-                        .capital_ships
-                        .iter()
-                        .position(|ship| ship.id == seat)?;
-                    world.ship_name(key, index)
-                })
-                .or_else(|| world.fleet_name(key))
-                .map(str::to_owned);
+            let ship = aboard_name(world, key, character);
             copies.push((
                 character.dat_id,
                 CharacterCopy {
@@ -890,6 +886,187 @@ pub fn character_copies(
     }
     copies.sort_by_key(|(id, _)| id.raw());
     copies
+}
+
+/// The name a copy gives `character` aboard `fleet`: the ship it rides
+/// (A0 personnel-captured/finder-day628: "Jan Dodonna - Punisher"). port:
+/// one not seated names its fleet.
+fn aboard_name(
+    world: &GameWorld,
+    fleet: crate::ids::FleetKey,
+    character: &crate::world::Character,
+) -> Option<String> {
+    character
+        .ship
+        .and_then(|seat| {
+            let index = world
+                .fleets
+                .get(fleet)?
+                .capital_ships
+                .iter()
+                .position(|ship| ship.id == seat)?;
+            world.ship_name(fleet, index)
+        })
+        .or_else(|| world.fleet_name(fleet))
+        .map(str::to_owned)
+}
+
+/// The copy `side` takes of its own captive `character` where it stands
+/// now, with the system whose seen bit makes that copy live (none for an
+/// abode or a trip). A captive in an abode is copied in it ("Name -
+/// Jabba's Palace": `FUN_00465bb0`'s abode rule gives the abode's name
+/// alone); one on a trip in its destination, as `FUN_00556390` makes the
+/// destination its container. port: the abode's name stands in the
+/// copy's `ship`, with no system.
+fn own_captive_copy(
+    world: &GameWorld,
+    movement: &MovementState,
+    missions: &crate::missions::MissionState,
+    key: crate::ids::CharacterKey,
+) -> Option<(Option<SystemKey>, CharacterCopy)> {
+    let character = world.characters.get(key)?;
+    let system_id = |system: SystemKey| world.systems.get(system).map(|value| value.dat_id);
+    let abode = |abode: crate::ids::AbodeKey| {
+        world.abodes.get(abode).map(|value| CharacterCopy {
+            system: None,
+            ship: Some(value.name.clone()),
+        })
+    };
+    if let Some(at) = character.current_abode {
+        return Some((None, abode(at)?));
+    }
+    if let Some(fleet_key) = character.current_fleet {
+        let fleet = world.fleets.get(fleet_key)?;
+        if !movement.is_in_transit(fleet_key) {
+            let ship = aboard_name(world, fleet_key, character);
+            return Some((
+                Some(fleet.location),
+                CharacterCopy {
+                    system: Some(system_id(fleet.location)?),
+                    ship,
+                },
+            ));
+        }
+        return None;
+    }
+    if let Some(at) = character.current_system {
+        return Some((
+            Some(at),
+            CharacterCopy {
+                system: Some(system_id(at)?),
+                ship: None,
+            },
+        ));
+    }
+    let trip = missions
+        .escapees()
+        .iter()
+        .find(|transit| transit.character == key)
+        .map(|transit| (transit.to, transit.abode))
+        .or_else(|| {
+            missions
+                .en_route()
+                .iter()
+                .find(|transit| transit.member == crate::missions::MissionMember::Character(key))
+                .map(|transit| (transit.to, transit.abode))
+        })?;
+    match trip {
+        (_, Some(at)) => Some((None, abode(at)?)),
+        (to, None) => Some((
+            None,
+            CharacterCopy {
+                system: Some(system_id(to)?),
+                ship: None,
+            },
+        )),
+    }
+}
+
+/// `side`'s copies of its own captives (A0 2026-11-18-edited-saves-7 b-19,
+/// e4f53d49b065: on day 31 the Alliance's Finder reads "Luke Skywalker -
+/// Jabba's Palace" and the like, nine days after Jabba delivered them to
+/// Vader; the game's day-34 save holds the Alliance's copies of the four
+/// among its copy of the palace's children while their masters stand at
+/// Coruscant).
+///
+/// `Character_SetCaptured` (`FUN_004ee800`) sets `+0xac` bit 0 and syncs
+/// both copies while the side's copy is still live (its owner is the
+/// side), then gives the captive its captor's side (`FUN_004eec60` ->
+/// `FUN_004f6f40`, whose vtable `+0xf0` reaches `FUN_004fae40` ->
+/// `FUN_004f9a60`): from then on the side's copy is live only where the
+/// side sees the captive. A captive the side does not see keeps the copy
+/// it held when it froze, with its Captured bit (A0 personnel-captured/
+/// finder-day628: "Jan Dodonna - Punisher ( Captured )").
+///
+/// port: once a day, before the system copies are rebuilt. A captive with
+/// no copy yet (taken since the day before, when its copy was live as the
+/// side's own), or whose copy stands in a system the side sees, takes a
+/// copy where it stands now; one where the side sees it is left to the
+/// rebuilt system copy ([`character_copies`]). hyp: a live copy follows
+/// the move that takes the captive out of sight before it freezes, as the
+/// four palace copies did. A character that is not (or no longer) a
+/// captive has no copy: the side owns it and reads it live.
+fn record_own_captives(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    missions: &crate::missions::MissionState,
+    side: Faction,
+) {
+    let alliance = side == Faction::Alliance;
+    let seen = |id: DatId| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.dat_id == id)
+            .is_some_and(|(system, _)| system_seen(world, movement, side, system))
+    };
+    let mut dropped = Vec::new();
+    let mut taken = Vec::new();
+    for (key, character) in &world.characters {
+        if character.is_alliance != alliance {
+            continue;
+        }
+        if !character.is_captive || character.is_killed {
+            dropped.push(character.dat_id);
+            continue;
+        }
+        let was_live = world
+            .object_views
+            .character(side, character.dat_id)
+            .is_none_or(|copy| copy.system.is_some_and(seen));
+        if !was_live {
+            continue;
+        }
+        let Some((at, copy)) = own_captive_copy(world, movement, missions, key) else {
+            continue;
+        };
+        if at.is_some_and(|system| system_seen(world, movement, side, system)) {
+            continue;
+        }
+        taken.push((character.dat_id, copy));
+    }
+    if let Some(map) = world.object_views.characters_mut(side) {
+        for id in &dropped {
+            map.remove(id);
+        }
+        map.extend(taken.iter().cloned());
+    }
+    // port: an own captive's copy keeps no state bits or command word; its
+    // row's word is Captured.
+    let cleared: Vec<DatId> = dropped
+        .into_iter()
+        .chain(taken.into_iter().map(|(id, _)| id))
+        .collect();
+    if let Some(map) = world.object_views.character_states_mut(side) {
+        for id in &cleared {
+            map.remove(id);
+        }
+    }
+    if let Some(map) = world.object_views.character_commands_mut(side) {
+        for id in &cleared {
+            map.remove(id);
+        }
+    }
 }
 
 /// Takes `copies` into `side`'s character copies as each system's copy is
@@ -1305,6 +1482,7 @@ pub fn advance_extras(
         // not (hyp: its container change does not reach a frozen copy).
         let refreshed: std::collections::HashSet<DatId> =
             details.iter().map(|(id, _)| *id).collect();
+        record_own_captives(world, movement, missions, side);
         // The character copies follow every rebuilt or live system copy.
         let characters: Vec<(DatId, Vec<(DatId, CharacterCopy)>)> = world
             .systems

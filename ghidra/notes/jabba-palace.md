@@ -396,16 +396,76 @@ stale copies of them:
   the hit, day 22, and day 34). The port's `EscapeeTransit` (arrival the
   day after the hit, to the system Vader left from, Coruscant here) agrees
   with the day-34 state and is not changed.
-- Port gap, not changed: the port's Finder reads a captive of the
-  player's own side live ("Luke Skywalker - Coruscant ( Captured )"), as
-  `character_rows_travelling` picks the copy by home side
-  (`Character::is_alliance`), and `object_views` keeps no copy of an abode
-  or of an own captive. Matching b-19 needs the side test on the captor's
-  side and a copy of the palace and its prisoners frozen when they leave
-  it; when the Alliance's copy last synced is not traced, and A0
-  personnel-captured/finder-day628 ("Jan Dodonna - Punisher ( Captured )")
-  shows a captive's row with its Captured word, which the port's copies do
-  not keep.
+- Port gap (closed 2026-11-18, below): the port's Finder read a captive
+  of the player's own side live ("Luke Skywalker - Coruscant ( Captured
+  )"), as `character_rows_travelling` picked the copy by home side
+  (`Character::is_alliance`), and `object_views` kept no copy of an abode
+  or of an own captive.
+
+### When the old side's copy of a captive syncs (traced 2026-11-18)
+
+- The capture runs through the character's slot `+0x20c`
+  (`Character_vt20c` `FUN_004ef480`): the injury roll (`+0x2e4`), then
+  `FUN_004ee3e0(0)` writes `+0x98` = 0, whose hook `Character_vt334`
+  (`FUN_004f18e0`) calls `FUN_004eef70` ->
+  `Character_SetCaptured(+0x98 == 0)` (`FUN_004ee800`).
+- `Character_SetCaptured` sets the master's `+0xac` bit 0, then syncs copy
+  1 and copy 2 (`Character_SyncCaptured`), then calls vtable `+0x34c`
+  (`Character_vt34c` `FUN_004f1a80`): `Character_SetCanEscape`,
+  `Character_SetEscapeRequest(0)`, `FUN_004eec60`, `FUN_004eef90` (CanHeal),
+  `FUN_004ef070` (DiscoveringForceUser), `FUN_004eeed0` (clears the command
+  word `+0x96` of a captive through `FUN_004ee350(0)`).
+- `FUN_004eec60`: with `+0xac` bit 0 set, the owner becomes the other side
+  of the home side (`FUN_004edc80` reads the DAT record's `+0x40`/`+0x44`:
+  1 -> 2, else 1). `FUN_004f6f40` writes the master's `+0x24` side bits,
+  syncs both copies' owner (`FUN_004f9ca0`, applied only to a live copy),
+  then vtable `+0xf0`, which reaches `FUN_004fae40` -> `FUN_004f9a60`.
+- So the old side's copy is live (its owner is the side) when the Captured
+  bit is synced: every captive's old-side copy holds `+0xac` bit 0, and
+  the copy's own owner bits follow to the captor. After `FUN_004f9a60`
+  the copy is live only while the captive's `+0x50` holds the side's seen
+  bit, bit 2 and not bit 4 (`per-side-object-views.md`); the seen bit is
+  the container's (`FUN_004f7bf0`), cleared while `+0x50` bit `0x20`
+  (EnrouteActive) is set. Setting EnrouteActive (`FUN_004f7640`) runs
+  `FUN_004fb760`, which recomputes both seen bits (vtable `+0x8c`,
+  `+0x90`).
+- The Finder lists the row under the home side's tab (`FUN_004edc80`), so a
+  captive's frozen copy stays in its own side's list.
+
+Both A0 frames fit one rule: the row is the old side's copy, as it stood
+when it last synced.
+
+- b-19: the rescuers went to the palace as the Alliance's own (copies live,
+  container the palace), were captured there (copies get Captured, then
+  freeze: no Alliance fleet sees the palace), and the copies stayed when
+  the Pickup took the masters to Coruscant. The abode rule of
+  `FUN_00465bb0` drops the Captured word, so the rows read "Name - Jabba's
+  Palace". Han's copy is in the palace too (save `BNTY7D34`).
+- day628: "Jan Dodonna - Punisher ( Captured )" is a copy with a ship
+  container, where the state word prints; it held Captured from the
+  capture. Whether that copy was live or frozen on day 628 the frame
+  does not show.
+
+Untraced: the order of the container move and the capture in the Bounty
+hit and in a mission's capture (where a captive is moved aboard the
+captor's ship); `FUN_00556390` sets EnrouteActive only when
+`FUN_00555410`'s trip time is 0 (`param_2 == 0`), and whether that
+freezes a travelling captive's copy before vtable `+0xa8` moves it is
+not settled; the palace's own seen bit (its container and vtable
+`+0x4c`).
+
+port (2026-11-18, no save change): `object_views::record_own_captives`
+runs each day before the system copies are rebuilt. An own captive with
+no copy yet, or whose copy stands in a system the side sees, takes a copy
+where it stands: an abode by name (`CharacterCopy::ship`, no system), a
+fleet's ship, a system, or a trip's destination (`FUN_00556390`); one the
+side sees is left to `character_copies`, which now counts the side's own
+captives. A character not held drops its copy. The Finder
+(`character_rows_travelling`) reads an own captive's copy when it has
+one, with the Captured word when the copy has a place; an abode copy
+reads its name alone and Display opens nothing (`FUN_00429440`). hyp: a
+live copy follows the move that takes a captive out of sight before it
+freezes (as the four palace copies did); the copy keeps no command word.
 
 The Empire's copies of the messages (traced 2026-11-18):
 

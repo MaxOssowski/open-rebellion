@@ -454,6 +454,16 @@ port (save v123): `ObjectViews::alliance_character_commands` /
 a copy left in no place drops it. A copied row prints the state word, then
 the command word, each in " ( " and " ) ".
 
+### The player's own captives (traced 2026-11-18)
+
+A captive takes its captor's side (`FUN_004eec60`) after its Captured bit
+synced into both copies (`FUN_004ee800`), so the row of an own captive is
+the player's copy, frozen where the side last saw it, with Captured when
+it has a ship or system container and the abode's name alone in an abode
+(A0 2026-11-18-edited-saves-7 b-19, `jabba-palace.md`). port:
+`character_rows_travelling` reads `object_views::record_own_captives`'
+copy when there is one.
+
 ## Open
 
 - The `+0x6c` field on each row item and its purpose.

@@ -183,3 +183,16 @@ gets a copy in the destination with its en route bit (`CharacterCopyState`,
 `FUN_00556390`, `FUN_004f9a60` `+0x50` bit 4); every character copy also
 keeps whether it was on a (hidden) mission when copied
 (`personnel-finder.md`, "Characters on missions").
+
+## A side's own captives (traced 2026-11-18, EVT-01-C018)
+
+`Character_SetCaptured` (`FUN_004ee800`) syncs `+0xac` bit 0 into both
+copies, then `FUN_004eec60` gives the captive its captor's side
+(`FUN_004f6f40` -> vtable `+0xf0` -> `FUN_004fae40` -> `FUN_004f9a60`).
+From then on the old side's copy follows the rule above like any other
+side's object: live only where the side sees the captive, frozen
+elsewhere with its Captured bit. A0 2026-11-18-edited-saves-7 b-19 and the
+day-34 save: the Alliance's copies of Luke, Leia, Han and Chewbacca stay in
+its copy of Jabba's Palace after the masters reach Coruscant
+(`jabba-palace.md`). port: `object_views::record_own_captives`.
+

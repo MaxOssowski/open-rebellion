@@ -1675,3 +1675,209 @@ fn a_fleet_in_hyperspace_is_not_in_its_systems_full_copy() {
     assert!(details.fleets.is_empty());
     assert_eq!(details.last_serial, setup.world.fleet_serial(moving));
 }
+
+/// Jabba's Palace (family 0x98) with Luke held in it. port: test data.
+fn palace_with_captive(setup: &mut Setup) -> (crate::ids::AbodeKey, crate::ids::CharacterKey) {
+    let palace = setup.world.abodes.insert(crate::world::Abode {
+        dat_id: DatId::new(0x9800_0003),
+        name: "Jabba's Palace".into(),
+        side: Faction::Empire,
+        special_forces: Vec::new(),
+    });
+    let luke = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0010),
+        name: "Luke Skywalker".into(),
+        is_alliance: true,
+        is_captive: true,
+        current_abode: Some(palace),
+        ..Default::default()
+    });
+    (palace, luke)
+}
+
+#[test]
+fn an_own_captive_keeps_the_copy_it_froze_with_in_the_palace_until_the_side_sees_it() {
+    // A0 2026-11-18-edited-saves-7 b-19 (e4f53d49b065): on day 31 the
+    // Alliance's Finder reads "Luke Skywalker - Jabba's Palace" though
+    // Jabba delivered him to Vader on day 22; the day-34 save holds the
+    // Alliance's copy of Luke among its copy of the palace's children.
+    // Character_SetCaptured (FUN_004ee800) syncs the copies, then
+    // FUN_004eec60 gives the captive its captor's side, so the Alliance's
+    // copy is live only where the Alliance sees him (FUN_004f9a60).
+    let mut setup = setup();
+    let coruscant = setup.coruscant;
+    let (_, luke) = palace_with_captive(&mut setup);
+    let id = setup.world.characters[luke].dat_id;
+    let in_palace = CharacterCopy {
+        system: None,
+        ship: Some("Jabba's Palace".into()),
+    };
+    let copy = |setup: &Setup| {
+        setup
+            .world
+            .object_views
+            .character(Faction::Alliance, id)
+            .cloned()
+    };
+    let mut missions = crate::missions::MissionState::new();
+    day(&mut setup, &missions);
+    assert_eq!(copy(&setup), Some(in_palace.clone()));
+    // The Pickup takes him to Coruscant, which the Alliance does not see.
+    setup.world.characters[luke].current_abode = None;
+    missions.push_escapee(crate::missions::EscapeeTransit {
+        character: luke,
+        to: coruscant,
+        arrival: 2,
+        abode: None,
+    });
+    day(&mut setup, &missions);
+    assert_eq!(copy(&setup), Some(in_palace.clone()));
+    let missions = crate::missions::MissionState::new();
+    setup.world.characters[luke].current_system = Some(coruscant);
+    day(&mut setup, &missions);
+    assert_eq!(copy(&setup), Some(in_palace));
+    // An Alliance fleet at Coruscant sees him there.
+    let watcher = fleet(&mut setup.world, coruscant, true);
+    day(&mut setup, &missions);
+    let at_coruscant = CharacterCopy {
+        system: Some(setup.world.systems[coruscant].dat_id),
+        ship: None,
+    };
+    assert_eq!(copy(&setup), Some(at_coruscant.clone()));
+    // The fleet leaves and he is moved on: the copy stays at Coruscant.
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &missions);
+    setup.world.characters[luke].current_system = Some(setup.chandrila);
+    day(&mut setup, &missions);
+    assert_eq!(copy(&setup), Some(at_coruscant));
+    // Freed, he is the Alliance's own again and read live: no copy.
+    setup.world.characters[luke].is_captive = false;
+    day(&mut setup, &missions);
+    assert_eq!(copy(&setup), None);
+}
+
+#[test]
+fn an_own_captive_taken_out_of_sight_is_copied_where_it_stands_with_no_state() {
+    // The copy is live up to the capture (the side owns the character), so
+    // it holds the captive where it was taken (A0 personnel-captured/
+    // finder-day628: "Jan Dodonna - Punisher ( Captured )"). A trip's
+    // destination is its container from the start (FUN_00556390).
+    use crate::character_command::CommandKind;
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let missions = crate::missions::MissionState::new();
+    let dodonna = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0011),
+        is_alliance: true,
+        is_captive: true,
+        current_system: Some(chandrila),
+        command: CommandKind::General,
+        ..Default::default()
+    });
+    let id = setup.world.characters[dodonna].dat_id;
+    setup
+        .world
+        .object_views
+        .alliance_character_commands
+        .insert(id, CommandKind::General);
+    day(&mut setup, &missions);
+    let copy = |setup: &Setup| {
+        setup
+            .world
+            .object_views
+            .character(Faction::Alliance, id)
+            .cloned()
+    };
+    assert_eq!(
+        copy(&setup),
+        Some(CharacterCopy {
+            system: Some(setup.world.systems[chandrila].dat_id),
+            ship: None,
+        })
+    );
+    assert_eq!(
+        setup
+            .world
+            .object_views
+            .character_command(Faction::Alliance, id),
+        CommandKind::None
+    );
+    // Seen while he travels on: his copy stays where it froze.
+    let mut missions = crate::missions::MissionState::new();
+    setup.world.characters[dodonna].current_system = None;
+    missions.push_transit(crate::missions::MemberTransit {
+        member: crate::missions::MissionMember::Character(dodonna),
+        mission_id: 0,
+        to: coruscant,
+        arrival: 9,
+        abode: None,
+    });
+    day(&mut setup, &missions);
+    assert_eq!(
+        copy(&setup).unwrap().system,
+        Some(setup.world.systems[chandrila].dat_id)
+    );
+    // One the side sees leave takes its destination.
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    setup.world.characters[dodonna].current_system = Some(chandrila);
+    let none = crate::missions::MissionState::new();
+    day(&mut setup, &none);
+    setup.world.characters[dodonna].current_system = None;
+    day(&mut setup, &missions);
+    assert_eq!(
+        copy(&setup).unwrap().system,
+        Some(setup.world.systems[coruscant].dat_id)
+    );
+    // Seen again where he stands, the copy follows him there.
+    setup.world.characters[dodonna].current_system = Some(chandrila);
+    day(&mut setup, &none);
+    assert_eq!(
+        copy(&setup).unwrap().system,
+        Some(setup.world.systems[chandrila].dat_id)
+    );
+    setup.world.fleets.remove(watcher);
+}
+
+#[test]
+fn an_own_captive_in_hyperspace_or_on_a_trip_is_copied_only_by_its_own_trip() {
+    // FUN_00556390 makes a trip's destination the traveller's container;
+    // a fleet in hyperspace gives its passengers no place the port copies.
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let (_, luke) = palace_with_captive(&mut setup);
+    let id = setup.world.characters[luke].dat_id;
+    setup.world.characters[luke].current_abode = None;
+    let moving = fleet(&mut setup.world, chandrila, false);
+    setup.world.fleets[moving].characters.push(luke);
+    setup.world.characters[luke].current_fleet = Some(moving);
+    assert!(setup.movement.order(moving, chandrila, coruscant, 10));
+    let mut missions = crate::missions::MissionState::new();
+    day(&mut setup, &missions);
+    assert_eq!(
+        setup.world.object_views.character(Faction::Alliance, id),
+        None
+    );
+    // On foot: another escapee's trip is not his.
+    setup.world.characters[luke].current_fleet = None;
+    let other = setup.world.characters.insert(crate::world::Character {
+        dat_id: DatId::new(0x3000_0012),
+        is_alliance: true,
+        ..Default::default()
+    });
+    for (character, to) in [(other, chandrila), (luke, coruscant)] {
+        missions.push_escapee(crate::missions::EscapeeTransit {
+            character,
+            to,
+            arrival: 9,
+            abode: None,
+        });
+    }
+    day(&mut setup, &missions);
+    assert_eq!(
+        setup.world.object_views.character(Faction::Alliance, id),
+        Some(&CharacterCopy {
+            system: Some(setup.world.systems[coruscant].dat_id),
+            ship: None,
+        })
+    );
+}
