@@ -483,3 +483,34 @@ The Empire's copies of the messages (traced 2026-11-18):
 Not shown by these frames: the Empire's copies of Jabba Captures and Jabba
 Delivers Prisoners (the port posts both to both sides), the `0x42b` variant
 after Dagobah, and Bounty Hunters Locate Solo (Empire).
+
+## A0 of the Empire's bounty and Jabba messages (2026-11-18, part 9)
+
+Source: `.artifacts/a0-vm/2026-11-18-edited-saves-9/` (not committed; README
+there). Slot 1's genuine Empire game (day 508, Han free at Umgul), timer
+`0x393` moved to day 511/512 and Han's, Luke's, Leia's and Chewbacca's
+skills zeroed (E508B 63da012b9d14, E508B512 9f1b1ba56249). The messages,
+pictures and Finder rows are the game's own.
+
+| Frame (sha256, 12 hex) | Original (Empire reader) | Port | Result |
+|---|---|---|---|
+| c-01 (75fa03d7fe70), c-03 (3a7c88a53872) | Han evades: index "Bounty Hunters Locate Solo", "Han Solo Injured"; `0x716a`/`0x716b` "Bounty hunters have reported that Han Solo is located on Umgul." | `bounty_messages`: Locate for the Empire alone with Han's system | match |
+| c-04 (38812467bf31), c-11 (5562a764618b) | the Empire reads "Han Solo Injured" | `push_character_health` filed it for Han's own side alone | fixed: `FUN_0048fdf0` builds for the reader side's copy (`FUN_004f2d10(+0x20)`), so the other side reads it while it holds a copy (`health_audience`) |
+| c-05 (beade2998fe9), c-10 (6e3778ef8d15) | captured: "Han Solo Captured by Bounty Hunters" (`0x716d`), "Han Solo Injured"; no Locate row, no `0x1e0` row | `0x716c`/`0x716d` for both sides, no Locate on a capture, no `0x1e0` for `bounty_captured` | match |
+| c-07 (57d11956dd41), c-08 (457ba1e94604), c-09 (c4cd5029694e) | "Jabba Captures Leia Organa" / "... Luke Skywalker", the Alliance's text, each with an "Injured" row | `jabba_captures_message` (both sides) | match; settles the "not seen in A0" above |
+| c-12 (ecf5493e2ebb), c-13 (8aa20451a9f9) | "Jabba Delivers Prisoners", the fixed four-name text | `jabba_delivers_message` (both sides) | match |
+| c-14 (88e1928e1f1a) | Finder Alliance right after (day 531): "Han Solo / Leia Organa / Luke Skywalker - Victory Destroyer 1 ( Captured )", "Chewbacca - Yavin" | the prisoners travel to the system Vader left from (`mission.origin`) and land the next day | mismatch, open (below) |
+
+Open after part 9:
+
+- The Pickup's prisoners land on a ship the same day (c-14). That fits the
+  `+0x70` object of Vader being a capital ship (Victory Destroyer 1) and a
+  trip whose end is not a system taking 0 ticks (`FUN_00555b30`). The port
+  keeps the system and a 1-day trip. Vader's container before the Pickup is
+  not in a frame; the fix needs it (the ship's fleet and number on the
+  mission record, a save change).
+- `DarthPickup` ran with Chewbacca free at Yavin by the Empire's Finder
+  (c-06, c-14), but `FUN_005445d0` needs his `+0xac` bit 0 or `+0x50` bit 3.
+  Either the Empire's copy of Chewbacca is stale (he is held or destroyed in
+  the master) or the check reads another object. Not settled; the port's
+  check is unchanged.

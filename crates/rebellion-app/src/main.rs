@@ -14092,8 +14092,28 @@ fn push_character_health(
     log.push(filed(
         message,
         MessageRail::Mission,
-        character_audience(world, character),
+        health_audience(world, character),
     ));
+}
+
+/// The readers of Character Health: `FUN_0048fdf0` builds it for the
+/// reader's side copy of the character (`FUN_004f2d10` on `+0x20`) and
+/// drops it without one, so the other side reads it too while it holds a
+/// copy (A0 2026-11-18-edited-saves-9 c-01, c-04: the Empire reads "Han
+/// Solo Injured").
+fn health_audience(world: &GameWorld, character: CharacterKey) -> Option<RailAudience> {
+    let own = character_audience(world, character)?;
+    let c = world.characters.get(character)?;
+    let other = if c.is_alliance {
+        Faction::Empire
+    } else {
+        Faction::Alliance
+    };
+    Some(if world.object_views.character(other, c.dat_id).is_some() {
+        RailAudience::Both
+    } else {
+        own
+    })
 }
 
 /// A Force change one advance effect makes: the effect's index, the
@@ -19032,6 +19052,36 @@ mod character_health_tests {
                 true
             )
         );
+    }
+
+    #[test]
+    fn character_health_reaches_the_other_side_when_it_holds_a_copy() {
+        // FUN_0048fdf0 builds the message for the reader's side copy of
+        // the character (FUN_004f2d10 on +0x20) and drops it without one.
+        // A0 2026-11-18-edited-saves-9 c-01 (75fa03d7fe70), c-04
+        // (38812467bf31): the Empire, whose Finder lists Han at Umgul,
+        // reads "Han Solo Injured".
+        let mut world = GameWorld::default();
+        let han = world.characters.insert(rebellion_core::world::Character {
+            dat_id: rebellion_core::ids::DatId::new(0x243),
+            name: "Han Solo".into(),
+            is_alliance: true,
+            injury: 7,
+            ..rebellion_core::world::Character::default()
+        });
+        let mut log = MessageLog::new();
+        push_character_health(&mut log, &world, han, 3, &Default::default());
+        world.object_views.empire_characters.insert(
+            rebellion_core::ids::DatId::new(0x243),
+            rebellion_core::object_views::CharacterCopy::default(),
+        );
+        push_character_health(&mut log, &world, han, 4, &Default::default());
+        let audiences: Vec<_> = log
+            .messages()
+            .iter()
+            .map(|message| message.audience)
+            .collect();
+        assert_eq!(audiences, [RailAudience::Alliance, RailAudience::Both]);
     }
 
     #[test]
