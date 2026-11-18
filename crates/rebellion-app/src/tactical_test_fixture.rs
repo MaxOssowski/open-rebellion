@@ -647,7 +647,14 @@ pub(crate) fn apply(
             || request.navigation_camera_presentation
             || ((request.group_presentation || request.effect_presentation)
                 && is_alliance == player_is_alliance);
-        let ship_count = if request.battle_alert_retreat {
+        let ship_count = if request.trench_run_outcome == Some(TacticalTrenchRunOutcome::Success)
+            && !is_alliance
+        {
+            // A0 2026-11-18-edited-saves-7 run d: the Imperial fleet is the
+            // Death Star alone, so the successful run ends the battle and
+            // its result follows (d-14, d-15).
+            0
+        } else if request.battle_alert_retreat {
             // One hull against four: the viewer's strength is a quarter
             // of the enemy's, under the leave threshold 0.33 (+0x24,
             // FUN_005c7cb0), so it leaves at the first step.

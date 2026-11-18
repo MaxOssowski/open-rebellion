@@ -379,7 +379,7 @@
     },
     {
       "slug": "production-trench-run-success",
-      "description": "Source result state 6 routes the production tactical session through MDATA.201 and back to the paused battle",
+      "description": "Source result state 6 routes the production tactical session through MDATA.201 back to the battle as it was; with the Death Star the Imperial fleet's last object, the resumed battle ends in the Battle Summary (A0 2026-11-18-edited-saves-7 run d)",
       "fixture_codes": {
         "alliance": 65821,
         "empire": 66077
@@ -391,7 +391,7 @@
       "trench_run_outcome": "success",
       "expected_status": "battle-ready",
       "audit_cells": [],
-      "acceptance": "A1 executable result-code, movie-identity, one-shot routing, and tactical-return proof. Native playback comparison and lossless owned A0 acceptance remain open."
+      "acceptance": "A1 executable result-code, movie-identity, one-shot routing, and tactical-return proof; at 640x480 the Alliance's Battle Summary frame, picture, last row and cockpit round it equal A0 d-14 (56b287e7cb22) and the destroyed Death Star's portrait equals A0 d-15 (3c02b66f3450). Texts differ by the fixture's system and the accepted font width; native film playback is not compared."
     },
     {
       "slug": "production-trench-run-failure",

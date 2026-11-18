@@ -3909,6 +3909,21 @@ async function probeTacticalDeathStarPresentation(
     type: enabled ? "attack-death-star-enabled" : "attack-death-star-disabled",
     ...verifyTacticalBitmap(viewport, missions, enabled ? 1176 : 1178, 568, 187),
   }];
+  // The Attack Death Star control (46 x 26 at 568, 187) against A0
+  // 2026-11-18-edited-saves-7 d-07 (lit, 1176) and d-06 (grey, 1178), both
+  // the Alliance player's Red Group Missions panel; their two first-pixel
+  // key pixels show the panel behind.
+  const missionsA0 = viewport.width === 640 && viewport.height === 480
+    && viewport.device_scale_factor === 1
+    ? readTrenchA0(enabled ? "missions_enabled" : "missions_disabled")
+    : null;
+  if (missionsA0) {
+    const control = countA0Differences(PNG.sync.read(missions), missionsA0.png, [568, 187, 614, 213]);
+    probes.push({ type: "attack-death-star-control-a0", a0: missionsA0.file,
+      a0_sha256: missionsA0.sha, resource: enabled ? 1176 : 1178, ...control });
+    assert.equal(control.differ, 0,
+      `${ready.faction}: the Attack Death Star control differs from A0 ${missionsA0.file} in ${control.differ} of ${control.checked} pixels`);
+  }
   // The run's draws (FUN_005d04e0) wait for its state 5 (FUN_005cfec0),
   // after the approach; entering the run consumes nothing.
   assert.equal(ready.tactical_rng_state, 0x5eedba77,
@@ -4229,7 +4244,46 @@ function advanceTacticalRng(state, count) {
   return next;
 }
 
-function probeTacticalTrenchRunOutcome(folder, stable, consoleLines, ready, expected) {
+// A0 2026-11-18-edited-saves-7 run d (README there; sha256 first 12 hex):
+// the Alliance player's own successful trench run, film 201, against an
+// Imperial fleet that is the Death Star alone.
+const A0_TRENCH = path.join(root, ".artifacts/a0-vm/2026-11-18-edited-saves-7");
+const A0_TRENCH_FILES = {
+  missions_disabled: ["d-06-trench1-red-group-missions-panel-attack-ds-disabled-d119.png", "fd53fd0aac92"],
+  missions_enabled: ["d-07-trench1-red-group-missions-attack-ds-enabled-blue-group-gone.png", "8a758bdf4ec2"],
+  after_film: ["d-13-trench1-tactical-after-film-0246-56.png", "d104e6d5a72e"],
+  result: ["d-14-trench1-result-alliance-victorious-imperial-fleet-destroyed.png", "56b287e7cb22"],
+  result_imperial: ["d-15-trench1-result-imperial-forces.png", "3c02b66f3450"],
+};
+
+function readTrenchA0(key) {
+  const [file, sha] = A0_TRENCH_FILES[key];
+  const full = path.join(A0_TRENCH, file);
+  if (!fs.existsSync(full)) return null;
+  const bytes = fs.readFileSync(full);
+  assert.equal(sha256(bytes).slice(0, 12), sha, `A0 ${file}`);
+  return { file, sha, png: PNG.sync.read(bytes) };
+}
+
+// Pixels of a rectangle that differ between a port capture and an A0 one
+// (both 640 x 480), less `skip`.
+function countA0Differences(portPng, a0Png, [x0, y0, x1, y1], skip = () => false) {
+  let checked = 0;
+  let differ = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      if (skip(x, y)) continue;
+      const i = (y * 640 + x) * 4;
+      checked++;
+      if ([0, 1, 2].some((c) => a0Png.data[i + c] !== portPng.data[i + c])) differ++;
+    }
+  }
+  return { checked, differ };
+}
+
+async function probeTacticalTrenchRunOutcome(
+  page, viewport, faction, folder, stable, consoleLines, ready, expected,
+) {
   const movie = expected === "success" ? "201.webm" : "202.webm";
   const expectedChatter = expected === "success"
     ? [0x11e, 0x11f, 0x120, 0x128, 0x121, 0x122, 0x129]
@@ -4263,7 +4317,7 @@ function probeTacticalTrenchRunOutcome(folder, stable, consoleLines, ready, expe
     `trench-run ${expected} did not preserve the recovered chatter order`,
   );
   fs.writeFileSync(path.join(folder, `trench-run-${expected}-return.png`), stable.bytes);
-  return [{
+  const probes = [{
     type: `trench-run-${expected}-route`,
     result_state: expected === "success" ? 6 : 7,
     movie,
@@ -4274,6 +4328,134 @@ function probeTacticalTrenchRunOutcome(folder, stable, consoleLines, ready, expe
     ordered_chatter: observedChatter,
     log: route.text,
   }];
+  if (expected !== "success") return probes;
+  return [...probes, ...await probeTrenchRunSuccessResult(
+    page, viewport, faction, folder, stable, consoleLines, ready,
+  )];
+}
+
+// After film 201 the battle goes on as it was (FUN_0059cc60 plays the film
+// only; A0 d-13 shows it running), and with the Death Star the Imperial
+// fleet's last object gone it ends by itself: the Battle Summary, A0 d-14.
+async function probeTrenchRunSuccessResult(page, viewport, faction, folder, stable, consoleLines, ready) {
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const click = async (x, y) => {
+    const at = point(x, y);
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down({ button: "left" });
+    await page.waitForTimeout(100);
+    await page.mouse.up({ button: "left" });
+    await page.waitForTimeout(300);
+  };
+  const alliance = faction === "alliance";
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  const probes = [];
+  // The fixture's battle was paused when the run was forced at entry; the
+  // film leaves it so (no "Battle Paused" change), so resume it.
+  assert.equal(ready.defender_ships, 0, "the trench-run fixture's Imperial fleet is not the Death Star alone");
+  await click(575, 319);
+  await page.mouse.move(2, 2);
+  const summaryLog = () => consoleLines.map(({ text }) =>
+    text.match(/\[tactical-results\] summary lines=(\[.*\])/)).filter(Boolean);
+  const deadline = Date.now() + 60_000;
+  while (summaryLog().length === 0 && Date.now() < deadline) {
+    await page.waitForTimeout(250);
+  }
+  const summary = summaryLog();
+  assert.equal(summary.length, 1, `${faction}: the battle did not end in one Battle Summary after film 201`);
+  await page.waitForTimeout(500);
+  const results = await stableInteractionFrame(page, folder, "trench-run-success-results");
+  const lines = JSON.parse(summary[0][1]);
+  probes.push({ type: "trench-run-success-summary", system: ready.system, lines });
+  if (alliance) {
+    // A0 d-14: "The Alliance fleet is victorious." / "Coruscant is now under
+    // blockade by Alliance forces. The Imperial fleet has been completely
+    // destroyed." The fixture's system is not Coruscant (the blockade
+    // sentence names the battle's system).
+    assert.equal(lines[0], "The Alliance fleet is victorious. ");
+    assert.ok(lines[1].endsWith("The Imperial fleet has been completely destroyed."),
+      `${faction}: the summary body lacks A0 d-14's last sentence: ${lines[1]}`);
+  }
+  const a0 = alliance && native ? readTrenchA0("result") : null;
+  if (a0) {
+    const port = PNG.sync.read(results);
+    // FUN_0042a640's window at (62, 49) over the Alliance command center
+    // (A0 TAC-07-C001), its frame 10335; the text boxes and the picture
+    // compared apart.
+    const frameSource = decodeIndexedBmp(fs.readFileSync(path.join(
+      root, "data/base/ui/strategy-dll/BMP/10335.bmp",
+    )));
+    // The picture's corner (74, 62); the frame's (62, 49).
+    const [left, top] = [74, 62];
+    const frameCovers = (x, y) => {
+      const lx = x - left + 12;
+      const ly = y - top + 13;
+      if (lx < 0 || ly < 0 || lx >= frameSource.width || ly >= frameSource.height) return false;
+      const [r, g, b] = frameSource.pixel(lx, ly);
+      return !(r < 32 && g < 32 && b > 192);
+    };
+    const titleBox = [left, top + 4, left + 400, top + 47];
+    const bodyBox = [left, top + 202, left + 400, top + 298];
+    const inBox = (x, y, [x0, y0, x1, y1]) => x >= x0 && y >= y0 && x < x1 && y < y1;
+    const inWindow = (x, y) => x >= 62 && x < 532 && y >= 49 && y < 380;
+    const regions = {
+      frame: countA0Differences(port, a0.png, [left - 12, top - 13, left - 12 + frameSource.width,
+        top - 13 + frameSource.height], (x, y) => !frameCovers(x, y)),
+      picture: countA0Differences(port, a0.png, [left, top, left + 400, top + 310],
+        (x, y) => frameCovers(x, y) || inBox(x, y, titleBox) || inBox(x, y, bodyBox)),
+      title: countA0Differences(port, a0.png, titleBox, frameCovers),
+      body: countA0Differences(port, a0.png, bodyBox, frameCovers),
+      outside_window: countA0Differences(port, a0.png, [0, 0, 640, 480], inWindow),
+      // The regions TAC-01-C013's comparison holds (probeTacticalBattleLastShipLost):
+      // the status bar less its numbers, the left column less the rail
+      // icons, the consoles, the right column; A0's pointer (x 630..) out.
+      status_bar: countA0Differences(port, a0.png, [0, 0, 640, 26], (x, y) => x >= 230 && x < 530 && y >= 8),
+      left_column: countA0Differences(port, a0.png, [0, 0, 52, 480], (x, y) => x < 32 && y >= 104 && y < 310),
+      // A0's pointer lies at x 627.., y 460..470.
+      consoles: countA0Differences(port, a0.png, [0, 396, 640, 480],
+        (x, y) => x >= 625 && y >= 455),
+      right_column: countA0Differences(port, a0.png, [540, 0, 630, 396]),
+      // The window's last row, all blue in the frame: black in A0.
+      bottom_row: countA0Differences(port, a0.png, [62, 379, 532, 380]),
+    };
+    probes.push({ type: "trench-run-success-summary-a0", a0: a0.file, a0_sha256: a0.sha, regions });
+    fs.writeFileSync(path.join(folder, "trench-run-success-results-a0-regions.json"),
+      `${JSON.stringify(regions, null, 2)}\n`);
+    // The title, headline and body differ: the fixture's system is not
+    // Coruscant and the port's font is the accepted text-width deviation.
+    // The rest of the window and the cockpit round it hold A0 exactly.
+    for (const name of ["frame", "picture", "bottom_row", "status_bar", "left_column",
+      "consoles", "right_column"]) {
+      assert.equal(regions[name].differ, 0,
+        `${faction}: the summary's ${name} differs from A0 d-14 in ${regions[name].differ} of ${regions[name].checked} pixels`);
+    }
+  }
+  if (alliance) {
+    // A0 d-15: the Imperial Forces tab (0x1938, the window's third tab at
+    // (418, 196)) lists the destroyed Death Star.
+    await click(62 + 418 + 20, 49 + 196 + 20);
+    await page.mouse.move(2, 2);
+    const imperial = await stableInteractionFrame(page, folder, "trench-run-success-imperial-forces");
+    const a0Imperial = native ? readTrenchA0("result_imperial") : null;
+    if (a0Imperial) {
+      const port = PNG.sync.read(imperial);
+      const regions = {
+        window: countA0Differences(port, a0Imperial.png, [62, 49, 532, 380]),
+        list: countA0Differences(port, a0Imperial.png, [74, 62, 474, 372]),
+        // The Destroyed column's portrait with its damage mark (FUN_0042c3b0),
+        // above its name (A0's "Judicator", the retyped ship's name).
+        death_star_portrait: countA0Differences(port, a0Imperial.png, [300, 185, 400, 243]),
+      };
+      probes.push({ type: "trench-run-success-imperial-forces-a0", a0: a0Imperial.file,
+        a0_sha256: a0Imperial.sha, regions });
+      assert.equal(regions.death_star_portrait.differ, 0,
+        `the destroyed Death Star's portrait differs from A0 d-15 in ${regions.death_star_portrait.differ} pixels`);
+    }
+  }
+  return probes;
 }
 
 async function probeTacticalBattleResultsPresentation(
@@ -7204,8 +7386,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         : scenario.attack_target_lifecycle_presentation
         ? probeTacticalAttackTargetLifecyclePresentation(viewport, folder, stable, ready)
         : scenario.trench_run_outcome
-        ? probeTacticalTrenchRunOutcome(
-          folder, stable, consoleLines, ready, scenario.trench_run_outcome,
+        ? await probeTacticalTrenchRunOutcome(
+          page, viewport, faction, folder, stable, consoleLines, ready, scenario.trench_run_outcome,
         )
         : scenario.death_star_laser_journey
         ? await probeTacticalDeathStarLaserJourney(
@@ -7319,7 +7501,10 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       "tactical fixture lacks its SYSTEMSD picture identity");
       assert.equal(ready.planet_resource_id, ready.system_picture_id + 5500);
       assert.equal(ready.palette_resource_id, ready.system_picture_id + 5530);
-      assert.ok(ready.attacker_ships > 0 && ready.defender_ships > 0);
+      // The trench-run success fixture's Imperial fleet is the Death Star
+      // alone (A0 2026-11-18-edited-saves-7 run d).
+      assert.ok(ready.attacker_ships > 0
+        && (ready.defender_ships > 0 || scenario.trench_run_outcome === "success"));
       // A0 TAC-01-C003's battle has no fighters.
       // The retreat fixture brings no fighters either.
       assert.equal(ready.fighters > 0,
@@ -7353,6 +7538,16 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         outer_negative_z: -56,
         inner_negative_z: -36,
         inner_positive_z: 36,
+      } : scenario.trench_run_outcome === "success" ? {
+        // The Alliance's hull and squadron against the Death Star alone,
+        // which is no field object (FUN_005d4d10's backdrop): 100 + 3 x 2.
+        first_active_objects: 2,
+        second_active_objects: 0,
+        battle_extent: 106,
+        outer_positive_z: 53,
+        outer_negative_z: -53,
+        inner_negative_z: -33,
+        inner_positive_z: 33,
       } : scenario.hull_scale_presentation || scenario.battle_withdrawal_report ? {
         // One unit a side (A0 TAC-01-C003): 100 + 3 (FUN_005ab650).
         first_active_objects: 1,
@@ -7471,6 +7666,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
                 : scenario.battle_results_presentation ? 16
                   : scenario.battle_alert_presentation ? 12
                   : scenario.battle_alert_retreat ? 5
+                  : scenario.trench_run_outcome === "success" ? 2
                   : scenario.death_star_presentation ? 3
                     : scenario.hull_scale_presentation
                       || scenario.battle_withdrawal_report ? 2 : 4);
@@ -7620,7 +7816,9 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           participant.kind === "fighter-group" && participant.faction === "empire");
         const expectedShips = scenario.battle_options_withdrawal ? 2 : 1;
         assert.equal(allianceShips.length, expectedShips);
-        assert.equal(empireShips.length, expectedShips);
+        // The trench-run success fixture's Imperial fleet is the Death
+        // Star alone (A0 2026-11-18-edited-saves-7 run d).
+        assert.equal(empireShips.length, scenario.trench_run_outcome === "success" ? 0 : expectedShips);
         const expectedFighters = scenario.command_assignment_presentation ? 2 : 1;
         assert.equal(allianceFighters.length, expectedFighters);
         // A Death Star battle brings no Imperial fighter group (FUN_005ad930
@@ -7972,8 +8170,10 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.equal(familyLogs.length, 0, "negative control loaded the tactical LOD family");
         assert.equal(lodLogs.length, 0, "negative control submitted a tactical LOD mesh");
         if (scenario.production_participants) {
+          // The trench-run success case ends its battle (the Death Star
+          // was the Imperial fleet) and leaves the scene for the summary.
           if (!scenario.battle_results_presentation && !scenario.tactical_audio_presentation
-            && !simulatedRoute) {
+            && !simulatedRoute && scenario.trench_run_outcome !== "success") {
           // A0 TAC-01-C003's battle has a Medium Transport and a Victory.
           // The contents fixture takes each side's first class with room for
           // three regiments (CAPSHPSD 7 and 20).
