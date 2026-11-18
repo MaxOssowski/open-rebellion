@@ -142,9 +142,66 @@ the battle is paused.
 - `FUN_005c2c80` and `FUN_005d41a0` do not test `+0x8c8`.
 
 So on the normal path a paused battle still renders every 0.02 s and the
-impact counters still step. The port freezes them while paused
-(`tactical_view.rs`, `!session.paused`), and its still fixtures rely on
-that, so this is left open as a separate change.
+impact counters still step.
+
+### What else the paused render steps (read 2026-11-18)
+
+`FUN_005c25b0` (`Class_0066c960_vt24`) runs, on each render that passes
+its `+0x678` test, `FUN_005c2c80`, then moves the scene
+(`(+0x138)->vtbl[0x94]`, `IDirect3DRMFrame::Move`, "Moving scene
+failed"), then draws it (`FUN_005da080`). Nothing on that path reads
+`+0x8c8`. `FUN_005c2c80` steps three lists and one slot:
+
+- `+0x5fc` objects (vtbl `+0x14`, `+0x18`);
+- `+0x60c` fields: `FUN_005d3cc0`, eight frames at 0.1 s on its own
+  timer (`FUN_005fbbe0` on `+0x108`);
+- `+0x5ec` impact sequences: `FUN_005d41a0`, removed through
+  `FUN_005f5970` when they end;
+- `+0x654` the superlaser beam: `0x005da830` grows it on its own timer
+  (`+0x40`) for 1 s (`DAT_0066d4bc`), then clears `+0x28`.
+
+The projectiles (`FUN_005ee590`) hang `LAB_005eeb90` on their frame with
+`AddMoveCallback` (frame vtbl `+0x34`). The scene Move runs it on every
+render: it reads its own timer `+0x40`, places the projectile at
+t / `+0x58` between the source point and the target's current point, and
+clears `+0x28` once t passes `+0x58` (the one- or two-second life).
+
+`FUN_005fbbe0` is a bare QueryPerformanceCounter or timeGetTime delta
+with no pause state. So while paused, fields cycle, impact sequences run
+out, projectiles fly on and expire, and a fired beam grows and ends. The
+combat steps stop (this read did not place the `+0x8c8` test in the
+manager update; the port keeps the steps gated on `paused`). A beam's
+kill is the type-3 turn event, so a beam that ends while paused leaves
+its target alive until the battle resumes.
+
+Not settled: whether other scene frames (ships, fighter groups) carry
+move callbacks or velocities that the scene Move would also advance while
+paused. The port keeps them where the last step left them (`hyp:` they
+are placed only by the manager's update).
+
+### Port (applied 2026-11-18)
+
+`tactical_view.rs` `advance_tactical_frame` runs
+`advance_presentational_effects` (projectiles, impact sequences, fields,
+beam) on every Combat frame, paused or not; the combat steps still need
+`!session.paused`. Tests:
+`a_paused_battle_keeps_its_effects_running_but_not_its_combat`,
+`the_still_fixture_switch_holds_a_paused_battles_effects`,
+`an_unpaused_frame_steps_combat_four_times_a_second_per_speed_unit`.
+
+The still fixtures compare paused frames byte for byte and inspect
+effects at chosen frames, so every tactical fixture
+(`tactical_test_fixture::apply`) calls
+`TacticalState::freeze_paused_effects_for_fixture` (feature
+`interface-test-fixtures` only, never in a production build). The ones
+that hold effects while paused: `configure_effect_presentation_fixture`
+(six impact sequences), `configure_detail_escort_fixture` (a destroyed
+hull's sequence), `configure_projectile_field_fixture` (projectiles at
+0.5 s, fields at frames 3 and 5), `configure_subsystem_field_command_fixture`,
+`configure_live_subsystem_damage_fixture` and
+`configure_subsystem_repair_mobility_fixture` (fields), the Death Star
+laser journey (it pauses to inspect the growing beam), and the
+battle-entry probe's re-pause stability check after a resumed stretch.
 
 ## Port consequence (applied)
 
