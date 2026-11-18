@@ -266,7 +266,47 @@ Tokmia. Ignored store; nothing committed.
   beginning on the first update, as the clock above says.
 - No hull fireball ran during a pause in these runs.
 
-## Port consequence (applied)
+## The Death Star kill (read 2026-11-18)
+
+The question: does the superlaser add a node before its kill, so that its
+target's fire is the short two-node one?
+
+- `FUN_005c13d0` (the only way into the effect's vtable 0x28,
+  `FUN_005d3e90`) is called from six functions in the corpus:
+  `FUN_005b2720`, `FUN_005b2b60`, `FUN_005b5100`, `FUN_005b5b60`,
+  `FUN_005b5750` and `FUN_005b5f50`.
+- The beam's start is event 0x44 (`FUN_005ba720` queues it with the kill,
+  `tactical-event-turns.md`), and the beam itself is `FUN_005da150` /
+  `0x005da830`. None of them is among those callers, so the beam adds no
+  node.
+- The kill is event 3, `FUN_005b2b60`: it calls `FUN_005c13d0(id, 4,
+  vt 0xb8)` once (stage 2, state 0x80) and then the ship's slot 0x1c.
+- So the Death Star kill is one fresh Destroyed node, plus one for each hit
+  or damage sequence another weapon left running on the target (the port's
+  `queue_original_tactical_impact` already counts those).
+
+A0 (`.artifacts/a0-vm/2026-11-18-edited-saves-8/seq-l1-beam`, local only)
+agrees. The 3360 frame is a small blob right of the decal's centre
+(texels 87-98, 56-66). At the 32 px decal of 3365 and 3370 it falls on
+(375-377, 133-135), and A0 shows its colours (255, 85, 0) and (255, 170, 0)
+at (375-376, 133-134):
+
+| Frames | Host time (s) | Image |
+| --- | --- | --- |
+| k1165-k1185 | 4.993-5.075 | no fire |
+| k1193-k1211 | 5.107-5.185 | 3360 (the dot) |
+| k1218-k1234 | 5.216-5.282 | 3365 (fit: 32 px decal) |
+| k1245-k1260 | 5.329-5.393 | 3370 (fit: 32 px decal) |
+| k1268- | 5.425- | gone |
+
+3360 for 0.08-0.14 s, then 3365, then 3370, 0.29-0.35 s in all: the
+one-node sequence at about 20 ms a render (3375, one render, falls in the
+32 ms gap before k1268). Two nodes would never show 3365 (the first call
+of each render finds an even counter) and would end near 0.17 s. The
+earlier reading of run 1 ("about 40 px for 4 renders, then about 105 px,
+gone in 0.18-0.21 s") missed the dot under the hull's end and began at
+3365. The port's single Destroyed impact for the kill stands.
+
 ## Port consequence (applied)
 
 The port fix belongs in `crates/rebellion-core/src/tactical.rs`.
