@@ -215,13 +215,6 @@ pub const fn units_destroyed(reader: CockpitFaction) -> MessagePicture {
     by_reader(reader, 0x3f5)
 }
 
-/// Facility Lost, a new facility with nowhere to deploy (`FUN_00497690`,
-/// notification `0x303`).
-#[must_use]
-pub const fn facility_lost(reader: CockpitFaction) -> MessagePicture {
-    by_reader(reader, 0x3f7)
-}
-
 /// Natural Disaster (`0x154`) or a change of resources (`0x155`),
 /// `FUN_0048e940`.
 #[must_use]
@@ -526,9 +519,6 @@ mod tests {
         // FUN_0048bbf0: 0x3f5 for side 1, else 0x3f6.
         assert_eq!(ids(units_destroyed(Alliance)), (1013, None));
         assert_eq!(ids(units_destroyed(Empire)), (1014, None));
-        // FUN_00497690: (side != 1) + 0x3f7.
-        assert_eq!(ids(facility_lost(Alliance)), (1015, None));
-        assert_eq!(ids(facility_lost(Empire)), (1016, None));
         // FUN_0048e940: 0x3eb for a disaster, 0x3ea for resources.
         assert_eq!(ids(system_incident(true)), (1003, None));
         assert_eq!(ids(system_incident(false)), (1002, None));

@@ -7369,41 +7369,6 @@ pub fn disaster_system(
         .map(|(key, _)| key)
 }
 
-/// The event-message scenario's Facility Lost for each reader (event
-/// `0x303`, `FUN_00497690`, TEXTSTRA `0x70b0` / `0x70b1`, OBJ-09-C008): a
-/// Mine of the reader's side that could not be deployed to the side's
-/// first system, filed on the Manufacturing rail as the app files a lost
-/// delivery. No A0 capture.
-#[must_use]
-pub fn lost_facility(
-    request: FixtureRequest,
-    world: &GameWorld,
-) -> Option<(
-    rebellion_core::manufacturing::BuildableKind,
-    rebellion_core::ids::SystemKey,
-)> {
-    if request.scenario != Scenario::EventMessages {
-        return None;
-    }
-    let alliance = request.faction == CockpitFaction::Alliance;
-    let side = Faction::of_alliance(alliance);
-    let system = world
-        .systems
-        .iter()
-        .find(|(_, value)| value.control.is_controlled_by(side))
-        .map(|(key, _)| key)?;
-    Some((
-        rebellion_core::manufacturing::BuildableKind::ProductionFacility(
-            rebellion_core::manufacturing::FacilityBuild {
-                // PRODFCSD 1, the Mine.
-                class: rebellion_core::ids::DatId::new(0x2c00_0001),
-                is_alliance: alliance,
-            },
-        ),
-        system,
-    ))
-}
-
 /// The event-message scenario's fleet arrival for the Alliance reader
 /// (`FUN_004981c0`, case 1): the Alliance's Fleet 1 at Sluis Van, as A0
 /// events-day673/04 shows "Fleet Arrives at Sluis Van" in an Alliance game.
