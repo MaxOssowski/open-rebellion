@@ -1595,13 +1595,21 @@ pub fn headquarters_object(
 /// day 527). port: a live view's headquarters is the Alliance-held system
 /// marked `is_headquarters`, which the Alliance always sees (it holds the
 /// system); a frozen copy's is the headquarters object it copied.
+///
+/// A system the port's fog alone shows (no copy) holds no headquarters for
+/// the Empire: the setup copies (`FUN_005136d0` stage `0x18` ->
+/// `FUN_0051b990`) hold no facility, and the HQ object's copy turns live
+/// only with the system's seen bit (`FUN_004f7c70` -> `FUN_0050ac80`), so
+/// only a live copy, a pushed or frozen one, or the player's own system
+/// shows it (`ghidra/notes/headquarters-overlay.md`, "Can the Empire see
+/// 904").
 fn shows_alliance_headquarters(
     world: &GameWorld,
     fog: &FogState,
     player: Faction,
     system: SystemKey,
 ) -> bool {
-    use crate::viewed_contents::{system_sight, SystemSight};
+    use crate::viewed_contents::{sees_everything, system_sight, SystemSight};
     let Some(value) = world.systems.get(system) else {
         return false;
     };
@@ -1610,7 +1618,13 @@ fn shows_alliance_headquarters(
     }
     match system_sight(world, fog, player, system) {
         SystemSight::Live => {
-            value.is_headquarters && value.control.is_controlled_by(Faction::Alliance)
+            let copy_live = sees_everything(world)
+                || value.control.is_controlled_by(player)
+                || world
+                    .object_views
+                    .system(player, value.dat_id)
+                    .is_some_and(|view| view.live);
+            copy_live && value.is_headquarters && value.control.is_controlled_by(Faction::Alliance)
         }
         SystemSight::Frozen(view) => view
             .manufacturing_facilities
@@ -2101,14 +2115,20 @@ mod tests {
             Faction::Empire,
             system
         ));
-        let mut seen = FogState::new(Faction::Empire);
-        seen.reveal(system);
+        // A live Empire copy (FUN_004f9a60: an Imperial fleet in orbit,
+        // FUN_0050ac80) shows it: A0 2026-11-16-edited-saves/x-39, Tokmia
+        // under the Empire's blockade on day 45.
+        let live =
+            rebellion_core::object_views::SystemView::of(&world, &world.systems[system], true);
+        let id = world.systems[system].dat_id;
+        world.object_views.empire_systems.insert(id, live);
         assert!(shows_alliance_headquarters(
             &world,
-            &seen,
+            &fog,
             Faction::Empire,
             system
         ));
+        world.object_views.empire_systems.remove(&id);
         // Coruscant, the Empire's: no mark.
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
         assert!(!shows_alliance_headquarters(
@@ -2121,6 +2141,39 @@ mod tests {
             &world,
             &fog,
             Faction::Alliance,
+            system
+        ));
+    }
+
+    // FUN_0045bbb0 walks the viewer's copy of the system (FUN_004f3220).
+    // The Empire's copies start at setup (FUN_005136d0 stage 0x18 ->
+    // FUN_0051b990) with the systems (0x90..0x98) and their 0xa0..0xaf
+    // children only, no facility (0x20..0x2f); the HQ object's copy turns
+    // live only with the system's Empire seen bit (FUN_004f7c70 ->
+    // FUN_0050ac80: an Imperial fleet there or the Empire holds it). A
+    // system the port's fog shows without either (a passing fleet's sensor
+    // reach, a half-way reveal) holds no headquarters for the Empire. Manual
+    // p. 67: "The Empire does not know the location of Alliance
+    // headquarters."
+    #[test]
+    fn an_empire_whose_fog_alone_shows_the_headquarters_system_sees_no_mark() {
+        let (mut world, system, _) = fixture_world();
+        world.systems[system].is_headquarters = true;
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        let mut revealed = FogState::new(Faction::Empire);
+        revealed.reveal(system);
+        assert!(!shows_alliance_headquarters(
+            &world,
+            &revealed,
+            Faction::Empire,
+            system
+        ));
+        // The debug see-everything mode still shows it.
+        world.object_views.see_everything = true;
+        assert!(shows_alliance_headquarters(
+            &world,
+            &revealed,
+            Faction::Empire,
             system
         ));
     }

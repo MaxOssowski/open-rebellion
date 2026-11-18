@@ -101,3 +101,59 @@ system marked `is_headquarters`; frozen, a copied family `0x20..0x21`
 facility. sector-quadrants.mjs `empire/headquarters-frozen`
 (`Scenario::QuadrantsHeadquartersFrozen`) compares 904 over the planet, and
 904 in x-29 and x-39, every opaque pixel.
+
+## Can the Empire see 904 (traced 2026-11-18, OBJ-13-C001)
+
+Yes. There is no "HQ known" bit and no game-type test: 904 follows the
+Empire's copy of the HQ object (`per-side-object-views.md`).
+
+- `FUN_0045bbb0` walks the viewer's copy of the system (`FUN_004f3220`)
+  with `FUN_00526cf0(record, 3)` -> `FUN_00513050`: families `0x20..0x22`,
+  mode 3. `FUN_005131d0` -> `FUN_004f6b90` mode 3 is the child copy's
+  `+0x50` bit 6 (existing). Any such child in the copy's list sets bit 8.
+- The HQ vtable `0x0065f280` keeps the default seen rules: `+0x8c`
+  `FUN_004f7bf0`, `+0x90` `FUN_004f7c70`, and `+0x4c` is `FUN_0040f340`
+  (returns 1). So the HQ's Empire seen bit (`+0x50` `0x100`) is its
+  system's, unless the HQ's own `+0x50` bit `0x20` (EnrouteActive) is set.
+  The system's Empire bit is `FUN_0050ac80`: an Imperial fleet in it, or
+  the Empire holds it (never, while the HQ stands: `facility-ownership.md`).
+- `FUN_004f9a60` makes the HQ's Empire copy live with that bit, completed
+  (`0x4`) and not en route (`0x10`), and rebuilds it from the master.
+- Setup: `FUN_005136d0` stage `0x18` -> `FUN_0051b940` -> `FUN_0051b990`
+  on both copies pushes the sectors (`FUN_004f8340`), their systems
+  (`FUN_0050c8a0`, `0x90..0x98`) and the systems' `0xa0..0xaf` children
+  (`FUN_00529a40`) only, then `Event319_Handle(10, ..)` on Yavin
+  (`0x92000121`, at `0x51bba6`). No facility, so no HQ, enters the Empire's
+  copies at setup, except whatever stands on Yavin. This is why A0
+  2026-11-16-empire-hunt h-43 lists the six Yavin leaders to the Empire
+  but not Mon Mothma (on the HQ system, manual p. 37).
+- Later pushes that carry family `0x20` (`Event319_Handle` table): levels
+  8 (Reconnaissance), 10 (Espionage), 11 (bombardment), 12 (core-system
+  notification).
+
+So the Empire sees 904 from the moment an Imperial fleet is in the HQ's
+system (not in transit), and keeps it in a copy frozen after a fleet's
+visit or a push. A0: x-39 (Tokmia, the HQ of the HQ-victory game EHQ2,
+under blockade, day 45) and x-29 (Duros, frozen, day 527).
+
+The empire-hunt captures h-17, h-44, h-48 and h-76 show Yavin, which is
+not the HQ of that game (manual p. 67: the HQ starts on a random Galactic
+Rim system and "The Empire does not know the location of Alliance
+headquarters"; h-43 has no Mon Mothma at Yavin). They are no evidence for
+or against the mark.
+
+Not yet captured: the Empire's view of the real HQ system before any
+sight. Recipe: load `EHQ2-d2.SAV` (sha256 `ae8048c027ae...`, unedited new
+Empire HQ-victory game, day 2; the HQ is Tokmia, Churba), open Churba from
+the GID: Tokmia with no 904. Then Fleet 1 (Coruscant) Move to Tokmia, run
+Fast: when the fleet arrives (the Battle at Tokmia alert, about day 41-45)
+the Churba window should show 904 (live copy), and x-39 after the battle.
+
+Ported 2026-11-18: `shows_alliance_headquarters` no longer takes the
+port's fog fallback (a system revealed by a fleet's sensor reach or the
+half-way reveal, with no copy) as a live copy. It needs the player's own
+system, a live copy (`object_views`), a frozen copy holding the HQ, or the
+debug see-everything mode.
+
+Untraced: whether the Empire's live copy of a destination system lists an
+HQ that is moving there (its copy is frozen, `0x10`).
