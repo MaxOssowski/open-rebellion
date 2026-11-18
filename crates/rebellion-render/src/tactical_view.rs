@@ -7709,14 +7709,19 @@ fn battle_result_entries(
                 .death_star
                 .filter(|value| value.is_alliance == alliance)
             {
+                let lost = death_star.destroyed || death_star.hull <= 0.0;
+                let picture = portrait(crate::minis::capital_ship_mini_id(
+                    rebellion_core::ids::DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
+                ));
                 entries.push(BattleResultEntry {
                     name: "Death Star".into(),
-                    condition: condition(death_star.destroyed || death_star.hull <= 0.0),
-                    picture: portrait(crate::minis::capital_ship_mini_id(
-                        rebellion_core::ids::DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
-                    )),
+                    condition: condition(lost),
+                    picture,
                     backdrop: None,
-                    mark: None,
+                    // A lost Death Star wears the damage mark as a lost ship
+                    // does: A0 2026-11-18-edited-saves-7 d-15 (3c02b66f3450),
+                    // the Imperial Forces tab after the trench run.
+                    mark: mark(picture, lost),
                 });
             }
             entries
@@ -12749,6 +12754,36 @@ mod tests {
         assert_eq!(death_star(false, 5.0), ("Death Star".into(), Operational));
         assert_eq!(death_star(true, 5.0).1, Destroyed);
         assert_eq!(death_star(false, 0.0).1, Destroyed);
+    }
+
+    #[test]
+    fn a_destroyed_death_star_wears_its_damage_mark() {
+        // A0 2026-11-18-edited-saves-7 d-15 (3c02b66f3450): the destroyed
+        // Death Star's portrait carries the damage mark (portrait + 0x2000,
+        // FUN_0042c3b0) after the trench run.
+        let mut session = test_session(Vec::new(), Vec::new(), true);
+        let world = GameWorld::default();
+        let transport = TroopTransportState::default();
+        let mut entry = |destroyed: bool| {
+            session.death_star = Some(rebellion_core::tactical::TacticalDeathStar {
+                resource: rebellion_core::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+                is_attacker: false,
+                is_alliance: false,
+                source_position: TacticalWorldPosition::ORIGIN,
+                hull: 100.0,
+                laser_charge: 0.0,
+                shielded: false,
+                destroyed,
+                action_committed: false,
+            });
+            battle_result_entries(&session, &world, &transport, false, BattleResultCategory::CapitalShips)
+                .pop()
+                .unwrap()
+        };
+        let lost = entry(true);
+        let (source, picture) = lost.picture.expect("the Death Star has a portrait");
+        assert_eq!(lost.mark, Some((source, picture + 0x2000)));
+        assert_eq!(entry(false).mark, None);
     }
 
     #[test]
