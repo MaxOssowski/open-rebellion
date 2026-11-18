@@ -267,7 +267,18 @@ The command slot (`FUN_00464c20`):
   (`a_tab_keeps_the_lists_place_clamped_to_its_new_rows`).
 - A click on a row (`0xca`, `0x29b`) stores its id in `+0x178` and copies
   its name into the box (`FUN_00604f90`, which posts no `0x408`); a double
-  click (`0x309`) opens it.
+  click (`0x309`) opens it. The copy runs only when `FUN_004f2d10` finds
+  the record in the side's list (`+0x9c`) and its `+0x50` bit 6 (existing:
+  created and not destroyed, `0x004f7bc0`) is set (read-in-full,
+  `FUN_00464890` case `0xca`). A killed or retired character's row is
+  chosen and the box keeps its text: A0 2026-11-18-edited-saves-9 (an
+  unedited Empire game) d-04 5b7a43b193d5 and d-08 2f1d872c5a2e show
+  "Ozzel - Retired" chosen with the box empty. port: `box_name` returns
+  `None` for a killed character (`is_killed`, which Retire also sets).
+- Its right-click menu (`FUN_004ac5c0`, selection slot `FUN_00461740`)
+  holds Encyclopedia and Status, both grey, for any row (d-04); a click
+  on either grey item opens nothing and leaves the menu open (d-05..d-07;
+  `FUN_004aba60`: a disabled item neither highlights nor reports).
 
 ### Display/open targets via `FUN_00429440`
 

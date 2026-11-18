@@ -285,14 +285,22 @@ impl PersonnelFinderRow {
 /// Skywalker" for the row "Luke Skywalker - Dagobah"; d-05 33acd757c002:
 /// "Han Solo" for "Han Solo - Sluis Van ( Captured )"); for a SpecForces
 /// row, its system or fleet name.
+///
+/// The case copies a name only for an existing object (`FUN_004f2d10`'s
+/// record with `+0x50` bit 6: created and not destroyed, `0x004f7bc0`); a
+/// killed or retired character's row is chosen and the box keeps its
+/// text: `None` (A0 2026-11-18-edited-saves-9, an unedited Empire game:
+/// d-04 5b7a43b193d5 and d-08 2f1d872c5a2e, "Ozzel - Retired" chosen and
+/// the box empty).
 #[must_use]
-pub fn box_name(row: &PersonnelFinderRow, world: &GameWorld) -> String {
+pub fn box_name(row: &PersonnelFinderRow, world: &GameWorld) -> Option<String> {
     match row {
-        PersonnelFinderRow::Character { key, name, .. } => world
-            .characters
-            .get(*key)
-            .map_or_else(|| name.clone(), |character| character.name.clone()),
-        PersonnelFinderRow::SpecForces { name, .. } => name.clone(),
+        PersonnelFinderRow::Character { key, name, .. } => match world.characters.get(*key) {
+            Some(character) if character.is_killed => None,
+            Some(character) => Some(character.name.clone()),
+            None => Some(name.clone()),
+        },
+        PersonnelFinderRow::SpecForces { name, .. } => Some(name.clone()),
     }
 }
 
@@ -1445,8 +1453,10 @@ pub fn draw_personnel_finder(
         open_window.last_clicked = Some((row, at_time));
         open_window.chosen = Some(row);
         open_window.target = Some((list[row].clone(), open_window.tab));
-        // Copy the row's name into the name box.
-        open_window.name = box_name(&list[row], world);
+        // Copy an existing object's name into the name box.
+        if let Some(name) = box_name(&list[row], world) {
+            open_window.name = name;
+        }
     }
     // A key steps the chosen row and copies its name, as a click does (A0
     // finder-keys/, the Fleet Finder's list).
@@ -1454,7 +1464,9 @@ pub fn draw_personnel_finder(
         if let Some(row) = crate::list_prefix::stepped_row(open_window.chosen, list.len(), step) {
             open_window.chosen = Some(row);
             open_window.target = Some((list[row].clone(), open_window.tab));
-            open_window.name = box_name(&list[row], world);
+            if let Some(name) = box_name(&list[row], world) {
+                open_window.name = name;
+            }
             open_window.scroll = scrolled_to(open_window.scroll, row, list.len());
         }
     }
@@ -2456,12 +2468,45 @@ mod tests {
             [
                 (
                     "Han Solo - Sluis Van ( Captured ) ".to_owned(),
-                    "Han Solo".to_owned()
+                    Some("Han Solo".to_owned())
                 ),
                 (
                     "Luke Skywalker - Dagobah".to_owned(),
-                    "Luke Skywalker".to_owned()
+                    Some("Luke Skywalker".to_owned())
                 ),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_chosen_retired_or_killed_characters_row_leaves_the_name_box_alone() {
+        // FUN_00464890 case 0xca, 0x29b copies the name only when the
+        // object exists (+0x50 bit 6: created and not destroyed,
+        // 0x004f7bc0). A0 2026-11-18-edited-saves-9 (an unedited Empire
+        // game) d-04 5b7a43b193d5 and d-08 2f1d872c5a2e: "Ozzel - Retired"
+        // chosen, the name box empty.
+        let mut world = GameWorld::default();
+        for (name, retired) in [("Ozzel", true), ("Needa", false)] {
+            let mut character = default_character();
+            character.name = name.into();
+            character.is_alliance = false;
+            character.is_empire = true;
+            character.mark_killed();
+            character.is_retired = retired;
+            world.characters.insert(character);
+        }
+
+        let fog = FogState::new(Faction::Empire);
+        let rows = character_rows(&world, &fog, Faction::Empire, PersonnelTab::Imperial);
+        let shown: Vec<_> = rows
+            .iter()
+            .map(|row| (row.display_name().to_owned(), box_name(row, &world)))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                ("Needa - Killed".to_owned(), None),
+                ("Ozzel - Retired".to_owned(), None),
             ]
         );
     }
