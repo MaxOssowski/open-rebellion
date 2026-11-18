@@ -527,6 +527,57 @@ The Pickup's destination (traced 2026-11-18):
 Open after part 9:
 - `DarthPickup` ran with Chewbacca free at Yavin by the Empire's Finder
   (c-06, c-14), but `FUN_005445d0` needs his `+0xac` bit 0 or `+0x50` bit 3.
-  Either the Empire's copy of Chewbacca is stale (he is held or destroyed in
-  the master) or the check reads another object. Not settled; the port's
-  check is unchanged.
+  Settled below (2026-11-18 night).
+
+### Chewbacca and DarthPickup (traced 2026-11-18 night)
+
+- `FUN_005445d0` reads the master objects, not a side's copy: Luke
+  (`FUN_005434b0` -> `FUN_00507010`, `0x32000242`), Leia (`FUN_00543550` ->
+  `FUN_00506fb0`, `0x31000241`), Han (`FUN_005435f0` -> `FUN_00506f50`,
+  `0x33000243`) and Vader (`FUN_00543760` -> `FUN_00507070`, `0x35000281`)
+  through `FUN_0053efa0` -> `FUN_0053efd0(key, 0)`; Chewbacca
+  (`FUN_00543690`, `0x38000343`) through `FUN_005066a0` -> `FUN_00506740`,
+  which also takes a destroyed object (it tests `+0x50` bit 3 only to pick
+  the out value). Each must have a container (`FUN_004f6b50` `+0x1c`,
+  `FUN_004ece40`: a key other than the null one). Then Luke, Leia and Han
+  need `+0xac` bit 0 and Chewbacca `+0xac` bit 0 or `+0x50` bit 3, plus one
+  captive of side 2 in the palace (`FUN_004f2640(palace, 1, 2)`) and Vader
+  free (`FUN_005439b0`) on no mission. No fixed list and no copy.
+- Jabba Delivers Prisoners (`FUN_0048b6e0`) builds TEXTSTRA `0x7200`/`0x7201`
+  with no arguments (`FUN_0060b9d0(..., 0x7201, 0, 0, 0, 0)`): the four
+  names are fixed text, whoever was picked up.
+- So in the c-run Chewbacca was captive or destroyed in the master. A
+  capture is ruled out: `Character_SetCaptured` (`FUN_004ee800`) syncs
+  `+0xac` bit 0 into both copies even when frozen, and `FUN_004eec60` then
+  gives the captive the Empire's side, which makes the Empire's copy live
+  (`FUN_004f9a60`: owner is the side). Either would show in the Empire's
+  Finder ("( Captured )" or his live place); c-14 shows "Chewbacca - Yavin"
+  with no word. A destroyed character's frozen copy takes the destroyed bit
+  only when it next syncs (`per-side-object-views.md`), so it stays "Yavin".
+  Chewbacca was destroyed.
+- The save the run started from (E508-bnty-all-due512, 9f1b1ba56249, day
+  508) has the Empire's copy of Chewbacca frozen (key-and-side
+  `0x80000062`, read as copy 2 (`0x20`) with low nibble 2, frozen, as
+  Han's and Luke's; Vader's Empire copy `0x800000a1` reads live, 1) while
+  his master stands at `0x90000117`,
+  Han's system (Umgul): the Empire's "Yavin" was already stale on day 508.
+- How he died is not in A0. One way the port lacked: Chewbacca is a minor
+  character (family `0x38`, vtable `0x00665be0`), whose slot `+0x2e0`
+  (`FUN_0056f160` -> `FUN_0053eb30`, GNPRTB 2577, 25) lets an injury kill
+  (`character-injury.md`). A failed Palace rescue captures through slot
+  `+0x20c` (`FUN_004ef480`): the injury (slot `+0x2e4` -> `FUN_004ef5f0` ->
+  slot `+0x2f0` `FUN_004ef6d0`, which destroys on `+0x2e0`), then the
+  capture only while `+0x50` bit 3 is clear. With combat 0 (the edited
+  save) the injury is certain, so a failed rescue kills him 1 time in 4 and
+  then posts no Jabba Captures (c-07 lists it for Leia and Luke only).
+  hyp: that is what happened in the c-run (his master stood with Han, free
+  and on no mission, so ChewbaccaPalace would send him).
+- Port: the Palace failure now draws the death roll after an injury above
+  0 (`dies_of_injury`) and a killed member is not captured
+  (`MissionEffect::DiedOfInjury`; `missions.rs`, 984e8c6c). `darth_pickup`
+  already accepted Chewbacca killed. The Empire's Finder after the Pickup
+  is the PersonnelPickup fixture (code 147) and personnel-states.mjs
+  `--only=pickup` (9661c779): the eight c-14 rows' text equal, ink boxes
+  within 1 px left and 2 px top/bottom, no row icons.
+- Still open: no A0 of the `0x42b` Delivers background (the side record's
+  Luke `+0xb0` bit 3, after Dagobah).
