@@ -4170,6 +4170,51 @@ async function probeTacticalDeathStarLaserJourney(
     text.includes(`[tactical_death_star] superlaser_committed target_object_id=${targetObjectId} charge=0`)),
   "Death Star right-click target did not commit the superlaser shot");
 
+  // A0 2026-11-18-edited-saves-8 run 2 (seq-l2-beam) turned the camera so
+  // the Death Star's dish and the target were both in view. Rotate Left
+  // (the camera sphere's left control, 1049; FUN_005d9640 yaws about +Y)
+  // until the Death Star decal shows well inside the view, while paused.
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  let decal = null;
+  let baseline = committed;
+  if (native) {
+    const decalLines = () => consoleLines
+      .map(({ text }) => text.match(
+        /\[tactical_3d\] death_star_backdrop resource=5010 visible=true center=([-\d.]+),([-\d.]+) size=([\d.]+)/,
+      ))
+      .filter(Boolean);
+    const inView = () => {
+      const last = consoleLines.filter(({ text }) => text.includes("death_star_backdrop resource=5010")).at(-1);
+      const match = decalLines().at(-1);
+      if (!last || !match || !last.text.includes("visible=true")) return null;
+      const [x, y, size] = match.slice(1).map(Number);
+      return x > 80 && x < 400 && y > 80 && y < 420 ? { x, y, size } : null;
+    };
+    // The decal hangs above the opening view: pitch (0xadb1) first, then
+    // yaw.
+    const down = point(561, 445);
+    const up = point(560, 359);
+    const left = point(506, 402);
+    for (let press = 0; press < 60 && !(decal = inView()); press++) {
+      // Steer by the decal's last logged place: pitch it into the rows,
+      // then yaw it into the columns.
+      const match = decalLines().at(-1);
+      const last = consoleLines.filter(({ text }) => text.includes("death_star_backdrop resource=5010")).at(-1);
+      const shown = match && last && last.text.includes("visible=true") ? match.slice(1).map(Number) : null;
+      const control = !shown ? (press < 10 ? down : left)
+        : shown[1] > 400 ? up : shown[1] < 80 ? down : left;
+      await page.mouse.move(control.x, control.y);
+      await page.mouse.down({ button: "left" });
+      await page.waitForTimeout(80);
+      await page.mouse.up({ button: "left" });
+      await page.waitForTimeout(200);
+    }
+    const rest = point(310, 470);
+    await page.mouse.move(rest.x, rest.y);
+    await page.waitForTimeout(300);
+    if (decal) baseline = await stableInteractionFrame(page, folder, "death-star-laser-committed-dish-in-view");
+  }
+
   const pause = point(575, 319);
   await page.mouse.click(pause.x, pause.y);
   // 0x005ba720 stamps the beam event 0x44 three 1000 ms turns ahead
@@ -4201,7 +4246,7 @@ async function probeTacticalDeathStarLaserJourney(
   for (let attempt = 0; attempt < 16 && !beamVisibility; attempt += 1) {
     beam = await stableInteractionFrame(page, folder, "death-star-superlaser-beam");
     try {
-      beamVisibility = verifyTacticalGreenBeam(viewport, committed, beam);
+      beamVisibility = verifyTacticalGreenBeam(viewport, baseline, beam);
     } catch (error) {
       if (!(error instanceof assert.AssertionError)) throw error;
       await page.mouse.click(pause.x, pause.y);
@@ -4211,6 +4256,24 @@ async function probeTacticalDeathStarLaserJourney(
     }
   }
   assert.ok(beamVisibility, "Death Star beam produced no visible green aperture pixels");
+  if (decal) {
+    const star = measureSuperlaserStar(beam, decal);
+    const started = consoleLines.map(({ text }) => text.match(
+      /\[tactical_3d\] death_star_beam target_object_id=\d+ grow_seconds=1 visible=true start=([-\d.]+),([-\d.]+)/,
+    )).filter(Boolean).at(-1);
+    star.beam_start = started ? started.slice(1).map(Number) : null;
+    probes.push(star);
+    // A0 l-07: every beam pixel is pure green.
+    assert.deepEqual(Object.keys(star.colours), ["0,255,0"], "the superlaser is not pure green");
+    // The beam leaves from the dish child (0, 0.11e, -0.09e), above the
+    // sphere's centre and on it, as in A0 l-07 (13 px above a 42 px
+    // sphere's centre), not from the decal's centre.
+    assert.ok(star.beam_start && star.sphere_bbox, "no beam start or sphere measured");
+    const [sx0, sy0, sx1, sy1] = star.sphere_bbox;
+    const [bx, by] = star.beam_start;
+    assert.ok(bx > sx0 && bx < sx1 && by > sy0 && by < (sy0 + sy1) / 2 - (sy1 - sy0) * 0.1,
+      `the superlaser does not leave from the dish above the sphere's centre: ${star.beam_start} on ${star.sphere_bbox}`);
+  }
   await page.mouse.click(pause.x, pause.y);
   assert.ok(consoleLines.some(({ text }) =>
     text.includes(`[tactical_3d] death_star_beam target_object_id=${targetObjectId} grow_seconds=1 visible=true`)
@@ -4233,6 +4296,51 @@ async function probeTacticalDeathStarLaserJourney(
     executable_functions: ["FUN_005ba5e0", "FUN_005ba7f0", "FUN_005c4ed0", "FUN_005d4d10"],
   });
   return probes;
+}
+
+// The superlaser's green (FUN_005da150 SetColorRGB(0, 1, 0)) at and
+// around the Death Star decal, against A0 2026-11-18-edited-saves-8 l-07
+// (377f230464ae): every beam pixel is (0, 255, 0); the wireframe star at
+// the dish is 13 x 11 pixels on a sphere 42 across (0.31), and the line
+// does not cross the sphere's opaque pixels behind it.
+function measureSuperlaserStar(beamBytes, decal) {
+  const png = PNG.sync.read(beamBytes);
+  const pixel = (x, y) => {
+    const k = (y * png.width + x) * 4;
+    return [png.data[k], png.data[k + 1], png.data[k + 2]];
+  };
+  const greenish = ([r, g, b]) => g > 96 && g > r * 1.5 && g > b * 1.25;
+  const half = decal.size / 2;
+  const box = [Math.max(16, Math.floor(decal.x - half)), Math.max(28, Math.floor(decal.y - half)),
+    Math.min(460, Math.ceil(decal.x + half)), Math.min(467, Math.ceil(decal.y + half))];
+  const green = [];
+  const colours = new Map();
+  let sphere = null;
+  for (let y = box[1]; y < box[3]; y++) {
+    for (let x = box[0]; x < box[2]; x++) {
+      const c = pixel(x, y);
+      if (greenish(c)) {
+        green.push([x, y]);
+        colours.set(c.join(","), (colours.get(c.join(",")) || 0) + 1);
+      } else if (c[0] + c[1] + c[2] > 90 && Math.abs(c[0] - c[2]) < 30) {
+        sphere = sphere
+          ? [Math.min(sphere[0], x), Math.min(sphere[1], y), Math.max(sphere[2], x), Math.max(sphere[3], y)]
+          : [x, y, x, y];
+      }
+    }
+  }
+  const bbox = green.length ? green.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y),
+    Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity]) : null;
+  return {
+    type: "superlaser-star-at-dish",
+    decal,
+    green_pixels_in_decal: green.length,
+    colours: Object.fromEntries(colours),
+    green_bbox: bbox,
+    sphere_bbox: sphere,
+    a0: { file: "l-07-ehqds37-run2-beam-half-grown-4.6s.png", sha256: "377f230464ae",
+      star_bbox: [417, 220, 429, 230], sphere_bbox: [398, 218, 439, 259], colour: "0,255,0" },
+  };
 }
 
 // The tactical stream after `count` draws (FUN_0061a310: MSVC rand).

@@ -813,7 +813,9 @@ pub struct TacticalState {
     /// The player handed command of their force to the tactical simulation.
     player_observing: bool,
     /// The Death Star backdrop resource last reported to the console.
-    logged_death_star_backdrop: Option<u32>,
+    /// The Death Star decal's last logged resource and where it showed, in
+    /// 16-pixel cells (`None` when off screen).
+    logged_death_star_backdrop: Option<(u32, Option<(i32, i32)>)>,
     logged_death_star_beam: bool,
     /// Captured press on the source Death Star superlaser control.
     death_star_laser_pressed: bool,
@@ -11657,7 +11659,8 @@ fn draw_tactical_death_star_backdrop(state: &mut TacticalState, aperture: (f32, 
     let drawn = state
         .asset_renderer
         .draw_decal(aperture, resource_id, center.rendered(), size);
-    if state.logged_death_star_backdrop != Some(resource_id) {
+    let cell = drawn.map(|(screen, _)| ((screen.x / 16.0).floor() as i32, (screen.y / 16.0).floor() as i32));
+    if state.logged_death_star_backdrop != Some((resource_id, cell)) {
         let placement = drawn.map_or_else(
             || "visible=false".to_owned(),
             |(screen, size)| {
@@ -11672,7 +11675,7 @@ fn draw_tactical_death_star_backdrop(state: &mut TacticalState, aperture: (f32, 
             resource_id,
             placement,
         );
-        state.logged_death_star_backdrop = Some(resource_id);
+        state.logged_death_star_backdrop = Some((resource_id, cell));
     }
 }
 
