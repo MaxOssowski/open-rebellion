@@ -21,6 +21,14 @@
 //   deviation; and the shaded galaxy under it (FUN_00452240, FUN_005fe050)
 //   pixel for pixel outside the systems' marks, which follow each game's
 //   state. An Alt+number display change closes the legend (A4).
+// - CMD-02-C024: the both-sides mark 10160 (0x27b0, FUN_0042b330 case 0x21)
+//   on Idle Fleets. The FleetsBothSides fixture (code 144, the Alliance)
+//   puts one fleet of each side in orbit at its primary system. Against
+//   A0 2026-11-18-edited-saves-7 a-02 (an unedited Alliance game, day 9,
+//   the frame in which Fleet 2 reaches Coruscant, where the Imperial Fleet
+//   3 is seen): Coruscant's cell (226, 150) shows 10160, and a-01 (day 5,
+//   Fleet 2 en route) shows the Imperial 10150 there. The port's mark sits
+//   at its system's FUN_00425d00 corner, every non-key pixel as A0's.
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node gid-a0.mjs [--out=DIR]
@@ -37,6 +45,12 @@ import { PNG } from "pngjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SITE = path.join(ROOT, ".artifacts/interface-parity/site");
 const A0 = path.join(ROOT, ".artifacts/a0-vm/2026-11-13-gid");
+const A0_BOTH_SIDES = path.join(ROOT, ".artifacts/a0-vm/2026-11-18-edited-saves-7");
+// sha256 first 12 hex, as that folder's README lists them.
+const A0_BOTH_SIDES_FILES = {
+  before: ["a-01-alhqd2-unedited-idle-fleets-fleet2-en-route-coruscant-10150-d5.png", "29e1f70b3f03"],
+  both: ["a-02-alhqd2-unedited-idle-fleets-coruscant-10160-both-sides-d9.png", "b81e3db3c664"],
+};
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const [key, value = "true"] = arg.replace(/^--/, "").split("=");
   return [key, value];
@@ -47,6 +61,8 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "applica
   ".json": "application/json", ".orpk": "application/octet-stream", ".webm": "video/webm" };
 // Fixture codes are the Scenario index plus one: 112 GidA0.
 const GID_A0 = 113;
+// 143 FleetsBothSides.
+const FLEETS_BOTH_SIDES = 144;
 const ALLIANCE = 1;
 // FUN_00427270: the legend button, 30 by 30 at (55, 50) for the Alliance.
 const BUTTON = [70, 65];
@@ -147,6 +163,18 @@ async function markDiff(port, a0, id, [left, top]) {
   const pixels = await artPixels(id);
   return { mark: id, pixels: pixels.length,
     different: pixels.filter(([x, y]) => !same(port, a0, left + x, top + y)).length };
+}
+
+// A mark's non-key pixels at `portCorner` against A0's at `a0Corner`, and
+// a hash of each side's pixels (RGB, in the bitmap's row order).
+async function markDiffAt(port, portCorner, a0, a0Corner, id) {
+  const pixels = await artPixels(id);
+  const hash = (png, [left, top]) => createHash("sha256")
+    .update(Buffer.from(pixels.flatMap(([x, y]) => at(png, left + x, top + y)))).digest("hex");
+  const different = pixels.filter(([x, y]) => at(port, portCorner[0] + x, portCorner[1] + y).join()
+    !== at(a0, a0Corner[0] + x, a0Corner[1] + y).join()).length;
+  return { mark: id, pixels: pixels.length, different,
+    port_sha256: hash(port, portCorner), a0_sha256: hash(a0, a0Corner) };
 }
 
 // The legend window at LEGEND against A0, by kind of pixel.
@@ -367,6 +395,44 @@ try {
       await page.waitForTimeout(400);
     }
   }
+
+  // CMD-02-C024: the both-sides mark on Idle Fleets.
+  const pinned = {};
+  for (const [key, [file, sha]] of Object.entries(A0_BOTH_SIDES_FILES)) {
+    const bytes = await fs.readFile(path.join(A0_BOTH_SIDES, file));
+    assert.equal(createHash("sha256").update(bytes).digest("hex").slice(0, 12), sha, `A0 ${file}`);
+    pinned[key] = PNG.sync.read(bytes);
+  }
+  const coruscant = CORNERS.get("Coruscant");
+  assert.deepEqual(coruscant, [226, 150]);
+  const both = { a0: await markAt(pinned.both, coruscant), a0_before: await markAt(pinned.before, coruscant) };
+  assert.deepEqual([both.a0, both.a0_before], [10160, 10150], "A0 a-02, a-01: Coruscant's marks");
+  const fleets = await (await browser.newContext({ viewport: { width: 640, height: 480 } })).newPage();
+  fleets.on("pageerror", (error) => errors.push(String(error)));
+  await fleets.goto(`http://127.0.0.1:${server.address().port}/?fixture-code=${FLEETS_BOTH_SIDES | (ALLIANCE << 8)}`);
+  await fleets.waitForFunction(() => window.__openRebellionInterfaceReady?.status === "ready", null,
+    { timeout: 30_000 });
+  const ready = await fleets.evaluate(() => window.__openRebellionInterfaceReady);
+  assert.equal(ready.mode, "Idle Fleets", JSON.stringify(ready));
+  assert.deepEqual(ready.primary_gid_marks, [10160], JSON.stringify(ready));
+  await fleets.locator("#glcanvas").focus();
+  await fleets.mouse.move(2, 470);
+  await fleets.waitForTimeout(800);
+  const shown = await stable(fleets, "idle-fleets-both-sides");
+  // FUN_00425d00's corner for the primary system's SYSTEMSD point, and
+  // the port's drawn point less half the 17-pixel cell.
+  const corner = [((ready.primary_system_x * 607) >> 10) + 21, ((ready.primary_system_y * 437) >> 10) + 25];
+  both.port_corner = corner;
+  both.drawn_corner = [Math.round(ready.primary_screen_x - 8.5), Math.round(ready.primary_screen_y - 8.5)];
+  assert.deepEqual(both.drawn_corner, corner, JSON.stringify(both));
+  both.port = await markAt(shown.png, corner);
+  assert.equal(both.port, 10160, JSON.stringify(both));
+  both.diff = await markDiffAt(shown.png, corner, pinned.both, coruscant, 10160);
+  assert.equal(both.diff.different, 0, JSON.stringify(both));
+  assert.equal(both.diff.port_sha256, both.diff.a0_sha256, JSON.stringify(both));
+  both.sha256 = shown.sha256;
+  result.both_sides = both;
+
   assert.deepEqual(errors, []);
   result.status = "pass";
 } catch (error) {
