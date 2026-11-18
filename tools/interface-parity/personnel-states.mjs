@@ -1254,9 +1254,11 @@ async function runPickup(browser, base) {
   };
   // FUN_00465540's grey (A0 (117, 114, 114)).
   const grey = (png, i) => png.data[i] >= 100 && png.data[i] <= 200 && Math.abs(png.data[i] - png.data[i + 2]) <= 20;
-  // The port's ink also counts the strokes its 8-row glyphs blend into
-  // the list's blue when drawn 10 rows high (the accepted text deviation:
-  // "Tura Raftican"'s T bar reads (76, 82, 112) at x 167, A0's grey).
+  // This case's ink, for A0 and the port alike: the grey text and the
+  // strokes the port's 8-row glyphs blend into the list's blue when drawn
+  // 10 rows high ("Tura Raftican"'s T bar reads (76, 82, 112) at x 167,
+  // A0's grey). On c-14 it finds the same boxes as the grey test. The
+  // other cases keep the grey test.
   const blended = (png, i) => png.data[i] >= 60 && png.data[i] <= 200 && png.data[i + 2] - png.data[i] <= 40;
   const ink = (png, [x0, y0, x1, y1], test) => {
     let box = null;
@@ -1295,7 +1297,7 @@ async function runPickup(browser, base) {
     const listed = await grab("rows");
     const ref = PNG.sync.read(await fs.readFile(path.join(ROOT, PICKUP_A0)));
     const rows = PICKUP_ROWS.map((text, row) => {
-      const box = { row, text, a0: ink(ref, rowArea(row), grey), port: ink(listed, rowArea(row), blended) };
+      const box = { row, text, a0: ink(ref, rowArea(row), blended), port: ink(listed, rowArea(row), blended) };
       return { ...box, near: near(box.a0, box.port) };
     });
     steps.push({ label: "rows-vs-c-14", rows });
