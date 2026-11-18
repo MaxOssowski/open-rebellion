@@ -4660,11 +4660,24 @@ impl MissionSystem {
                     // (FUN_004ef5f0, on its combat, slot +0x1f0), then is
                     // captured. A0 2026-11-18-edited-saves-7 b-10/b-11:
                     // each "Jabba Captures" row comes with an "Injured" row.
+                    // Slot +0x2f0 (FUN_004ef6d0) then asks slot +0x2e0
+                    // whether the injury kills: a minor character
+                    // (Chewbacca, family 0x38) dies with GNPRTB 2577, and
+                    // FUN_004ef480 re-reads +0x50 bit 3 and captures no
+                    // one destroyed. So DarthPickup (FUN_005445d0) accepts
+                    // Chewbacca destroyed (A0 2026-11-18-edited-saves-9
+                    // c-13/c-14: Delivers with Chewbacca never held).
                     let combat = skill_of(world, character, Skill::Combat);
                     if let Some(injury) =
                         crate::mission_detection::injury_roll(world, combat, stream)
                     {
                         effects.push(MissionEffect::CharacterInjured { character, injury });
+                        if injury > 0
+                            && crate::mission_detection::dies_of_injury(world, character, stream)
+                        {
+                            effects.push(MissionEffect::DiedOfInjury { character });
+                            continue;
+                        }
                     }
                     effects.push(MissionEffect::CharacterCaptured {
                         character,
@@ -11387,6 +11400,41 @@ mod tests {
         assert_eq!(c.current_abode, Some(palace));
         assert_eq!(c.current_system, None);
         assert!(!state.is_autorouting(luke));
+        assert!(world.characters[han].is_captive);
+    }
+
+    #[test]
+    fn a_failed_palace_rescuer_killed_by_the_injury_is_not_captured() {
+        // FUN_004ef480 (slot +0x20c): the injury (slot +0x2e4 ->
+        // FUN_004ef6d0) destroys a minor character when slot +0x2e0 says
+        // so (FUN_0056f160 -> FUN_0053eb30, GNPRTB 2577), and the capture
+        // runs only while +0x50 bit 3 is clear. GNPRTB 2577 at 100 makes
+        // the death roll certain.
+        let (mut world, home, han, _, luke, palace) = palace_world(0, 0);
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[(2577, 100)]);
+        world.characters[luke].is_major = false;
+        let mut state = MissionState::new();
+        let rescue = crate::jabba::JabbaStep::Rescue {
+            rescuer: luke,
+            han,
+            from: home,
+            palace,
+            tick: 1,
+        };
+        crate::jabba::perform(&rescue, &mut state, &mut world).expect("dispatched");
+        let results = run_palace(&mut state, &mut world, 1);
+        let effects: Vec<&MissionEffect> = results.iter().flat_map(|r| &r.effects).collect();
+        assert!(effects
+            .iter()
+            .any(|effect| **effect == MissionEffect::DiedOfInjury { character: luke }));
+        assert!(effects.iter().all(|effect| !matches!(
+            effect,
+            MissionEffect::CharacterCaptured { character, .. }
+                | MissionEffect::EscapeBarred { character }
+                if *character == luke
+        )));
+        let c = &world.characters[luke];
+        assert!(c.is_killed && !c.is_captive && !c.escape_barred);
         assert!(world.characters[han].is_captive);
     }
 
