@@ -8640,7 +8640,11 @@ impl BattleSession {
         self.trench_run_pending_outcome = None;
         self.trench_run_participants.clear();
         self.trench_run_cinematic_pending = true;
-        self.paused = true;
+        // The result leaves the battle clock as it was: FUN_005cfec0's
+        // state 6/7 wrappers (FUN_005c0fb0 -> FUN_0059cc60, FUN_005c0ff0 ->
+        // FUN_0059cc80) stop the music and play the film, nothing more, and
+        // A0 2026-11-18-edited-saves-7 d-13 (d104e6d5a72e) shows the running
+        // battle (no "Battle Paused") back after film 201.
     }
 
     pub fn take_pending_trench_run_cinematic(&mut self) -> Option<TacticalTrenchRunOutcome> {

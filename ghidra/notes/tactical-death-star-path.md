@@ -139,7 +139,13 @@ slots occur at 10% intervals over the two-minute timer; `0x13d` is the silent
 sentinel. State 6 destroys the Death Star and removes the first bounded half of
 the participants: none for groups of zero or one, one for groups of two or
 three, and `floor(n / 2)` thereafter. State 7 destroys every participant. The
-result then routes to MDATA 201 or 202 and returns to the paused tactical view.
+result then routes to MDATA 201 or 202 and returns to the tactical view as it
+was: the wrappers (`FUN_0059cc60`, `FUN_0059cc80`) stop the music and play the
+film and do not pause the battle. A0 2026-11-18-edited-saves-7 d-13
+(`d104e6d5a72e`) shows the running battle (no "Battle Paused", the pause
+control lit green) after film 201, and the result window (d-14) followed about
+three seconds later with no input. The port paused the battle here until
+2026-11-18.
 
 Open Rebellion now follows that producer with one source-compatible tactical
 RNG stream, the exact timer, ordered chatter, success rating, maneuver damage,

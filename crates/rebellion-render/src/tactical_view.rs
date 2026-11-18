@@ -22877,12 +22877,27 @@ mod tests {
     }
 
     #[test]
+    fn a_trench_run_result_leaves_the_battle_running() {
+        let mut session = test_session(Vec::new(), Vec::new(), true);
+        session.paused = false;
+        session.record_trench_run_outcome(TacticalTrenchRunOutcome::Success);
+
+        // FUN_005c0fb0 -> FUN_0059cc60 only stops the music and plays film
+        // 201; A0 2026-11-18-edited-saves-7 d-13 (d104e6d5a72e) shows the
+        // battle running after it, and its result follows by itself (d-14).
+        assert!(!session.paused, "the trench-run result paused the battle");
+        assert_eq!(
+            session.take_pending_trench_run_cinematic(),
+            Some(TacticalTrenchRunOutcome::Success)
+        );
+    }
+
+    #[test]
     fn trench_run_result_is_recorded_once_and_failure_remains_source_driven() {
         let mut session = test_session(Vec::new(), Vec::new(), true);
         session.record_trench_run_outcome(TacticalTrenchRunOutcome::Failure);
         session.record_trench_run_outcome(TacticalTrenchRunOutcome::Success);
 
-        assert!(session.paused);
         assert_eq!(
             session.take_pending_trench_run_cinematic(),
             Some(TacticalTrenchRunOutcome::Failure)
