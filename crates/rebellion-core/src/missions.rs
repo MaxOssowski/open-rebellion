@@ -4607,6 +4607,17 @@ impl MissionSystem {
                     continue;
                 }
                 if let Some(character) = member.character() {
+                    // Slot +0x20c is FUN_004ef480: a member not destroyed
+                    // first takes the injury roll of slot +0x2e4
+                    // (FUN_004ef5f0, on its combat, slot +0x1f0), then is
+                    // captured. A0 2026-11-18-edited-saves-7 b-10/b-11:
+                    // each "Jabba Captures" row comes with an "Injured" row.
+                    let combat = skill_of(world, character, Skill::Combat);
+                    if let Some(injury) =
+                        crate::mission_detection::injury_roll(world, combat, stream)
+                    {
+                        effects.push(MissionEffect::CharacterInjured { character, injury });
+                    }
                     effects.push(MissionEffect::CharacterCaptured {
                         character,
                         captured_by: captor,
@@ -11169,7 +11180,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_palace_rescue_leaves_the_rescuer_captive_there_for_good() {
+    fn a_failed_palace_rescue_injures_the_rescuer_and_holds_him_there_for_good() {
         // FUN_0056e870: with no success, each member is taken by the
         // mission's captor (slot +0x20c) and loses CanEscape; held for the
         // palace's side, he does not leave it (FUN_004ef260).
@@ -11185,11 +11196,27 @@ mod tests {
         crate::jabba::perform(&rescue, &mut state, &mut world).expect("dispatched");
         let results = run_palace(&mut state, &mut world, 1);
         let effects: Vec<&MissionEffect> = results.iter().flat_map(|r| &r.effects).collect();
-        assert!(effects.contains(&&MissionEffect::CharacterCaptured {
-            character: luke,
-            captured_by: MissionFaction::Empire,
-            at_system: home,
-        }));
+        let captured = effects
+            .iter()
+            .position(|effect| {
+                **effect
+                    == MissionEffect::CharacterCaptured {
+                        character: luke,
+                        captured_by: MissionFaction::Empire,
+                        at_system: home,
+                    }
+            })
+            .expect("captured");
+        // Slot +0x20c (FUN_004ef480) rolls the injury (slot +0x2e4) before
+        // the capture; at combat 0 its chance is 100.
+        let injured = effects
+            .iter()
+            .position(|effect| {
+                matches!(effect, MissionEffect::CharacterInjured { character, injury }
+                    if *character == luke && *injury > 0)
+            })
+            .expect("injured");
+        assert!(injured < captured);
         let c = &world.characters[luke];
         assert!(c.is_captive && c.escape_barred);
         assert_eq!(c.captured_by, Some(crate::dat::Faction::Empire));
