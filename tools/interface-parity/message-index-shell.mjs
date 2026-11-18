@@ -184,7 +184,18 @@ function composeExpected(source, faction, pressedCommand = null) {
     const [red, green, blue] = base.data.subarray(offset, offset + 3);
     if (!(red === 0 && green === 0 && blue === 255)) expected.data.set(base.data.subarray(offset, offset + 4), offset);
   }
-  blit(expected, resource(source, faction.rail, 58, 330), 412, 0);
+  // The rail keys out its blue too: 10820's one blue pixel (0,329) shows
+  // the base's frame under it in A0 message-index/category-0-day228
+  // (window at (85,49), screen (497,378)), as in Battle Summary A0 d-14.
+  const rail = resource(source, faction.rail, 58, 330);
+  for (let y = 0; y < rail.height; y += 1) {
+    for (let x = 0; x < rail.width; x += 1) {
+      const from = (y * rail.width + x) * 4;
+      const [red, green, blue] = rail.data.subarray(from, from + 3);
+      if (red === 0 && green === 0 && blue === 255) continue;
+      expected.data.set(rail.data.subarray(from, from + 4), ((y) * expected.width + 412 + x) * 4);
+    }
+  }
   for (const control of controls) {
     const [normal, pressed] = resourcesFor(control, faction);
     const selected = control.command === pressedCommand ? pressed : normal;
