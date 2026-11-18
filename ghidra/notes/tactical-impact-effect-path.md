@@ -119,8 +119,29 @@ moves the frame one unit toward the camera
 depth, and hangs the texture from its origin texel. port: the original
 sets the offset only at each swap, in the hull's frame; the port takes it
 every frame from the current camera (the hull turns little in 0.1 s).
-Still open: the fields (3520, 3620) are drawn at a fixed 128 px, not as
-their 5.0-unit decals.
+
+## The field clouds' size (read 2026-11-18)
+
+- 3520 (gravity) and 3620 (tractor) get the same decal setup:
+  `FUN_005d39a0` passes 5.0 and origin (64, 64) (`0x5d39a0..0x5d39d8`),
+  the centre of their 128 x 128 frames.
+- `Class_0066d198_vt24` (`FUN_005d3ac0`) hangs the frame on `+0x124`
+  (`AddVisual`, slot `0x48`), the other child of the hull frame that
+  `FUN_005d26c0` creates.
+- `FUN_005d3cc0` steps the loop and calls `FUN_005d3060(+0x124, 1.0)` on
+  every call. `FUN_005d3060` is `FUN_005d2f50` with the unit vector
+  negated (`fchs`, `0x5d3122`): the cloud's frame sits one unit behind the
+  hull's centre, the impact frame one unit in front.
+- Port (applied 2026-11-18): `ORIGINAL_FIELD_DECAL_SIZE`,
+  `ORIGINAL_FIELD_DECAL_ORIGIN` and `ORIGINAL_FIELD_DECAL_CAMERA_OFFSET`
+  (-1.0) feed the same `decal_rect`. The port drew every cloud 128 px
+  wide; at the default camera of a 106 battle a cloud is now about 24 px.
+- Found while reading this: only class `0x66d198` (the capital ships,
+  built by `FUN_005c1f10`) has `FUN_005d3ac0` at vtable `0x24` (the one
+  pointer to it, `0x66d1bc`). The fighter group class `0x66d1f8`
+  (`FUN_005d43c0`, from `FUN_005c1fc0`) has `0x403ef0` there, a bare
+  `ret 8`. So `FUN_005c1360` shows no cloud on a fighter group. The port
+  still draws one there; not changed.
 
 This note records conclusions only. The saved Ghidra database, generated
 decompilation output, and proprietary resource bytes remain untracked.

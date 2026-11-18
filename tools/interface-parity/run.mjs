@@ -2831,7 +2831,7 @@ async function probeTacticalProjectileFieldPresentation(folder, stable, consoleL
   assert.equal(fieldLines.length, 1,
     "field fixture emitted the wrong number of stable scene states");
   assert.match(fieldLines[0].text,
-    /requested=2 rendered=2 .*frame_seconds=0\.1 source_size=128x128 priority=gravity_over_tractor .*source=FUN_005b23e0,FUN_005b24d0,FUN_005b2440,FUN_005b2480,FUN_005d3ac0,FUN_005d3cc0/,
+    /requested=2 rendered=2 .*frame_seconds=0\.1 decal_size=5 decal_origin=64,64 priority=gravity_over_tractor .*source=FUN_005b23e0,FUN_005b24d0,FUN_005b2440,FUN_005b2480,FUN_005d3ac0,FUN_005d3cc0/,
     "field scene omitted its dimensions, timing, priority, or source contract");
   for (const { target, resource_id: resourceId } of expectedFields) {
     assert.match(fieldLines[0].text, new RegExp(`${target + 1}:${resourceId}:\\d+:`),
@@ -2902,7 +2902,8 @@ async function probeTacticalProjectileFieldPresentation(folder, stable, consoleL
         "FUN_005d3ac0", "FUN_005d3cc0",
       ],
       families: { tractor: [3620, 3627], gravity: [3520, 3527] },
-      source_size: [128, 128],
+      decal_size: 5,
+      decal_origin: [64, 64],
       frame_seconds: 0.1,
       priority: "gravity-over-tractor-with-tractor-restoration",
       fields: expectedFields,

@@ -35,9 +35,9 @@ use crate::bmp_cache::{resources, BmpCache, DllSource};
 use crate::tactical_assets::TacticalLodView;
 use crate::tactical_backdrop::{wall_clock_seconds, BackdropOffsets};
 use crate::tactical_assets::{
-    original_hull_axes, OriginalTacticalCamera, TacticalAssetRenderer, TacticalEffectRenderObject,
-    TacticalFighterRenderObject, TacticalImpactDecalRenderObject, TacticalProjectileRenderObject,
-    TacticalRenderObject, TacticalScreenProjection,
+    original_hull_axes, OriginalTacticalCamera, TacticalAssetRenderer, TacticalDecalRenderObject,
+    TacticalFighterRenderObject, TacticalProjectileRenderObject, TacticalRenderObject,
+    TacticalScreenProjection,
 };
 pub use rebellion_core::tactical::*;
 use rebellion_core::tactical_resources::{TacticalCapitalShipResource, TacticalFighterResource};
@@ -10599,13 +10599,14 @@ fn draw_tactical_frame(
                         .iter()
                         .filter_map(|effect| {
                             session.ships.get(effect.target)?;
-                            Some(TacticalImpactDecalRenderObject {
+                            Some(TacticalDecalRenderObject {
                                 object_id: u32::try_from(effect.target)
                                     .unwrap_or(u32::MAX)
                                     .saturating_add(1),
                                 resource_id: effect.resource_id(),
                                 decal_size: effect.sequence.decal_size(),
                                 decal_origin: effect.sequence.decal_origin(),
+                                camera_offset: ORIGINAL_IMPACT_DECAL_CAMERA_OFFSET,
                                 position: ship_pose(effect.target).0.rendered(),
                             })
                         })
@@ -10635,11 +10636,12 @@ fn draw_tactical_frame(
                                 )
                             }
                         };
-                        Some(TacticalEffectRenderObject {
+                        Some(TacticalDecalRenderObject {
                             object_id,
                             resource_id: effect.resource_id()?,
-                            source_width: 128,
-                            source_height: 128,
+                            decal_size: ORIGINAL_FIELD_DECAL_SIZE,
+                            decal_origin: ORIGINAL_FIELD_DECAL_ORIGIN,
+                            camera_offset: ORIGINAL_FIELD_DECAL_CAMERA_OFFSET,
                             position: position.rendered(),
                         })
                     })

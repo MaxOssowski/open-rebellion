@@ -2024,6 +2024,20 @@ impl OriginalTacticalEffectSequence {
 /// swap: the decal sits one model unit in front of the hull's centre.
 pub const ORIGINAL_IMPACT_DECAL_CAMERA_OFFSET: f32 = 1.0;
 
+/// The tractor (3620) and gravity (3520) field frames' decal:
+/// `FUN_005d39a0` passes `DAT_0066d164` (5.0) and origin (64, 64) to
+/// `FUN_005d38d0` (`0x5d39a0..0x5d39d8`), the texture centre of the
+/// 128 x 128 frames.
+pub const ORIGINAL_FIELD_DECAL_SIZE: f32 = 5.0;
+/// The field frames' `SetDecalOrigin` texel: `FUN_005d39a0` pushes
+/// (64, 64) for 3620 and 3520 (`0x5d39ac`, `0x5d39cb`).
+pub const ORIGINAL_FIELD_DECAL_ORIGIN: (u16, u16) = (64, 64);
+/// `FUN_005d3cc0` calls `FUN_005d3060(+0x124, 1.0)` on every step; unlike
+/// `FUN_005d2f50` it negates the unit vector toward the camera
+/// (`fchs`, `0x5d3122`), so the field frame (a child of the hull frame,
+/// `FUN_005d26c0`) sits one unit behind the hull's centre.
+pub const ORIGINAL_FIELD_DECAL_CAMERA_OFFSET: f32 = -1.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OriginalTacticalImpactStage {
     Hit = 0,
