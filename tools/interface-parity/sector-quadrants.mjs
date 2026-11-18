@@ -83,6 +83,14 @@ const A0_FILES = {
     "2d0316e721000c783d72837706813f353d9d80477538fd875cf6862cd29eb4c1",
   "2026-11-16-partial-cells/v-20-sumitra-yavin-imperial-no-hq-mark-d1716.png":
     "c9066ff230159c65bedd03d6cb0448f8cc45e9f2a4d5aba9f747962d9945460f",
+  "2026-11-19-edited-saves-11/a-01-slot5-moddell-pzob-hq-no-904-empire-view-d140.png":
+    "a094ac85979d4682573145c927b3129fd4da3c59049b5072d13b24a35f787871",
+  "2026-11-19-edited-saves-11/a-03-slot5-moddell-last-frame-before-arrival-fleet1-en-route-no-904-d167.png":
+    "01f134af1b8cd9c148199b6d0dd06971f4fec3b1c216f5b728330cdee58c9ed7",
+  "2026-11-19-edited-saves-11/a-08-slot5-moddell-pzob-hq-904-shown-after-battle-fleet-withdrawn-d169.png":
+    "02e881cf6095cbcb84b9201a770c5d66a3e0d66eff2764070fd3902f8ffa7899",
+  "2026-11-19-edited-saves-11/a-09-slot5-moddell-pzob-904-still-shown-d178.png":
+    "839a34b22df3b157e1d00efc23837ef7575dc86a869551888d48e2a98b834844",
   "2026-11-13-icon-drag-move/20-fleet-icon-drag-start.png":
     "511d44431ecd9424c9df400a14a192e6364b4acfc411304982ffb9b4860baf53",
   "2026-11-13-icon-drag-move/21-fleet-icon-dragged-over-kubindi.png":
@@ -401,6 +409,39 @@ function templateMatch(png, icon, [x0, x1], [y0, y1], skip = () => false) {
     }
   }
   return best;
+}
+
+// A0 2026-11-19-edited-saves-11 (slot 5, the user's unedited Empire game;
+// the Alliance HQ is Pzob, Moddell): a-01 (day 140, Moddell's window on the
+// left) and a-03 (day 167, an Imperial fleet en route, the window on the
+// right) before any Imperial fleet reached Pzob; a-08 (day 169, after the
+// fleet's lost battle there and its withdrawal) and a-09 (day 178) after.
+// Pzob's corner: 904's exact match in a-08/a-09, the same in a-03 (the
+// window at the same place: Moddell's title buttons match); a-01's window
+// stands as far left as its title buttons. Null when a capture is absent.
+function pzobCaptures(icon) {
+  const names = {
+    before: "2026-11-19-edited-saves-11/a-01-slot5-moddell-pzob-hq-no-904-empire-view-d140.png",
+    enRoute: "2026-11-19-edited-saves-11/a-03-slot5-moddell-last-frame-before-arrival-fleet1-en-route-no-904-d167.png",
+    after: "2026-11-19-edited-saves-11/a-08-slot5-moddell-pzob-hq-904-shown-after-battle-fleet-withdrawn-d169.png",
+    later: "2026-11-19-edited-saves-11/a-09-slot5-moddell-pzob-904-still-shown-d178.png",
+  };
+  const shots = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, a0Capture(name)]));
+  if (Object.values(shots).some((shot) => !shot)) return null;
+  const marks = {
+    after: templateMatch(shots.after, icon, [413, 453], [241, 281]),
+    later: templateMatch(shots.later, icon, [413, 453], [241, 281]),
+  };
+  // Moddell's title buttons (the resize and close pair at its top right).
+  const buttons = new PNG({ width: 30, height: 14 });
+  for (let y = 0; y < 14; y += 1) {
+    const from = ((41 + y) * shots.after.width + marks.after.x + 134) * 4;
+    buttons.data.set(shots.after.data.subarray(from, from + 30 * 4), y * 30 * 4);
+  }
+  const frames = Object.fromEntries(["before", "enRoute", "after"].map((key) =>
+    [key, templateMatch(shots[key], buttons, [300, 600], [36, 46])]));
+  const corner = (key) => [marks.after.x + frames[key].x - frames.after.x, marks.after.y + frames[key].y - frames.after.y];
+  return { shots, marks, frames, corners: { before: corner("before"), enRoute: corner("enRoute") } };
 }
 
 // An object menu's frame and rows against A0's, relative to each corner:
@@ -2830,21 +2871,40 @@ const cases = [
     // saves carry a Death Star edit, the headquarters is not edited): x-29
     // (31eb3ec4, day 527) shows 904 over Duros and x-39 (ec787bc5, day 45)
     // over Tokmia under the Empire's blockade, both every opaque pixel.
+    // OBJ-13-C001, after a visit: A0 2026-11-19-edited-saves-11 (unedited
+    // Empire game, HQ Pzob) a-08 (02e881cf, day 169: the Imperial fleet lost
+    // its battle at Pzob on arrival and withdrew) and a-09 (839a34b2, day
+    // 178) keep 904 over Pzob from the copy frozen at the visit: every opaque
+    // pixel, and 904's place against the status tracks under it
+    // (FUN_00459e30) the port's.
     async run(page, faction, setup, directory, source) {
       const screen = await stableScreen(page, directory, "headquarters-frozen");
       const icon = resource(source, 904);
       const port = { id: 904, ...compareIcon(screen, setup.headquarters, icon, "headquarters-frozen", directory) };
       assert.equal(port.different_pixels, 0, JSON.stringify(port));
+      const portMark = [Math.round(setup.headquarters[0]), Math.round(setup.headquarters[1])];
+      const portTrack = trackCorner(screen, portMark);
+      assert.ok(portTrack, "the port's status tracks under the frozen headquarters");
+      const offset = (track, mark) => track && [track[0] - mark[0], track[1] - mark[1]];
       const duros = a0Capture("2026-11-16-edited-saves/x-29-hqe-ds-corellian-duros-hq-mark-empire-view-d527.png");
       const tokmia = a0Capture("2026-11-16-edited-saves/x-39-ehq2-churba-tokmia-hq-mark-empire-view-blockade-d45.png");
-      if (!duros || !tokmia) return { port, a0: null };
+      const pzob = pzobCaptures(icon);
+      if (!duros || !tokmia || !pzob) return { port, port_track: portTrack, a0: null };
       const a0 = {
         duros: templateMatch(duros, icon, [240, 280], [220, 260]),
         tokmia: templateMatch(tokmia, icon, [180, 220], [60, 100]),
+        pzob_after: pzob.marks.after,
+        pzob_later: pzob.marks.later,
       };
-      assert.ok(a0.duros && a0.duros.different === 0 && a0.tokmia && a0.tokmia.different === 0,
-        JSON.stringify(a0));
-      return { port, a0 };
+      assert.ok(Object.values(a0).every((match) => match && match.different === 0), JSON.stringify(a0));
+      const place = {
+        port: offset(portTrack, portMark),
+        pzob_after: offset(trackCorner(pzob.shots.after, [a0.pzob_after.x, a0.pzob_after.y]), [a0.pzob_after.x, a0.pzob_after.y]),
+        pzob_later: offset(trackCorner(pzob.shots.later, [a0.pzob_later.x, a0.pzob_later.y]), [a0.pzob_later.x, a0.pzob_later.y]),
+      };
+      assert.deepEqual(place.pzob_after, place.port, `904 against the status tracks: ${JSON.stringify(place)}`);
+      assert.deepEqual(place.pzob_later, place.port, `904 against the status tracks: ${JSON.stringify(place)}`);
+      return { port, a0, place };
     },
   },
   {
@@ -2857,16 +2917,59 @@ const cases = [
     // turns live only with an Imperial fleet there (FUN_004f7c70 ->
     // FUN_0050ac80). Here the port's fog shows the system (a passing
     // fleet's sensor reach would) with no copy: no 904. Manual p. 67: "The
-    // Empire does not know the location of Alliance headquarters." The A0
-    // capture of this state (EHQ2-d2.SAV, Churba on day 2, Tokmia unmarked;
-    // ghidra/notes/headquarters-overlay.md) is still to be taken.
+    // Empire does not know the location of Alliance headquarters."
+    // A0 2026-11-19-edited-saves-11 (unedited Empire game, HQ Pzob): a-01
+    // (a094ac85, day 140) and a-03 (01f134af, day 167, an Imperial fleet en
+    // route) show Pzob with no 904 at the corner where a-08 (02e881cf, day
+    // 169, after the fleet's visit) has it: Pzob's planet pixels (those a-01
+    // and a-03 share in the 37 by 37 rect) under 904's matte are a-08's,
+    // and 904's opaque pixels are not there, nor anywhere within 20 pixels.
+    // A0's Pzob was never seen (white name, no status tracks); the port's
+    // fixture shows the system through its fog, so name and tracks are not
+    // compared, only the planet's rect.
     async run(page, faction, setup, directory, source) {
       const screen = await stableScreen(page, directory, "headquarters-hidden");
       const icon = resource(source, 904);
       const port = { id: 904, ...compareIcon(screen, setup.headquarters, icon, "headquarters-hidden", directory) };
+      const portNear = templateMatch(screen, icon,
+        [Math.round(setup.headquarters[0]) - 20, Math.round(setup.headquarters[0]) + 20],
+        [Math.round(setup.headquarters[1]) - 20, Math.round(setup.headquarters[1]) + 20]);
       assert.ok(port.different_pixels > port.pixels_checked / 2,
         `the Empire sees no headquarters mark: ${JSON.stringify(port)}`);
-      return { port };
+      assert.ok(portNear.different > portNear.checked / 2, JSON.stringify(portNear));
+      const pzob = pzobCaptures(icon);
+      if (!pzob) return { port, port_near: portNear, a0: null };
+      const { shots, marks, corners } = pzob;
+      assert.ok(marks.after.different === 0 && marks.later.different === 0, JSON.stringify(marks));
+      const pixel = (png, x, y) => Array.from(png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+      const same = (a, b) => a.every((v, k) => v === b[k]);
+      const planet = { shared: 0, under_matte: 0, under_matte_as_after: 0, under_opaque: 0 };
+      for (let y = 0; y < icon.height; y += 1) {
+        for (let x = 0; x < icon.width; x += 1) {
+          const before = pixel(shots.before, corners.before[0] + x, corners.before[1] + y);
+          if (!same(before, pixel(shots.enRoute, corners.enRoute[0] + x, corners.enRoute[1] + y))) continue;
+          planet.shared += 1;
+          if (!blueKey(icon.data, (y * icon.width + x) * 4)) {
+            planet.under_opaque += 1;
+            continue;
+          }
+          planet.under_matte += 1;
+          if (same(before, pixel(shots.after, marks.after.x + x, marks.after.y + y))) planet.under_matte_as_after += 1;
+        }
+      }
+      assert.ok(planet.shared > 600 && planet.under_matte > 300 && planet.under_opaque > 300
+        && planet.under_matte_as_after === planet.under_matte, `Pzob's planet in a-01, a-03 and a-08: ${JSON.stringify(planet)}`);
+      const a0 = {};
+      for (const key of ["before", "enRoute"]) {
+        const [cx, cy] = corners[key];
+        const at = templateMatch(shots[key], icon, [cx, cx], [cy, cy]);
+        const near = templateMatch(shots[key], icon, [cx - 20, cx + 20], [cy - 20, cy + 20]);
+        a0[key] = { corner: [cx, cy], at, near, track: trackCorner(shots[key], [cx, cy]) };
+        assert.ok(at.different > at.checked / 2 && near.different > near.checked / 2,
+          `A0 ${key}: no 904 at Pzob: ${JSON.stringify(a0[key])}`);
+        assert.equal(a0[key].track, null, `A0 ${key}: Pzob never seen: ${JSON.stringify(a0[key])}`);
+      }
+      return { port, port_near: portNear, a0: { ...a0, marks, frames: pzob.frames, planet } };
     },
   },
   {
