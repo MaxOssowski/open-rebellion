@@ -4328,10 +4328,80 @@ async function probeTacticalTrenchRunOutcome(
     ordered_chatter: observedChatter,
     log: route.text,
   }];
-  if (expected !== "success") return probes;
+  if (expected !== "success") {
+    return [...probes, ...await probeTrenchRunFailureReturn(
+      page, viewport, faction, folder, stable, consoleLines,
+    )];
+  }
   return [...probes, ...await probeTrenchRunSuccessResult(
     page, viewport, faction, folder, stable, consoleLines, ready,
   )];
+}
+
+// A0 2026-11-18-edited-saves-8 run w (README there): the Alliance player's
+// failed run, film 202, with an A-wing squadron (0 torpedoes).
+const A0_TRENCH_FAILURE = path.join(root, ".artifacts/a0-vm/2026-11-18-edited-saves-8");
+const A0_TRENCH_FAILURE_FILES = {
+  after_film: ["w-15-trench1a-tactical-after-202-no-fighter-group-buttons-left.png", "7d682a51310c"],
+};
+
+function readTrenchFailureA0(key) {
+  const [file, sha] = A0_TRENCH_FAILURE_FILES[key];
+  const full = path.join(A0_TRENCH_FAILURE, file);
+  if (!fs.existsSync(full)) return null;
+  const bytes = fs.readFileSync(full);
+  assert.equal(sha256(bytes).slice(0, 12), sha, `A0 ${file}`);
+  return { file, sha, png: PNG.sync.read(bytes) };
+}
+
+// After film 202 the battle goes on (FUN_0059cc80 plays the film only; in
+// A0 w-15 the fighters move on and the pause control is lit green): the
+// failed group has left the bar, and with the Death Star and the other
+// hulls still in it the battle does not end.
+async function probeTrenchRunFailureReturn(page, viewport, faction, folder, stable, consoleLines) {
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const click = async (x, y) => {
+    const at = point(x, y);
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down({ button: "left" });
+    await page.waitForTimeout(100);
+    await page.mouse.up({ button: "left" });
+    await page.waitForTimeout(300);
+  };
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  const probes = [];
+  const a0 = faction === "alliance" && native ? readTrenchFailureA0("after_film") : null;
+  // The fixture's battle was paused when the run was forced at entry.
+  await click(575, 319);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(3000);
+  const running = await dynamicInteractionFrame(page, folder, "trench-run-failure-resumed");
+  assert.ok(!consoleLines.some(({ text }) => text.includes("[tactical-results] summary lines=")),
+    `${faction}: the battle ended after the failed run`);
+  if (a0) {
+    const port = PNG.sync.read(running);
+    const before = PNG.sync.read(stable.bytes);
+    const regions = {
+      // The fighter-group buttons 2..4, empty on both (the failed group is
+      // gone; A0's Red Group keeps button 1).
+      empty_group_buttons: countA0Differences(port, a0.png, [375, 0, 462, 22]),
+      // The pause control running (lit green), as A0 after the film.
+      pause_control: countA0Differences(port, a0.png, [556, 300, 596, 338]),
+    };
+    const paused = countA0Differences(before, a0.png, [556, 300, 596, 338]);
+    probes.push({ type: "trench-run-failure-return-a0", a0: a0.file, a0_sha256: a0.sha,
+      regions, pause_control_while_paused: paused });
+    for (const [name, region] of Object.entries(regions)) {
+      assert.equal(region.differ, 0,
+        `${faction}: the ${name} after film 202 differs from A0 w-15 in ${region.differ} of ${region.checked} pixels`);
+    }
+    assert.ok(paused.differ > 0, "the paused fixture's pause control already matched A0's running one");
+  }
+  probes.push({ type: "trench-run-failure-battle-continues", resumed_ms: 3000, summary: false });
+  return probes;
 }
 
 // After film 201 the battle goes on as it was (FUN_0059cc60 plays the film

@@ -395,7 +395,7 @@
     },
     {
       "slug": "production-trench-run-failure",
-      "description": "Source result state 7 routes the production tactical session through MDATA.202 and back to the paused battle",
+      "description": "Source result state 7 routes the production tactical session through MDATA.202 back to the battle as it was, which goes on without the failed group (A0 2026-11-18-edited-saves-8 run w)",
       "fixture_codes": {
         "alliance": 65822,
         "empire": 66078
@@ -407,7 +407,7 @@
       "trench_run_outcome": "failure",
       "expected_status": "battle-ready",
       "audit_cells": [],
-      "acceptance": "A1 executable result-code, movie-identity, one-shot routing, and tactical-return proof. Native playback comparison and lossless owned A0 acceptance remain open."
+      "acceptance": "A1 executable result-code, movie-identity, one-shot routing, and tactical-return proof; resumed, the battle goes on with no summary, and at 640x480 the Alliance's empty fighter-group buttons and running pause control equal A0 w-15 (7d682a51310c). Native film playback is not compared."
     },
     {
       "slug": "production-selected-navigation-presentation",
