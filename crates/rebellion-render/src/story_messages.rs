@@ -2261,7 +2261,16 @@ pub fn near_uprising_message(
 ///
 /// Posted to both sides (`story-message-classes.md` row 15; A0
 /// 2026-11-18-edited-saves-9 c-13 8aa20451a9f9: the Empire reads it).
-/// port: always on `0x42a`.
+///
+/// The bit is read on the reader side's copy of Luke (`FUN_004f3e50(+0x20)`
+/// -> `FUN_0053ef00(0x32000242, side)`). `Luke_SetDagobahCompleted`
+/// (`FUN_0056f730`, from the Dagobah mission's phase `0xb`, `FUN_005751d0`)
+/// syncs both copies, each only while live (`Luke_SyncDagobahCompleted`
+/// through `FUN_005404d0`), and a copy going live is rebuilt with the bit
+/// (`FUN_0056f970`). Luke is the Alliance's own when he leaves Dagobah, so
+/// the Alliance's copy takes the bit; at the Pickup he is the Empire's
+/// captive (`FUN_005445d0`), so the Empire's copy is live (`FUN_004f9a60`:
+/// its owner is the side). port: both readers read the master's bit.
 #[must_use]
 pub fn jabba_delivers_message(
     luke_dagobah: bool,
@@ -2273,7 +2282,7 @@ pub fn jabba_delivers_message(
             .on_rail(STORY_RAIL, RailAudience::Both)
             .with_title(texts.get(&0x7200)?.clone())
             .with_picture(MessagePicture {
-                background: 0x42a,
+                background: if luke_dagobah { 0x42b } else { 0x42a },
                 foreground: None,
             })
             // FUN_0048b6e0 writes 0x1b.
@@ -6045,6 +6054,24 @@ mod tests {
         assert_eq!(message.picture.map(|p| p.background), Some(0x42a));
         assert_eq!(message.audience, RailAudience::Both);
         assert!(jabba_delivers_message(false, 4, &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn jabba_delivers_prisoners_shows_0x42b_once_luke_left_dagobah() {
+        // FUN_0048b6e0: background 0x42b (media 0x47a) when the reader
+        // side's Luke (FUN_004f3e50) holds +0xb0 bit 3, DagobahCompleted
+        // (FUN_0056f730), else 0x42a.
+        let texts: HashMap<u16, String> = [(0x7200, "Title"), (0x7201, "Text")]
+            .into_iter()
+            .map(|(id, text)| (id, text.to_owned()))
+            .collect();
+        let background = |dagobah| {
+            jabba_delivers_message(dagobah, 4, &texts)
+                .and_then(|m| m.picture)
+                .map(|p| p.background)
+        };
+        assert_eq!(background(true), Some(0x42b));
+        assert_eq!(background(false), Some(0x42a));
     }
 
     #[test]
