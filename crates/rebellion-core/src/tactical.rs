@@ -1986,18 +1986,43 @@ impl OriginalTacticalEffectSequence {
         }
     }
 
-    /// `FUN_005d3e90` draw sizes.
+    /// The texel each frame's decal is anchored on: `FUN_005d39a0` passes it
+    /// to `FUN_005d38d0`, which calls the texture's `SetDecalOrigin` (slot
+    /// `0x48`, `0x5d397e`). 3300 is 128 x 128 and takes (64, 64)
+    /// (`0x5d3a9a`); the hits' (32, 32) on their 128 x 64 frames sits on the
+    /// spark, left of centre.
     #[must_use]
-    pub const fn source_size(self) -> (u16, u16) {
+    pub const fn decal_origin(self) -> (u16, u16) {
         match self {
-            Self::IonHit | Self::StandardHit | Self::StandardDamage | Self::TurbolaserDamage => {
-                (32, 32)
-            }
+            Self::IonHit | Self::StandardHit | Self::StandardDamage => (32, 32),
             Self::IonDamage => (64, 32),
-            Self::Destroyed => (64, 64),
+            Self::TurbolaserDamage | Self::Destroyed => (64, 64),
+        }
+    }
+
+    /// The decal's width and height in model units: `FUN_005d39a0` hands
+    /// `FUN_005d38d0` `DAT_0066d164` (5.0), times `DAT_0066d168` (0.5) for
+    /// the hits and `DAT_0066d16c` (1.5) for the destroyed family, and it
+    /// calls `SetDecalSize(s, s)` (texture slot `0x44`, `0x5d396c`). No
+    /// `SetDecalScale` call follows, so retained mode's default scales the
+    /// decal with depth: on screen it is `s` units wide at the effect's
+    /// depth, not a fixed number of pixels.
+    #[must_use]
+    pub const fn decal_size(self) -> f32 {
+        match self {
+            Self::IonHit | Self::StandardHit => 2.5,
+            Self::IonDamage | Self::StandardDamage | Self::TurbolaserDamage => 5.0,
+            Self::Destroyed => 7.5,
         }
     }
 }
+
+/// `FUN_005d2f50` places the effect frame (`+0x128`, a child of the
+/// hull's frame `+0x2c`, `FUN_005d26c0`) on the unit vector from the hull
+/// toward the camera (`GetPosition` against the hull's frame, normalised
+/// by `DAT_0066d17c`), times the 1.0 that `FUN_005d41a0` passes before each
+/// swap: the decal sits one model unit in front of the hull's centre.
+pub const ORIGINAL_IMPACT_DECAL_CAMERA_OFFSET: f32 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OriginalTacticalImpactStage {

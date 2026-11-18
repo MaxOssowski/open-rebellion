@@ -36,8 +36,8 @@ use crate::tactical_assets::TacticalLodView;
 use crate::tactical_backdrop::{wall_clock_seconds, BackdropOffsets};
 use crate::tactical_assets::{
     original_hull_axes, OriginalTacticalCamera, TacticalAssetRenderer, TacticalEffectRenderObject,
-    TacticalFighterRenderObject, TacticalProjectileRenderObject, TacticalRenderObject,
-    TacticalScreenProjection,
+    TacticalFighterRenderObject, TacticalImpactDecalRenderObject, TacticalProjectileRenderObject,
+    TacticalRenderObject, TacticalScreenProjection,
 };
 pub use rebellion_core::tactical::*;
 use rebellion_core::tactical_resources::{TacticalCapitalShipResource, TacticalFighterResource};
@@ -10599,14 +10599,13 @@ fn draw_tactical_frame(
                         .iter()
                         .filter_map(|effect| {
                             session.ships.get(effect.target)?;
-                            let (source_width, source_height) = effect.sequence.source_size();
-                            Some(TacticalEffectRenderObject {
+                            Some(TacticalImpactDecalRenderObject {
                                 object_id: u32::try_from(effect.target)
                                     .unwrap_or(u32::MAX)
                                     .saturating_add(1),
                                 resource_id: effect.resource_id(),
-                                source_width,
-                                source_height,
+                                decal_size: effect.sequence.decal_size(),
+                                decal_origin: effect.sequence.decal_origin(),
                                 position: ship_pose(effect.target).0.rendered(),
                             })
                         })
@@ -15460,7 +15459,9 @@ mod tests {
         assert_eq!(battle_report(session, &GameWorld::default(), None).withdrawn, None);
     }
 
-    // Source: FUN_005d3e90 effect dispatcher; FUN_005a7500 hit ordering.
+    // Source: FUN_005d3e90 effect dispatcher; FUN_005a7500 hit ordering;
+    // FUN_005d39a0 decal origins and sizes (0x5d39a0..0x5d3aab: 5.0, x 0.5
+    // for the hits, x 1.5 for 3360; 3300 takes (64, 64) at 0x5d3a9a).
     #[test]
     fn original_effect_dispatch_preserves_resources_sizes_and_priority_groups() {
         let cases = [
@@ -15470,7 +15471,7 @@ mod tests {
                 OriginalTacticalEffectSequence::StandardHit,
                 3060,
                 6,
-                (32, 32),
+                ((32, 32), 2.5),
             ),
             (
                 WeaponKind::IonCannon,
@@ -15478,7 +15479,7 @@ mod tests {
                 OriginalTacticalEffectSequence::IonHit,
                 3180,
                 6,
-                (32, 32),
+                ((32, 32), 2.5),
             ),
             (
                 WeaponKind::LaserCannon,
@@ -15486,7 +15487,7 @@ mod tests {
                 OriginalTacticalEffectSequence::StandardDamage,
                 3120,
                 7,
-                (32, 32),
+                ((32, 32), 5.0),
             ),
             (
                 WeaponKind::IonCannon,
@@ -15494,7 +15495,7 @@ mod tests {
                 OriginalTacticalEffectSequence::IonDamage,
                 3240,
                 16,
-                (64, 32),
+                ((64, 32), 5.0),
             ),
             (
                 WeaponKind::Turbolaser,
@@ -15502,7 +15503,7 @@ mod tests {
                 OriginalTacticalEffectSequence::TurbolaserDamage,
                 3300,
                 7,
-                (32, 32),
+                ((64, 64), 5.0),
             ),
             (
                 WeaponKind::LaserCannon,
@@ -15510,15 +15511,16 @@ mod tests {
                 OriginalTacticalEffectSequence::Destroyed,
                 3360,
                 16,
-                (64, 64),
+                ((64, 64), 7.5),
             ),
         ];
-        for (weapon, stage, expected, base, frames, size) in cases {
+        for (weapon, stage, expected, base, frames, (origin, size)) in cases {
             let actual = original_tactical_effect_sequence(weapon, stage);
             assert_eq!(actual, expected);
             assert_eq!(actual.resource_base(), base);
             assert_eq!(actual.frame_count(), frames);
-            assert_eq!(actual.source_size(), size);
+            assert_eq!(actual.decal_origin(), origin);
+            assert_eq!(actual.decal_size(), size);
         }
 
         let mut effects = Vec::new();

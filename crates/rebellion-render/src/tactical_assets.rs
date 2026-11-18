@@ -18,7 +18,7 @@ use macroquad::window::miniquad::{
 #[cfg(not(target_arch = "wasm32"))]
 use crate::tactical_asset_cache::set_tactical_asset_cache;
 use crate::tactical_asset_cache::TACTICAL_OBJECT_CACHE;
-use rebellion_core::tactical::OriginalTacticalLayout;
+use rebellion_core::tactical::{OriginalTacticalLayout, ORIGINAL_IMPACT_DECAL_CAMERA_OFFSET};
 
 #[cfg(feature = "interface-test-fixtures")]
 pub const PROOF_MESH_KEYS: [&str; 3] = ["2560/1033", "2561/1033", "2562/1033"];
@@ -1194,6 +1194,18 @@ pub(crate) struct TacticalEffectRenderObject {
     pub position: Vec3,
 }
 
+/// One hit, damage or destroyed frame: a retained-mode decal
+/// `decal_size` model units square, anchored on texel `decal_origin`, at
+/// the hull's centre `position` (render space).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TacticalImpactDecalRenderObject {
+    pub object_id: u32,
+    pub resource_id: u32,
+    pub decal_size: f32,
+    pub decal_origin: (u16, u16),
+    pub position: Vec3,
+}
+
 /// One source-traced retained projectile submitted by the live battle.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct TacticalProjectileRenderObject {
@@ -2258,19 +2270,46 @@ impl TacticalAssetRenderer {
         report
     }
 
+    /// Where an impact decal lands in the scene viewport `viewport` (from
+    /// [`tactical_scene_viewport`]): its anchor and its rect's corner and
+    /// size, for a `texture` of (width, height) texels. The frame sits
+    /// [`ORIGINAL_IMPACT_DECAL_CAMERA_OFFSET`] toward the camera from the
+    /// hull's centre (`FUN_005d2f50`); the decal is `decal_size` units
+    /// square at that depth (`SetDecalSize`, default decal scale), so each
+    /// texel is `size / width` by `size / height` of it, and the anchor
+    /// texel (`SetDecalOrigin`) lies on the frame.
+    pub(crate) fn impact_decal_rect(
+        &self,
+        viewport: (f32, f32, f32, f32),
+        hull_centre: Vec3,
+        decal_size: f32,
+        decal_origin: (u16, u16),
+        texture: (f32, f32),
+    ) -> Option<(Vec2, Vec2, Vec2)> {
+        let pose = self.source_camera?.pose();
+        let centre = hull_centre
+            + (pose.position - hull_centre).normalize_or_zero()
+                * ORIGINAL_IMPACT_DECAL_CAMERA_OFFSET;
+        let right = (pose.target - pose.position).cross(pose.up).normalize_or_zero();
+        let anchor = self.project_in_scene_viewport(viewport, centre)?;
+        let edge = self.project_in_scene_viewport(viewport, centre + right * decal_size)?;
+        let side = anchor.distance(edge);        let size = vec2(side, side);
+        let texel = vec2(side / texture.0.max(1.0), side / texture.1.max(1.0));
+        let min = anchor - vec2(f32::from(decal_origin.0), f32::from(decal_origin.1)) * texel;
+        Some((anchor, min, size))
+    }
+
     /// Draw active target-attached hit, damage, and destruction frames through
-    /// the exact type-303 resources selected by `FUN_005d3e90`.
+    /// the exact type-303 resources selected by `FUN_005d3e90`, as decals
+    /// sized in model units ([`Self::impact_decal_rect`]).
     pub(crate) fn draw_effects(
         &mut self,
         aperture: (f32, f32, f32, f32),
-        objects: &[TacticalEffectRenderObject],
+        objects: &[TacticalImpactDecalRenderObject],
     ) -> TacticalDrawReport {
         let aperture = tactical_scene_viewport(aperture);
         let mut report = TacticalDrawReport::default();
-        let Some(source_camera) = self.source_camera else {
-            return report;
-        };
-        if objects.is_empty() {
+        if self.source_camera.is_none() || objects.is_empty() {
             return report;
         }
 
@@ -2297,34 +2336,21 @@ impl TacticalAssetRenderer {
             }
         }
 
-        let pose = source_camera.pose();
-        let camera = Camera3D {
-            position: pose.position,
-            target: pose.target,
-            up: pose.up,
-            fovy: pose.fovy_radians,
-            aspect: Some(aperture.2 / aperture.3),
-            viewport: None,
-            z_near: pose.near,
-            z_far: pose.far,
-            ..Default::default()
-        };
-        let camera_matrix = camera.matrix();
-        let source_scale = aperture.2 / 444.0;
         let mut rendered = Vec::new();
         for object in objects {
-            let Some(center) = project_world_position(camera_matrix, object.position, aperture)
-            else {
-                continue;
-            };
             let Some(asset) = self.effect_textures.get(&object.resource_id) else {
                 continue;
             };
-            let size = vec2(
-                f32::from(object.source_width) * source_scale,
-                f32::from(object.source_height) * source_scale,
-            );
-            let min = center - size * 0.5;
+            let texture = (asset.texture.width(), asset.texture.height());
+            let Some((center, min, size)) = self.impact_decal_rect(
+                aperture,
+                object.position,
+                object.decal_size,
+                object.decal_origin,
+                texture,
+            ) else {
+                continue;
+            };
             let max = min + size;
             if max.x < aperture.0
                 || min.x > aperture.0 + aperture.2
@@ -2352,14 +2378,19 @@ impl TacticalAssetRenderer {
                 max,
             });
             rendered.push(format!(
-                "{}:{}:{}:{:.3},{:.3}",
-                object.object_id, object.resource_id, asset.transparent_index, center.x, center.y
+                "{}:{}:{}:{:.3},{:.3}:{:.1}",
+                object.object_id,
+                object.resource_id,
+                asset.transparent_index,
+                center.x,
+                center.y,
+                size.x
             ));
         }
         let signature = rendered.join(";");
         if self.logged_effect_scene.as_deref() != Some(signature.as_str()) {
             macroquad::logging::info!(
-                "[tactical_3d] effect_scene requested={} rendered={} resources={} frame_seconds=0.1 source_positions=true source=FUN_005d39a0,FUN_005d3e90,FUN_005d41a0",
+                "[tactical_3d] effect_scene requested={} rendered={} resources={} frame_seconds=0.1 source_positions=true source=FUN_005d39a0,FUN_005d3e90,FUN_005d41a0,FUN_005d2f50",
                 objects.len(),
                 report.rendered_object_ids.len(),
                 signature,
@@ -4589,6 +4620,72 @@ mod tests {
                 "column {column}: A0 lights y {pixel_y}, the port's line is at {point:?}"
             );
         }
+    }
+
+    // Source: FUN_005d39a0 / FUN_005d38d0 (SetDecalSize 1.5 x 5.0, origin
+    // (64, 64), no SetDecalScale) and FUN_005d2f50 (one unit toward the
+    // camera). A0 .artifacts/a0-vm/2026-11-18-edited-saves-8 run 1 (default
+    // Empire camera; the holocube fits yaw 150, pitch 30, field 0.2 on every
+    // edge pixel): the superlaser's target dies on the Alliance lane at
+    // (0, 0, -0.5e) (both runs' fire triangulates there), and its 3365
+    // (seq-l1-beam k1218) and 3370 (k1245) frames fit a 30.3-32 px decal
+    // centred at (368.6, 134.7) (tools/interface-parity/fireball-frame-a0.py
+    // --shape). The extent e is 127: the medium-LOD Imperial Dreadnaught
+    // (2641, x3.0) at (0, 0, 0.5e) lights A0 t-04's 84 hull pixels exactly
+    // (hyp: the fit; the save's unit count was not read).
+    #[test]
+    fn a_destroyed_fireball_is_a_decal_seven_and_a_half_units_wide_at_its_depth() {
+        let camera = OriginalTacticalCamera::new(true, 127.0);
+        let mut renderer = TacticalAssetRenderer::default();
+        renderer.restore_camera_state(camera);
+        let viewport = tactical_scene_viewport((16.0, 28.0, 444.0, 439.0));
+        let hull = vec3(0.0, 0.0, 0.5 * 127.0);
+        let (anchor, min, size) = renderer
+            .impact_decal_rect(viewport, hull, 7.5, (64, 64), (128.0, 128.0))
+            .unwrap();
+        assert!(
+            (anchor.x - 368.6).abs() < 1.0 && (anchor.y - 134.7).abs() < 1.0,
+            "A0's fire is centred at (368.6, 134.7), the port's at {anchor:?}"
+        );
+        assert!(
+            (30.3..=32.0).contains(&size.x) && size.x == size.y,
+            "A0's decal is 30.3-32 px, the port's {size:?}"
+        );
+        assert!((min - (anchor - size * 0.5)).length() < 1e-3);
+
+        // The size is 7.5 units at the depth of a frame one unit nearer
+        // the camera than the hull: field 0.2 over the 438-row viewport.
+        let pose = camera.pose();
+        let forward = (pose.target - pose.position).normalize();
+        let depth = (hull - pose.position).dot(forward) - 1.0;
+        let expected = 7.5 * 219.0 / 0.2 / depth;
+        assert!((size.x - expected).abs() < 0.02, "{} != {expected}", size.x);
+
+        // Twice as far away, half as wide: not a fixed pixel size.
+        let far = TacticalAssetRenderer {
+            source_camera: Some(OriginalTacticalCamera::new(true, 254.0)),
+            ..TacticalAssetRenderer::default()
+        };
+        let (_, _, far_size) = far
+            .impact_decal_rect(viewport, hull * 2.0, 7.5, (64, 64), (128.0, 128.0))
+            .unwrap();
+        assert!((far_size.x * 2.0 - size.x).abs() < 0.2, "{far_size:?} against {size:?}");
+    }
+
+    // Source: FUN_005d39a0's hit decals: 2.5 units (5.0 x 0.5) anchored on
+    // texel (32, 32) of the 128 x 64 frames 3060 and 3180, where the spark
+    // is; each texel is 2.5 / 128 wide and 2.5 / 64 high.
+    #[test]
+    fn a_hit_decal_hangs_from_its_spark_texel_and_squeezes_its_wide_frame() {
+        let mut renderer = TacticalAssetRenderer::default();
+        renderer.restore_camera_state(OriginalTacticalCamera::new(true, 100.0));
+        let viewport = tactical_scene_viewport((16.0, 28.0, 444.0, 439.0));
+        let (anchor, min, size) = renderer
+            .impact_decal_rect(viewport, Vec3::ZERO, 2.5, (32, 32), (128.0, 64.0))
+            .unwrap();
+        assert_eq!(size.x, size.y);
+        assert!((anchor.x - min.x - size.x * 32.0 / 128.0).abs() < 1e-3);
+        assert!((anchor.y - min.y - size.y * 32.0 / 64.0).abs() < 1e-3);
     }
 
     // Source: FUN_005d4d10 frames the planet at (2e, rand(0.2e) - 0.1e,

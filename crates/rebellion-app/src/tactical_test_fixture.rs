@@ -1238,7 +1238,8 @@ struct FixtureEffect {
     resource_id: u32,
     frame: u8,
     frame_count: u8,
-    source_size: [u16; 2],
+    decal_origin: [u16; 2],
+    decal_size: f32,
 }
 
 #[derive(Serialize)]
@@ -1623,14 +1624,15 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         .impact_effects
         .iter()
         .map(|effect| {
-            let (width, height) = effect.sequence.source_size();
+            let (origin_x, origin_y) = effect.sequence.decal_origin();
             FixtureEffect {
                 target: effect.target,
                 resource_base: effect.sequence.resource_base(),
                 resource_id: effect.resource_id(),
                 frame: effect.shown_frame,
                 frame_count: effect.sequence.frame_count(),
-                source_size: [width, height],
+                decal_origin: [origin_x, origin_y],
+                decal_size: effect.sequence.decal_size(),
             }
         })
         .collect();

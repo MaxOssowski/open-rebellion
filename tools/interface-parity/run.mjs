@@ -2515,17 +2515,17 @@ async function probeTacticalEffectPresentation(folder, stable, consoleLines, rea
   const firstTarget = ready.faction === "alliance" ? 0 : 1;
   const expected = [
     { target: firstTarget, resource_base: 3060, resource_id: 3062, frame: 2,
-      frame_count: 6, source_size: [32, 32] },
+      frame_count: 6, decal_origin: [32, 32], decal_size: 2.5 },
     { target: firstTarget + 1, resource_base: 3180, resource_id: 3182, frame: 2,
-      frame_count: 6, source_size: [32, 32] },
+      frame_count: 6, decal_origin: [32, 32], decal_size: 2.5 },
     { target: firstTarget + 2, resource_base: 3120, resource_id: 3123, frame: 3,
-      frame_count: 7, source_size: [32, 32] },
+      frame_count: 7, decal_origin: [32, 32], decal_size: 5 },
     { target: firstTarget + 3, resource_base: 3240, resource_id: 3247, frame: 7,
-      frame_count: 16, source_size: [64, 32] },
+      frame_count: 16, decal_origin: [64, 32], decal_size: 5 },
     { target: firstTarget + 4, resource_base: 3300, resource_id: 3302, frame: 2,
-      frame_count: 7, source_size: [32, 32] },
+      frame_count: 7, decal_origin: [64, 64], decal_size: 5 },
     { target: firstTarget + 5, resource_base: 3360, resource_id: 3368, frame: 8,
-      frame_count: 16, source_size: [64, 64] },
+      frame_count: 16, decal_origin: [64, 64], decal_size: 7.5 },
   ];
   assert.deepEqual(ready.effects, expected,
     "effect fixture did not expose the six exact source-selected frames");
@@ -2639,7 +2639,8 @@ async function probeTacticalDetailEscortPresentation(
     resource_id: 3369,
     frame: 9,
     frame_count: 16,
-    source_size: [64, 64],
+    decal_origin: [64, 64],
+    decal_size: 7.5,
   });
   assert.equal(ready.participants[destroyed.target]?.active, false,
     "destroyed sequence remained attached to an active hull");
