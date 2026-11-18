@@ -3156,11 +3156,9 @@ mod tests {
             crate::story_messages::rescue_attempt_message(&chewbacca, 9, &texts).expect("rescue");
         let jabba =
             crate::story_messages::jabba_captures_message(&chewbacca, 21, &texts).expect("jabba");
-        assert_eq!(rescue.rail.and_then(|rail| row_icon(rail, CockpitFaction::Alliance)), None);
-        assert_eq!(
-            jabba.rail.and_then(|rail| row_icon(rail, CockpitFaction::Alliance)),
-            Some(0x2a9e)
-        );
+        let icon = |m: &GameMessage| m.rail.and_then(|r| row_icon(r, CockpitFaction::Alliance));
+        assert_eq!(icon(&rescue), None);
+        assert_eq!(icon(&jabba), Some(0x2a9e));
         let mut log = MessageLog::new();
         log.push(rescue);
         log.push(jabba);
