@@ -74,6 +74,14 @@ pub struct Products {
     /// EnrouteActive, `+0x44` DestinationCount; `FUN_0052bee0`). It stays
     /// the last field: a v124 save gains an empty one (save v125).
     trips: Vec<(u64, u64)>,
+    /// Unfinished products destroyed by an autoroute that found no place
+    /// ([`autoroute_facilities`]), still waiting to leave their queues
+    /// ([`destroy_lost`]). port: the world holds no queues, so the caller
+    /// that holds them takes these out at its next manufacturing step,
+    /// before [`reconcile`]. Not saved (no format change): a side change by
+    /// occupation saved before that step keeps its product.
+    #[serde(skip)]
+    lost: Vec<u64>,
 }
 
 impl Products {
@@ -728,6 +736,9 @@ pub struct Autorouted {
     pub moved: Vec<(u64, SystemKey)>,
     /// Products en route that found no place: destroyed, with no message.
     pub removed: Vec<u64>,
+    /// Unfinished products that found no place: destroyed, with no message,
+    /// once [`destroy_lost`] takes them from their queues.
+    pub destroyed: Vec<u64>,
 }
 
 /// The facility side a product of `kind` is built for ([`FacilityBuild`]).
@@ -849,10 +860,14 @@ fn facility_place(
 ///   cleared on arrival, `FUN_004fb760`) is not 0, and this is the
 ///   facility's first trip.
 ///
+///   An unfinished one is not EnrouteActive, so it raises no `0x303`
+///   either; its manager no longer takes it as its current product
+///   (`FUN_00528890` wants `+0x50` bits `0x1c` clear, Destroyed `0x8`
+///   among them). port: it waits in the products' lost list until
+///   [`destroy_lost`] takes its queued unit and it out together.
+///
 /// A product of the holder's side stays (the search's first step,
-/// `FUN_00554740`, accepts its own container). port: an unfinished
-/// facility with no place stays where it is; the original destroys it
-/// too, which its manager's queue would have to follow.
+/// `FUN_00554740`, accepts its own container).
 pub fn autoroute_facilities(
     world: &mut GameWorld,
     system: SystemKey,
@@ -902,10 +917,25 @@ pub fn autoroute_facilities(
                 world.products.take(id);
                 out.removed.push(id);
             }
-            None => {}
+            None => {
+                if !world.products.lost.contains(&id) {
+                    world.products.lost.push(id);
+                }
+                out.destroyed.push(id);
+            }
         }
     }
     out
+}
+
+/// The unfinished products an autoroute destroyed ([`autoroute_facilities`],
+/// slot `+0xac(2)` in `FUN_00515480`) leave their manager's queue and the
+/// world ([`destroy`]). Returns the ids taken out.
+pub fn destroy_lost(world: &mut GameWorld, manufacturing: &mut ManufacturingState) -> Vec<u64> {
+    let lost = std::mem::take(&mut world.products.lost);
+    lost.into_iter()
+        .filter(|&id| destroy(world, manufacturing, id))
+        .collect()
 }
 
 /// The queued unit product `id` stands for: its yard, area and index.

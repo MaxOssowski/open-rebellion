@@ -3,7 +3,7 @@ title: "A facility under construction or en route when its system changes sides"
 description: "FUN_004f8680's Autorouting branch, the 0x307 handler's search and reason-2 destruction, and why no Facility Lost (0x303) follows a first trip"
 category: "ghidra"
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-18
 tags: [facility, side, control, autorouting, facility-lost, 0x303, 0x307, manufacturing]
 ---
 
@@ -135,8 +135,15 @@ An unfinished facility (not Completed, so not EnrouteActive) takes the same
 `FUN_004f8680` branch. With a place it moves there at once and its
 completion starts the trip from its yard (`FUN_0052bee0`). With no place it
 is destroyed with reason 2; it was never en route, so no `0x303` either.
-hyp: its manager then drops it (`FUN_00528890` accepts a current product
-only while it is not destroyed); not traced.
+Checked 2026-11-18: in `FUN_00515480` the not-Completed path only compares
+ids (`FUN_00555540`) and falls through to the same search and `+0xac(2)`;
+`FUN_0052bee0` sets Constructed, then EnrouteActive only when its two ids
+(yard and container) differ, then Completed, so a moved unfinished
+facility's completion starts its trip. `FUN_00528890` accepts a current
+product only with `+0x50` bit `0x2` set and bits `0x1c` (Completed,
+Destroyed, `0x10`) clear, so a destroyed one is no longer its manager's
+product. hyp: the manager then takes its next unit; the queue walk after
+`FUN_00528890` returns 0 was not read.
 
 ## Port (2026-11-17)
 
@@ -152,8 +159,13 @@ only while it is not destroyed); not traced.
   original's `0x387` still fires on the old day and `FUN_00556620` starts
   the leg on);
 - not found and en route: removed, with no message;
-- port: not found and unfinished: left in place (the original destroys it;
-  the port would also have to drop its queued unit).
+- not found and unfinished (2026-11-18): destroyed with no message, with
+  its queued unit. port: the world holds no queues, so the product waits in
+  `Products::lost` (not saved) until `products::destroy_lost` takes it and
+  its unit out (`products::destroy`); the tick runs it right after the
+  economy step's side changes, before `reconcile` (simulation.rs, the app
+  loop). A side change by occupation later in the tick is settled at the
+  next tick's manufacturing step.
 
 Before this, the port left the product in the lost system: an en-route
 yard completed there on arrival.
@@ -178,5 +190,5 @@ In full: `004f8680`, `004f78e0`, `004f6b50`, `00515480`, `00555410`,
 `00552e80`, `005513a0`, `005531b0`, `00552ff0`, `00553410`, `005073d0`,
 `00507750`, `00550700`, `004fc080`, `004f72f0`, `004faf50`, `004fb760`,
 `004f8660`, `004f71d0`, `004f2ad0`, `004fb200`, `004f7560`, `004f63f0`,
-`004f6410`, `004fae40`, `GameObj_vt11c` (`004f2b50`). In part:
-`00550c90`, `00550de0`, `0054f5b0`.
+`004f6410`, `004fae40`, `GameObj_vt11c` (`004f2b50`), `0052bee0`,
+`00528890`. In part: `00550c90`, `00550de0`, `0054f5b0`.

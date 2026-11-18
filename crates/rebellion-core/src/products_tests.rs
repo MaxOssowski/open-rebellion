@@ -1455,10 +1455,12 @@ fn an_unfinished_facility_in_a_system_lost_moves_at_once_to_a_system_of_its_side
 }
 
 #[test]
-fn an_unfinished_facility_with_no_place_stays_with_its_queued_unit() {
-    // port: the original destroys it with reason 2 (FUN_00515480, slot
-    // +0xac); the port keeps it, since its queued unit would also have to
-    // go (ghidra/notes/facility-autoroute-on-side-change.md).
+fn an_unfinished_facility_with_no_place_is_destroyed_with_its_queued_unit() {
+    // FUN_004f8680 sets Autorouting on a facility not Completed; the 0x307
+    // handler (FUN_00515480) finds no system of its side with room
+    // (FUN_005545e0) and destroys it with reason 2 (slot +0xac,
+    // FUN_004f8660). Not EnrouteActive, it raises no 0x303 (FUN_004fc080);
+    // its manager no longer takes it (FUN_00528890 wants +0x50 & 0x1c clear).
     let mut s = setup();
     for key in [s.yard, s.there] {
         s.world.systems[key].control = ControlKind::Controlled(Faction::Alliance);
@@ -1470,11 +1472,57 @@ fn an_unfinished_facility_with_no_place_stays_with_its_queued_unit() {
     });
     s.manufacturing
         .enqueue(s.yard, QueueItem::new(kind, 5).delivered_to(s.there));
+    // A second unit, bound for the yard, which stays Alliance.
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(kind, 5).delivered_to(s.yard));
     reconcile(&mut s.world, &s.manufacturing);
+    let ids: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    assert_eq!(ids.len(), 2);
+    s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
+    s.world.hand_over_facilities(s.there);
+    assert_eq!(
+        destroy_lost(&mut s.world, &mut s.manufacturing),
+        vec![ids[0]]
+    );
+    let area = ProductionArea::of(kind);
+    let queue = s.manufacturing.queue(s.yard, area).expect("queue");
+    assert_eq!(queue.items().len(), 1);
+    assert_eq!(queue.items()[0].destination, Some(s.yard));
+    // The next reconcile makes no new product for it.
+    reconcile(&mut s.world, &s.manufacturing);
+    let left: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
+    assert_eq!(left, vec![ids[1]]);
+    assert!(destroy_lost(&mut s.world, &mut s.manufacturing).is_empty());
+}
+
+#[test]
+fn an_autoroute_with_no_place_reports_an_unfinished_facility_as_destroyed() {
+    let mut s = setup();
+    for key in [s.yard, s.there] {
+        s.world.systems[key].control = ControlKind::Controlled(Faction::Alliance);
+    }
+    s.world.systems[s.yard].total_energy = 0;
+    let kind = BuildableKind::ProductionFacility(crate::manufacturing::FacilityBuild {
+        class: DatId::new(0x2c00_0001),
+        is_alliance: true,
+    });
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(kind, 5).delivered_to(s.there));
+    reconcile(&mut s.world, &s.manufacturing);
+    let id = s.world.products.all()[0].id;
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
     let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
-    assert_eq!(routed, Autorouted::default());
-    assert_eq!(s.world.products.all().len(), 1);
+    assert_eq!(
+        routed,
+        Autorouted {
+            destroyed: vec![id],
+            ..Autorouted::default()
+        }
+    );
+    // A second autoroute before the queues are settled lists it once.
+    autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    assert_eq!(destroy_lost(&mut s.world, &mut s.manufacturing), vec![id]);
+    assert!(s.world.products.all().is_empty());
 }
 
 #[test]

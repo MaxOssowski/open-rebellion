@@ -194,6 +194,9 @@ pub fn run_simulation_tick(
     let suspended = suspended_systems(&states.blockade, &states.uprising);
     // Each yard cycle takes one refined material and ends with one build
     // point for its manager (FUN_00530820, FUN_0052a430).
+    // An unfinished facility the side change left with no place
+    // (FUN_00515480, slot +0xac(2)) leaves its queue.
+    rebellion_core::products::destroy_lost(world, &mut states.manufacturing);
     rebellion_core::products::number_new_spares(world);
     rebellion_core::products::reconcile(world, &states.manufacturing);
     let mut mfg_advance = advance_yards(
