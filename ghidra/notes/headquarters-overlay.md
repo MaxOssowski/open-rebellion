@@ -155,5 +155,14 @@ half-way reveal, with no copy) as a live copy. It needs the player's own
 system, a live copy (`object_views`), a frozen copy holding the HQ, or the
 debug see-everything mode.
 
+Gate (sector-quadrants.mjs, Empire): `headquarters-hidden`
+(`Scenario::QuadrantsHeadquartersHidden`: the Empire's fog takes the HQ
+system after the copies are seeded, no copy) asserts no 904 over the
+planet; `headquarters-live` (`Scenario::QuadrantsHeadquartersLive`, the
+Empire's copy live) asserts 904's every opaque pixel there and its place
+against the status tracks under it, `(+1, +39)` from 904's corner to the
+tracks' first segment, the same as in A0 x-39 (904 at (194, 71), the
+tracks at (195, 110)).
+
 Untraced: whether the Empire's live copy of a destination system lists an
 HQ that is moving there (its copy is frozen, `0x10`).

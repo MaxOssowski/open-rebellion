@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 147;
+const SCENARIO_COUNT: u8 = 149;
 
 
 extern "C" {
@@ -636,6 +636,22 @@ pub enum Scenario {
     /// "Tura Raftican - Yavin" and "Wedge Antilles - Yavin". See
     /// [`place_pickup_roster`].
     PersonnelPickup = 146,
+    /// OBJ-13-C001, the hidden headquarters: `Quadrants` with the Empire's
+    /// fog showing the Alliance's headquarters system (as a passing fleet's
+    /// sensor reach or a half-way reveal would) but no copy of it. The
+    /// Empire's setup copies hold no facility (`FUN_005136d0` stage `0x18`
+    /// -> `FUN_0051b990`), so `FUN_0045bbb0` finds no family `0x20` child
+    /// and draws no 904 (manual p. 67: "The Empire does not know the
+    /// location of Alliance headquarters"). For the Alliance it is
+    /// `Quadrants`.
+    QuadrantsHeadquartersHidden = 147,
+    /// OBJ-13-C001, the headquarters found: `Quadrants` with the Empire's
+    /// copy of the headquarters system live, as an Imperial fleet in orbit
+    /// makes it (`FUN_004f7c70` -> `FUN_0050ac80`, `FUN_004f9a60`); 904 over
+    /// the planet as A0 2026-11-16-edited-saves/x-39 shows it over Tokmia
+    /// under the Empire's blockade. port: the live copy alone, no fleet.
+    /// For the Alliance it is `Quadrants`.
+    QuadrantsHeadquartersLive = 148,
 }
 
 impl Scenario {
@@ -788,6 +804,8 @@ impl Scenario {
             144 => Self::PersonnelPalace,
             145 => Self::PersonnelRetired,
             146 => Self::PersonnelPickup,
+            147 => Self::QuadrantsHeadquartersHidden,
+            148 => Self::QuadrantsHeadquartersLive,
             _ => return None,
         })
     }
@@ -1619,6 +1637,8 @@ pub fn apply(
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
             | Scenario::QuadrantsHeadquartersFrozen
+            | Scenario::QuadrantsHeadquartersHidden
+            | Scenario::QuadrantsHeadquartersLive
             | Scenario::QuadrantsFacility
             | Scenario::QuadrantsStale
             | Scenario::QuadrantsStaleSeeEverything
@@ -1627,14 +1647,18 @@ pub fn apply(
             request, world, movement, missions, uprisings, sectors, primary,
         );
     }
-    if request.scenario == Scenario::QuadrantsHeadquartersFrozen && !player_is_alliance {
-        // The Empire's copy of the headquarters system, frozen with the
-        // headquarters object in it (FUN_004f9a60).
+    if matches!(
+        request.scenario,
+        Scenario::QuadrantsHeadquartersFrozen | Scenario::QuadrantsHeadquartersLive
+    ) && !player_is_alliance
+    {
+        // The Empire's copy of the headquarters system with the
+        // headquarters object in it (FUN_004f9a60): frozen, or live.
         if let Some(&headquarters) = mark_systems(world, primary).first() {
             let view = rebellion_core::object_views::SystemView::of(
                 world,
                 &world.systems[headquarters],
-                false,
+                request.scenario == Scenario::QuadrantsHeadquartersLive,
             );
             let id = world.systems[headquarters].dat_id;
             world.object_views.empire_systems.insert(id, view);
@@ -3620,6 +3644,8 @@ fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(Syste
         | Scenario::QuadrantsNeutralFleet
         | Scenario::QuadrantsFreeTeam
         | Scenario::QuadrantsHeadquartersFrozen
+        | Scenario::QuadrantsHeadquartersHidden
+        | Scenario::QuadrantsHeadquartersLive
         | Scenario::QuadrantsFacility
         | Scenario::QuadrantsStale
         | Scenario::QuadrantsStaleSeeEverything => {
@@ -5067,6 +5093,26 @@ pub fn reveal(
         fog_alliance.reveal(secondary);
         fog_empire.reveal(secondary);
     }
+}
+
+/// `QuadrantsHeadquartersHidden`: the Empire's fog takes the Alliance's
+/// headquarters system after the views are seeded, so the Empire has no
+/// copy of it, as a passing fleet's sensor reach reveals a system in play
+/// (`fog::FogSystem::advance`). Returns the system revealed.
+pub fn reveal_without_copy(
+    request: FixtureRequest,
+    world: &GameWorld,
+    fog_empire: &mut FogState,
+) -> Option<SystemKey> {
+    if request.scenario != Scenario::QuadrantsHeadquartersHidden
+        || request.faction == CockpitFaction::Alliance
+    {
+        return None;
+    }
+    let primary = world.systems.keys().next()?;
+    let headquarters = *mark_systems(world, primary).first()?;
+    fog_empire.reveal(headquarters);
+    Some(headquarters)
 }
 
 /// The mission dialog and the active missions, each frame, for the
@@ -6785,6 +6831,8 @@ fn object_menu_report<'a>(
                 | Scenario::QuadrantsNeutralFleet
                 | Scenario::QuadrantsFreeTeam
                 | Scenario::QuadrantsHeadquartersFrozen
+                | Scenario::QuadrantsHeadquartersHidden
+                | Scenario::QuadrantsHeadquartersLive
                 | Scenario::QuadrantsFacility
                 | Scenario::QuadrantsStale
                 | Scenario::QuadrantsStaleSeeEverything
@@ -8826,6 +8874,8 @@ fn quadrant_setup(
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
             | Scenario::QuadrantsHeadquartersFrozen
+            | Scenario::QuadrantsHeadquartersHidden
+            | Scenario::QuadrantsHeadquartersLive
             | Scenario::QuadrantsFacility
             | Scenario::QuadrantsStale
             | Scenario::QuadrantsStaleSeeEverything
@@ -15412,6 +15462,79 @@ mod tests {
         assert_eq!(
             Scenario::decode(137),
             Some(Scenario::QuadrantsHeadquartersFrozen)
+        );
+    }
+
+    // port: the fixture's own stocking for OBJ-13-C001. Hidden: the
+    // Empire's fog shows the headquarters system but it has no copy of it
+    // (FUN_0045bbb0 reads only the copy, FUN_004f3220). Live: its copy is
+    // live and holds the headquarters object.
+    #[test]
+    fn the_hidden_and_live_headquarters_scenarios_give_the_empire_no_copy_and_a_live_one() {
+        let in_sector = |world: &mut GameWorld| {
+            let here = world.systems.keys().next().unwrap();
+            let sector = world.systems[here].sector;
+            for index in 0..3u16 {
+                let mut copy = world.systems[here].clone();
+                copy.dat_id = rebellion_core::ids::DatId::new(0x9000_0010 + u32::from(index));
+                copy.x = copy.x.saturating_add(200 * (index + 1));
+                copy.manufacturing_facilities.clear();
+                copy.production_facilities.clear();
+                copy.defense_facilities.clear();
+                let copy = world.systems.insert(copy);
+                world.sectors[sector].systems.push(copy);
+            }
+        };
+        let hidden_request = request(
+            Scenario::QuadrantsHeadquartersHidden,
+            CockpitFaction::Empire,
+        );
+        let hidden = apply_to_loading_world_with(hidden_request, in_sector);
+        let world = &hidden.world;
+        let primary = world.systems.keys().next().unwrap();
+        let headquarters = mark_systems(world, primary)[0];
+        assert!(world.systems[headquarters].is_headquarters);
+        let id = world.systems[headquarters].dat_id;
+        assert!(world.object_views.system(Faction::Empire, id).is_none());
+        let mut fog = FogState::new(Faction::Empire);
+        assert_eq!(
+            reveal_without_copy(hidden_request, world, &mut fog),
+            Some(headquarters)
+        );
+        assert!(fog.is_visible(headquarters));
+        let mut alliance_fog = FogState::new(Faction::Empire);
+        assert_eq!(
+            reveal_without_copy(
+                request(
+                    Scenario::QuadrantsHeadquartersHidden,
+                    CockpitFaction::Alliance
+                ),
+                world,
+                &mut alliance_fog,
+            ),
+            None
+        );
+
+        let live = apply_to_loading_world_with(
+            request(Scenario::QuadrantsHeadquartersLive, CockpitFaction::Empire),
+            in_sector,
+        );
+        let view = live
+            .world
+            .object_views
+            .system(Faction::Empire, id)
+            .expect("the Empire's copy");
+        assert!(view.live);
+        assert!(view
+            .manufacturing_facilities
+            .iter()
+            .any(|facility| facility.class.family() == 0x20));
+        assert_eq!(
+            [Scenario::decode(147), Scenario::decode(148)],
+            [
+                Some(Scenario::QuadrantsHeadquartersHidden),
+                Some(Scenario::QuadrantsHeadquartersLive)
+            ]
         );
     }
 

@@ -61,6 +61,11 @@ const QUADRANTS_STALE_SEE_EVERYTHING = 125;
 // the Alliance's headquarters system frozen while the headquarters stood
 // there; for the Alliance it is Quadrants.
 const QUADRANTS_HEADQUARTERS_FROZEN = 138;
+// QuadrantsHeadquartersHidden (147): Quadrants with the Empire's fog
+// showing the Alliance's headquarters system but no copy of it;
+// QuadrantsHeadquartersLive (148): with the Empire's copy of it live.
+const QUADRANTS_HEADQUARTERS_HIDDEN = 148;
+const QUADRANTS_HEADQUARTERS_LIVE = 149;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
@@ -332,6 +337,25 @@ function a0Capture(relative) {
 // Where the opaque pixels of `icon` (blue key out) match `png` best with
 // its corner in [x0, x1] by [y0, y1], skipping `skip(x, y)` screen pixels
 // (a captured cursor): the corner and the pixels that differ there.
+// The status tracks' top-left under a planet whose overlay stands at
+// `mark` (FUN_00459e30): the first row, from the top, holding a 2-by-3
+// block of one track colour (white, yellow, red, green or blue) with the
+// grey (128) gap at its right.
+function trackCorner(png, [mx, my]) {
+  const rgb = (x, y) => Array.from(png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+  const same = (a, b) => a.every((v, k) => v === b[k]);
+  const colours = [[255, 255, 255], [255, 255, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255]];
+  for (let y = my + 20; y < my + 70; y += 1) {
+    for (let x = mx - 20; x < mx + 50; x += 1) {
+      const c = rgb(x, y);
+      if (!colours.some((k) => same(k, c))) continue;
+      if ([[1, 0], [0, 1], [1, 1], [0, 2], [1, 2]].every(([dx, dy]) => same(rgb(x + dx, y + dy), c))
+        && same(rgb(x + 2, y), [128, 128, 128])) return [x, y];
+    }
+  }
+  return null;
+}
+
 function templateMatch(png, icon, [x0, x1], [y0, y1], skip = () => false) {
   let best = null;
   for (let y = y0; y <= y1; y += 1) {
@@ -2550,6 +2574,57 @@ const cases = [
       assert.ok(a0.duros && a0.duros.different === 0 && a0.tokmia && a0.tokmia.different === 0,
         JSON.stringify(a0));
       return { port, a0 };
+    },
+  },
+  {
+    name: "headquarters-hidden",
+    scenario: QUADRANTS_HEADQUARTERS_HIDDEN,
+    factions: ["empire"],
+    // OBJ-13-C001: FUN_0045bbb0 walks only the viewer's copy of the system
+    // (FUN_004f3220). The Empire's setup copies hold no facility
+    // (FUN_005136d0 stage 0x18 -> FUN_0051b990), and the HQ object's copy
+    // turns live only with an Imperial fleet there (FUN_004f7c70 ->
+    // FUN_0050ac80). Here the port's fog shows the system (a passing
+    // fleet's sensor reach would) with no copy: no 904. Manual p. 67: "The
+    // Empire does not know the location of Alliance headquarters." The A0
+    // capture of this state (EHQ2-d2.SAV, Churba on day 2, Tokmia unmarked;
+    // ghidra/notes/headquarters-overlay.md) is still to be taken.
+    async run(page, faction, setup, directory, source) {
+      const screen = await stableScreen(page, directory, "headquarters-hidden");
+      const icon = resource(source, 904);
+      const port = { id: 904, ...compareIcon(screen, setup.headquarters, icon, "headquarters-hidden", directory) };
+      assert.ok(port.different_pixels > port.pixels_checked / 2,
+        `the Empire sees no headquarters mark: ${JSON.stringify(port)}`);
+      return { port };
+    },
+  },
+  {
+    name: "headquarters-live",
+    scenario: QUADRANTS_HEADQUARTERS_LIVE,
+    factions: ["empire"],
+    // OBJ-13-C001, found: the Empire's copy of the headquarters system live
+    // (FUN_004f9a60, an Imperial fleet in orbit), so FUN_0045bbb0 adds the
+    // overlay 904 at the planet's rect. A0 2026-11-16-edited-saves/x-39
+    // (Empire, day 45, Tokmia under the Empire's blockade): 904's every
+    // opaque pixel, and its place against the system's status tracks under
+    // it (FUN_00459e30), the same in both.
+    async run(page, faction, setup, directory, source) {
+      const screen = await stableScreen(page, directory, "headquarters-live");
+      const icon = resource(source, 904);
+      const port = { id: 904, ...compareIcon(screen, setup.headquarters, icon, "headquarters-live", directory) };
+      assert.equal(port.different_pixels, 0, JSON.stringify(port));
+      const portMark = [Math.round(setup.headquarters[0]), Math.round(setup.headquarters[1])];
+      const portTrack = trackCorner(screen, portMark);
+      const tokmia = a0Capture("2026-11-16-edited-saves/x-39-ehq2-churba-tokmia-hq-mark-empire-view-blockade-d45.png");
+      if (!tokmia) return { port, port_track: portTrack, a0: null };
+      const match = templateMatch(tokmia, icon, [180, 220], [60, 100]);
+      assert.ok(match && match.different === 0, JSON.stringify(match));
+      const a0Track = trackCorner(tokmia, [match.x, match.y]);
+      const offset = (track, mark) => track && [track[0] - mark[0], track[1] - mark[1]];
+      const place = { port: offset(portTrack, portMark), a0: offset(a0Track, [match.x, match.y]) };
+      assert.ok(place.port && place.a0, JSON.stringify(place));
+      assert.deepEqual(place.port, place.a0, `904 against the status tracks: ${JSON.stringify(place)}`);
+      return { port, a0: { match, track: a0Track }, place };
     },
   },
   {
