@@ -1978,6 +1978,11 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // pure blue pixel inside either window.
                 | 10710..=10711
                 | 10335..=10336
+                // The Alliance's window rail, whose one blue pixel (its
+                // bottom-left corner) shows the frame under it in A0
+                // 2026-11-18-edited-saves-7 d-14 (56b287e7cb22, at
+                // (474, 378): (85, 83, 83)). The Empire's 10821 has none.
+                | 10820
                 // The Battle Summary's category buttons (`FUN_0046f360`),
                 // whose blue shows nowhere in A0 TAC-07-C005. The Empire's
                 // pressed Manufacturing and Capital Ships (10355, 10359)
@@ -3128,6 +3133,13 @@ pub(crate) mod tests {
             );
         }
         assert!(!uses_blue_screen_transparency(DllSource::Strategy, 10759));
+    }
+
+    #[test]
+    fn the_alliance_battle_window_rail_keys_out_its_blue_corner() {
+        // A0 2026-11-18-edited-saves-7 d-14 (56b287e7cb22): the Battle
+        // Summary's frame shows at (474, 378), under the rail's blue pixel.
+        assert!(uses_blue_screen_transparency(DllSource::Strategy, 10820));
     }
 
     #[test]

@@ -10113,6 +10113,20 @@ fn draw_original_battle_results(
         ),
     };
 
+    // The window's last row, all blue in its frame, shows the window's own
+    // black.
+    let row = BATTLE_WINDOW_UNPAINTED_ROW;
+    let (row_x, row_y) = canvas.point(
+        battle_window_origin().0 + row.x,
+        battle_window_origin().1 + row.y,
+    );
+    draw_rectangle(
+        row_x,
+        row_y,
+        row.width * canvas.scale,
+        row.height * canvas.scale,
+        BLACK,
+    );
     draw_strategy_bitmap(
         cache,
         skin.rail,
@@ -10277,6 +10291,14 @@ fn draw_original_battle_results(
 const fn battle_frame_draws_summary(results_at_start: bool) -> bool {
     results_at_start
 }
+
+/// The Battle Summary's row under its frame: `FUN_0046f140` makes the
+/// window 331 rows tall, its frames 10335 / 10336 are 331 rows with the
+/// last one all blue (keyed), and no page paints it: A0 TAC-07-C001,
+/// TAC-07-C003..C009 (Alliance, at (62, 49)), TAC-07-C002 (Empire, at
+/// (125, 52)) and 2026-11-18-edited-saves-7 d-14 (56b287e7cb22) show all
+/// 470 of its pixels black.
+const BATTLE_WINDOW_UNPAINTED_ROW: NativeRect = NativeRect::new(0.0, 330.0, 470.0, 1.0);
 
 /// The Battle Summary window's rect on the 640 x 480 strategy screen: its
 /// top left where it opens (A0 TAC-01-C013, TAC-07-C001 and TAC-07-C002),
@@ -14905,6 +14927,18 @@ mod tests {
             Some(DisplayButton::Fleet)
         );
         assert_eq!(display_button_at(300.0, 200.0, false), None);
+    }
+
+    #[test]
+    fn the_summary_windows_last_row_is_painted_black_across_its_width() {
+        // A0 TAC-07-C001..C009 and 2026-11-18-edited-saves-7 d-14: row 330
+        // of the 470 x 331 window is black under the frame's blue row.
+        for alliance in [true, false] {
+            let window = battle_summary_window_rect(alliance);
+            let row = BATTLE_WINDOW_UNPAINTED_ROW;
+            assert_eq!((row.x, row.width), (0.0, window.w));
+            assert_eq!((row.y + row.height, row.height), (window.h, 1.0));
+        }
     }
 
     #[test]
