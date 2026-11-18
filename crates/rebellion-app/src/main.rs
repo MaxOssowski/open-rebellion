@@ -3330,30 +3330,12 @@ async fn main() {
                     system_audience(&world, completion.system),
                 ));
             }
-            for lost in &delivered.lost {
-                // Event 0x303, GameObjDestroyedOnArrivalNotif: Facility Lost
-                // (FUN_00497690) speaks for a facility only, to its side.
-                if let Some((title, text)) = rebellion_render::story_messages::facility_lost_texts(
-                    &world,
-                    lost.kind,
-                    &system_name(&world, lost.destination),
-                    &message_texts,
-                ) {
-                    msg_log.push(filed(
-                        GameMessage::at_system(
-                            lost.arrival_tick,
-                            text,
-                            MessageCategory::Manufacturing,
-                            lost.origin,
-                        )
-                        .with_title(title)
-                        // FUN_00497690 writes code 3.
-                        .with_advisor_event(3),
-                        MessageRail::Manufacturing,
-                        Some(RailAudience::side(lost.side == Faction::Alliance)),
-                    ));
-                }
-            }
+            // No message for `delivered.lost` (event 0x303,
+            // GameObjDestroyedOnArrivalNotif): its UI record (factory
+            // FUN_0043eca0, class 0x00659778) has `ret 4` at slot +0x1c
+            // (0x005ae1e0), the slot FUN_004974f0 calls to feed a builder,
+            // so Facility Lost (FUN_00497690) never receives it. A0
+            // 2026-11-18 edited saves part 8 f-07..f-09: none shown.
             // Notification 0x160, Facility Idle (FUN_0048be60): a manager's
             // remaining count reached 0. Only the holder's side hears it,
             // and only while the system has a facility of that area.

@@ -1411,7 +1411,9 @@ fn a_rerouted_facility_left_with_no_place_by_a_second_side_change_goes_without_a
     // FUN_00556390 -> slot +0xa8, FUN_004f6fd0 -> slot +0xf4,
     // GameObj_vtf4 FUN_004faf50 raises the destination-change count +0x42
     // to 1). The second finds no place and destroys it with reason 2
-    // (slot +0xac). Yet no Facility Lost: A0
+    // (slot +0xac). Yet no Facility Lost: the 0x303 UI record (class
+    // 0x00659778) has `ret 4` at slot +0x1c, so FUN_00497690 is never fed.
+    // A0
     // .artifacts/a0-vm/2026-11-18-edited-saves-8 f-05 (5959bf3fa11e, the
     // yard rerouted to Talus), f-06 (Talus lost on day 47), f-07..f-09
     // (423a00097b63, 897748b1bf99: no Facility Lost to day 94), and the
