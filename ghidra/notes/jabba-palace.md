@@ -345,3 +345,44 @@ Ported 2026-10-18 (plan 4):
   after each fire, whether or not the chance holds (2026-11-17). port: a
   save with BountyHuntersActive and no due day (saved after the old single
   fire) is armed again from the day it loads.
+
+## A0 of the bounty capture and the palace (2026-11-18, EVT-01-C018)
+
+Source: `.artifacts/a0-vm/2026-11-18-edited-saves-7/` (not committed; README
+there lists every save edit). Edited saves: timer `0x393` due on day 7, Han's
+combat 0, Luke's, Leia's and Chewbacca's espionage and combat 0. The edits
+make the day, Han's odds and the rescues' failure artificial; the texts,
+pictures, categories, order and Finder rows are the game's own. Pictures
+matched by pixel against STRATEGY.DLL (400x200 at (74, 82)); texts against
+TEXTSTRA RCDATA (`textstra-messages.json`).
+
+| Frame (sha256, 12 hex) | Original | Port | Result |
+|---|---|---|---|
+| b-01 (6c96789f4a1a), b-02 (edf6a01596c9) | "Han Solo Attacked by Bounty Hunters" / `0x7169`, picture 1052 (`0x41c`); "Han Solo Injured" beside it | `bounty_messages` `0x7168`/`0x7169` on `0x41c`; the Bounty hit's injury roll | match |
+| b-03 (4e404e563f01) | index: Captured by Bounty Hunters, Injured, three Rescue Attempt rows; no `0x1e0` "Han Solo Captured" row; the Rescue Attempt rows have no icon, the others the Mission icon 10910 (`0x2a9e`) | no `0x1e0` for Han with `bounty_captured` (2026-11-17); Rescue Attempt was on the Mission rail | fixed: Rescue Attempt has category 0 (`story-message-classes.md` row 13), `MessageRail::Unfiled` |
+| b-04 (5007de37a930) | `0x716c`/`0x716d` "Han Solo was captured by bounty hunters and taken to Jabba's Palace.", picture 1053 (`0x41d`) | the same ids and background | match |
+| b-05 (6e3778ef8d15) | "Han Solo Injured", picture 1050 (`0x41a`) | `pictures::injured` `0x41a`, `0x7160`/`0x7161` | match |
+| b-06..b-08 (289004507a08, 2565947f27f7, db6b3d7a649a) | `0x71ea`/`0x71eb` with the rescuer, background 1042 (`0x412`) under the portrait; no title image | `rescue_attempt_message`; the title image followed the Mission rail | fixed with b-03 (`row_icon` gives none for mask 0) |
+| b-09, b-10 (14023bc2188c, 144c42f9b68a) | each "Jabba Captures X" row comes with an older "X Injured" row | the failed rescuer was captured unhurt | fixed: slot `+0x20c` (`FUN_004ef480`) runs the injury roll slot `+0x2e4` (`FUN_004ef5f0`) before the capture; the port rolls `injury_roll` on the member's combat before `CharacterCaptured`. The app posts the injury (in `apply_mission_result`) before Jabba Captures, so the order matches |
+| b-11, b-12 (8861720e5021, ec2681b5c72b) | "Jabba Delivers Prisoners", picture 1066 (`0x42a`), "Jabba has deliverd Luke, Han, Chewbacca and Leia to Darth Vader.  They are now prisoners of the Empire." | `jabba_delivers_message` reads `0x7200`/`0x7201` (the typo is TEXTSTRA's) on `0x42a` (port: always `0x42a`) | match |
+| b-13, b-15, b-17 (68726be9377f, 85eceb6191f2, f423dd466cea) | `0x7156`/`0x7157` "{name} was captured by Jabba while attempting to rescue Han Solo.", picture 1065 (`0x429`), Mission title image | `jabba_captures_message` | match |
+| b-14, b-16, b-18 | "X Injured", `0x41a` | as b-05 | match |
+| b-19 (e4f53d49b065) | Personnel Finder on day 31: "Chewbacca - Jabba's Palace", "Han Solo - Jabba's Palace", "Leia Organa - Jabba's Palace", "Luke Skywalker - Jabba's Palace", no "( Captured )" | the abode rule of `character_text` gives the same text while they are in the palace | text matches; state differs, see below |
+
+Open (b-19): the Pickup's hit was on day 22 (Jabba Delivers Prisoners first
+listed on day 22, b-11), and on day 31 the Finder still places all four in
+the palace. The in-game save of the same run at day 34
+(`BNTY7D34`, 349f49a6506e) has no u32 `0x98000481` anywhere, and each of
+the four master character records (save offset `+0x3c`, the field that holds
+`0x92000121` Yavin for them on day 2) holds `0x90000109`, Coruscant, as does
+Vader's. So they leave the palace for Coruscant (Vader's `+0x70` home)
+between day 31 and day 34, 9 to 12 days after the hit (hyp: Coruscant
+is Vader's `+0x70`, where the Pickup's prisoners autoroute). The port moves them
+off the map the day after the hit (`EscapeeTransit`, arrival `now + 1`), so
+on day 31 its Finder reads "Luke Skywalker - Coruscant ( Captured )". What
+holds them (the Pickup's end, the Autorouting event's timing, or an abode
+trip's length) is not traced; the port is not changed.
+
+Not shown by these frames: the Empire's copies of Jabba Captures and Jabba
+Delivers Prisoners (the port posts both to both sides), the `0x42b` variant
+after Dagobah, and Bounty Hunters Locate Solo (Empire).

@@ -348,6 +348,13 @@ at Coruscant before play. The port's own `0x230` story event is removed.
   a `JabbaStep::Rescue` dispatches the Palace mission. port: the dispatch
   stands in for the rescuer's EnrouteActive, which the original sets as
   the rescuer leaves.
+- Category (2026-11-18): the constructor `FUN_0048c3a0` never writes the
+  class's `+0x34`, so it keeps `FUN_004c4d90`'s `FUN_006158b0()`, which is
+  `xor eax,eax; ret` (bytes `33 c0 c3` at `0x6158b0`): mask 0. The row has
+  no icon (`FUN_00468ab0`), only All Messages lists it (`FUN_00468f20`),
+  and it lights no rail control. A0 `2026-11-18-edited-saves-7` b-03 and
+  b-11 (no row icon) and b-06 (no title image). Port:
+  `MessageRail::Unfiled` (`jabba-palace.md`, "A0 of the bounty capture").
 
 ## Row 17, Character Discovers Traitor (2026-10-18)
 
