@@ -174,10 +174,9 @@ manager update; the port keeps the steps gated on `paused`). A beam's
 kill is the type-3 turn event, so a beam that ends while paused leaves
 its target alive until the battle resumes.
 
-Not settled: whether other scene frames (ships, fighter groups) carry
-move callbacks or velocities that the scene Move would also advance while
-paused. The port keeps them where the last step left them (`hyp:` they
-are placed only by the manager's update).
+Ships and fighter groups: A0 run 3 and run 4 (below) show no unit moving
+while paused, so whatever the scene Move advances, it does not move them.
+The port keeps them where the last step left them.
 
 ### Port (applied 2026-11-18)
 
@@ -203,6 +202,71 @@ hull's sequence), `configure_projectile_field_fixture` (projectiles at
 laser journey (it pauses to inspect the growing beam), and the
 battle-entry probe's re-pause stability check after a resumed stretch.
 
+Turn clock (applied 2026-11-18, after the A0 above): while paused,
+`advance_tactical_frame` adds the frame time to
+`BattleSession::paused_turn_seconds` once the clock has started
+(`turn_clock_started`: a step or a resumed frame has run, port of the
+first-update `+0x89c`). The first resumed frame calls
+`resume_paused_turn_clock`, which applies the `e % turn + turn` cut to the
+turn's phase in steps (`ORIGINAL_TACTICAL_TURN_STEPS`), so an overdue
+turn's steps run on that frame. The still fixtures' switch holds this
+clock too. The drawn interpolation fraction (`step_accumulator`) does not
+change while paused, so ships and fighter groups stay put. Tests:
+`a_beam_paused_mid_flight_ends_while_paused_and_kills_on_resume`,
+`projectiles_in_flight_finish_while_paused_and_ships_hold_still`,
+`a_long_pause_owes_one_turn_and_keeps_the_remainder_as_its_phase`,
+`a_pause_before_the_first_combat_frame_owes_no_turn`.
+
+port: the original runs a turn's updates at its start and interpolates the
+units by wall time (slot `+0x98`); the port's four 250 ms steps per turn
+mean the overdue turn's remaining steps (up to three) and the new phase's
+steps run together on the resumed frame.
+
+### The turn clock across a pause (read 2026-11-18)
+
+Where the combat steps stop: `FUN_005aacb0` (battle vt, called by
+`FUN_0059a6a0` from `FUN_0059a530` paused or not) runs the arrival states,
+then `FUN_005ada10`, then tests `+0x8c8` (`0x005aad2e`). Set, it calls the
+manager's slot `+0x7c` (`FUN_005ae1e0`, empty, in `0x66c7c8`) and returns;
+clear, it calls slot `+0x9c` (`0x005aad71`), the manager update
+`FUN_005bea30` (`FUN_005c0500` in `0x66c880` has the same clock).
+
+That update times turns with `timeGetTime`. Its first call (`+0x8c0` set)
+stores the start `+0x89c` (`0x005bea8a`) and the length `+0x8a8` = 1000.
+Each call takes `e = now - +0x89c`; if `e >= +0x8a8` it is cut to
+`e % 1000 + 1000` (`0x005beb48`-`0x005beb52`). With the turn's work done
+(`+0x8b0` = 5) a due turn advances `+0x878`, sets `+0x89c = now - (e -
+1000)` and runs the events stamped `+0x878 - 1` (`FUN_005a96b0`). The pause
+does not stop `timeGetTime`, so on the first update after a pause of a turn
+or more one overdue turn begins at once, and the next keeps the remainder
+`e % 1000` as its phase. Only one turn is caught up.
+
+So a superlaser kill that falls due during a pause runs on the first frame
+after Resume, not a turn's rest later.
+
+### A0 (2026-11-18, `.artifacts/a0-vm/2026-11-18-edited-saves-8`)
+
+Edited save (Death Star retyped ISD), genuine Empire player, Battle at
+Tokmia. Ignored store; nothing committed.
+
+- Run 3, `seq-p1-paused-projectiles` (p-01 `c529da2b0183`): Pause Battle
+  0.12 s after a laser shot was seen. Only a 10x17 px area changes, through
+  0.89 s after the press (the projectiles fly on and expire); then nothing
+  changes for 4 s. No ship moves.
+- Run 4, `seq-p2-paused-beam` (p-02..p-07): the beam started 0.20 s before
+  the press; paused, it grows (p-04 dt 0.527 s, p-05 full at 0.810 s) and
+  vanishes with its star at 0.841 s (life about 1.04 s); the target is
+  intact and nothing changes for 6 s (p-06, p-07).
+- Run 4, `seq-p3-resume-kill` (p-08 `f148a69ce41b`), times from the start
+  of the Resume hold-click: the button turns green at k0048 (0.246 s);
+  the "Battle Paused" text goes and the first fire pixel at the target
+  shows at k0076 (0.374 s); the fireball grows by k0097 (0.467 s). So the
+  kill came within about 0.13 s of the resume. The unpaused run 2 shows
+  the fire 0.04-0.17 s after the beam ends, so this is the overdue turn
+  beginning on the first update, as the clock above says.
+- No hull fireball ran during a pause in these runs.
+
+## Port consequence (applied)
 ## Port consequence (applied)
 
 The port fix belongs in `crates/rebellion-core/src/tactical.rs`.

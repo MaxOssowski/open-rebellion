@@ -191,6 +191,14 @@ together. The kill is the type-3 event one 1000 ms turn after the beam
 starts (`docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-death-star-shot-timing/`), so the
 target explodes as the beam reaches it.
 
+Paused (A0 2026-11-18, `.artifacts/a0-vm/2026-11-18-edited-saves-8`
+run 4): the beam's timer has no pause state, so a beam fired before the
+pause grows to full length and vanishes while paused, with the target
+intact. The kill waits for the manager update, which the pause skips; the
+turn clock is `timeGetTime`, so the overdue kill runs on the first update
+after Resume (fire within about 0.13 s of it). See
+`tactical-effect-call-rate.md` "The turn clock across a pause".
+
 The decal frame is the Death Star decal's. `FUN_005d4d10` sets that
 texture's `SetDecalOrigin(0x40, 0x40)` (texture slot `+0x48`), so the
 frame marks its texel (64, 64).
