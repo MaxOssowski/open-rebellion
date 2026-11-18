@@ -17,7 +17,7 @@
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node message-display.mjs [--out=DIR] [--faction=alliance|empire] [--only=CASE]
-//              [--a0-bombardment=DIR] [--a0-captures=DIR]
+//              [--a0-bombardment=DIR] [--a0-captures=DIR] [--a0-empire-captures=DIR]
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -3220,20 +3220,22 @@ async function ghormanAssault(browser, base) {
 // picture, the title image, the rail (Display's state) and the corners
 // every pixel A0's, A0's pointer left out, the white title and body ink
 // within A0's tolerance. The Empire
-// reads Leia Organa Captured (e-04, e-03). e-* load the Alliance game as
-// the Empire by the save's header byte only, so its messages stay built
-// for the Alliance (+0x20 = 1: "by the Empire" is FUN_004f3dd0's side
-// other than the reader, and e-03 lists the Alliance's Nebulon-B
-// research): the Empire's own case 4 text "Leia Organa was captured at
-// Yavin." (0x715b) has no A0 frame, so its body ink is compared at its
-// start only. The picture (0x418, the captive's side, FUN_004edc80), the
-// title image, the rail and the corners do not follow the message's reader
-// and are every pixel A0's; e-03's row icon too.
-// `--a0-captures=DIR` reads A0 from DIR (default the repository's
-// .artifacts/a0-vm/2026-11-17-edited-saves-6).
+// reads Chewbacca Captured, its own case 4 (0x715a / 0x715b, "Chewbacca
+// was captured at Yavin."), against A0 2026-11-18-edited-saves-9 (a
+// genuine, unedited Empire game; Vader abducted Chewbacca at Yavin):
+// a-07 (0510b22a2f72) the message, the picture (0x418, the captive's
+// side, FUN_004edc80), title image, rail and corners every pixel A0's,
+// the title and body ink within A0's tolerance; a-06 (fd256a8a0163) the
+// index, its third row's Mission icon, the rail and the corners.
+// `--a0-captures=DIR` reads the Alliance's A0 from DIR (default the
+// repository's .artifacts/a0-vm/2026-11-17-edited-saves-6),
+// `--a0-empire-captures=DIR` the Empire's (default
+// .artifacts/a0-vm/2026-11-18-edited-saves-9).
 const CAPTURE_MESSAGES = 143;
 const A0_CAPTURES = path.resolve(args["a0-captures"]
   ?? path.join(ROOT, ".artifacts/a0-vm/2026-11-17-edited-saves-6"));
+const A0_EMPIRE_CAPTURES = path.resolve(args["a0-empire-captures"]
+  ?? path.join(ROOT, ".artifacts/a0-vm/2026-11-18-edited-saves-9"));
 
 async function captureMessages(browser, base, faction) {
   const name = `${faction.name}-capture-messages`;
@@ -3252,8 +3254,9 @@ async function captureMessages(browser, base, faction) {
     const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
     return PNG.sync.read(bytes);
   };
-  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(A0_CAPTURES, file)));
   const alliance = faction.byte === 1;
+  const a0 = async (file) => PNG.sync.read(await fs.readFile(path.join(alliance ? A0_CAPTURES : A0_EMPIRE_CAPTURES,
+    file)));
   // A0's windows: the Alliance's at (62, 49), the Empire's at (125, 52).
   const origin = alliance ? [62, 49] : [125, 52];
   // Window-relative regions that differ from A0, the screen boxes in
@@ -3300,7 +3303,7 @@ async function captureMessages(browser, base, faction) {
     const expected = alliance
       ? ["Corfai Joins Enemy", "Vagran Joins Enemy", "Luke Goes to Dagobah", "Enemy Mission Foiled",
         "Han Solo Captured", "Han Solo Injured", "Enemy Mission Foiled"]
-      : ["Leia Organa Captured"];
+      : ["Chewbacca Captured"];
     const all = await waitReport(page, (value) => value.mode === "list" && value.rows.length === expected.length,
       "All Messages lists the scenario's rows");
     checks.rows = all.rows;
@@ -3323,15 +3326,15 @@ async function captureMessages(browser, base, faction) {
           + differ(index, listed, [left, top], [380, 0, 414, 40]),
       };
     } else {
-      // e-03: Leia Organa Captured is A0's seventh row, not chosen, so its
+      // a-06: Chewbacca Captured is A0's third row, not chosen, so its
       // item image holds all of the icon but its last column and row
-      // (FUN_00468ab0; the Alliance's unchosen rows above show it too);
-      // the port's row is chosen: the icon's 14 by 14 compared.
-      const index = await a0("e-03-han368-side2-empire-index-all-leia-organa-captured-row-d574.png");
+      // (FUN_00468ab0; the Alliance's unchosen rows show it too); the
+      // port's row is chosen: the icon's 14 by 14 compared.
+      const index = await a0("a-06-slot5-unedited-run3-index-all-chewbacca-captured-vader-mission-report-d199.png");
       const cell = icon.filter(([x, y]) => x < 14 && y < 14);
       checks.index = {
         origin: [left, top],
-        icon_a0: differing(index, [125 + 25 + 1, 52 + 108 + 21 * 6 + 1], cell),
+        icon_a0: differing(index, [125 + 25 + 1, 52 + 108 + 21 * 2 + 1], cell),
         icon_port: differing(listed, [left + 25 + 1, top + 108 + 1], cell),
         rail: differ(index, listed, [left, top], [414, 11, 468, 296]),
         corners: differ(index, listed, [left, top], [0, 0, 30, 22])
@@ -3353,9 +3356,10 @@ async function captureMessages(browser, base, faction) {
           "d-09-hancb1-msg-han-solo-injured-d368.png", [[455, 60, 490, 97]]],
       ]
       : [
-        [0, "Leia Organa Captured", "Leia Organa was captured at Yavin.",
-          "e-04-han368-side2-empire-msg-leia-organa-captured-by-the-empire-at-yavin-d574.png",
-          [[552, 150, 640, 200]]],
+        // a-07's pointer stands below the window, at (330..370, 405..445).
+        [0, "Chewbacca Captured", "Chewbacca was captured at Yavin.",
+          "a-07-slot5-unedited-run3-msg-chewbacca-captured-was-captured-at-yavin-d207.png",
+          [[330, 405, 370, 445]]],
       ];
     checks.messages = {};
     for (const [k, title, text, file, pointer, arrow] of messages) {
@@ -3404,13 +3408,7 @@ async function captureMessages(browser, base, faction) {
       assert.deepEqual([c.origin, c.picture, c.title_image, c.rail, c.corners], [origin, 0, 0, 0, 0],
         `${key}: ${JSON.stringify(c)}`);
       assert.ok(near(c.title.a0, c.title.port), `${key}: ${JSON.stringify(c)}`);
-      // The Empire's case 4 body differs from A0's Alliance-built text
-      // after "captured": only its start is A0's.
-      if (alliance) assert.ok(near(c.body.a0, c.body.port), `${key}: ${JSON.stringify(c)}`);
-      else {
-        assert.ok(c.body.a0 && c.body.port && Math.abs(c.body.a0[0] - c.body.port[0]) <= 2
-          && Math.abs(c.body.a0[1] - c.body.port[1]) <= 2, `${key}: ${JSON.stringify(c)}`);
-      }
+      assert.ok(near(c.body.a0, c.body.port), `${key}: ${JSON.stringify(c)}`);
     }
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, case: "capture-messages", status: "pass", checks };

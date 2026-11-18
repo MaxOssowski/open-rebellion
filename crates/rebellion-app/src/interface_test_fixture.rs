@@ -7195,12 +7195,10 @@ pub fn post_own_capture_message(
 /// case 3, d-08), Han Solo Injured (`FUN_0048fdf0`, d-09) and Enemy
 /// Mission Foiled again.
 ///
-/// The Empire reads Leia Organa taken by the Empire at Yavin
-/// (`FUN_00490340`, e-03, e-04). e-* load the same game as the Empire by
-/// its header byte only: the messages stay built for the Alliance
-/// (`+0x20` = 1; e-04's "by the Empire" is `FUN_004f3dd0`'s side other
-/// than the reader, e-03 lists the Alliance's Nebulon-B research), so the
-/// Empire's own text, case 4, has no A0 frame.
+/// The Empire reads Chewbacca taken at Yavin (`FUN_00490340` case 4,
+/// TEXTSTRA `0x715a` / `0x715b`) as A0 2026-11-18-edited-saves-9 a-07
+/// shows it in a genuine, unedited Empire game ("Chewbacca was captured
+/// at Yavin.", after Vader's Abduction; a-06 lists the row).
 pub fn post_capture_messages(
     request: FixtureRequest,
     world: &mut GameWorld,
@@ -7228,10 +7226,10 @@ pub fn post_capture_messages(
         return;
     };
     if request.faction == CockpitFaction::Empire {
-        if let Some(leia) = character(world, "Leia Organa") {
+        if let Some(chewbacca) = character(world, "Chewbacca") {
             if let Some(message) = rebellion_render::story_messages::captured_message(
                 Some(yavin),
-                &world.characters[leia],
+                &world.characters[chewbacca],
                 false,
                 "Yavin",
                 request.faction,
@@ -12907,10 +12905,10 @@ mod tests {
     }
 
     // A0 2026-11-17-edited-saves-6 d-07 (sha256 in its SHA256SUMS): the
-    // Alliance's All Messages newest first; e-03 / e-04: Leia Organa
-    // Captured in the Empire cockpit. Our own fixture's order.
+    // Alliance's All Messages newest first; 2026-11-18-edited-saves-9 a-07:
+    // Chewbacca Captured in the Empire cockpit. Our own fixture's order.
     #[test]
-    fn the_capture_messages_scenario_files_d07s_rows_and_the_empires_capture_of_leia() {
+    fn the_capture_messages_scenario_files_d07s_rows_and_the_empires_capture_of_chewbacca() {
         let texts: std::collections::HashMap<u16, String> = [
             (0x7039, "{1:1} Joins Enemy"),
             (0x703c, "{1:1} has decided to join the {2:1}."),
@@ -12941,7 +12939,7 @@ mod tests {
             for (key, name) in keys.into_iter().zip(["Yavin", "Corfai", "Vagran"]) {
                 world.systems[key].name = name.into();
             }
-            for name in ["Han Solo", "Leia Organa"] {
+            for name in ["Han Solo", "Leia Organa", "Chewbacca"] {
                 world.characters.insert(rebellion_core::world::Character {
                     name: name.into(),
                     is_alliance: true,
@@ -12998,12 +12996,14 @@ mod tests {
             alliance[3].1,
             "An enemy Espionage mission to Yavin has been foiled by our forces."
         );
-        // FUN_00490340 case 4 for the captor (0x715a / 0x715b).
+        // FUN_00490340 case 4 for the captor (0x715a / 0x715b), as A0
+        // 2026-11-18-edited-saves-9 a-07 (0510b22a2f72, an unedited Empire
+        // game) reads it.
         assert_eq!(
             titles(CockpitFaction::Empire),
             [(
-                "Leia Organa Captured".to_owned(),
-                "Leia Organa was captured at Yavin.".to_owned()
+                "Chewbacca Captured".to_owned(),
+                "Chewbacca was captured at Yavin.".to_owned()
             )]
         );
         assert_eq!(Scenario::decode(142), Some(Scenario::CaptureMessages));
