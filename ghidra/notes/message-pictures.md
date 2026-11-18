@@ -53,7 +53,7 @@ by 310.
 | Enemy Mission Foiled | `0x1f1` | `FUN_00491500` | `0x431` / `0x432` | — |
 | Personnel Arrive | `0x200` | `FUN_004955b0`, `FUN_00495bf0` | `0x412` / `0x413`; special forces alone: their own picture | the arriving character |
 | Units Deployed | `0x107` | `FUN_00497940` | the new unit's own picture | — |
-| Facility Lost | `0x303` | `FUN_00497690` | `0x3f7` / `0x3f8` | — |
+| Facility Lost (never built: the `0x303` record's slot `+0x1c` is `ret 4`, `facility-autoroute-on-side-change.md`) | `0x303` | `FUN_00497690` | `0x3f7` / `0x3f8` | — |
 | Ships or Fleet Arrive | `0x105` | `FUN_004981c0` cases 1, 2 | `0x3fa` / `0x3fb` | — |
 | Units Arrive | `0x105` | `FUN_004981c0` case 3 | `0x3fc` / `0x3fd` | — |
 | Headquarters Arrives | `0x105` | `FUN_004981c0` case 4 | `0x3fe`, Alliance only | — |

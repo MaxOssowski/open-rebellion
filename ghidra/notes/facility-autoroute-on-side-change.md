@@ -1,6 +1,6 @@
 ---
 title: "A facility under construction or en route when its system changes sides"
-description: "FUN_004f8680's Autorouting branch, the 0x307 handler's search and reason-2 destruction, and why no Facility Lost (0x303) follows a first trip"
+description: "FUN_004f8680's Autorouting branch, the 0x307 handler's search and reason-2 destruction, and why the original never shows Facility Lost (0x303)"
 category: "ghidra"
 created: 2026-11-17
 updated: 2026-11-18
@@ -167,40 +167,50 @@ Traced 2026-11-18:
    `+0x184`, `FUN_004fc080`. The notifier raises nothing for the master
    (`FUN_0053a010`: `+0x24 & 0x30`, the view index, must be set); a view
    copy with EnrouteActive and the count raises `0x302` then `0x303`.
-3. **Where it can still drop.** `FUN_005400f0` writes the record's `+0x18`
-   = the view index (`+0x24 >> 4 & 3`, setter `FUN_00540650`), and
-   `FUN_004365d0` hands it to player 1 or 2 by it (else deletes it). The
-   `0x303` record (factory `FUN_0043eca0`, class `0x00659778`) is kind 3
-   (`FUN_00526f00`): `FUN_0051e770` files it in a group keyed by (kind,
-   code, view, ctx `+0x14`, ctx `+0x18`) (`FUN_0051e910`, `FUN_00569060`)
-   under a batch id from `FUN_004fd2e0` (hook `DAT_006b2af4`, not read).
-   `FUN_00488de0` gives the whole batch the message type of the **first**
-   record that maps. `0x302` of a non-system maps to nothing and `0x303`
-   to `0x10` (Facility Lost), but a system's `0x100` maps to 4, System
-   Joins (`FUN_00499760`), which keeps its message only when the system's
-   `+0x88 & 0x2000` is set.
-   **hyp:** the `0x303` rides in the side change's batch behind the system's
-   `0x100`; the batch maps to type 4, whose builder drops it (no "Talus
-   Joins Enemy" in f-07), and Facility Lost is never built. Not read: when
-   the queued `0x307` (`FUN_0053f950` -> `FUN_0053fcb0`, ctx kept) is
-   handled, the batch's record order, and `DAT_006b2af4`.
-4. The builder `FUN_00497690` itself: the record's object in the reader's
-   table (`FUN_004f2d10`, any family), its second key a system there
-   (`FUN_004f3220`; the copy's container), once per builder; a facility
-   (`0x20..0x2f`) always keeps it (`+0x40 = 1`), another family only with
-   `+100` set (0 from `FUN_00497560`/`FUN_004975e0`).
+3. **The batch.** `FUN_005400f0` writes the record's `+0x18` = the view
+   index (`+0x24 >> 4 & 3`, setter `FUN_00540650`), and `FUN_004365d0`
+   hands it to player 1 or 2 by it (else deletes it). The `0x303` record
+   (factory `FUN_0043eca0`, the only registration, `FUN_0041e580`; class
+   `0x00659778`) is kind 3 (`FUN_00526f00`): `FUN_0051e770` files it in a
+   group keyed by (kind, **code**, view, ctx `+0x14`, ctx `+0x18`)
+   (`FUN_0051e910`; equality `FUN_00569060` and order `FUN_005690b0` over
+   all five). A new group takes a new batch id from `FUN_004fd2e0`: hook
+   `DAT_006b2af4` = `0x004fd240` (set in `FUN_004fcde0`), which increments
+   and returns the counter at `+0x14` of `FUN_0051ce00()`'s object. So a
+   batch holds records of one code only, and the earlier hypothesis (the
+   `0x303` riding behind the side change's `0x100` and System Joins
+   dropping the batch) is **refuted**: a `0x303` batch maps to type `0x10`
+   (`FUN_00488de0`) and builds the Facility Lost class `0x0065b8b8`
+   (`FUN_00489740` case `0x10`, `FUN_004975e0`).
+4. **The record never feeds that class.** `FUN_00489740` feeds every
+   record of the batch to the new class with `FUN_004974f0`, which calls
+   the **record's** slot `+0x1c`. Class `0x00659778`'s vtable, read from
+   REBEXE.EXE: `+0x0c` `0x5639c0` (returns `0x303`), `+0x10` `0x526f00`
+   (kind 3), `+0x18` and `+0x1c` both `0x5ae1e0`, which is `c2 04 00`
+   (`ret 4`). Compare `0x304`'s record (class `0x00659798`, factory
+   `FUN_0043ed60`): slot `+0x1c` `0x43edd0` calls the message class's slot
+   `+0x1c` with its code and keys, which is how Maintenance Shortfall
+   (`FUN_00498970`) gets built. No other record class returns `0x303`
+   (`FUN_005639c0` is its only `return 0x303`), and `FUN_00497690` has no
+   caller outside the vtable. So `FUN_00497690` never sees `0x303`,
+   `+0x40` stays 0, and `FUN_00489740` deletes the class unfiled.
+   **Facility Lost (TEXTSTRA `0x70b0`/`0x70b1`, pictures `0x3f7`/`0x3f8`)
+   is never shown by the original**, whatever destroys an en-route object
+   with a count. A0 part 8 (count 1, second loss, no message) agrees.
+5. The builder `FUN_00497690` as written (dead): the record's object in
+   the reader's table (`FUN_004f2d10`), its second key a system there
+   (`FUN_004f3220`), once per builder; a facility (`0x20..0x2f`) keeps it,
+   another family only with `+100` set.
 
-**Recipe for an A0 Facility Lost (hyp):** a `0x303` whose batch has no
-earlier mapped record, i.e. a rerouted facility (count 1) destroyed while
-still en route by something other than a side change or a system's
-destruction (a destroyed system's `0x302` maps to `0x15` first). Candidate:
-the maintenance autoscrap (reason `0x15`; `FUN_004fc080` raises `0x302`,
-`0x303`, then `0x304`, so `0x303` maps first, `0x10` over `0xc`). Edited
-save as FAC2 but with the only free place far from Corsin (a long second
-leg), flip Corsin, then before the yard arrives push the Alliance into a
-maintenance shortfall (edit its stock or maintenance) and watch the
-Manufacturing index for Facility Lost in place of Maintenance Shortfall.
-Which object the autoscrap picks was not traced.
+The `0x307` timing (`FUN_0053f950` queues it through `FUN_0053ff90`, which
+copies the ctx with `FUN_004fd490`, then `FUN_0053fcb0` -> `FUN_0053fcd0`
+-> `FUN_004fd390` -> hook `DAT_006b2af8`) and the maintenance autoscrap's
+choice of object no longer matter for this cell and were not followed.
+
+**A0:** no recipe can show Facility Lost. Part 8 is already a run where
+the trace says `0x303` was raised (count 1) and nothing was shown.
+Ledger: OBJ-09-C008 is a candidate for "absent state, excluded after a
+trace" (user rule 2026-11-10); that is the owner's call.
 
 hyp: the side-view copies (`FUN_00539fd0(1)`/`(2)`) carry their own `+0x40`
 and `+0x50` (`FUN_004fa2a0` syncs byte 2), so the notifier reads the same
@@ -236,7 +246,8 @@ product. hyp: the manager then takes its next unit; the queue walk after
   original's `0x387` still fires on the old day and `FUN_00556620` starts
   the leg on);
 - not found and en route: removed, with no message (a first trip: count
-  0; a trip already rerouted: A0 part 8 shows no message, section above);
+  0; a trip already rerouted: `0x303` is raised but never becomes a
+  message, section above);
 - not found and unfinished (2026-11-18): destroyed with no message, with
   its queued unit. port: the world holds no queues, so the product waits in
   `Products::lost` (not saved) until `products::destroy_lost` takes it and
@@ -252,11 +263,12 @@ Not changed (follow-ups):
 - 2026-11-18 (part 8): the port already removes a rerouted yard with no
   place silently; pinned by
   `a_rerouted_facility_left_with_no_place_by_a_second_side_change_goes_without_a_message`
-  (`products_tests.rs`). Open: `DeliveryState::advance` still files
-  Facility Lost (`lost`) for a rerouted delivery whose destination is
-  destroyed again. By the hyp of step 3 that batch maps to the destroyed
-  system's `0x302` (type `0x15`) first, so the original may show none
-  there either; no A0 for it.
+  (`products_tests.rs`). After step 4, the app loop no longer files a
+  Facility Lost for `DeliveryAdvance::lost` (a rerouted delivery whose
+  destination is destroyed again); `lost` stays as the `0x303` event
+  (telemetry `EVT_DESTROYED_ON_ARRIVAL`). The interface fixture
+  (`interface_test_fixture::lost_facility`) still draws the message for
+  the ledger cell until the owner decides on exclusion.
 - Fixed the same day: `DeliveryState::advance` filed `lost` (Facility
   Lost) for a delivery that reached a destroyed system and found no place
   on its first trip. It now files it as `scrapped` (silent); `lost` keeps
@@ -287,5 +299,7 @@ In full: `004f8680`, `004f78e0`, `004f6b50`, `00515480`, `00555410`,
 `00497560`, `004975e0`, `004977b0`, `00498970`, `0043eca0`, `0043ec50`,
 `00526f00`, `0051d910`, `0051e670`, `0051e6a0`, `0051e770`, `0051e910`,
 `0051e9a0`, `00569060`, `005690b0`, `004365d0`, `004bef90`, `004befe0`,
-`00488b50`, `0053f9c0`, `0053f950`, `0052bee0`. In part: `00488de0`,
+`00488b50`, `0053f9c0`, `0053f950`, `0052bee0`, `0053ff90`, `0053fcb0`,
+`0053fcd0`, `004fd390`, `004fd490`, `0043edd0`, `0051f770`; disassembled
+`0x4fd240`, `0x5ae1e0`, vtables `0x659778` and `0x659798`. In part: `00488de0`,
 `00489740`, `00568de0`, `00499760`.
