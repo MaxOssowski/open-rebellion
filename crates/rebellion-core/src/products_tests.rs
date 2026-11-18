@@ -1236,6 +1236,48 @@ fn a_regiment_or_squadron_on_its_trip_into_a_system_is_pending_there() {
 }
 
 #[test]
+fn a_queued_regiment_squadron_or_battery_refuses_its_systems_defenses_scrap() {
+    // FUN_00512700 kind 8, 0x200: regiments, squadrons and defense
+    // facilities in mode 3; FUN_004f9860 refuses one not completed (status
+    // 2). Special forces and ships are not in Scrap's team. A0
+    // 2026-11-19-edited-saves-10 c-01.
+    let kinds: [(fn(&Setup) -> BuildableKind, bool); 5] = [
+        (|_| BuildableKind::Troop(DatId::new(0x1000_0002)), true),
+        (|s| BuildableKind::Fighter(s.tie), true),
+        (
+            |_| {
+                BuildableKind::DefenseFacility(crate::manufacturing::FacilityBuild {
+                    class: DatId::new(0x2200_0001),
+                    is_alliance: false,
+                })
+            },
+            true,
+        ),
+        (
+            |_| BuildableKind::SpecialForce(DatId::new(0x3c00_0002)),
+            false,
+        ),
+        (|s| BuildableKind::CapitalShip(s.carrack), false),
+    ];
+    for (kind, refused) in kinds {
+        let mut s = setup();
+        let kind = kind(&s);
+        s.manufacturing
+            .enqueue(s.yard, QueueItem::new(kind, 5).delivered_to(s.there));
+        reconcile(&mut s.world, &s.manufacturing);
+        assert_eq!(s.world.products.all().len(), 1, "{kind:?}");
+        assert_eq!(
+            defenses_scrap_refused(&s.world, s.there, false),
+            refused,
+            "{kind:?}"
+        );
+        // The other side's, or another system's, refuses nothing.
+        assert!(!defenses_scrap_refused(&s.world, s.there, true), "{kind:?}");
+        assert!(!defenses_scrap_refused(&s.world, s.yard, false), "{kind:?}");
+    }
+}
+
+#[test]
 fn the_current_ship_product_is_the_yards_oldest_still_being_built() {
     // FUN_00509670(system, 0): the system's ship manager; its ProductKey
     // (+0x74) is the first queued unit not yet completed.

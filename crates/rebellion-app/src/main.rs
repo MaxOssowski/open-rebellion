@@ -12623,8 +12623,11 @@ fn order_gates(
                 quadrant: Quadrant::Defenses,
             } = object
             {
+                // Its unfinished or travelling products too (FUN_004f9860
+                // status 2 and 4; A0 2026-11-19-edited-saves-10 c-01, c-05).
                 if troop_transport_state.surface_arrival_pending(world, system, is_alliance)
                     || delivery_state.surface_arrival_pending(system, side)
+                    || rebellion_core::products::defenses_scrap_refused(world, system, is_alliance)
                 {
                     return false;
                 }
@@ -18324,6 +18327,75 @@ mod fleet_move_tests {
         );
         assert_eq!(deliveries.en_route()[0].side, Faction::Alliance);
         assert_eq!(gates(&w.world, &deliveries), (false, false));
+    }
+
+    #[test]
+    fn a_defenses_icons_scrap_is_disabled_while_a_regiment_for_the_system_is_queued_or_on_its_way() {
+        // FUN_00512700 kind 8, order 0x200: Scrap's team walks the
+        // regiments (FUN_00504c40), squadrons (FUN_00503a50) and defense
+        // facilities (FUN_00527050) in mode 3, so an unfinished product
+        // ordered for the system, or a finished one travelling in, is in
+        // it; its scrap check FUN_004f9860 refuses status 2 (not completed)
+        // and 4 (en route) (ghidra/notes/scrap-order.md). Move skips status
+        // 2 for 0x204 (FUN_0053c100). A0 2026-11-19-edited-saves-10 (the
+        // Empire, Corfai): a-08 all white; c-01 queued, Move white and Scrap
+        // grey; c-05 trained and en route, Move and Scrap grey; c-09 white.
+        use rebellion_core::manufacturing::{BuildableKind, CompletionEvent, QueueItem};
+        let mut w = defenses_world();
+        let troop = w.world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        w.world.systems[w.destination].ground_units.push(troop);
+        if let Some(class) = w.world.buildable_classes.get_mut(&DatId::new(0x1000_0001)) {
+            class.is_alliance = true;
+        }
+        let gates = |world: &GameWorld| {
+            let gates = order_gates(
+                Some(MenuObject::SystemIcon {
+                    system: w.destination,
+                    quadrant: Quadrant::Defenses,
+                }),
+                world,
+                &MissionState::new(),
+                &MovementState::new(),
+                &TroopTransportState::new(),
+                &DeliveryState::new(),
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                MissionFaction::Alliance,
+                0,
+            );
+            (gates.defenses_move, gates.scrap)
+        };
+        assert_eq!(gates(&w.world), (true, true));
+        let kind = BuildableKind::Troop(DatId::new(0x1000_0001));
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.enqueue(
+            w.origin,
+            QueueItem::new(kind, 10).delivered_to(w.destination),
+        );
+        rebellion_core::products::reconcile(&mut w.world, &manufacturing);
+        assert_eq!(w.world.products.in_system(w.destination).count(), 1);
+        assert_eq!(gates(&w.world), (true, false), "queued");
+        rebellion_core::products::settle(
+            &mut w.world,
+            vec![CompletionEvent {
+                system: w.origin,
+                tick: 0,
+                kind,
+                name: None,
+                fleet: None,
+            }],
+            Vec::new(),
+        );
+        let id = w.world.products.all()[0].id;
+        let day = w.world.products.arrival(id).expect("on its trip");
+        assert_eq!(gates(&w.world), (false, false), "en route");
+        rebellion_core::products::arrive(&mut w.world, day);
+        assert!(w.world.products.all().is_empty());
+        assert_eq!(gates(&w.world), (true, true), "arrived");
     }
 
     /// The Alliance's fleet at its held origin carrying two regiments, and

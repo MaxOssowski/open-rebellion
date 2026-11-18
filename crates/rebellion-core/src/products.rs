@@ -686,6 +686,26 @@ pub fn surface_arrival_pending(world: &GameWorld, system: SystemKey, is_alliance
     })
 }
 
+/// A regiment, squadron or defense facility of the side `is_alliance` in
+/// `system` that is unfinished or travelling in. The defenses icon's Scrap
+/// team (`FUN_00512700` kind 8, order `0x200`: `FUN_00504c40`,
+/// `FUN_00503a50`, `FUN_00527050`, each in mode 3) holds it, and its scrap
+/// check `FUN_004f9860` refuses status 2 (not completed) and 4 (en route)
+/// (`ghidra/notes/scrap-order.md`), so the icon's Scrap is refused. A0
+/// 2026-11-19-edited-saves-10 c-01 (queued) and c-05 (en route).
+#[must_use]
+pub fn defenses_scrap_refused(world: &GameWorld, system: SystemKey, is_alliance: bool) -> bool {
+    world.products.in_system(system).any(|product| {
+        product.is_alliance == is_alliance
+            && matches!(
+                product.kind,
+                BuildableKind::Troop(_)
+                    | BuildableKind::Fighter(_)
+                    | BuildableKind::DefenseFacility(_)
+            )
+    })
+}
+
 /// The current product of `system`'s ship manager (`FUN_00509670(system,
 /// 0)`, its ProductKey `+0x74`): the oldest of its products still being
 /// built, wherever it stands.

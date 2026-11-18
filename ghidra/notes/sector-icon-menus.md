@@ -302,6 +302,18 @@ covers the mission icon's menu only.
   hyp: most refusals' two status words are not read and take the
   generic reaction; a character's or special force's Move to another
   side's system sends `1`/`0x28`.
+- The defenses icon's Scrap (2026-11-19): `FUN_00512700` kind 8 for
+  `0x200` walks the regiments (`FUN_00504c40`), squadrons (`FUN_00503a50`)
+  and defense facilities (`FUN_00527050`), each in mode 3, so an
+  unfinished product ordered for the system and a finished one on its way
+  in are members; each one's `FUN_004f9860` refuses status 2 and 4, so
+  Scrap is grey (`products::defenses_scrap_refused`). Move's `0x204` skips
+  status 2 (`FUN_0053c100`), so a queued product leaves Move white. A0
+  2026-11-19-edited-saves-10: c-01 (queued: Move white, Scrap grey), c-05
+  and a-03 (en route: Move, Confirmed Move, Scrap grey), c-09 and a-08
+  (arrived: white). Every icon kind's menu keeps its last lit row after
+  the pointer leaves (one Game Menu Window, `FUN_004aab50` `+0x118`; A0
+  b-02..b-04 fleet, b-07..b-09 facility, a-02 defenses).
 - The drag image is not drawn, and Ctrl's multiple selection is not
   ported.
 - The fleet icon's Move never asks (2026-11-11). By `FUN_00487cc0`
