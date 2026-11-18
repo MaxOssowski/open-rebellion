@@ -1907,17 +1907,20 @@
         {
           "id": "CMD-02-C024",
           "requirement": "fleet",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-fleet-marks/",
             "tools/interface-parity/run.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/",
             "ghidra/notes/gid-fleet-marks.md",
-            "commit 95ed1655 (batch b243 green, WASM f1c99f18)"
+            "commit 95ed1655 (batch b243 green, WASM f1c99f18)",
+            ".artifacts/a0-vm/2026-11-18-edited-saves-7/README.md (local only)",
+            ".artifacts/interface-parity/gid-a0-2026-11-18T05-47-53-688Z/result.json",
+            "tools/interface-parity/gid-a0.mjs"
           ],
-          "note": "Fleet marks for both sides and the both-sides art 10160 follow FUN_0042b330 cases 0x20..0x22, run in the Linux GID gate; mixed-fleet allegiance and A0 are open. 2026-11-11 b191: one-side Idle Fleets marks (Alliance 10148, Empire 10151) match A0 pixel for pixel; no A0 shows the both-sides mark 10160. 2026-11-17: A0 .artifacts/a0-vm/2026-11-17-edited-saves-6 a-00..a-05: own en-route fleets draw 10151 at once; no enemy en-route mark (10160) was drawn in four runs and about 150 game days, and enemy fleets showed only as Battle Alerts (a-03, a-04). Inference, not trace: FUN_004feea0 counts only enemy fleets the player knows of. Still no A0 frame of 10160. 2026-11-17 trace (ghidra/notes/gid-fleet-marks.md): FUN_0042b330 walks the player's copy of the system (FUN_004f2d10), so FUN_004feea0 counts only the enemy fleets that copy holds. An enemy fleet's copy freezes before its en-route bit is set (FUN_004fb760) and goes to the side's 0xf2 container (FUN_004f9d40, FUN_004fca30, FUN_004fcb50), so Fleets Enroute never counts an enemy fleet after a move; only an intelligence push during its transit could (hyp, not ported). 10160 appears on Idle Fleets when the player's and an enemy fleet orbit one system. This matches A0 2026-11-17-edited-saves-6. The port (95ed1655, batch b243, WASM f1c99f18) now counts own fleets live, enemy idle fleets live where seen or from the frozen copy, and no enemy fleet en route; fixture scenario FleetsBothSides (enum 143) shows 10160. Still open: an A0 frame of 10160 on Idle Fleets (both fleets in one orbit) and a browser gate case for it.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Fleet marks for both sides and the both-sides art 10160 follow FUN_0042b330 cases 0x20..0x22, run in the Linux GID gate; mixed-fleet allegiance and A0 are open. 2026-11-11 b191: one-side Idle Fleets marks (Alliance 10148, Empire 10151) match A0 pixel for pixel; no A0 shows the both-sides mark 10160. 2026-11-17: A0 .artifacts/a0-vm/2026-11-17-edited-saves-6 a-00..a-05: own en-route fleets draw 10151 at once; no enemy en-route mark (10160) was drawn in four runs and about 150 game days, and enemy fleets showed only as Battle Alerts (a-03, a-04). Inference, not trace: FUN_004feea0 counts only enemy fleets the player knows of. Still no A0 frame of 10160. 2026-11-17 trace (ghidra/notes/gid-fleet-marks.md): FUN_0042b330 walks the player's copy of the system (FUN_004f2d10), so FUN_004feea0 counts only the enemy fleets that copy holds. An enemy fleet's copy freezes before its en-route bit is set (FUN_004fb760) and goes to the side's 0xf2 container (FUN_004f9d40, FUN_004fca30, FUN_004fcb50), so Fleets Enroute never counts an enemy fleet after a move; only an intelligence push during its transit could (hyp, not ported). 10160 appears on Idle Fleets when the player's and an enemy fleet orbit one system. This matches A0 2026-11-17-edited-saves-6. The port (95ed1655, batch b243, WASM f1c99f18) now counts own fleets live, enemy idle fleets live where seen or from the frozen copy, and no enemy fleet en route; fixture scenario FleetsBothSides (enum 143) shows 10160. Still open: an A0 frame of 10160 on Idle Fleets (both fleets in one orbit) and a browser gate case for it. 2026-11-18 A0 .artifacts/a0-vm/2026-11-18-edited-saves-7 a-02 (unedited save ALHQ-d2, day 9, b81e3db3c664): Idle Fleets (Alt+3) draws 10160 at Coruscant's cell (226,150 in 640x480 game space) on the frame Fleet 2 arrives in orbit with the known Imperial Fleet 3, about 0.09 s before the Battle Alert covers it; a-01 (29e1f70b3f03) shows 10150 in the same cell before. The gid-a0 gate (tools/interface-parity/gid-a0.mjs, case both_sides, dfdff00e) opens the FleetsBothSides fixture in the Linux browser: the port draws only 10160, at its formula corner (249,83), and all 53 non-key pixels equal A0's (both a0f0a894db5a). Run .artifacts/interface-parity/gid-a0-2026-11-18T05-47-53-688Z (idle-fleets-both-sides.png ba15ee537f0e), batch b249 green, WASM b1a2b90b.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-02-C025",
@@ -10969,9 +10972,12 @@
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "crates/rebellion-render/src/video_player.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
+            ".artifacts/a0-vm/2026-11-18-edited-saves-7/README.md (local only)",
+            "ghidra/notes/tactical-death-star-path.md",
+            "commit 9171ba55 (batch b249 green)"
           ],
-          "note": "Native routes a successful trench run to 201 and the browser now plays it through the page's <video> (video_player.rs web, 2026-10-30); not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-success (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 201.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-24-614Z-3417942). No A0 capture of a trench run.",
+          "note": "Native routes a successful trench run to 201 and the browser now plays it through the page's <video> (video_player.rs web, 2026-10-30); not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-success (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 201.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-24-614Z-3417942). No A0 capture of a trench run. 2026-11-18 A0 .artifacts/a0-vm/2026-11-18-edited-saves-7 runs d/e (edited save ALHQ-d2-trench1 42783048ab94: Judicator retyped to the Death Star, Coruscant's TIEs moved away, a Bulk Cruiser retyped to an Escort Carrier; no commander in the fleet): Attack Death Star greyed (d-06 fd53fd0aac92) then available (d-07 8a758bdf4ec2), film 201 (39 s; d-11 a5e58bbbe3ef, d-12b b42b3a37a925), back to the tactical view, result 'The Alliance fleet is victorious' with the Death Star destroyed (d-14 56b287e7cb22, d-15 3c02b66f3450). This exposed a wrong port rule: FUN_005d04e0 (disassembly 0x5d0570..0x5d0768, a copy of FUN_005aefc0) queues members (a miss goes to the back, failure after 1001 visits), damages 1..hull/8 times 8.0, and succeeds on 1..100 <= (hull/full x torpedoes x 0.5333 + rating capped at 9) x 0.5; the port used the commander rating alone, giving a commander-less run 1 in 100. Fixed in 9171ba55 (port: draws run on a hull copy so a hull-0 fighter stays in the run until the result); trench gates pass on both sides and viewports, batch b249 green, WASM b1a2b90b. Success odds are not compared (the A0 runs use edited saves).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10982,9 +10988,10 @@
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "crates/rebellion-render/src/video_player.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
+            "commit 9171ba55 (batch b249 green)"
           ],
-          "note": "As the successful run, with 202; the browser plays it since 2026-10-30; not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-failure (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 202.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-40-880Z-3418826). No A0 capture of a trench run.",
+          "note": "As the successful run, with 202; the browser plays it since 2026-10-30; not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-failure (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 202.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-40-880Z-3418826). No A0 capture of a trench run. 2026-11-18: the failed run follows the corrected FUN_005d04e0 rules (9171ba55); its browser fixture keeps the failure with 0 torpedoes and still routes through 202 on both sides (batch b249). No A0 of film 202: every edited-save attempt in .artifacts/a0-vm/2026-11-18-edited-saves-7 succeeded; a reduced setup (ALHQ-d2-trench2 df78f1d09f4c) lost its fighters before Attack Death Star became available.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
