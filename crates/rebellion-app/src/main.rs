@@ -2379,6 +2379,18 @@ async fn main() {
                 // after the battle show the fleets that remain there.
                 FogSystem::seed(&mut fog_alliance_state, &world);
                 FogSystem::seed(&mut fog_empire_state, &world);
+                // port: a campaign battle's sides held live copies of the
+                // system while their fleets were there (FUN_004f9a60), and
+                // the sector window reads the viewer's copy (FUN_0045bbb0,
+                // ghidra/notes/fog-of-war.md): A0 TAC-07-C014 shows the
+                // Imperial fleet and facility to the Alliance after its last
+                // ship died. The fixture's world never ran that view step.
+                rebellion_core::object_views::seed_from_fog(
+                    &mut world,
+                    &troop_transport_state,
+                    &movement_state,
+                    [&fog_alliance_state, &fog_empire_state],
+                );
                 // The queued story movie needs a clock that is not paused
                 // (FUN_0041dc10); the summary itself holds the days.
                 if request.summary_story_movie {
