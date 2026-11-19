@@ -13903,6 +13903,18 @@ fn apply_panel_action(
                     blockade_state.record_losses(*system, *losses);
                 }
                 log_assault(world, system, &outcome, clock.tick, msg_log);
+                // The landed regiments take the system in the assault's own
+                // pass (FUN_00508660 -> FUN_0050b610 -> FUN_00510d70, event
+                // 0x31b -> FUN_00517aa0 -> FUN_005180e0 for Coruscant), so
+                // the victory word settles on the assault's day (A0
+                // 2026-11-17-edited-saves-5 run 2: day 94 throughout).
+                tactical_flow::occupy_system(world, system, clock.tick, msg_log);
+                macroquad::logging::info!(
+                    "[assault] system={} holder={:?} day={}",
+                    world.systems[system].name,
+                    world.systems[system].control,
+                    clock.tick
+                );
                 present_assault_reports(
                     std::mem::take(&mut env.reports),
                     world,

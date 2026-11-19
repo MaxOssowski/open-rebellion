@@ -114,8 +114,31 @@ the garrison a system at support 0 needs.
 (`FUN_0050a6d0(0)`) and every fleet of the attacking side there loses
 `+0x58` bit `0x80` (`FUN_004fe4d0(0)`).
 
-The system's control then follows its garrison and support as elsewhere
-(not read here).
+The system's control then follows its garrison and support as elsewhere,
+at once (read 2026-11-19):
+
+- The landing moves each regiment into the system's container
+  (`FUN_004f6fd0`). A container change is event `0x320`
+  (`Event320_Handle` = `FUN_00514a60`), which calls the new system's slot
+  `+0xd0` (`FUN_00508660`, `blockade-troop-withdrawal.md`).
+- For a regiment (`0x10..0x13`) that slot recomputes the holder
+  (`FUN_0050b610`, `system-control.md`): only the attacker's regiments now
+  stand on the planet, so the holder is the attacker. `FUN_0050a300`
+  stores the word, and its hook `+0x208` (`FUN_00510d70`) hands the
+  system over (`FUN_004f6f40`) and posts event `0x31b`.
+- `Event31B_SystemControlDataChanged_Handle` (`FUN_00515c00`) calls
+  `FUN_00517aa0`, which for Coruscant (`+0x18` = `0x109`) calls
+  `FUN_00517be0` -> `FUN_005180e0`, the victory conditions word.
+- Events `0x300..0x37f` run in the scheduler's case 5 (`FUN_0051df30`),
+  which drains the queue before case 0 runs the next sub-tick
+  (`victory-conditions.md`, "The day the game ends"). So the system
+  changes side, and a taken Coruscant ends the game, on the assault's
+  own day. A0 2026-11-17-edited-saves-5 run 2 reads day 94 at the
+  assault, after its summary and between the films.
+- Ported 2026-11-19: main.rs `OrderAssault` calls
+  `tactical_flow::occupy_system` after the landing (before, the economy
+  day step took the system, a day late). fleet-window.mjs `assault-ending`
+  requires the assault, the word and the ending film on one day.
 
 ## The AI's test (`FUN_004ae240`)
 

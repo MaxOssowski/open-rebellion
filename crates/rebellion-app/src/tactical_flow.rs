@@ -387,18 +387,31 @@ fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[Fl
 pub(crate) fn occupy(world: &mut GameWorld, tick: u64, log: &mut MessageLog) {
     let systems: Vec<SystemKey> = world.systems.keys().collect();
     for system in systems {
-        let Some(value) = world.systems.get(system) else {
-            continue;
-        };
-        if value.ground_units.is_empty() {
-            continue;
-        }
-        if let ControlKind::Controlled(winner) =
-            rebellion_core::economy::system_holder(world, value)
-        {
-            if value.control != ControlKind::Controlled(winner) {
-                apply_system_occupation(world, system, winner, tick, log);
-            }
+        occupy_system(world, system, tick, log);
+    }
+}
+
+/// [`occupy`] for one system, as soon as its regiments change: a Planetary
+/// Assault's landing (`FUN_0058c810` -> `FUN_004f6fd0`) moves the regiments
+/// through event `0x320` (`FUN_00514a60`), whose system slot `+0xd0`
+/// (`FUN_00508660`) recomputes the holder (`FUN_0050b610` ->
+/// `FUN_0050a300` -> `FUN_00510d70`: `FUN_004f6f40`, event `0x31b`) in the
+/// same pass of the scheduler's queue, before the next sub-tick.
+pub(crate) fn occupy_system(
+    world: &mut GameWorld,
+    system: SystemKey,
+    tick: u64,
+    log: &mut MessageLog,
+) {
+    let Some(value) = world.systems.get(system) else {
+        return;
+    };
+    if value.ground_units.is_empty() {
+        return;
+    }
+    if let ControlKind::Controlled(winner) = rebellion_core::economy::system_holder(world, value) {
+        if value.control != ControlKind::Controlled(winner) {
+            apply_system_occupation(world, system, winner, tick, log);
         }
     }
 }
@@ -647,6 +660,27 @@ mod tests {
             assert_eq!(world.systems[system].control, control);
             assert!(messages.messages().is_empty());
         }
+    }
+
+    #[test]
+    fn a_landing_takes_its_system_at_once_and_leaves_the_others() {
+        // FUN_0058c810 lands the regiments (FUN_004f6fd0); event 0x320
+        // (FUN_00514a60) runs the system's +0xd0 (FUN_00508660), which
+        // recomputes the holder (FUN_0050b610 -> FUN_00510d70) in the
+        // same pass, before the next sub-tick.
+        let (mut world, system, fleet, attacker, mut transport) =
+            transport_fixture(ControlKind::Controlled(Faction::Empire), false);
+        transport
+            .disembark_selected(&mut world, fleet, system, &[attacker])
+            .expect("the regiment lands");
+        let other = world.systems.keys().find(|&key| key != system);
+        let before = other.map(|key| world.systems[key].control);
+        occupy_system(&mut world, system, 7, &mut MessageLog::default());
+        assert_eq!(
+            world.systems[system].control,
+            ControlKind::Controlled(Faction::Alliance)
+        );
+        assert_eq!(other.map(|key| world.systems[key].control), before);
     }
 
     #[test]

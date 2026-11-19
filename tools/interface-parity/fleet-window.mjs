@@ -2164,11 +2164,15 @@ const cases = [
       }
       assert.deepEqual(stems, ["103", "105"]);
       const day = async (pattern) => Number((await log.logged(`${pattern}`, pattern)).match(/day=(\d+)/)[1]);
-      const days = { word: await day(/\[victory\] word=0x[0-9a-f]*1[0-9a-f]{7} day=/),
+      const days = { assault: await day(/\[assault\] system=Coruscant holder=Controlled\(Alliance\) day=/),
+        word: await day(/\[victory\] word=0x[0-9a-f]*1[0-9a-f]{7} day=/),
         ending: await day(/\[cutscene\] ending=105 day=/) };
       // The day stands from the take-over to the victory film (h-01, h-02,
-      // h-08 all read 94).
-      assert.ok(Number.isFinite(days.word) && days.word === days.ending, JSON.stringify(days));
+      // h-08 all read 94): the landing takes the system in the assault's
+      // own pass (FUN_00508660 -> FUN_0050b610 -> FUN_00510d70, event
+      // 0x31b -> FUN_005180e0), before the next sub-tick.
+      assert.ok(Number.isFinite(days.assault) && days.assault === days.word && days.word === days.ending,
+        JSON.stringify(days));
       assert.ok(await log.logged("the advisor's game-over clip ends", /\[advisor\] clip finished kind=3 /));
       await page.waitForFunction(() => !document.querySelector("video"), null, { timeout: 30_000 });
       await page.waitForTimeout(1500);
