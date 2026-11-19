@@ -1093,7 +1093,9 @@ impl SystemRecord {
     ///
     /// port: every unit and facility in the port is active (object `+0x50`
     /// bit 0); the side's view of the system is the world's (the port's AI
-    /// sees the whole galaxy); a system is explored when the world says so;
+    /// sees the whole galaxy); a system is explored when the side's copy
+    /// says so (`object_views::side_explored`; hyp: the record reads the
+    /// side's copy, as every other reader, `ghidra/notes/fog-of-war.md`);
     /// a yard area is idle when its queue is empty (manager `+0x58`).
     /// hyp: the thresholds the record reads at `+0x40` (`+0x24`, `+0x28`;
     /// the controller's object at `+0x138`) have no writer found and read
@@ -1140,7 +1142,12 @@ impl SystemRecord {
             values: v,
             position,
         };
-        if sys.exploration_status != crate::dat::ExplorationStatus::Explored {
+        let viewer = if inputs.is_alliance {
+            crate::dat::Faction::Alliance
+        } else {
+            crate::dat::Faction::Empire
+        };
+        if !crate::object_views::side_explored(world, viewer, system) {
             // +0x2c is still clear here.
             return Some(record(f28, 0x80, f30, v));
         }
@@ -3039,6 +3046,24 @@ mod tests {
         let r = system_record(&fixture, true, 0);
         assert_eq!((r.kind, r.state, r.summary), (2, 0, 0x80));
         assert_eq!(r.values, [0; 60]);
+
+        // An explored system the side's copy holds unexplored (a bare
+        // setup copy, FUN_0051b990) reads as unexplored to that side
+        // (hyp: the record reads the side's copy,
+        // ghidra/notes/fog-of-war.md).
+        fixture.world.systems[fixture.system].exploration_status =
+            crate::dat::ExplorationStatus::Explored;
+        let id = fixture.world.systems[fixture.system].dat_id;
+        let views = &mut fixture.world.object_views;
+        views
+            .alliance_systems
+            .insert(id, crate::object_views::SystemView::bare());
+        views
+            .system_bits
+            .alliance
+            .insert(id, crate::object_views::SystemCopyBits::default());
+        let r = system_record(&fixture, true, 0);
+        assert_eq!(r.summary, 0x80);
     }
 
     #[test]
