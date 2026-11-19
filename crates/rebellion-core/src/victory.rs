@@ -1,12 +1,13 @@
 //! Victory condition detection.
 //!
-//! Checks the asymmetric original-game objectives each tick:
-//! - **Alliance**: capture Coruscant and, in Standard mode, hold Emperor
-//!   Palpatine and Darth Vader captive.
-//! - **Empire**: destroy the mobile Alliance headquarters, then occupy its
-//!   system, and, in Standard mode, hold Mon Mothma and Luke Skywalker captive.
-//! - **Death Star route**: destroying the entire Alliance-HQ system satisfies
-//!   the Empire's headquarters objective, but not Standard's leader objective.
+//! Checks the asymmetric original-game objectives through the victory
+//! conditions word (`FUN_005180e0`, `ghidra/notes/victory-conditions.md`):
+//! - **Alliance**: Coruscant the Alliance's or destroyed and, in Standard
+//!   mode, the Emperor and Darth Vader captive.
+//! - **Empire**: the Alliance headquarters gone (destroyed by a bombardment
+//!   or with its system by the Death Star, or removed when its system leaves
+//!   the Alliance) and, in Standard mode, Mon Mothma and Luke Skywalker
+//!   captive. The manual's assault after the bombardment is not needed.
 //! - **Headquarters Only**: omits only the principal-leader requirements.
 //!
 //! # Architecture
