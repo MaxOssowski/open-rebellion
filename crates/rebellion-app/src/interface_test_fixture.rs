@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 154;
+const SCENARIO_COUNT: u8 = 155;
 
 
 extern "C" {
@@ -682,6 +682,10 @@ pub enum Scenario {
     /// Move asks with the evacuation warning (`FUN_0049a350`, picture 1031
     /// or 1030).
     CharacterEvacuation = 153,
+    /// `SquadronLoad` with the loading target, the player's, blockaded by
+    /// the other side's fleet alone in its orbit: a planet squadron's Move
+    /// there is refused (`FUN_005073d0`, `0x90`/4).
+    SquadronBlockaded = 154,
 }
 
 impl Scenario {
@@ -841,6 +845,7 @@ impl Scenario {
             151 => Self::JabbaDelivers,
             152 => Self::BlockadeRunning,
             153 => Self::CharacterEvacuation,
+            154 => Self::SquadronBlockaded,
             _ => return None,
         })
     }
@@ -875,6 +880,7 @@ impl Scenario {
                 | Self::ShipShieldHit
                 | Self::ShipRepaired
                 | Self::BlockadeRunning
+                | Self::SquadronBlockaded
         )
     }
 
@@ -1683,6 +1689,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::BlockadeRunning {
         place_blockade_running(request, world, movement, blockade, troop_transport, primary);
+    }
+    if request.scenario == Scenario::SquadronBlockaded {
+        place_blockaded_target(request, world, movement, blockade, primary);
     }
     if request.scenario == Scenario::SupportFlip {
         place_support_flip(request, world, primary);
@@ -5868,6 +5877,32 @@ fn place_blockade_running(
     let _ = BlockadeSystem::advance(blockade, world, &[TickEvent { tick: 1 }]);
 }
 
+/// The `SquadronBlockaded` scenario: a copy of the player's fleet, turned
+/// the other side's, alone in orbit of the loading target, the player's,
+/// which it blockades (`FUN_0050b8e0`).
+fn place_blockaded_target(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    blockade: &mut BlockadeState,
+    primary: SystemKey,
+) {
+    let (Some(target), Some(fleet)) = (loading_target(world, primary), world.fleets.keys().next())
+    else {
+        return;
+    };
+    let mut enemy = world.fleets[fleet].clone();
+    enemy.is_alliance = request.faction != CockpitFaction::Alliance;
+    enemy.location = target;
+    enemy.characters.clear();
+    enemy.special_forces.clear();
+    enemy.fighters.clear();
+    world.fleets.insert(enemy);
+    world.systems[target].fighters.clear();
+    reconcile_fleet_orbits(movement, world);
+    let _ = BlockadeSystem::advance(blockade, world, &[TickEvent { tick: 1 }]);
+}
+
 /// The `SupportFlip` scenario: the loading target's support goes all to the
 /// other side; with no regiment there, the economy hands it over.
 fn place_support_flip(request: FixtureRequest, world: &mut GameWorld, primary: SystemKey) {
@@ -6268,7 +6303,7 @@ fn place_loading_fleet(
     // fighters in the squadron variant.
     let squadrons = matches!(
         request.scenario,
-        Scenario::SquadronLoad | Scenario::FleetArrivals
+        Scenario::SquadronLoad | Scenario::FleetArrivals | Scenario::SquadronBlockaded
     );
     let carrier = world
         .capital_ship_classes
@@ -6402,7 +6437,10 @@ fn place_loading_fleet(
     }
     // The squadron variant: two of the player's squadrons, of its side's
     // first fighter class, on the primary planet.
-    if request.scenario == Scenario::SquadronLoad {
+    if matches!(
+        request.scenario,
+        Scenario::SquadronLoad | Scenario::SquadronBlockaded
+    ) {
         for system in [primary, target] {
             world.systems[system].fighters.clear();
         }
@@ -13662,6 +13700,45 @@ mod tests {
     }
 
     #[test]
+    fn the_squadron_blockaded_scenario_refuses_the_squadrons_move_to_the_target() {
+        // FUN_005073d0: a blockaded system refuses a squadron's 0x204
+        // with 0x90/4 (squadrons::check_route).
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::SquadronBlockaded, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                for alliance in [true, false] {
+                    world
+                        .fighter_classes
+                        .insert(rebellion_core::world::FighterClass {
+                            is_alliance: alliance,
+                            is_empire: !alliance,
+                            ..Default::default()
+                        });
+                }
+            });
+            let primary = applied.world.systems.keys().next().unwrap();
+            let target = loading_target(&applied.world, primary).unwrap();
+            let alliance = faction == CockpitFaction::Alliance;
+            assert!(request.scenario.uses_the_fleet_window());
+            assert!(applied.blockade.is_blockaded(target), "{faction:?}");
+            assert!(!applied.blockade.is_blockaded(primary), "{faction:?}");
+            let class = applied.world.systems[primary].fighters[0].class;
+            assert_eq!(
+                applied.transport.squadrons.check(
+                    &applied.world,
+                    alliance,
+                    class,
+                    1,
+                    rebellion_core::squadrons::SquadronPlace::Planet(primary),
+                    rebellion_core::squadrons::SquadronPlace::Planet(target),
+                ),
+                Err(rebellion_core::squadrons::SquadronMoveError::DestinationBlockaded)
+            );
+        }
+        assert_eq!(Scenario::decode(154), Some(Scenario::SquadronBlockaded));
+    }
+
+    #[test]
     fn the_blockade_running_scenario_needs_one_ship_without_a_penalty() {
         // Our fixture: with no GNPRTB 7684 the percent stays 100 whatever
         // the ships, so the fleet keeps its one.
@@ -17597,6 +17674,7 @@ mod tests {
                 Scenario::QuadrantsRegimentEnRoute,
                 Scenario::BlockadeRunning,
                 Scenario::CharacterEvacuation,
+                Scenario::SquadronBlockaded,
             ]
         );
     }

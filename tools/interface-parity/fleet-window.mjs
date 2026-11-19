@@ -54,6 +54,8 @@ const FLEET_WINDOW_DESTINATION = 86;
 const FLEET_WINDOW_BLOCKADE = 87;
 // Scenario::BlockadeRunning (152).
 const BLOCKADE_RUNNING = 153;
+// Scenario::SquadronBlockaded (154).
+const SQUADRON_BLOCKADED = 155;
 // Scenario::UnfinishedShipMini (127) and UnfinishedShipEnroute (128).
 const UNFINISHED_SHIP_MINI = 128;
 const UNFINISHED_SHIP_ENROUTE = 129;
@@ -1219,6 +1221,31 @@ const cases = [
     async run(page, faction, setup, directory) {
       const { opened, menu, boarded, fighters } = await loadSquadron(page, setup, directory);
       return { opened, menu, boarded, fighters };
+    },
+  },
+  {
+    name: "squadron-blockaded",
+    code: SQUADRON_BLOCKADED,
+    // The loading target, the player's, is blockaded by the other side's
+    // fleet. Each route leg asks the destination system's acceptance
+    // (FUN_00550700 -> slot +0x74, FUN_005073d0), which refuses a
+    // blockaded system with 0x90/4 and lifts that only for fleets and
+    // personnel: the squadron's Move released on the target is refused and
+    // both squadrons stay on the planet.
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "two squadrons on the planet",
+        (o) => o.planet_squadrons === 2 && o.last_message === null);
+      const menu = await openMenu(page, point(setup.troop_item), directory, "squadron");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, point(setup.target_planet));
+      const refused = await until(page, "the blockaded planet refuses the squadron",
+        (o) => o.last_message === "Squadron move rejected: the destination planet is blockaded");
+      assert.equal(refused.planet_squadrons, 2, JSON.stringify(refused));
+      await frames(page, 30);
+      const later = await latest(page);
+      assert.equal(later.planet_squadrons, 2, `a squadron left: ${JSON.stringify(later)}`);
+      await shot(page, directory, "squadron-blockaded");
+      return { before, menu, refused, later };
     },
   },
   {
