@@ -5725,6 +5725,29 @@ fn place_gid_a0(world: &mut GameWorld, missions: &mut MissionState) {
         system.is_populated = false;
         system.is_destroyed = false;
         system.control = ControlKind::Uncontrolled;
+        // No fleet in the sector's unexplored systems: a side's fleet there
+        // would see them explored (FUN_0050ac80, FUN_004f9a60;
+        // ghidra/notes/fog-of-war.md), which A0 B2 does not show. They go to
+        // Kubindi, which A0 shows explored.
+        let unexplored: Vec<SystemKey> = world
+            .systems
+            .iter()
+            .filter(|(key, system)| {
+                *key != kubindi
+                    && system.sector == sector
+                    && system.exploration_status == ExplorationStatus::Unexplored
+            })
+            .map(|(key, _)| key)
+            .collect();
+        for from in unexplored {
+            let fleets = std::mem::take(&mut world.systems[from].fleets);
+            for fleet in &fleets {
+                if let Some(value) = world.fleets.get_mut(*fleet) {
+                    value.location = kubindi;
+                }
+            }
+            world.systems[kubindi].fleets.extend(fleets);
+        }
     }
     let Some(averam) = find(world, "Averam") else {
         return;
