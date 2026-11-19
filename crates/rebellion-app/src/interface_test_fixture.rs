@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 155;
+const SCENARIO_COUNT: u8 = 159;
 
 
 extern "C" {
@@ -686,6 +686,24 @@ pub enum Scenario {
     /// the other side's fleet alone in its orbit: a planet squadron's Move
     /// there is refused (`FUN_005073d0`, `0x90`/4).
     SquadronBlockaded = 154,
+    /// The fog of war at a new game: the seeded galaxy as a new game leaves
+    /// it, with the setup push (`FUN_0051b990`): full copies of the core
+    /// systems, bare ones of the Rim systems, and the Empire's level-10 push
+    /// of Yavin (`Event319_Handle(10, 2)`), on Popular Support, as A0
+    /// 2026-11-19-fog-13 e-02 (the Empire's) and fog-14 a-01 (the
+    /// Alliance's) show the galaxy. See [`place_new_game`].
+    NewGame = 155,
+    /// `NewGame` with the player's first fleet in hyperspace to Triton
+    /// (a Rim system in Mayagil): not usable in flight, so it sees nothing
+    /// there (`FUN_0050ac80`); A0 fog-14 e-05.
+    TritonEnroute = 156,
+    /// `NewGame` with the player's first fleet in orbit of Triton: its copy
+    /// is live (`FUN_004f9a60`) and explored; A0 fog-14 e-06.
+    TritonArrived = 157,
+    /// `TritonArrived`, then the fleet gone on to Kabal and Triton's own
+    /// energy and raw materials changed: the frozen copy keeps the values
+    /// it had when the fleet left; A0 fog-14 e-13, e-28.
+    TritonStale = 158,
 }
 
 impl Scenario {
@@ -846,8 +864,21 @@ impl Scenario {
             152 => Self::BlockadeRunning,
             153 => Self::CharacterEvacuation,
             154 => Self::SquadronBlockaded,
+            155 => Self::NewGame,
+            156 => Self::TritonEnroute,
+            157 => Self::TritonArrived,
+            158 => Self::TritonStale,
             _ => return None,
         })
+    }
+
+    /// The scenarios that keep the seeded galaxy as a new game leaves it
+    /// ([`place_new_game`]).
+    fn is_new_game(self) -> bool {
+        matches!(
+            self,
+            Self::NewGame | Self::TritonEnroute | Self::TritonArrived | Self::TritonStale
+        )
     }
 
     fn moves_a_fleet(self) -> bool {
@@ -1082,6 +1113,9 @@ pub fn apply(
     cockpit.gid_legend.show_display(cockpit.gid_mode);
     cockpit.gid_ui.menu_open = false;
     cockpit.gid_ui.category = None;
+    if request.scenario.is_new_game() {
+        return;
+    }
 
     let system_keys: Vec<_> = world.systems.keys().take(10).collect();
     let Some(&primary) = system_keys.first() else {
@@ -5240,6 +5274,12 @@ pub fn reveal(
     fog_alliance: &mut FogState,
     fog_empire: &mut FogState,
 ) {
+    if request.scenario.is_new_game() {
+        // As a new game seeds each side's fog: where its fleets stand.
+        rebellion_core::fog::FogSystem::seed(fog_alliance, world);
+        rebellion_core::fog::FogSystem::seed(fog_empire, world);
+        return;
+    }
     if request.scenario == Scenario::CoruscantSeized {
         // A0 coruscant-676/14 shows the Alliance's regiment there to the
         // Empire (its Trooper Regiments tab full).
@@ -5255,6 +5295,74 @@ pub fn reveal(
     if let Some(secondary) = world.systems.keys().nth(1) {
         fog_alliance.reveal(secondary);
         fog_empire.reveal(secondary);
+    }
+}
+
+/// The new-game scenarios ([`Scenario::is_new_game`]), after the views
+/// are seeded from the fog as a new game seeds them: the setup push
+/// (`object_views::setup`, `FUN_0051b990`) and the day's view step. Then
+/// the Triton scenarios move the player's first fleet:
+/// - `TritonEnroute`: into hyperspace to Triton;
+/// - `TritonArrived`: into Triton's orbit, and the views step (live copy);
+/// - `TritonStale`: as `TritonArrived`, then on to Kabal, the views step
+///   (Triton's copy freezes), and Triton's own energy and raw materials
+///   change.
+pub fn place_new_game(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    transport: &TroopTransportState,
+    missions: &MissionState,
+) {
+    if !request.scenario.is_new_game() {
+        return;
+    }
+    let step = |world: &mut GameWorld, movement: &MovementState| {
+        rebellion_core::object_views::advance_extras(world, movement, missions, transport);
+        rebellion_core::object_views::advance(world, transport, movement);
+    };
+    rebellion_core::object_views::setup(world);
+    step(world, movement);
+    if request.scenario == Scenario::NewGame {
+        return;
+    }
+    let named = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let (Some(triton), Some(kabal)) = (named(world, "Triton"), named(world, "Kabal")) else {
+        return;
+    };
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let Some(fleet) = world
+        .fleets
+        .iter()
+        .find(|(_, value)| {
+            value.is_alliance == player_is_alliance && !value.capital_ships.is_empty()
+        })
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    if request.scenario == Scenario::TritonEnroute {
+        begin_fleet_transit(movement, world, fleet, triton, 100_000);
+        step(world, movement);
+        return;
+    }
+    world.fleets[fleet].location = triton;
+    reconcile_fleet_orbits(movement, world);
+    step(world, movement);
+    if request.scenario == Scenario::TritonStale {
+        world.fleets[fleet].location = kabal;
+        reconcile_fleet_orbits(movement, world);
+        step(world, movement);
+        let system = &mut world.systems[triton];
+        system.total_energy = system.total_energy / 2 + 1;
+        system.raw_materials = system.raw_materials / 2 + 1;
+        step(world, movement);
     }
 }
 
@@ -10759,6 +10867,103 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 mod tests {
     use super::*;
     use rebellion_render::object_menu::{MenuObject, OrderGates};
+
+    /// The original galaxy as [`place_new_game`] leaves it for `scenario`,
+    /// played by `faction`.
+    fn new_game(scenario: Scenario, faction: CockpitFaction) -> GameWorld {
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        // The browser's seed (rebellion-data seeds.rs default_seed on wasm).
+        let options = rebellion_core::world::SeedOptions {
+            rng_seed: Some(0),
+            ..Default::default()
+        };
+        let mut world = rebellion_data::load_game_data_with_options(&data, &options)
+            .expect("load original game data");
+        let mut movement = MovementState::default();
+        place_new_game(
+            request(scenario, faction),
+            &mut world,
+            &mut movement,
+            &TroopTransportState::default(),
+            &MissionState::default(),
+        );
+        world
+    }
+
+    fn named_system(world: &GameWorld, name: &str) -> SystemKey {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+            .unwrap_or_else(|| panic!("{name} is in SYSTEMSD"))
+    }
+
+    fn shown(world: &GameWorld, side: Faction, name: &str) -> rebellion_core::world::System {
+        rebellion_render::viewed_contents::apparent_system(world, side, named_system(world, name))
+            .expect("the system is shown")
+            .into_owned()
+    }
+
+    // A0 2026-11-19-fog-13 (an unedited new Empire game): e-02 (sha
+    // d9021b96bd53) shows every Rim system's unexplored cross but Yavin's
+    // smallest red (Alliance) mark; e-12 (3c48fff4112b) shows Yavin red with
+    // its icons and tracks, Sumitra's nine others bare. FUN_0051b990's
+    // level-10 push of Yavin (mode 1) syncs its explored bit.
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_new_game_fixture_shows_the_empire_yavin_explored_and_held_by_the_alliance() {
+        let world = new_game(Scenario::NewGame, CockpitFaction::Empire);
+        let yavin = shown(&world, Faction::Empire, "Yavin");
+        assert_eq!(yavin.exploration_status, ExplorationStatus::Explored);
+        assert!(yavin.control.is_controlled_by(Faction::Alliance));
+        for rim in ["Kabal", "Triton", "Linuri", "Tierfon"] {
+            assert_eq!(
+                shown(&world, Faction::Empire, rim).exploration_status,
+                ExplorationStatus::Unexplored,
+                "{rim}"
+            );
+        }
+        // fog-14 a-01: to the Alliance every Rim system but its own is gray.
+        let world = new_game(Scenario::NewGame, CockpitFaction::Alliance);
+        assert_eq!(
+            shown(&world, Faction::Alliance, "Kabal").exploration_status,
+            ExplorationStatus::Unexplored
+        );
+    }
+
+    // A0 2026-11-19-fog-14 e-05 (ed937647a151): Triton bare while the
+    // fleet is in hyperspace; e-06 (5048b9273d8b): its mark and tracks on
+    // arrival; e-13 (b2ef05cac7f5), e-28 (63ba3e75ac9b): the day-44 tracks
+    // kept after the fleet left.
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_triton_fixtures_show_it_bare_in_flight_live_on_arrival_and_stale_after() {
+        let enroute = new_game(Scenario::TritonEnroute, CockpitFaction::Empire);
+        assert_eq!(
+            shown(&enroute, Faction::Empire, "Triton").exploration_status,
+            ExplorationStatus::Unexplored
+        );
+        let arrived = new_game(Scenario::TritonArrived, CockpitFaction::Empire);
+        let live = shown(&arrived, Faction::Empire, "Triton");
+        assert_eq!(live.exploration_status, ExplorationStatus::Explored);
+        let stale_world = new_game(Scenario::TritonStale, CockpitFaction::Empire);
+        let stale = shown(&stale_world, Faction::Empire, "Triton");
+        let own = &stale_world.systems[named_system(&stale_world, "Triton")];
+        assert_eq!(stale.exploration_status, ExplorationStatus::Explored);
+        assert_eq!(
+            (stale.total_energy, stale.raw_materials),
+            (live.total_energy, live.raw_materials)
+        );
+        assert_ne!(
+            (own.total_energy, own.raw_materials),
+            (live.total_energy, live.raw_materials)
+        );
+        assert_eq!(
+            shown(&stale_world, Faction::Empire, "Kabal").exploration_status,
+            ExplorationStatus::Explored
+        );
+    }
 
     // A0 personnel-states/15, 17, 18 (Alliance, the Troop Finder's
     // Display): Pzob's Defenses window at (118, 86), Mon Calamari's and

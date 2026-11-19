@@ -1995,6 +1995,13 @@ async fn main() {
             }
         }
         interface_test_fixture::reveal_without_copy(request, &world, &mut fog_empire_state);
+        interface_test_fixture::place_new_game(
+            request,
+            &mut world,
+            &mut movement_state,
+            &troop_transport_state,
+            &mission_state,
+        );
         // Character Killed for the Alliance (FUN_0048fdf0, 0x7164 /
         // 0x7365): Jan Dodonna, filed first so it lists below the scenario's
         // other Mission messages. He stays alive in the world, as the
