@@ -1844,6 +1844,70 @@ no bit; the image holds that id nowhere else. So no AI planner can send
 Jedi Training: only the player's dialog does, as in the port
 (`mission_planning::capability`).
 
+## The injured bit (ported 2026-11-20)
+
+`FUN_00402230` sets record `+0x30` bit `0x10` for a character whose
+`+0x94` (the injury, a short at `piVar3[0x25]`) is not 0. The port had no
+injuries when `mission_planning.rs` was written, so the records never
+carried the bit. `Character::injury` now exists (`character-injury.md`),
+and the records set it.
+
+What it changes:
+- `FUN_0047ba40` (state 2) forbids `0x7400051`, so a planner lets an
+  injured member go;
+- the order (`FUN_0047b360`) forbids `0x74000f1`, so an injured member is
+  not sent;
+- the team and decoy queries forbid it through their masks (Diplomacy
+  `0x7404051`, the sector classes `0x474000f1`, ...).
+
+Ported: `INJURED` in `mission_planning::records`. The fleet records read
+the same flags for the people aboard (`FUN_00484630`).
+
+Campaigns: 8 seeds (1, 2, 3, 7, 13, 42, 47, 99) of 1500 days, both sides
+AI, against `5ecdbf78`:
+- mission orders 14,802 before, 14,616 after; Move orders 8,461 and 8,220;
+- results: 7,672 successes and 2,586 failures before, 7,622 and 2,477
+  after;
+- Subdue orders 186 and 134, Incite 56 and 38, Recon 2,745 and 2,888.
+
+## The planner's `+0x20` bit `0x80` (traced 2026-11-20)
+
+`FUN_0047ae20` sets `0x80` when a failure passes slot `+0x24`. Its
+reader is `FUN_0047ae50`, reached from the AI player's slot `+0x16c`
+(`Class_0065abf0_vt16c` -> `FUN_00418db0`). That slot walks the changed
+object's containers. For a mission (family `0x40..0x7f`) it calls
+`FUN_0042f7d0`, which finds the mission planner whose `+0x28` is that
+mission (`FUN_0042f700`) and runs `FUN_0047ae50`:
+- clear `+0x20 & 0xe0000000`;
+- refresh each team member's record (`FUN_004021b0`), clearing its
+  `+0x30` `0x4000`. Let the member go (`FUN_0047b870`) when the planner
+  has `0x80` or the record has `0x50` (a prisoner or injured);
+- with `0x80`, empty the gathering place `+0x38` (`0x47af26`), then clear
+  `0x80`;
+- refresh the decoys the same way. Let a decoy go (`FUN_0047b8e0`) when
+  its record has `0x50`.
+
+So after too many failures the planner frees its whole team once the
+mission next changes. It also drops a captured or injured member at
+once, without waiting for state 2.
+
+port: not ported. It is driven by a notification (slot `+0x16c`), which
+is the tracker item "AI na powiadomieniach i timerach". The port's
+daily state 2 already drops a member whose record has `0x50`.
+
+## The port's 60-day limit (checked 2026-11-20)
+
+`MISSION_PLANNER_DAYS` drops a planner that is neither standing
+(`standing`) nor held by a sector planner (`owner`). Every planner the
+port now builds is one or the other: `keep_planners` (`FUN_004e8290`
+rows, cancellation `FUN_004e5710` -> `FUN_0042f690`) and
+`take_sector_request` (`FUN_004d2690`, cancellation through
+`FUN_00478000`'s `+0xc4`). The limit therefore reaches only the
+heuristics' planners that saves from before the heuristics' removal still
+hold, and the tests that build such planners. The original cancels a
+planner only through the strategy or the sector planner, as the port
+does for its own.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.

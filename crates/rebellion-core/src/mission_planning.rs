@@ -33,7 +33,9 @@ const OWN_SIDE: u32 = 0x2;
 const OTHER_SIDE: u32 = 0x4;
 /// One of the six main characters (`FUN_004025f0`).
 const MAIN_CHARACTER: u32 = 0x8;
-// 0x10, injured (`+0x94` != 0): the port has no injuries.
+/// Injured: character `+0x94` is not 0 (`FUN_00402230`, the short at
+/// `piVar3[0x25]`).
+const INJURED: u32 = 0x10;
 /// En route (`+0x50` bit 4, `FUN_00402230`).
 const EN_ROUTE: u32 = 0x20;
 /// A prisoner (`+0xac` bit 0, `FUN_00401d20`).
@@ -711,6 +713,9 @@ fn records(
         if c.is_captive {
             flags |= PRISONER;
         }
+        if c.injury != 0 {
+            flags |= INJURED;
+        }
         if !c.recruited {
             flags |= INACTIVE;
         }
@@ -1097,6 +1102,23 @@ mod tests {
         assert!(!planner.keeps(unrecruited));
         planner.records[0].at_blockade = true;
         assert!(!planner.keeps(own));
+    }
+
+    #[test]
+    fn an_injured_character_is_marked_and_no_planner_keeps_or_sends_it() {
+        // FUN_00402230 sets record +0x30 0x10 while character +0x94 (the
+        // injury) is not 0; FUN_0047ba40 forbids 0x7400051 and the order
+        // (FUN_0047b360) 0x74000f1, both holding 0x10.
+        let mut world = world();
+        let hurt = agent(&mut world, 1, |c| c.injury = 3);
+        let well = agent(&mut world, 2, |_| {});
+        let planner = planner(&world);
+        assert_eq!(planner.flags(hurt).map(|f| f & INJURED), Some(INJURED));
+        assert_eq!(planner.flags(well).map(|f| f & INJURED), Some(0));
+        assert!(!planner.keeps(hurt));
+        assert!(!planner.sendable(hurt));
+        assert!(planner.keeps(well));
+        assert!(planner.sendable(well));
     }
 
     #[test]
