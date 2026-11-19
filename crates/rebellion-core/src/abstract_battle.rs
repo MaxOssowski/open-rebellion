@@ -2115,6 +2115,7 @@ mod tests {
             combat_speed: 1,
             step_accumulator: 0.0,
             paused_turn_seconds: 0.0,
+            end_wait_ms: None,
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
@@ -6385,8 +6386,12 @@ mod tests {
             value.is_attacker = true;
             value
         };
+        // The winner is decided when the end wait runs out
+        // (`ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS`, four turns).
         let outcome = |mut tactical: BattleSession| {
-            tactical.step();
+            for _ in 0..5 * crate::tactical::ORIGINAL_TACTICAL_TURN_STEPS {
+                tactical.step();
+            }
             tactical.winner
         };
         // The attacker's fighter group with craft keeps it in.

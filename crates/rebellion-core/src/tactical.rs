@@ -133,6 +133,19 @@ pub const ORIGINAL_TACTICAL_TURN_MILLISECONDS: f32 = 1000.0;
 /// field's half-width on each axis, as a share of the battle extent
 /// `+0x8cc`.
 pub const ORIGINAL_FIELD_LIMIT_EXTENT_SCALE: f32 = 2.0 / 3.0;
+/// The battle's end wait, `DAT_0066c244` = 4000.0 ms. When a side has no
+/// unit left in the fight, the frame's slot `+0x98` (`FUN_005a9ec0`)
+/// moves the manager from state `+0x8b4` = 4 to 5 (`0x005aa49e`), stores
+/// this wait in `+0xe70` (`0x005aa4b4`) and asks the outcome voice
+/// `+0xe98`. The manager update (`FUN_005bea30`, `0x005bebb6`-`0x005bebcf`)
+/// takes the turn length `+0x8a8` from the wait at each turn's end; at or
+/// below `_DAT_0066c770` (0.0) it moves to state 6 and returns 1, and
+/// `FUN_005aacb0` sets `+0x8c4`, the battle's end. The update is skipped
+/// while paused (`0x005aad2e`), so the wait holds then. A0 TAC-03-C004
+/// (2026-11-19, `seq-t1`): the last Imperial ship's fire at 44.7 s, the
+/// result screen at 49.5 s; run r6: the last ship destroyed under the
+/// pause, the result only after Resume.
+pub const ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS: f32 = 4000.0;
 /// port: ORIGINAL_TACTICAL_TURN_MILLISECONDS in seconds.
 pub const ORIGINAL_TACTICAL_TURN_SECONDS: f32 = ORIGINAL_TACTICAL_TURN_MILLISECONDS / 1000.0;
 
@@ -1748,6 +1761,10 @@ pub struct BattleSession {
     /// (`FUN_005bea30`), a clock the pause does not stop
     /// (`resume_paused_turn_clock`).
     pub paused_turn_seconds: f32,
+    /// `+0xe70`: what is left of the end wait once a side has no unit in
+    /// the fight (`ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS`); `None` while
+    /// both sides fight.
+    pub end_wait_ms: Option<f32>,
     /// Winner once battle ends (None during combat).
     pub winner: Option<CombatWinner>,
     /// Each side's retreat order from the battle choice (Alliance, Empire;
@@ -4672,6 +4689,7 @@ impl BattleSession {
             combat_speed: 1,
             step_accumulator: 0.0,
             paused_turn_seconds: 0.0,
+            end_wait_ms: None,
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
@@ -7129,6 +7147,16 @@ impl BattleSession {
         // A turn's first step runs its events, then its updates
         // (`0x005bec3c`, `0x005bed12`).
         let turn_step = self.combat_tick.is_multiple_of(ORIGINAL_TACTICAL_TURN_STEPS);
+        // The end wait loses a turn at each turn's end, before the next
+        // turn's events (`0x005bebb6`-`0x005bebcf`).
+        if let Some(wait) = self.end_wait_ms.as_mut().filter(|_| turn_step) {
+            *wait -= ORIGINAL_TACTICAL_TURN_MILLISECONDS;
+            if *wait <= 0.0 {
+                self.winner = Some(self.battle_end_winner());
+                self.phase = BattlePhase::Results;
+                return true;
+            }
+        }
         self.run_turn_events();
 
         self.advance_withdrawal(turn_step);
@@ -7152,37 +7180,45 @@ impl BattleSession {
         }
         self.advance_original_trench_run(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
 
-        // Check for battle end.
-        let atk_remaining = self.ships.iter().any(|s| s.is_attacker && s.alive)
-            || self
-                .fighters
-                .iter()
-                .any(|f| f.is_attacker && f.alive && f.squad_count > 0)
-            || self
-                .death_star
-                .is_some_and(|death_star| death_star.is_attacker && !death_star.destroyed);
-        let def_remaining = self.ships.iter().any(|s| !s.is_attacker && s.alive)
-            || self
-                .fighters
-                .iter()
-                .any(|f| !f.is_attacker && f.alive && f.squad_count > 0)
-            || self
-                .death_star
-                .is_some_and(|death_star| !death_star.is_attacker && !death_star.destroyed);
-
-        if !atk_remaining || !def_remaining {
-            let winner = match (atk_remaining, def_remaining) {
-                (true, false) => CombatWinner::Attacker,
-                (false, true) => CombatWinner::Defender,
-                _ => CombatWinner::Draw,
-            };
-            self.queue_battle_outcome_voice(winner);
-            self.winner = Some(winner);
-            self.phase = BattlePhase::Results;
-            return true;
+        // A side with no unit left starts the end wait and asks the outcome
+        // voice; the battle goes on until the wait runs out
+        // (`ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS`).
+        if self.end_wait_ms.is_none() && self.side_out_of_the_fight() {
+            self.end_wait_ms = Some(ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS);
+            self.queue_battle_outcome_voice(self.battle_end_winner());
         }
 
         false
+    }
+
+    /// Each side's units still in the fight (attacker, defender).
+    fn sides_remaining(&self) -> (bool, bool) {
+        let remaining = |attacker: bool| {
+            self.ships
+                .iter()
+                .any(|s| s.is_attacker == attacker && s.alive)
+                || self
+                    .fighters
+                    .iter()
+                    .any(|f| f.is_attacker == attacker && f.alive && f.squad_count > 0)
+                || self.death_star.is_some_and(|death_star| {
+                    death_star.is_attacker == attacker && !death_star.destroyed
+                })
+        };
+        (remaining(true), remaining(false))
+    }
+
+    fn side_out_of_the_fight(&self) -> bool {
+        let (attacker, defender) = self.sides_remaining();
+        !attacker || !defender
+    }
+
+    fn battle_end_winner(&self) -> CombatWinner {
+        match self.sides_remaining() {
+            (true, false) => CombatWinner::Attacker,
+            (false, true) => CombatWinner::Defender,
+            _ => CombatWinner::Draw,
+        }
     }
 
     /// `0x005a9ec0` (`0x005aa089`..`0x005aa17a`): after its move, each unit

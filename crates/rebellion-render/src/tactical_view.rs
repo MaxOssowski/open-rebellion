@@ -1459,6 +1459,9 @@ impl TacticalState {
     /// last one and the battle ends by itself (`check_battle_end`).
     #[cfg(feature = "interface-test-fixtures")]
     pub fn configure_last_alliance_ship_lost_fixture(&mut self) {
+        // The journey pauses on the last ship's death: its fire runs on
+        // under the pause, as in the original (A0 TAC-03-C004 run r6).
+        self.freeze_paused_effects = false;
         let Some(session) = self.session.as_mut() else {
             return;
         };
@@ -10388,7 +10391,7 @@ fn advance_tactical_frame(
     // FUN_005ada10 runs on every manager update, paused or not.
     session.advance_voice_announcer(dt * 1000.0);
     if !(session.paused && freeze_paused_effects) {
-        session.advance_presentational_effects(dt);
+        advance_presentational_effects_logging_hull_fire(session, dt);
     }
     if session.paused {
         if !freeze_paused_effects && session.turn_clock_started() {
@@ -10396,6 +10399,7 @@ fn advance_tactical_frame(
         }
         return;
     }
+    let waiting = session.end_wait_ms.is_some();
     // Step at ~4 ticks per second (at 60fps), scaled by combat_speed.
     print_battle_diagnostics(session);
     let ticks_per_sec = 4.0 * session.combat_speed as f32;
@@ -10407,8 +10411,40 @@ fn advance_tactical_frame(
         session.step();
         print_battle_diagnostics(session);
         if session.phase == BattlePhase::Results {
+            info!("[tactical-end] battle_ended tick={}", session.combat_tick);
             break;
         }
+    }
+    if let Some(wait) = session.end_wait_ms.filter(|_| !waiting) {
+        info!(
+            "[tactical-end] wait_started ms={wait} tick={}",
+            session.combat_tick
+        );
+    }
+}
+
+/// `advance_presentational_effects`, logging each destroyed hull's fire
+/// that runs out, and whether the battle was paused then.
+fn advance_presentational_effects_logging_hull_fire(session: &mut BattleSession, dt: f32) {
+    let burning = |session: &BattleSession| -> Vec<usize> {
+        session
+            .impact_effects
+            .iter()
+            .filter(|effect| effect.sequence == OriginalTacticalEffectSequence::Destroyed)
+            .map(|effect| effect.target)
+            .collect()
+    };
+    let before = burning(session);
+    session.advance_presentational_effects(dt);
+    if before.is_empty() {
+        return;
+    }
+    let after = burning(session);
+    for target in before.into_iter().filter(|target| !after.contains(target)) {
+        info!(
+            "[tactical-end] hull_fire_ended target={target} paused={} tick={}",
+            session.paused, session.combat_tick
+        );
     }
 }
 
@@ -12706,6 +12742,7 @@ mod tests {
             combat_speed: 1,
             step_accumulator: 0.0,
             paused_turn_seconds: 0.0,
+            end_wait_ms: None,
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
@@ -15783,6 +15820,93 @@ mod tests {
         }
         assert!(hull_in_scene(&session, 0));
         assert!(!hull_in_scene(&session, 1));
+    }
+
+    /// A battle whose defender has just lost its last ship: the killing
+    /// hit's Destroyed fire is queued and the hull is out of the fight.
+    fn battle_with_the_last_defender_just_destroyed() -> BattleSession {
+        let ships = vec![
+            test_ship(64, 0, true, true),
+            test_ship(128, 0, false, false),
+        ];
+        let mut session = test_session(ships, Vec::new(), true);
+        session.paused = false;
+        queue_original_tactical_impact(
+            &mut session.impact_effects,
+            1,
+            WeaponKind::LaserCannon,
+            OriginalTacticalImpactStage::Destroyed,
+        );
+        session
+    }
+
+    // Source: FUN_005a9ec0 0x005aa49e/0x005aa4b4 (state 5, +0xe70 =
+    // DAT_0066c244 4000.0); FUN_005bea30 0x005bebb6-0x005bebcf takes the
+    // turn length (1000) at each turn's end and ends at 0.0 (_DAT_0066c770).
+    // A0 TAC-03-C004 seq-t1: the result screen 4.8 s after the last fire.
+    #[test]
+    fn a_battle_ends_four_turn_ends_after_a_side_is_out_of_the_fight() {
+        let mut session = battle_with_the_last_defender_just_destroyed();
+        assert!(!session.step());
+        assert_eq!(
+            session.end_wait_ms,
+            Some(rebellion_core::tactical::ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS)
+        );
+        assert_eq!(session.phase, BattlePhase::Combat);
+        assert_eq!(session.winner, None);
+        // The outcome voice (+0xe98) is asked when the wait starts, once.
+        let voices = session.take_pending_voice_cues();
+        assert_eq!(
+            voices,
+            vec![TacticalVoiceCue::battle_won(
+                session.player_voice_faction(),
+                false
+            )]
+        );
+        // Ticks 2..15 cross three turn ends (4, 8, 12); the fourth (16)
+        // ends the battle.
+        for _ in 2..16 {
+            assert!(!session.step());
+        }
+        assert_eq!(session.end_wait_ms, Some(1000.0));
+        assert!(session.take_pending_voice_cues().is_empty());
+        assert!(session.step());
+        assert_eq!(session.combat_tick, 16);
+        assert_eq!(session.phase, BattlePhase::Results);
+        assert_eq!(session.winner, Some(CombatWinner::Attacker));
+    }
+
+    // Source: the manager update that counts the end wait is skipped while
+    // paused (FUN_005aacb0 0x005aad2e), but the renders still run the fire
+    // (FUN_005c25b0 -> FUN_005c2c80 -> FUN_005d41a0). A0 TAC-03-C004
+    // (2026-11-19 run r6, t-03..t-11): the last Imperial ship's fire runs
+    // to its end under "Battle Paused" and the result comes after Resume.
+    #[test]
+    fn the_last_ships_fire_runs_out_while_paused_and_the_battle_waits() {
+        let mut session = battle_with_the_last_defender_just_destroyed();
+        session.step();
+        session.paused = true;
+        let mut previous_poses = None;
+        assert!(hull_in_scene(&session, 1));
+        for _ in 0..30 * 60 {
+            advance_tactical_frame(&mut session, &mut previous_poses, 1.0 / 60.0, false);
+        }
+        assert!(session.impact_effects.is_empty());
+        assert!(!hull_in_scene(&session, 1));
+        assert_eq!(session.phase, BattlePhase::Combat);
+        assert_eq!(
+            session.end_wait_ms,
+            Some(rebellion_core::tactical::ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS)
+        );
+        // Resumed, the overdue turn begins at once and the wait runs on.
+        session.paused = false;
+        let mut frames = 0;
+        while session.phase == BattlePhase::Combat {
+            advance_tactical_frame(&mut session, &mut previous_poses, 1.0 / 60.0, false);
+            frames += 1;
+            assert!(frames < 5 * 60, "the battle ends within the wait");
+        }
+        assert_eq!(session.winner, Some(CombatWinner::Attacker));
     }
 
     // Source: FUN_005c1cf0 renders only after _DAT_0066c954 (0.02 s).
@@ -22985,11 +23109,16 @@ mod tests {
 
         // The weapons fire at the turn's updates, step 4 (0x005a9de0); the
         // hit event runs at turn 6, step 24 (FUN_005b3f10: +0x87c + 2.0).
-        for _ in 0..23 {
+        // The Alliance is then out of the fight: the end wait starts
+        // (FUN_005a9ec0 0x005aa49e) and the battle runs on.
+        for _ in 0..24 {
             assert!(!session.step());
         }
-        assert!(session.step());
         assert_eq!(session.combat_tick, 24);
+        assert_eq!(
+            session.end_wait_ms,
+            Some(rebellion_core::tactical::ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS)
+        );
         assert!(!session.fighters[0].alive);
         assert!(!session.death_star.unwrap().destroyed);
         assert_eq!(
