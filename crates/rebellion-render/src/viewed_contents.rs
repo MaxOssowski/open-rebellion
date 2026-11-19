@@ -76,12 +76,13 @@ pub enum SystemSight<'a> {
 }
 
 /// How `player` sees `system`'s other-side objects (`FUN_004f2d10` reads
-/// the side's copy). port: a system the port's fog reveals without a copy
-/// (its sensor reach, informants) is seen live, as before the copies.
+/// the side's copy). A system the side holds no copy of shows nothing of
+/// the other side: the original has no sight outside the copies
+/// (`ghidra/notes/fog-of-war.md`). port: `_fog` is no longer read.
 #[must_use]
 pub fn system_sight<'a>(
     world: &'a GameWorld,
-    fog: &FogState,
+    _fog: &FogState,
     player: Faction,
     system: SystemKey,
 ) -> SystemSight<'a> {
@@ -97,9 +98,25 @@ pub fn system_sight<'a>(
     match world.object_views.system(player, value.dat_id) {
         Some(view) if view.live => SystemSight::Live,
         Some(view) => SystemSight::Frozen(view),
-        None if fog.faction == player && fog.is_visible(system) => SystemSight::Live,
         None => SystemSight::Hidden,
     }
+}
+
+/// Gives `side` a live copy of `system` (`FUN_004f9a60` with its seen
+/// bit), as a test's stand-in for a fleet of the side there.
+#[cfg(test)]
+pub(crate) fn see_live(world: &mut GameWorld, side: Faction, system: SystemKey) {
+    let Some(value) = world.systems.get(system) else {
+        return;
+    };
+    let id = value.dat_id;
+    let view = SystemView::of(world, value, true);
+    let views = &mut world.object_views;
+    match side {
+        Faction::Alliance => views.alliance_systems.insert(id, view),
+        Faction::Empire => views.empire_systems.insert(id, view),
+        Faction::Neutral => None,
+    };
 }
 
 /// The player's frozen copy of `system`'s fleets, missions and

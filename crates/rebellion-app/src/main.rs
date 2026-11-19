@@ -3721,26 +3721,12 @@ async fn main() {
             };
 
             // ── Fog of war ──────────────────────────────────────────────────
-            let alliance_reveals =
-                FogSystem::advance(&mut fog_alliance_state, &world, &movement_state);
-            let empire_reveals = FogSystem::advance(&mut fog_empire_state, &world, &movement_state);
-            let reveals = if player_faction == MissionFaction::Alliance {
-                alliance_reveals
-            } else {
-                empire_reveals
-            };
-            for reveal in &reveals {
-                let sys_name = world
-                    .systems
-                    .get(reveal.system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                msg_log.push(GameMessage::at_system(
-                    tick_events.last().unwrap().tick,
-                    format!("System {sys_name} revealed"),
-                    MessageCategory::Event,
-                    reveal.system,
-                ));
-            }
+            // port: the fog only records where each side's fleets have
+            // stood; it shows nothing and posts no message. hyp: no message;
+            // the consumer of the original's exploration notification 0x14a
+            // is untraced (ghidra/notes/fog-of-war.md).
+            FogSystem::advance(&mut fog_alliance_state, &world, &movement_state);
+            FogSystem::advance(&mut fog_empire_state, &world, &movement_state);
 
             // ── Missions ────────────────────────────────────────────────────
             let mission_rolls: Vec<f64> = (0..mission_state.len()
@@ -4736,11 +4722,6 @@ async fn main() {
                 world
                     .object_views
                     .queue_push(report.recipient, report.system);
-                if recipient_is_alliance {
-                    fog_alliance_state.reveal(report.system);
-                } else {
-                    fog_empire_state.reveal(report.system);
-                }
                 // Notification 0x153 (FUN_00491060).
                 if let Some(message) = informants_message(
                     &world,

@@ -5046,6 +5046,7 @@ pub(crate) mod tests {
         // FUN_0045ccc0 picks the player's side, then the other; FUN_0045d140
         // hides the overlay at a zero count; FUN_0045ca80 kind 0x10.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        crate::viewed_contents::see_live(&mut world, Faction::Alliance, system);
         let fog = fog(system);
         assert_eq!(
             fleet_icon(
@@ -6138,6 +6139,7 @@ pub(crate) mod tests {
         // family (FUN_005868c0, FUN_00586e20, FUN_00593500), so it drops the
         // order (inner None); a ship or squadron is an object target.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        crate::viewed_contents::see_live(&mut world, Faction::Alliance, system);
         let fleet = add_fleet(&mut world, system, false, 0);
         let transport_class = world.fleets[fleet].capital_ships[0].class;
         let death_star = world.capital_ship_classes.insert(CapitalShipClass {
@@ -8405,6 +8407,7 @@ pub(crate) mod tests {
             (CockpitFaction::Empire, egui::Color32::from_rgb(0, 255, 0)),
         ] {
             let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+            crate::viewed_contents::see_live(&mut world, Faction::Empire, system);
             let fleet = add_fleet(&mut world, system, true, 2);
             let troop = add_troop(&mut world, system);
             let mut transport = TroopTransportState::default();
@@ -8606,6 +8609,7 @@ pub(crate) mod tests {
         // the viewer's side has no fleet listed; the no-hyperdrive mark 10430
         // and the selected item 10420 take the fleet's side too.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        crate::viewed_contents::see_live(&mut world, Faction::Alliance, system);
         let enemy = add_fleet(&mut world, system, false, 0);
         let class = world.fleets[enemy].capital_ships[0].class;
         world.capital_ship_classes[class].hyperdrive = 0;
@@ -9905,6 +9909,7 @@ pub(crate) mod tests {
         {
             let (mut world, system) = world(ControlKind::Uncontrolled);
             add_fleet(&mut world, system, enemy_is_alliance, 0);
+            crate::viewed_contents::see_live(&mut world, player, system);
             let mut fog = FogState::new(player);
             fog.reveal(system);
             assert_eq!(

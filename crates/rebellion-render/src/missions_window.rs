@@ -1780,17 +1780,17 @@ mod tests {
                 abode: None,
             })
             .collect();
-        let listed = |fog: &FogState| {
-            listed_members(&world, fog, &transits, Faction::Alliance, system)
+        let listed = |world: &GameWorld, fog: &FogState| {
+            listed_members(world, fog, &transits, Faction::Alliance, system)
                 .into_iter()
                 .filter(|(.., en_route)| *en_route)
                 .map(|(member, ..)| member)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(listed(&unseen()), [own]);
-        let mut seen = unseen();
-        seen.reveal(system);
-        assert_eq!(listed(&seen), [own, enemy]);
+        assert_eq!(listed(&world, &unseen()), [own]);
+        let seen = unseen();
+        crate::viewed_contents::see_live(&mut world, Faction::Alliance, system);
+        assert_eq!(listed(&world, &seen), [own, enemy]);
 
         let mut force = |class: u32| {
             MissionMember::SpecialForce(world.special_forces.insert(
@@ -1858,8 +1858,8 @@ mod tests {
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
         assert!(mission_rows(&world, &unseen(), &missions, Faction::Alliance, system).is_empty());
 
-        let mut seen = unseen();
-        seen.reveal(system);
+        let seen = unseen();
+        crate::viewed_contents::see_live(&mut world, Faction::Alliance, system);
         assert_eq!(
             labels(&mission_rows(
                 &world,

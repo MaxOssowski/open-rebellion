@@ -3050,11 +3050,13 @@ mod tests {
         let (mut world, system, missions) = stocked();
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
         let unseen = FogState::new(Faction::Alliance);
+        // With no copy of the system the Alliance sees nothing there.
+        assert!(labels(&world, &unseen, &missions, system, DefensesPage::Batteries).is_empty());
         // The fog's system gives the Alliance its copies of the regiments
-        // there (object_views::seed_from_fog; FUN_004f9a60).
+        // there (object_views::seed_from_fog; FUN_004f9a60) and a live
+        // copy of the system.
         seed_views(&mut world, &seen(system));
 
-        assert!(labels(&world, &unseen, &missions, system, DefensesPage::Batteries).is_empty());
         assert_eq!(
             labels(
                 &world,
@@ -3088,8 +3090,8 @@ mod tests {
     }
 
     /// Each side's copies of the other side's regiments in the systems
-    /// `fog` shows (the v116 migration's rule), without copies of the
-    /// systems, so the fog keeps showing the rest live.
+    /// `fog` shows (the v116 migration's rule), and live copies of those
+    /// systems, so the rest shows live.
     fn seed_views(world: &mut GameWorld, fog: &FogState) {
         rebellion_core::object_views::seed_from_fog(
             world,
@@ -3099,6 +3101,16 @@ mod tests {
         );
         world.object_views.alliance_systems.clear();
         world.object_views.empire_systems.clear();
+        // The fog's systems stand for systems the Alliance sees: a live
+        // copy (FUN_004f9a60; ghidra/notes/fog-of-war.md).
+        let shown: Vec<SystemKey> = world
+            .systems
+            .keys()
+            .filter(|key| fog.is_visible(*key))
+            .collect();
+        for system in shown {
+            crate::viewed_contents::see_live(world, fog.faction, system);
+        }
     }
 
     #[test]

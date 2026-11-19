@@ -1089,7 +1089,10 @@ mod tests {
         });
         world.systems.insert(System {
             last_arrival: None,
-            dat_id: DatId::new(100),
+            // Each system its own id: the copies are keyed by it.
+            dat_id: DatId::new(
+                0x9000_0100 + u32::try_from(world.systems.len()).unwrap_or(0),
+            ),
             name: name.into(),
             sector,
             x: 320,
@@ -1191,6 +1194,7 @@ mod tests {
         let unseen = add_fleet(&mut world, hidden, false, &["Imperial Star Destroyer"]);
         let mut fog = FogState::new(Faction::Alliance);
         fog.reveal(seen_at);
+        crate::viewed_contents::see_live(&mut world, Faction::Alliance, seen_at);
         Galaxy {
             world,
             fog,

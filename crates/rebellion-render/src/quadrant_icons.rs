@@ -776,11 +776,16 @@ mod tests {
         system: SystemKey,
         quadrant: Quadrant,
     ) -> Option<u8> {
-        // The player sees the system, so every side's objects count.
-        let mut fog = FogState::new(player);
-        fog.reveal(system);
+        // The player sees the system (a live copy, unless the test gave it
+        // a frozen one), so every side's objects count.
+        let mut world = world.clone();
+        let id = world.systems[system].dat_id;
+        if world.object_views.system(player, id).is_none() {
+            crate::viewed_contents::see_live(&mut world, player, system);
+        }
+        let fog = FogState::new(player);
         quadrant_side(
-            world,
+            &world,
             &fog,
             missions,
             &rebellion_core::movement::MovementState::default(),
@@ -1609,7 +1614,7 @@ mod tests {
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
         add_mine(&mut world, system, false);
         let missions = MissionState::new();
-        let mut fog = FogState::new(Faction::Alliance);
+        let fog = FogState::new(Faction::Alliance);
         assert_eq!(
             quadrant_side(
                 &world,
@@ -1623,7 +1628,7 @@ mod tests {
             ),
             None
         );
-        fog.reveal(system);
+        crate::viewed_contents::see_live(&mut world, Faction::Alliance, system);
         assert_eq!(
             quadrant_side(
                 &world,

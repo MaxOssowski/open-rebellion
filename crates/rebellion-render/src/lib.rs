@@ -2461,13 +2461,13 @@ mod interaction_tests {
             gid_fleets(&world, unseen, true, false, &movement, &fog),
             (0, 0)
         );
-        // port: a system the fog reveals without a copy is seen live
-        // (viewed_contents::system_sight).
+        // The fog alone, with no copy, shows nothing: the original has no
+        // sight outside the copies (ghidra/notes/fog-of-war.md).
         let mut sensed = rebellion_core::fog::FogState::new(Faction::Alliance);
         sensed.reveal(unseen);
         assert_eq!(
             gid_fleets(&world, unseen, true, false, &movement, &sensed),
-            (0, 1)
+            (0, 0)
         );
         // FUN_004fb760 freezes the raider's Alliance copy before
         // FUN_004f8240 sets +0x50 bit 4, and FUN_004f9d40 sends the frozen
