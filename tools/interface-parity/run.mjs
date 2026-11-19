@@ -5704,6 +5704,49 @@ async function probeTacticalBattleLastShipLost(page, viewport, folder, consoleLi
   await page.mouse.move(2, 2);
   const summaryLog = () => consoleLines.map(({ text }) =>
     text.match(/\[tactical-results\] summary lines=(\[.*\])/)).filter(Boolean);
+  // A0 TAC-03-C004 (2026-11-19 run r6): the last ship's death starts the
+  // end wait (FUN_005a9ec0, DAT_0066c244 = 4000 ms, a turn off at each
+  // turn's end); Pause Battle holds the wait (FUN_005aacb0 skips
+  // FUN_005bea30) while the hull's fire runs on under the label, and the
+  // result comes only after Resume.
+  const endLog = (name) => consoleLines.filter(({ text }) =>
+    text.includes(`[tactical-end] ${name}`)).map(({ text }) => text);
+  const waitDeadline = Date.now() + 150_000;
+  while (endLog("wait_started").length === 0 && Date.now() < waitDeadline) {
+    await page.waitForTimeout(20);
+  }
+  assert.equal(endLog("wait_started").length, 1, `${faction}: the end wait did not start once`);
+  assert.equal(endLog("battle_ended").length, 0, `${faction}: the battle ended with its last ship`);
+  await click(575, 319);
+  await page.mouse.move(2, 2);
+  const firesAtPause = endLog("hull_fire_ended").length;
+  for (let k = 0; k < 4; k++) {
+    fs.writeFileSync(path.join(folder, `battle-last-ship-paused-${k}.png`), await page.screenshot());
+  }
+  await page.waitForTimeout(6_000);
+  assert.equal(endLog("battle_ended").length, 0, `${faction}: the end wait ran while paused`);
+  assert.equal(summaryLog().length, 0, `${faction}: the Battle Summary opened while paused`);
+  const fires = endLog("hull_fire_ended");
+  assert.ok(fires.length > 0, `${faction}: the last hull's fire did not run out`);
+  fs.writeFileSync(path.join(folder, "battle-last-ship-paused-held.png"), await page.screenshot());
+  // Timed from the press: the port resumes on the button's release.
+  const resumedAt = Date.now();
+  await click(575, 319);
+  await page.mouse.move(2, 2);
+  while (endLog("battle_ended").length === 0 && Date.now() < resumedAt + 10_000) {
+    await page.waitForTimeout(20);
+  }
+  const endAfterResumeMs = Date.now() - resumedAt;
+  assert.equal(endLog("battle_ended").length, 1, `${faction}: the battle did not end after Resume`);
+  assert.ok(endAfterResumeMs < 5_000,
+    `${faction}: the battle ended ${endAfterResumeMs} ms after Resume, past the 4000 ms wait`);
+  const endWait = {
+    type: "battle-last-ship-end-wait",
+    wait_started: endLog("wait_started")[0],
+    hull_fires: fires,
+    fires_before_pause_click: firesAtPause,
+    end_after_resume_ms: endAfterResumeMs,
+  };
   const deadline = Date.now() + 150_000;
   while (summaryLog().length === 0 && Date.now() < deadline) {
     await page.waitForTimeout(500);
@@ -5713,7 +5756,7 @@ async function probeTacticalBattleLastShipLost(page, viewport, folder, consoleLi
   await page.waitForTimeout(500);
   const results = await stableInteractionFrame(page, folder, "battle-last-ship-results");
   const lines = JSON.parse(summary[0][1]);
-  const probes = [{ type: "battle-last-ship-report", system: ready.system, lines }];
+  const probes = [{ type: "battle-last-ship-report", system: ready.system, lines }, endWait];
   // A0 TAC-01-C013: "The Alliance fleet is defeated." / "Imperial forces
   // have broken the blockade of Mon Calamari. The Alliance fleet has been
   // completely destroyed." (FUN_0049b4d0: 0x7003, 0x7016, 0x700b).
