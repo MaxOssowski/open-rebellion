@@ -336,7 +336,8 @@ when it ends (state 0); the planner's state 5 then goes to 6.
 Kind 3's slots (vtable `0x65c160`): `+0x34` `FUN_004af8a0`, `+0x38`
 `FUN_004afce0` (both the base class's), `+0x3c` `FUN_004b4560`, `+0x40`
 and `+0x48` `0x6158b0` (returns 0), `+0x44` `FUN_004b4730`, `+0x54`
-`FUN_004b4a20`, `+0x24..+0x30` the mission planners' reports.
+`FUN_004b4a20`, `+0x24..+0x30` the mission planners' targets (see "The
+plan slots `+0x24..+0x30`" below; first read here as reports).
 
 - **1, `FUN_004af6d0`:** the planner's sector record's ten systems
   (`+0x48..+0x6c`) lose `+0x30 & 0x1f00000`; each held fleet (planner
@@ -628,7 +629,7 @@ opponent holds a system in it. The strategy names it for a sector without
 | `+0x18` | `FUN_004b7150` | missions (shared) |
 | `+0x1c` | `FUN_004b1800` | movement (kind 3's) |
 | `+0x20` | `FUN_004b1760` | report |
-| `+0x24..+0x30` | `FUN_004b1880`, `FUN_004b1bf0`, `FUN_004b1db0`, `FUN_004b1f80` | mission reports (not read) |
+| `+0x24..+0x30` | `FUN_004b1880`, `FUN_004b1bf0`, `FUN_004b1db0`, `FUN_004b1f80` | the mission planners' targets (Abduction/Assassination, Espionage, Recon, Sabotage), ported |
 | `+0x34` | `FUN_004b24b0` | the base |
 | `+0x38` | `FUN_004b28c0` | regiments board at the base |
 | `+0x3c` | `FUN_004b2d70` | attacker (kind 3's code) |
@@ -725,7 +726,8 @@ change.
 makes now runs its own plan object; the port's stand-in remains only for a
 kind outside 1 to 6. `ai_planner.rs` has the request (`FUN_004b4df0`), the
 wants (`FUN_004b6a60`), the report (`FUN_004b4d90`, with planner `+0x60`
-`0x200000`, whose writer is not traced) and kind 4's movement.
+`0x200000`, set by `FUN_00478140` from a held General movement planner,
+see below) and kind 4's movement.
 `ai_plan.rs` has:
 - the base (`FUN_004b5b20`, `CONQUEST_MARKS`);
 - kind 4's boarding;
@@ -770,7 +772,8 @@ change.
 port:
 - The simulation's automatic landing of carried regiments (step 3b) still
   lands them only on their side's planets.
-- The mission reports (slots `+0x24..+0x30`) are not read.
+- Slots `+0x24..+0x30` are the mission planners' targets, ported in
+  2026-10-19's stages 2 to 4 (`ai-mission-planning.md`).
 
 Campaigns: no 600-day campaign of seeds 1, 2, 3, 7, 13, 42 and 47 names a
 kind 5 plan, so their event streams are unchanged. Over 1000 days, seeds 3
@@ -793,7 +796,7 @@ opponent system in the sector that a fleet can take. It attacks like kind
 | `+0x18` | `FUN_004b7150` | missions (shared) |
 | `+0x1c` | `FUN_004b72d0` | movement (kind 4's) |
 | `+0x20` | `FUN_004b4d90` | report |
-| `+0x24..+0x30` | `FUN_004b4e40`, `FUN_004b51b0`, `FUN_004b5370`, `FUN_004b5540` | mission reports (not read) |
+| `+0x24..+0x30` | `FUN_004b4e40`, `FUN_004b51b0`, `FUN_004b5370`, `FUN_004b5540` | the mission planners' targets (Abduction/Assassination, Espionage, Recon, Sabotage), ported |
 | `+0x34` | `FUN_004b5b20` | the base |
 | `+0x38` | `FUN_004b5f30` | regiments board at the base (kind 4's code) |
 | `+0x3c` | `FUN_004b6340` | attacker (kind 3's code) |
@@ -812,7 +815,8 @@ opponent system in the sector that a fleet can take. It attacks like kind
   the sector record. It adds `0x20000` while the sector's `+0x2c` has 8 (an
   opponent system) and `0x400` (an opponent system without `+0x30`
   `0x100`). It also needs either `0x400000` (an opponent system without
-  `+0x30` `0x2000`) or planner `+0x60` bit `0x200000` (writer not traced).
+  `+0x30` `0x2000`) or planner `+0x60` bit `0x200000` (a held General
+  movement planner with its officer in place, `FUN_00478140`; see below).
 - **`+0x34`, `FUN_004b5b20`:** kind 4's `FUN_004b8070` with other marks:
   - a lost base drops `0x70000` (`& 0xfff8ffff`);
   - a kept base without `0x10000` takes `& 0xfffdffff | 0x50000`;
@@ -1120,3 +1124,84 @@ port:
 - Posture 6's second fallback (`0x408` by `+0x130`) cannot pick when the
   first (`0x408` by `+0x19c`, the same masks and lists) found nothing; it
   is ported as read.
+
+## The plan slots `+0x24..+0x30` (checked 2026-11-20)
+
+The tracker carried these slots as "mission reports, not read". They are
+not reports. Their only caller is `FUN_00476e80`, which state 2 of a
+sector planner's mission planner (`FUN_004bdbc0`, cycle `FUN_004bda60`)
+calls with the planner's record index. It passes the mission planner's
+`&+0x34` (system) and `&+0x30` (object) to one plan slot:
+
+| Slot | Index | Mission |
+|---|---|---|
+| `+0x24` | `0x17`, `0x81` | Abduction, Assassination |
+| `+0x28` | `0x13` | Espionage |
+| `+0x2c` | `0x15` | Reconnaissance |
+| `+0x30` | `0x12` | Sabotage |
+
+A search of the decompile for calls through plan `+0x5c` slots `+0x24`
+to `+0x30` finds only `FUN_00476e80` (`FUN_0049a350` calls `+0x28` on
+another class's `+0x5c`). No Mission Report reaches a plan object: the
+reports go to the mission planner (slot `+0x30` of the mission planner
+classes, `FUN_0047f2c0`, `FUN_00480860`, `FUN_0047d4d0`).
+
+All 24 functions (six kinds, four slots) are read in
+`ai-mission-planning.md` ("The sector planners' mission planners") and
+ported in its stages 2 to 4: `sector_mission_target`,
+`sector_character_target` with `opponent_at` (`FUN_004af1c0`), and
+`sector_sabotage_target` with `assets_at` (`FUN_004ae480`). Kind 6's four
+(`FUN_004b4e40`, `FUN_004b51b0`, `FUN_004b5370`, `FUN_004b5540`) were
+re-read against the port for this check and match: the steps, masks
+(`0xc00`/4, `0x800`/`0x7000000`) and the Empire-only headquarters step.
+
+## Planner `+0x60` bit `0x200000` (traced 2026-11-20)
+
+**Reader.** Kind 6's report `FUN_004b4d90` is called from the planner's
+state 6 (`FUN_004774c0`) as `slot +0x20(&planner+0x60, &planner+0x64)`.
+It reads `*param_2` (planner `+0x60`) after setting `0x4000000`. With the
+sector record it adds `0x20000` (work left) when the sector's `+0x2c` has
+8 and `0x400`, and either `0x400000` or the planner's `0x200000`. No other
+plan kind's report reads the bit, and no other reader of planner `+0x60`
+`0x200000` was found (the strategy's review `FUN_004e5560` reads
+`0x80000`, `0x10000`, `0x20000`, `0x8000000` and `0x4000000`).
+
+**Clear.** State 1 zeroes `+0x60` and `+0x64` (`FUN_004fcdd0` twice).
+`FUN_00478140` (state 4) clears only `0x7000000`.
+
+**Writer.** `FUN_00478140`, state 4, walks the planner's movement
+planners (module `0xc`) and for each sets `+0x60` `0x2000000` and
+`+0x64` `0x40000000`, then by the movement planner's `+0x20`:
+- `0x10`: `+0x60` `0x4000000`;
+- 8 without 4: `+0x60` `0x1000000`;
+- 8 and 4, and slot `+0x18` returns 4: `+0x60` `0x200000`;
+- bit 1 clear: `+0x64` `0x400`, else `0x80000000`.
+
+Slot `+0x18` of the movement planner classes returns the type:
+`0x0065a430` has `FUN_004047d0` (4), `0x0065a400` `FUN_00404c20` (5),
+`0x0065a460` `FUN_00526f00` (3). Type 4 is the General planner
+(`FUN_0047a000`, `+0x50` = capability `0x4000000`, slot `+0x1c` order
+`0x263` General, `character-command.md`).
+
+Its slot `+0x28` (`FUN_0047a050`) clears `+0x20 & 0x1d`. When its
+character (`+0x2c`, family `0x30..0x3f`) still has record `+0x28` = this
+planner and record `+0x30` lacks `0x50` (prisoner, injured), it sets bit
+1. When the record's place `+0x38` equals the planner's `+0x28`, it sets
+8, and 4 as well when the record has a rank bit (`0x7000000`). A record
+with `0x50` is let go: `+0x30 |= 0x800000`, `+0x24`, `+0x28`, `+0x2c`
+cleared. Without a character it picks one by `FUN_00403460(0x800002,
++0x50, forbid 0x474000f1, ..., 6, 50..10000)`.
+
+So `0x200000` means: the sector planner holds a General planner whose
+character stands at its place and already holds an officer rank. For
+kind 6 that keeps the plan reporting work left while the sector has an
+opponent system not fully shielded (`0x400`) even when every such system
+has `+0x30` `0x2000`.
+
+**Port.** `SectorPlanner::report` reads the bit (2026-10-16). The port
+has no movement planners: module `0xc` is a heuristic and the sector
+planners hold none (`SectorPlanner::movement`), so nothing sets the bit
+and it reads 0. Its writer belongs with the port of module `0xc`'s
+General planner (tracker item "Moduł 0xc"): `movement()` should set
+`flags` from each held movement planner as listed above.
+

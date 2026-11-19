@@ -720,9 +720,13 @@ fn staging_point(
     })
 }
 
-/// port: a mission planner that has not ordered its mission within this
-/// many days is dropped and frees its members. The original's strategy
-/// cancels a planner (`FUN_0042f690`) on rules not traced.
+/// port: a mission planner that is neither standing nor a sector
+/// planner's, and has not ordered its mission within this many days, is
+/// dropped and frees its members. Only the heuristics' planners that
+/// older saves hold are such; the original cancels a planner only through
+/// the strategy (`FUN_004e5710` -> `FUN_0042f690`) or its sector planner
+/// (`FUN_00478000`), as `mission_strategy` and
+/// `take_sector_request` do.
 pub const MISSION_PLANNER_DAYS: u64 = 60;
 
 impl AIState {

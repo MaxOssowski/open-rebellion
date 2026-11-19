@@ -1027,7 +1027,10 @@ impl SectorPlanner {
                 } else if self.kind == 6 {
                     // FUN_004b4d90: an opponent system (+0x2c 8), one not
                     // fully shielded (0x400), and one without +0x30 0x2000
-                    // (0x400000) or the planner's own 0x200000.
+                    // (0x400000) or the planner's own 0x200000. FUN_00478140
+                    // sets that from a held General movement planner (type
+                    // 4) whose officer stands at its place; port: the
+                    // planners hold no movement planners, so it stays 0.
                     if summary & 0x408 == 0x408
                         && (summary & 0x40_0000 != 0 || self.flags & 0x20_0000 != 0)
                     {
