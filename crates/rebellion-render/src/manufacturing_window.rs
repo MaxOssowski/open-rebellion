@@ -634,9 +634,8 @@ pub fn shown_page_cells(
     system: SystemKey,
     page: FacilityPage,
 ) -> Vec<FacilityCell> {
-    let explored = world.systems.get(system).is_some_and(|value| {
-        value.exploration_status != rebellion_core::dat::ExplorationStatus::Unexplored
-    });
+    // The player's copy's explored bit (ghidra/notes/fog-of-war.md).
+    let explored = rebellion_core::object_views::side_explored(world, player, system);
     match crate::viewed_contents::system_sight(world, fog, player, system) {
         crate::viewed_contents::SystemSight::Frozen(view) if explored => {
             frozen_page_cells(view, page)
@@ -662,9 +661,8 @@ pub fn contents_visible(
     player: rebellion_core::dat::Faction,
     system: SystemKey,
 ) -> bool {
-    world.systems.get(system).is_some_and(|value| {
-        value.exploration_status != rebellion_core::dat::ExplorationStatus::Unexplored
-    }) && opposing_contents_visible(world, fog, player, system)
+    rebellion_core::object_views::side_explored(world, player, system)
+        && opposing_contents_visible(world, fog, player, system)
 }
 
 #[cfg(test)]
@@ -1220,8 +1218,11 @@ mod tests {
             "Denab",
             ControlKind::Controlled(Faction::Empire),
         );
-        let unexplored = add_system(&mut world, "Kessel", ALLIANCE);
+        // A system the player's copy holds unexplored (its own systems are
+        // always explored to it: ghidra/notes/fog-of-war.md).
+        let unexplored = add_system(&mut world, "Kessel", ControlKind::Uncontrolled);
         world.systems[unexplored].exploration_status = ExplorationStatus::Unexplored;
+        crate::viewed_contents::see_unexplored(&mut world, Faction::Alliance, unexplored);
         let fog = FogState::new(Faction::Alliance);
 
         assert!(contents_visible(&world, &fog, Faction::Alliance, own));
@@ -1305,11 +1306,14 @@ mod tests {
             system,
             FacilityPage::Mines,
         )));
-        // An unexplored system lists nothing, copy or not.
+        // A copy that is unexplored lists nothing (its +0x88 bit 1).
         world.object_views.empire_systems.get_mut(&id).unwrap().live = false;
-        world.systems[system].exploration_status = ExplorationStatus::Unexplored;
+        world.object_views.system_bits.empire.insert(
+            id,
+            rebellion_core::object_views::SystemCopyBits::default(),
+        );
         assert!(shown(&world, FacilityPage::Mines).is_empty());
-        world.systems[system].exploration_status = ExplorationStatus::Explored;
+        world.object_views.system_bits.empire.clear();
         // No copy and no fog: nothing.
         world.object_views.empire_systems.clear();
         assert!(shown(&world, FacilityPage::Mines).is_empty());

@@ -2011,10 +2011,9 @@ fn visible_fleets(
     player: Faction,
     system: SystemKey,
 ) -> Vec<FleetKey> {
-    let Some(value) = world.systems.get(system) else {
-        return Vec::new();
-    };
-    if value.exploration_status == ExplorationStatus::Unexplored {
+    // The player's copy's explored bit (ghidra/notes/fog-of-war.md); a
+    // missing system is unexplored.
+    if !rebellion_core::object_views::side_explored(world, player, system) {
         return Vec::new();
     }
     let opposing_visible = opposing_contents_visible(world, fog, player, system);

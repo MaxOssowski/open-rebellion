@@ -187,17 +187,21 @@ pub struct SystemRow {
 /// The rows `FUN_004611d0` lists for `tab`, in name order ignoring case
 /// (`FUN_0060a790(2)`, `_stricmp`), ties in walk order. Every system is
 /// walked (families `0x90..0x97`); no existence test, unlike the Fleet
-/// Finder's.
+/// Finder's. The walk is the viewer's side's copies (`FUN_004f31b0(side)`),
+/// so a system's side and explored bit are as the player's copy holds them
+/// (`viewed_contents::apparent_system`, `ghidra/notes/fog-of-war.md`).
 #[must_use]
-pub fn rows(world: &GameWorld, tab: SystemTab) -> Vec<SystemRow> {
+pub fn rows(world: &GameWorld, player: Faction, tab: SystemTab) -> Vec<SystemRow> {
     let mut rows: Vec<SystemRow> = world
         .systems
         .iter()
-        .filter(|(_, system)| {
-            tab.lists(
-                system.control.faction(),
-                system.exploration_status == ExplorationStatus::Explored,
-            )
+        .filter(|(key, _)| {
+            crate::viewed_contents::apparent_system(world, player, *key).is_some_and(|system| {
+                tab.lists(
+                    system.control.faction(),
+                    system.exploration_status == ExplorationStatus::Explored,
+                )
+            })
         })
         .map(|(key, system)| SystemRow {
             system: key,
@@ -279,6 +283,14 @@ pub struct SystemFinderState {
     window: Option<OpenFinder>,
 }
 
+/// The side whose copies the finder walks.
+const fn player_side(faction: CockpitFaction) -> Faction {
+    match faction {
+        CockpitFaction::Alliance => Faction::Alliance,
+        CockpitFaction::Empire => Faction::Empire,
+    }
+}
+
 const fn side(faction: CockpitFaction) -> usize {
     match faction {
         CockpitFaction::Alliance => 0,
@@ -340,7 +352,7 @@ impl SystemFinderState {
     #[must_use]
     pub fn report(&self, world: &GameWorld) -> Option<SystemFinderReport> {
         let window = self.window.as_ref()?;
-        let rows = rows(world, window.tab);
+        let rows = rows(world, player_side(window.faction), window.tab);
         let chosen = window
             .chosen
             .and_then(|system| rows.iter().position(|row| row.system == system));
@@ -419,7 +431,7 @@ pub fn draw_system_finder(
     let side = side(window.faction);
     let scale = layout.scale;
     let rect = window_rect(layout);
-    let list = rows(world, window.tab);
+    let list = rows(world, player_side(window.faction), window.tab);
     if window.rematch {
         window.rematch = false;
         if let Some(index) = prefix_choice(&list, &window.name) {
@@ -897,15 +909,49 @@ mod tests {
         // +0x88 bit 1 is clear, any side.
         let world = galaxy();
         assert_eq!(
-            names(&rows(&world, SystemTab::All)),
+            names(&rows(&world, Faction::Alliance, SystemTab::All)),
             ["Adega", "Bespin", "Coruscant", "Kessel", "yavin"]
         );
-        assert_eq!(names(&rows(&world, SystemTab::Rebel)), ["Kessel", "yavin"]);
-        assert_eq!(names(&rows(&world, SystemTab::Imperial)), ["Coruscant"]);
-        assert_eq!(names(&rows(&world, SystemTab::Neutral)), ["Bespin"]);
         assert_eq!(
-            names(&rows(&world, SystemTab::Unexplored)),
+            names(&rows(&world, Faction::Alliance, SystemTab::Rebel)),
+            ["Kessel", "yavin"]
+        );
+        assert_eq!(
+            names(&rows(&world, Faction::Alliance, SystemTab::Imperial)),
+            ["Coruscant"]
+        );
+        assert_eq!(
+            names(&rows(&world, Faction::Alliance, SystemTab::Neutral)),
+            ["Bespin"]
+        );
+        assert_eq!(
+            names(&rows(&world, Faction::Alliance, SystemTab::Unexplored)),
             ["Adega", "Kessel"]
+        );
+    }
+
+    #[test]
+    fn the_tabs_sort_the_systems_by_the_viewers_copies() {
+        // FUN_004611d0 walks the viewer's copies (FUN_004f31b0(side)); the
+        // setup push (FUN_0051b990) leaves a Rim system's copy with no side
+        // and unexplored (ghidra/notes/fog-of-war.md).
+        let mut world = GameWorld::default();
+        let tokmia = add(
+            &mut world,
+            "Tokmia",
+            ControlKind::Controlled(Faction::Alliance),
+            true,
+        );
+        world.systems[tokmia].dat_id = DatId::new(0x9200_0010);
+        rebellion_core::object_views::setup(&mut world);
+        assert_eq!(
+            names(&rows(&world, Faction::Alliance, SystemTab::Rebel)),
+            ["Tokmia"]
+        );
+        assert!(rows(&world, Faction::Empire, SystemTab::Rebel).is_empty());
+        assert_eq!(
+            names(&rows(&world, Faction::Empire, SystemTab::Unexplored)),
+            ["Tokmia"]
         );
     }
 
@@ -940,7 +986,7 @@ mod tests {
         let window = state.window.as_mut().unwrap();
         assert!(window.rematch);
         // The rematch runs at the next draw; as draw does:
-        let list = rows(&world, SystemTab::Rebel);
+        let list = rows(&world, Faction::Alliance, SystemTab::Rebel);
         window.chosen = prefix_choice(&list, "").map(|index| list[index].system);
         assert_eq!(state.report(&world).unwrap().chosen, Some(0));
     }
@@ -982,7 +1028,7 @@ mod tests {
         };
         frame(&mut state, vec![]);
         frame(&mut state, vec![egui::Event::Text("s".into())]);
-        let first = rows(&world, SystemTab::All)[0].system;
+        let first = rows(&world, Faction::Alliance, SystemTab::All)[0].system;
         assert_eq!(state.window.as_ref().unwrap().chosen, Some(first));
         assert!(max_scroll(12) >= 40);
         state.window.as_mut().unwrap().scroll = 40;
@@ -1036,7 +1082,7 @@ mod tests {
         // string after Backspace, so FUN_00609650 runs on "" and keeps its
         // first row.
         let world = galaxy();
-        let list = rows(&world, SystemTab::All);
+        let list = rows(&world, Faction::Alliance, SystemTab::All);
         assert_eq!(edited_choice(&list, ""), Some(0));
         assert_eq!(edited_choice(&list, "cor"), Some(2));
         assert_eq!(edited_choice(&[], ""), None);
@@ -1046,7 +1092,7 @@ mod tests {
     fn a_typed_name_chooses_the_row_it_best_begins() {
         // FUN_00609650 on "cor".
         let world = galaxy();
-        let list = rows(&world, SystemTab::All);
+        let list = rows(&world, Faction::Alliance, SystemTab::All);
         assert_eq!(prefix_choice(&list, "cor"), Some(2));
         assert_eq!(prefix_choice(&list, "YAV"), Some(4));
     }

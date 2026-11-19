@@ -102,6 +102,28 @@ pub fn system_sight<'a>(
     }
 }
 
+/// Gives `side` a bare, unexplored copy of `system`: a Rim system's copy
+/// after the setup push (`FUN_0051b990`, `ghidra/notes/fog-of-war.md`).
+#[cfg(test)]
+pub(crate) fn see_unexplored(world: &mut GameWorld, side: Faction, system: SystemKey) {
+    let Some(id) = world.systems.get(system).map(|value| value.dat_id) else {
+        return;
+    };
+    let views = &mut world.object_views;
+    let bits = rebellion_core::object_views::SystemCopyBits::default();
+    match side {
+        Faction::Alliance => {
+            views.alliance_systems.insert(id, SystemView::bare());
+            views.system_bits.alliance.insert(id, bits);
+        }
+        Faction::Empire => {
+            views.empire_systems.insert(id, SystemView::bare());
+            views.system_bits.empire.insert(id, bits);
+        }
+        Faction::Neutral => {}
+    }
+}
+
 /// Gives `side` a live copy of `system` (`FUN_004f9a60` with its seen
 /// bit), as a test's stand-in for a fleet of the side there.
 #[cfg(test)]

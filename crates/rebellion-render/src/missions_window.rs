@@ -596,9 +596,8 @@ fn listed_members(
         .into_iter()
         .map(|(member, side, hidden)| (member, side, hidden, false))
         .collect();
-    if world.systems.get(system).is_none_or(|value| {
-        value.exploration_status == rebellion_core::dat::ExplorationStatus::Unexplored
-    }) {
+    // The player's copy's explored bit (ghidra/notes/fog-of-war.md).
+    if !rebellion_core::object_views::side_explored(world, player, system) {
         return members;
     }
     let opposing_visible =

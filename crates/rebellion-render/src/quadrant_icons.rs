@@ -322,8 +322,8 @@ impl<'a> SystemContents<'a> {
         player: Faction,
         system: SystemKey,
     ) -> Option<Self> {
-        let value = world.systems.get(system)?;
-        if value.exploration_status == ExplorationStatus::Unexplored {
+        // The player's copy's explored bit (ghidra/notes/fog-of-war.md).
+        if !rebellion_core::object_views::side_explored(world, player, system) {
             return None;
         }
         let frozen = match crate::viewed_contents::system_sight(world, fog, player, system) {
@@ -1663,10 +1663,21 @@ mod tests {
     #[test]
     fn an_unexplored_system_shows_no_icon() {
         // port: as the System window, an unexplored system lists nothing.
+        // The Empire's copy of the Alliance's system is unexplored (a
+        // bare setup copy, ghidra/notes/fog-of-war.md).
         let (mut world, system) = alliance_world();
         add_mine(&mut world, system, true);
-        world.systems[system].exploration_status = ExplorationStatus::Unexplored;
-        assert_eq!(alliance_side(&world, system, Quadrant::System), None);
+        crate::viewed_contents::see_unexplored(&mut world, Faction::Empire, system);
+        assert_eq!(
+            side(
+                &world,
+                &MissionState::new(),
+                Faction::Empire,
+                system,
+                Quadrant::System
+            ),
+            None
+        );
     }
 
     #[test]

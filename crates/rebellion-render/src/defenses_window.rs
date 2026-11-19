@@ -961,10 +961,9 @@ fn page_rows(
     system: SystemKey,
     page: DefensesPage,
 ) -> Vec<DefensesRow> {
-    let Some(value) = world.systems.get(system) else {
-        return Vec::new();
-    };
-    if value.exploration_status == ExplorationStatus::Unexplored {
+    // The player's copy's explored bit (ghidra/notes/fog-of-war.md); a
+    // missing system is unexplored.
+    if !rebellion_core::object_views::side_explored(world, player, system) {
         return Vec::new();
     }
     let sight = crate::viewed_contents::system_sight(world, fog, player, system);
@@ -3529,8 +3528,10 @@ mod tests {
                 assert!(labels(&world, &fog, &missions, system, page).is_empty());
             }
         }
-        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
-        world.systems[system].exploration_status = ExplorationStatus::Unexplored;
+        // A system the player's copy holds unexplored (a side's own system
+        // is always explored to it: ghidra/notes/fog-of-war.md).
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        crate::viewed_contents::see_unexplored(&mut world, Faction::Alliance, system);
         assert!(labels(&world, &fog, &missions, system, DefensesPage::Batteries).is_empty());
     }
 
