@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 151;
+const SCENARIO_COUNT: u8 = 152;
 
 
 extern "C" {
@@ -662,6 +662,13 @@ pub enum Scenario {
     /// and on its way in (`FUN_0052bee0`, status 4 en route): Move,
     /// Confirmed Move and Scrap grey, as A0 2026-11-19-edited-saves-10 c-05.
     QuadrantsRegimentEnRoute = 150,
+    /// EVT-01-C018: Jabba Delivers Prisoners (`FUN_0048b6e0`) alone under
+    /// the Mission rail, its background chosen by Luke's (`0x32000242`)
+    /// DagobahCompleted as the Pickup reads it. The Empire's Luke has
+    /// left Dagobah (0x42b, as A0 2026-11-18-edited-saves-9 c-13 shows
+    /// it); the Alliance's has not (0x42a, A0 2026-11-18-edited-saves-7
+    /// b-12). See [`post_jabba_delivers`].
+    JabbaDelivers = 151,
 }
 
 impl Scenario {
@@ -818,6 +825,7 @@ impl Scenario {
             148 => Self::QuadrantsHeadquartersLive,
             149 => Self::QuadrantsRegimentQueued,
             150 => Self::QuadrantsRegimentEnRoute,
+            151 => Self::JabbaDelivers,
             _ => return None,
         })
     }
@@ -7581,6 +7589,31 @@ pub fn post_capture_messages(
     }
 }
 
+/// The `JabbaDelivers` scenario: Luke's (`0x32000242`) DagobahCompleted
+/// set for the Empire's reader (A0 2026-11-18-edited-saves-9 c-13: an
+/// Empire game whose Luke had left Dagobah, 0x42b) and clear for the
+/// Alliance's (2026-11-18-edited-saves-7 b-12: 0x42a), then Jabba
+/// Delivers Prisoners posted as the Pickup posts it (`FUN_0048b6e0`).
+pub fn post_jabba_delivers(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    log: &mut rebellion_render::MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    if request.scenario != Scenario::JabbaDelivers {
+        return;
+    }
+    let trained = request.faction == CockpitFaction::Empire;
+    for character in world.characters.values_mut() {
+        if character.dat_id.index() == 0x242 {
+            character.dagobah_completed = trained;
+        }
+    }
+    if let Some(message) = crate::jabba_delivers_message(world, 0, texts) {
+        log.push(message);
+    }
+}
+
 /// The EventMessages scenario's Character Captured message (`FUN_00490340`,
 /// notification `0x1e0`): the Emperor taken by the Alliance at Corfai, as
 /// A0 messages-day633 shows it, for each side's reader.
@@ -8494,6 +8527,7 @@ fn story_messages_report(
             | Scenario::GhormanBombardment
             | Scenario::GhormanAssault
             | Scenario::CaptureMessages
+            | Scenario::JabbaDelivers
     ) {
         return None;
     }
@@ -13302,6 +13336,50 @@ mod tests {
             )]
         );
         assert_eq!(Scenario::decode(142), Some(Scenario::CaptureMessages));
+    }
+
+    #[test]
+    fn jabba_delivers_scenario_shows_each_reader_its_a0_background() {
+        // FUN_0048b6e0: 0x42b when Luke (0x32000242) holds DagobahCompleted,
+        // else 0x42a. A0 2026-11-18-edited-saves-9 c-13 (8aa20451a9f9, an
+        // Empire reader whose Luke had left Dagobah) shows STRATEGY 1067 =
+        // 0x42b; 2026-11-18-edited-saves-7 b-12 (ec2681b5c72b, an Alliance
+        // reader, Luke untrained) 1066 = 0x42a.
+        let texts: std::collections::HashMap<u16, String> = [
+            (0x7200, "Jabba Delivers Prisoners"),
+            (
+                0x7201,
+                "Jabba has deliverd Luke, Han, Chewbacca and Leia to Darth Vader. They are now prisoners of the Empire.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let prepare = |world: &mut GameWorld| {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: rebellion_core::ids::DatId::new(0x3200_0242),
+                name: "Luke Skywalker".into(),
+                is_alliance: true,
+                is_major: true,
+                ..Default::default()
+            });
+        };
+        let background = |faction| {
+            let request = request(Scenario::JabbaDelivers, faction);
+            let mut applied = apply_to_loading_world_with(request, prepare);
+            let mut log = rebellion_render::MessageLog::new();
+            post_jabba_delivers(request, &mut applied.world, &mut log, &texts);
+            let messages = log.messages();
+            assert_eq!(messages.len(), 1);
+            assert_eq!(
+                messages[0].title.as_deref(),
+                Some("Jabba Delivers Prisoners")
+            );
+            messages[0].picture.map(|picture| picture.background)
+        };
+        assert_eq!(background(CockpitFaction::Empire), Some(0x42b));
+        assert_eq!(background(CockpitFaction::Alliance), Some(0x42a));
+        assert_eq!(Scenario::decode(151), Some(Scenario::JabbaDelivers));
     }
 
     // FUN_00490340: A0 alliance-game2/han-solo-captured and

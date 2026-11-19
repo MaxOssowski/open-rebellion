@@ -2297,6 +2297,12 @@ async fn main() {
             &mut msg_log,
             &message_texts,
         );
+        interface_test_fixture::post_jabba_delivers(
+            request,
+            &mut world,
+            &mut msg_log,
+            &message_texts,
+        );
         let reports =
             interface_test_fixture::enemy_assault(request, &mut world, &mut troop_transport_state);
         if !reports.is_empty() {
@@ -3994,14 +4000,7 @@ async fn main() {
                     // PickupInProgress.
                     if matches!(effect, MissionEffect::PickupInProgress) {
                         if let Some(message) =
-                            rebellion_render::story_messages::jabba_delivers_message(
-                                // FUN_0048b6e0 tests Luke's DagobahCompleted.
-                                world.characters.values().any(|c| {
-                                    c.dat_id.index() == 0x242 && c.dagobah_completed
-                                }),
-                                current_tick,
-                                &message_texts,
-                            )
+                            jabba_delivers_message(&world, current_tick, &message_texts)
                         {
                             msg_log.push(message);
                         }
@@ -14233,6 +14232,23 @@ pub(crate) fn system_joins_message(
         MessageRail::PopularSupport,
         Some(RailAudience::side(viewer_is_alliance)),
     ))
+}
+
+/// Jabba Delivers Prisoners (`FUN_0048b6e0`) as the Pickup posts it: the
+/// background and sounds follow Luke's (`0x32000242`) DagobahCompleted.
+fn jabba_delivers_message(
+    world: &GameWorld,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    rebellion_render::story_messages::jabba_delivers_message(
+        world
+            .characters
+            .values()
+            .any(|c| c.dat_id.index() == 0x242 && c.dagobah_completed),
+        tick,
+        texts,
+    )
 }
 
 /// Notification `0x1f1` (`FUN_00491500`): the opponent of a foiled
