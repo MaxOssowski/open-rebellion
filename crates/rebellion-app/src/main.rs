@@ -5545,6 +5545,7 @@ async fn main() {
                                         main_menu_state.fleet_naming
                                     );
                                     world = w;
+                                    drop_left_ending(&mut pending_ending);
                                     campaign_generation += 1;
                                     sim_rng = Xoshiro256PlusPlus::seed_from_u64(
                                         rng_seed.wrapping_add(u64::from(campaign_generation)),
@@ -10072,6 +10073,7 @@ async fn main() {
                     match rebellion_data::save::load_slot(&saves_dir, slot) {
                         Ok((meta, state)) => {
                             held_orders.clear();
+                            drop_left_ending(&mut pending_ending);
                             advisor_schedule = None;
                             advisor_state.clips.clear();
                             briefing_caption = None;
@@ -16346,6 +16348,17 @@ fn settle_victory_word_between_days(
     }
 }
 
+/// The ending a game left behind, dropped as another game starts or loads.
+///
+/// The ending's state lives in the galaxy window (`+0xa8`, set by
+/// `FUN_00425c90`, posted by `FUN_0042db70`), and app state 3
+/// (`FUN_00414a80`) destroys that window, so nothing of a game's ending
+/// reaches the next. port: the ending waits in `pending_ending` behind the
+/// story movies queued ahead, which do not play while the game is paused.
+fn drop_left_ending(pending_ending: &mut Option<u32>) {
+    *pending_ending = None;
+}
+
 fn victory_winner_is_alliance(outcome: &rebellion_core::victory::VictoryOutcome) -> bool {
     match outcome {
         rebellion_core::victory::VictoryOutcome::HqCaptured { winner, .. }
@@ -16680,6 +16693,16 @@ mod tactical_ground_tests {
         }
         assert_eq!(clock.advance(day * 0.5), []);
         (clock, day)
+    }
+
+    #[test]
+    fn an_ending_left_waiting_does_not_reach_the_next_game() {
+        // FUN_00414a80 (state 3) destroys the galaxy window that holds the
+        // ending's state (+0xa8, FUN_00425c90), so a new or loaded game
+        // starts with none.
+        let mut pending_ending = Some(ending_cutscene(false, false));
+        drop_left_ending(&mut pending_ending);
+        assert_eq!(pending_ending, None);
     }
 
     #[test]
