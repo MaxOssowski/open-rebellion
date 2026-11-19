@@ -1811,12 +1811,20 @@ pub fn side_destroyed(world: &GameWorld, side: Faction, system: SystemKey) -> bo
 
 /// Whether `system` is a core system (SYSTEMSD family `0x90..0x91`,
 /// `CoreSystem` vtable `0x00663698`); the rest are Rim systems (`0x92`).
-fn is_core(system: &crate::world::System) -> bool {
-    matches!(system.dat_id.family(), 0x90..=0x91)
+/// port: the loader keeps a system's sequence id alone and its family only
+/// as the explored bit, which play changes; every family-`0x90` record of
+/// SYSTEMSD lies in a Core sector (SECTORSD group 1), so the sector's group
+/// stands for the family.
+fn is_core(world: &GameWorld, system: &crate::world::System) -> bool {
+    world
+        .sectors
+        .get(system.sector)
+        .is_some_and(|sector| sector.group == crate::dat::SectorGroup::Core)
 }
 
-/// Yavin's id (`0x92000121`, `FUN_0051b990` at `0x51bba6`).
-const YAVIN_ID: u32 = 0x9200_0121;
+/// Yavin's sequence id (`0x92000121`, `FUN_0051b990` at `0x51bba6`); the
+/// loaded galaxy keeps the low 24 bits.
+const YAVIN_ID: u32 = 0x121;
 
 /// The setup push (`FUN_0051b990`, setup stage `0x18` through
 /// `FUN_0051b940`, once per side), for each system the side holds no copy
@@ -1838,7 +1846,7 @@ pub fn setup(world: &mut GameWorld) {
             if world.object_views.system(side, system.dat_id).is_some() {
                 continue;
             }
-            let (view, bits) = if is_core(system) {
+            let (view, bits) = if is_core(world, system) {
                 let mut view = SystemView::of(world, system, false);
                 view.fighters.clear();
                 view.special_forces.clear();
@@ -1863,7 +1871,7 @@ pub fn setup(world: &mut GameWorld) {
     if let Some((yavin, _)) = world
         .systems
         .iter()
-        .find(|(_, value)| value.dat_id.raw() == YAVIN_ID)
+        .find(|(_, value)| value.dat_id.raw() & 0x00FF_FFFF == YAVIN_ID)
     {
         world.object_views.queue_push(Faction::Empire, yavin);
     }

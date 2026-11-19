@@ -1885,9 +1885,19 @@ fn an_own_captive_in_hyperspace_or_on_a_trip_is_copied_only_by_its_own_trip() {
 }
 
 /// A Rim system (SYSTEMSD family 0x92) held by `control`. port: test data.
+/// port: a test system with SYSTEMSD's family 0x92 id, in a Rim sector.
 fn rim_system(world: &mut GameWorld, id: u32, name: &str, control: ControlKind) -> SystemKey {
     let key = system(world, id, name, control);
+    let sector = world.sectors.insert(Sector {
+        dat_id: DatId::new(0x9200_0000 | id),
+        name: "Rim".into(),
+        group: SectorGroup::RimOuter,
+        x: 0,
+        y: 0,
+        systems: vec![key],
+    });
     world.systems[key].dat_id = DatId::new(0x9200_0000 | id);
+    world.systems[key].sector = sector;
     key
 }
 
@@ -2101,4 +2111,64 @@ fn a_seeded_copy_is_explored_as_the_system_is_unless_the_side_stands_there() {
     step(&mut setup);
     assert!(!side_explored(&setup.world, Faction::Alliance, far));
     assert!(side_explored(&setup.world, Faction::Alliance, held));
+}
+
+#[test]
+fn a_new_game_finds_a_loaded_galaxys_core_systems_and_yavin() {
+    // The loader keeps SYSTEMSD's sequence id alone (Yavin 0x121) and its
+    // family only as the explored bit; every family-0x90 record lies in a
+    // Core sector (SECTORSD group 1). FUN_0051b990 copies the core systems
+    // in full (FUN_00566c00) and pushes Yavin (0x92000121) to the Empire.
+    let mut world = GameWorld::default();
+    let place = |world: &mut GameWorld, id: u32, name: &str, group, control| {
+        let sector = world.sectors.insert(Sector {
+            dat_id: DatId::new(id),
+            name: name.into(),
+            group,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let key = system(world, id, name, control);
+        let value = &mut world.systems[key];
+        value.dat_id = DatId::new(id);
+        value.sector = sector;
+        value.exploration_status = if group == SectorGroup::Core {
+            ExplorationStatus::Explored
+        } else {
+            ExplorationStatus::Unexplored
+        };
+        world.sectors[sector].systems.push(key);
+        key
+    };
+    let alliance = ControlKind::Controlled(Faction::Alliance);
+    let corfai = place(&mut world, 0x0f, "Corfai", SectorGroup::Core, alliance);
+    let yavin = place(&mut world, 0x121, "Yavin", SectorGroup::RimOuter, alliance);
+    let kabal = place(
+        &mut world,
+        0x40,
+        "Kabal",
+        SectorGroup::RimInner,
+        ControlKind::Uncontrolled,
+    );
+    super::setup(&mut world);
+    assert_eq!(world.object_views.pushes, [(Faction::Empire, yavin)]);
+    advance(
+        &mut world,
+        &TroopTransportState::new(),
+        &MovementState::new(),
+    );
+    let copy = |key: SystemKey| {
+        world
+            .object_views
+            .system(Faction::Empire, world.systems[key].dat_id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(copy(corfai).control, alliance);
+    assert!(side_explored(&world, Faction::Empire, corfai));
+    assert_eq!(copy(yavin).control, alliance);
+    assert!(side_explored(&world, Faction::Empire, yavin));
+    assert_eq!(copy(kabal), SystemView::bare());
+    assert!(!side_explored(&world, Faction::Empire, kabal));
 }
