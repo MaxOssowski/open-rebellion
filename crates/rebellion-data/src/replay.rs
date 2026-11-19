@@ -764,9 +764,11 @@ impl ReplayRuntime {
             object_views,
             products,
             squadron_damage,
+            system_copy_bits,
         } = state;
         let mut world = world;
         world.object_views = object_views;
+        world.object_views.system_bits = system_copy_bits;
         world.products = products;
         let mut troop_transport = troop_transport;
         rebellion_core::squadrons::restore_damaged_squadrons(
@@ -931,6 +933,7 @@ impl ReplayRuntime {
                 &self.world,
                 &self.states.troop_transport.squadrons,
             ),
+            system_copy_bits: self.world.object_views.system_bits.clone(),
         }
     }
 }
@@ -1271,6 +1274,7 @@ mod tests {
             object_views: rebellion_core::object_views::ObjectViews::default(),
             products: rebellion_core::products::Products::default(),
             squadron_damage: Vec::new(),
+            system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
         }
     }
 

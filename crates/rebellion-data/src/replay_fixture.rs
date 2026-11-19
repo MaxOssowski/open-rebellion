@@ -220,6 +220,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         object_views: rebellion_core::object_views::ObjectViews::default(),
         products: rebellion_core::products::Products::default(),
         squadron_damage: Vec::new(),
+        system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
     })
 }
 

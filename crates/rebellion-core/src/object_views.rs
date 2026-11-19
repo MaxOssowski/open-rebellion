@@ -197,6 +197,60 @@ pub struct ObjectViews {
     /// day's step takes them before a save can be made.
     #[serde(skip)]
     pub pushes: Vec<(Faction, SystemKey)>,
+    /// Each side's copies' explored and destroyed bits, by the system's id
+    /// (v127). Saved apart (`SaveState::system_copy_bits`, the save's last
+    /// field), so the views' own encoding skips it.
+    #[serde(skip)]
+    pub system_bits: SystemCopyBitsMap,
+}
+
+/// A side's copy's explored bit (`+0x88` bit 1, `System_SyncExplored`
+/// `FUN_0050fc80`) and destroyed bit (`+0x50` bit 3), which the GID item
+/// (`FUN_0042b330`) and the sector window (`FUN_0045bbb0`) read from the
+/// viewer's copy (`ghidra/notes/fog-of-war.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SystemCopyBits {
+    pub explored: bool,
+    pub destroyed: bool,
+}
+
+/// Both sides' [`SystemCopyBits`], by the system's id.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemCopyBitsMap {
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub alliance: HashMap<DatId, SystemCopyBits>,
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub empire: HashMap<DatId, SystemCopyBits>,
+}
+
+impl SystemCopyBitsMap {
+    /// `side`'s bits for the system `id`.
+    #[must_use]
+    pub fn get(&self, side: Faction, id: DatId) -> Option<SystemCopyBits> {
+        match side {
+            Faction::Alliance => self.alliance.get(&id).copied(),
+            Faction::Empire => self.empire.get(&id).copied(),
+            Faction::Neutral => None,
+        }
+    }
+
+    fn set(&mut self, side: Faction, id: DatId, bits: SystemCopyBits) {
+        match side {
+            Faction::Alliance => {
+                self.alliance.insert(id, bits);
+            }
+            Faction::Empire => {
+                self.empire.insert(id, bits);
+            }
+            Faction::Neutral => {}
+        }
+    }
 }
 
 impl ObjectViews {
@@ -529,6 +583,27 @@ pub struct SystemView {
 }
 
 impl SystemView {
+    /// A Rim system's copy after the setup push (`FUN_0050c8a0`, mode 2):
+    /// no side, no values, nothing in it.
+    #[must_use]
+    pub fn bare() -> Self {
+        Self {
+            live: false,
+            control: crate::world::ControlKind::Uncontrolled,
+            popularity_alliance: 0.0,
+            popularity_empire: 0.0,
+            is_populated: false,
+            total_energy: 0,
+            raw_materials: 0,
+            defense_facilities: Vec::new(),
+            manufacturing_facilities: Vec::new(),
+            production_facilities: Vec::new(),
+            fighters: Vec::new(),
+            special_forces: Vec::new(),
+            characters: Vec::new(),
+        }
+    }
+
     /// The system as `live` copies it now.
     #[must_use]
     pub fn of(world: &GameWorld, system: &crate::world::System, live: bool) -> Self {
@@ -1663,11 +1738,127 @@ pub fn compute_systems(
     out
 }
 
+/// Puts each copy in its side's views. A copy made from the system takes
+/// its explored bit and destroyed bit: hyp, the master is explored for
+/// every system, so a copy synced from it is explored
+/// (`ghidra/notes/fog-of-war.md`, "Untraced").
 fn apply_systems(world: &mut GameWorld, updates: Vec<(Faction, DatId, SystemView)>) {
     for (side, id, view) in updates {
+        let destroyed = world
+            .systems
+            .values()
+            .find(|value| value.dat_id == id)
+            .is_some_and(|value| value.is_destroyed);
+        world.object_views.system_bits.set(
+            side,
+            id,
+            SystemCopyBits {
+                explored: true,
+                destroyed,
+            },
+        );
         if let Some(views) = world.object_views.systems_mut(side) {
             views.insert(id, view);
         }
+    }
+}
+
+/// Whether `side` sees `system` explored: its own system, else its copy's
+/// explored bit (`FUN_0042b330` reads `+0x88` bit 1 of the viewer's copy).
+/// port: a system the side holds no copy of (a test's or a fixture's
+/// world) takes the system's own `exploration_status`, as the port did
+/// before the setup copies (`setup`).
+#[must_use]
+pub fn side_explored(world: &GameWorld, side: Faction, system: SystemKey) -> bool {
+    let Some(value) = world.systems.get(system) else {
+        return false;
+    };
+    let own = value.control.is_controlled_by(side);
+    if own || world.object_views.see_everything {
+        return own || value.exploration_status == crate::dat::ExplorationStatus::Explored;
+    }
+    match world.object_views.system_bits.get(side, value.dat_id) {
+        Some(bits) => bits.explored,
+        None if world.object_views.system(side, value.dat_id).is_some() => true,
+        None => value.exploration_status == crate::dat::ExplorationStatus::Explored,
+    }
+}
+
+/// Whether `side`'s copy of `system` shows it destroyed (`+0x50` bit 3 of
+/// the viewer's copy, `FUN_0045bbb0`). port: a system with no bits takes
+/// its own.
+#[must_use]
+pub fn side_destroyed(world: &GameWorld, side: Faction, system: SystemKey) -> bool {
+    let Some(value) = world.systems.get(system) else {
+        return false;
+    };
+    if value.control.is_controlled_by(side) || world.object_views.see_everything {
+        return value.is_destroyed;
+    }
+    world
+        .object_views
+        .system_bits
+        .get(side, value.dat_id)
+        .map_or(value.is_destroyed, |bits| bits.destroyed)
+}
+
+/// Whether `system` is a core system (SYSTEMSD family `0x90..0x91`,
+/// `CoreSystem` vtable `0x00663698`); the rest are Rim systems (`0x92`).
+fn is_core(system: &crate::world::System) -> bool {
+    matches!(system.dat_id.family(), 0x90..=0x91)
+}
+
+/// Yavin's id (`0x92000121`, `FUN_0051b990` at `0x51bba6`).
+const YAVIN_ID: u32 = 0x9200_0121;
+
+/// The setup push (`FUN_0051b990`, setup stage `0x18` through
+/// `FUN_0051b940`, once per side), for each system the side holds no copy
+/// of yet (its own and those its fleets stand in are live already):
+/// - a core system (`FUN_00566c00`, mode 1) takes a full copy of its fields
+///   and, through `FUN_00539ac0`, of its facilities (`0x20..0x2f`), but not
+///   of its squadrons, special forces or characters, which no setup range
+///   holds;
+/// - a Rim system (`FUN_0050c8a0`, mode 2) takes a bare copy: it exists,
+///   but holds no side, values or explored bit (hyp: the copy's initial
+///   fields are zero).
+///
+/// Then the Empire's level-10 push of Yavin (`Event319_Handle(10, 2)`),
+/// queued for the next [`advance`]. See `ghidra/notes/fog-of-war.md`.
+pub fn setup(world: &mut GameWorld) {
+    let mut copies = Vec::new();
+    for side in [Faction::Alliance, Faction::Empire] {
+        for system in world.systems.values() {
+            if world.object_views.system(side, system.dat_id).is_some() {
+                continue;
+            }
+            let (view, bits) = if is_core(system) {
+                let mut view = SystemView::of(world, system, false);
+                view.fighters.clear();
+                view.special_forces.clear();
+                view.characters.clear();
+                let bits = SystemCopyBits {
+                    explored: system.exploration_status == crate::dat::ExplorationStatus::Explored,
+                    destroyed: system.is_destroyed,
+                };
+                (view, bits)
+            } else {
+                (SystemView::bare(), SystemCopyBits::default())
+            };
+            copies.push((side, system.dat_id, view, bits));
+        }
+    }
+    for (side, id, view, bits) in copies {
+        world.object_views.system_bits.set(side, id, bits);
+        if let Some(views) = world.object_views.systems_mut(side) {
+            views.insert(id, view);
+        }
+    }
+    if let Some((yavin, _)) = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.dat_id.raw() == YAVIN_ID)
+    {
+        world.object_views.queue_push(Faction::Empire, yavin);
     }
 }
 

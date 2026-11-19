@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 126;
+pub const SAVE_VERSION: u32 = 127;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -121,7 +121,11 @@ pub const V124: u32 = 124;
 /// (`SaveState::squadron_damage`), its last field.
 pub const V125: u32 = 125;
 
-/// Whether a save of `version` loads (the current one, or v116 to v125
+/// v126: the save without the system copies' explored and destroyed bits
+/// (`SaveState::system_copy_bits`), its last field.
+pub const V126: u32 = 126;
+
+/// Whether a save of `version` loads (the current one, or v116 to v126
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -232,6 +236,12 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
             &Vec::<rebellion_core::squadrons::DamagedSquadron>::new(),
         )?);
     }
+    if version <= V126 {
+        // No copy of an older save holds bits: each side reads a copy as
+        // explored, and a system with no copy by its own exploration
+        // (object_views::side_explored).
+        body.extend(bincode::serialize(&rebellion_core::object_views::SystemCopyBitsMap::default())?);
+    }
     Ok(body)
 }
 
@@ -269,6 +279,7 @@ pub fn decode_body(
         &mut state.troop_transport.squadrons,
         &state.squadron_damage,
     );
+    state.world.object_views.system_bits = state.system_copy_bits.clone();
     let fogs = [&state.fog_alliance, &state.fog_empire];
     if version == MIGRATED_VERSION {
         rebellion_core::object_views::seed_from_fog(
@@ -413,6 +424,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V126 {
+            fields.remove("system_copy_bits");
+        }
         if version <= V125 {
             fields.remove("squadron_damage");
         }
@@ -568,6 +582,13 @@ pub struct SaveState {
     /// loaders put it back into the world and the transits, whose own
     /// encodings skip it.
     pub squadron_damage: Vec<rebellion_core::squadrons::DamagedSquadron>,
+    // ── v127: the system copies' explored and destroyed bits ────────────
+    /// Each side's copies' explored and destroyed bits
+    /// (`ObjectViews::system_bits`, `ghidra/notes/fog-of-war.md`). It
+    /// stays the last field: an older body is read by appending an empty
+    /// one ([`migrate_body`]). The loaders put it back into the world's
+    /// views, whose own encoding skips it.
+    pub system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap,
 }
 
 // ---------------------------------------------------------------------------
@@ -1074,6 +1095,7 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V126,
             V125,
             V124,
             V123,
@@ -1198,6 +1220,8 @@ pub mod wasm_impl {
             versioned_meta_key(V124, slot),
             versioned_slot_key(V125, slot),
             versioned_meta_key(V125, slot),
+            versioned_slot_key(V126, slot),
+            versioned_meta_key(V126, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1227,6 +1251,7 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V126,
             V125,
             V124,
             V123,
@@ -1383,6 +1408,7 @@ mod tests {
             object_views: rebellion_core::object_views::ObjectViews::default(),
             products: rebellion_core::products::Products::default(),
             squadron_damage: Vec::new(),
+            system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
         }
     }
 
@@ -1804,11 +1830,27 @@ mod tests {
             + damage_tail()
     }
 
-    /// The length of the empty squadron losses v126 added.
+    /// The length of the empty squadron losses v126 added, and what came
+    /// after.
     fn damage_tail() -> usize {
         bincode::serialize(&Vec::<rebellion_core::squadrons::DamagedSquadron>::new())
             .unwrap()
             .len()
+            + bits_tail()
+    }
+
+    /// The length of the empty system copy bits v127 added.
+    fn bits_tail() -> usize {
+        bincode::serialize(&rebellion_core::object_views::SystemCopyBitsMap::default())
+            .unwrap()
+            .len()
+    }
+
+    /// `state` written as a v126 file: no system copy bits. `state` holds
+    /// none.
+    fn write_v126(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.system_copy_bits, rebellion_core::object_views::SystemCopyBitsMap::default());
+        write_old(saves_dir, state, V126, bits_tail())
     }
 
     /// `state` written as a v125 file: no squadron losses. `state` holds
@@ -2121,6 +2163,52 @@ mod tests {
             fingerprint_as(&state, V121).unwrap(),
             fingerprint_as(&loaded, V121).unwrap()
         );
+    }
+
+    #[test]
+    fn a_v126_save_loads_with_no_copy_bits() {
+        // v127 adds each side's copies' explored and destroyed bits
+        // (ghidra/notes/fog-of-war.md); a v126 save kept none, so its
+        // copies read as explored (object_views::side_explored).
+        let saves_dir = tmp_dir("v126_migration");
+        let state = minimal_save_state();
+        write_v126(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v126 save migrates");
+        assert_eq!(loaded.system_copy_bits, rebellion_core::object_views::SystemCopyBitsMap::default());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V126).unwrap(),
+            fingerprint_as(&loaded, V126).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_each_sides_copy_bits() {
+        // SaveState::system_copy_bits (v127): the views' own encoding skips
+        // the bits, so the save carries them and the loader puts them back.
+        let saves_dir = tmp_dir("system_copy_bits");
+        let mut state = minimal_save_state();
+        let id = state.world.systems.values().next().unwrap().dat_id;
+        state.system_copy_bits.alliance.insert(
+            id,
+            rebellion_core::object_views::SystemCopyBits {
+                explored: false,
+                destroyed: true,
+            },
+        );
+        save_slot(&saves_dir, 0, "Bits", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.system_copy_bits, state.system_copy_bits);
+        assert_eq!(
+            loaded.world.object_views.system_bits,
+            state.system_copy_bits
+        );
+        assert_eq!(meta.state_fingerprint, compute_state_fingerprint(&state).unwrap());
     }
 
     #[test]

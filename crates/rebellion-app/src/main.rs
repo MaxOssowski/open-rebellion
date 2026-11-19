@@ -842,6 +842,7 @@ impl LiveCampaign<'_> {
                 self.world,
                 &self.troop_transport.squadrons,
             ),
+            system_copy_bits: self.world.object_views.system_bits.clone(),
         }
     }
 
@@ -884,6 +885,7 @@ impl LiveCampaign<'_> {
         *self.deliveries = state.deliveries;
         *self.player_agent = state.player_agent;
         self.world.object_views = state.object_views;
+        self.world.object_views.system_bits = state.system_copy_bits;
         self.world.products = state.products;
         rebellion_core::squadrons::restore_damaged_squadrons(
             self.world,
@@ -5665,6 +5667,21 @@ async fn main() {
                                     &mission_state,
                                     &troop_transport_state,
                                     [&fog_alliance_state, &fog_empire_state],
+                                );
+                                // The setup push (FUN_0051b990): a copy of
+                                // every other system, and the Empire's
+                                // level-10 push of Yavin, taken at once.
+                                rebellion_core::object_views::setup(&mut world);
+                                rebellion_core::object_views::advance_extras(
+                                    &mut world,
+                                    &movement_state,
+                                    &mission_state,
+                                    &troop_transport_state,
+                                );
+                                rebellion_core::object_views::advance(
+                                    &mut world,
+                                    &troop_transport_state,
+                                    &movement_state,
                                 );
                                 economy_state = EconomyState::default();
                                 // Setup stage 0x17: each system's

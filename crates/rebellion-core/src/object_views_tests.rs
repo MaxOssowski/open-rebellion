@@ -1883,3 +1883,190 @@ fn an_own_captive_in_hyperspace_or_on_a_trip_is_copied_only_by_its_own_trip() {
         })
     );
 }
+
+/// A Rim system (SYSTEMSD family 0x92) held by `control`. port: test data.
+fn rim_system(world: &mut GameWorld, id: u32, name: &str, control: ControlKind) -> SystemKey {
+    let key = system(world, id, name, control);
+    world.systems[key].dat_id = DatId::new(0x9200_0000 | id);
+    key
+}
+
+#[test]
+fn a_new_game_gives_each_side_a_full_copy_of_every_core_system_and_a_bare_one_of_each_rim_system() {
+    // FUN_0051b990 (ghidra/notes/fog-of-war.md): core systems (0x90..0x91)
+    // take mode 1 with their facilities (0x20..0x2f, FUN_00539ac0), Rim
+    // systems mode 2 only (FUN_0050c8a0); no setup range holds squadrons.
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let tie = setup
+        .world
+        .fighter_classes
+        .insert(crate::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0005),
+            ..Default::default()
+        });
+    setup.world.systems[chandrila]
+        .fighters
+        .push(crate::world::FighterEntry {
+            class: tie,
+            count: 3,
+            carrier: None,
+            damage: None,
+        });
+    let yard =
+        setup
+            .world
+            .manufacturing_facilities
+            .insert(crate::world::ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                side: Faction::Empire,
+                is_shipyard: true,
+            });
+    setup.world.systems[chandrila]
+        .manufacturing_facilities
+        .push(yard);
+    let empire = ControlKind::Controlled(Faction::Empire);
+    let rim = rim_system(&mut setup.world, 3, "Kessel", empire);
+
+    super::setup(&mut setup.world);
+
+    let views = &setup.world.object_views;
+    let core = views
+        .system(Faction::Alliance, setup.world.systems[chandrila].dat_id)
+        .unwrap();
+    assert!(!core.live);
+    assert_eq!(core.control, empire);
+    assert_eq!(core.manufacturing_facilities.len(), 1);
+    assert!(core.fighters.is_empty());
+    assert!(side_explored(&setup.world, Faction::Alliance, chandrila));
+    let bare = views
+        .system(Faction::Alliance, setup.world.systems[rim].dat_id)
+        .unwrap();
+    assert_eq!(bare, &SystemView::bare());
+    assert!(!side_explored(&setup.world, Faction::Alliance, rim));
+    // The Empire holds Kessel: its own system is explored to it.
+    assert!(side_explored(&setup.world, Faction::Empire, rim));
+}
+
+#[test]
+fn the_empire_starts_with_a_push_of_yavin() {
+    // FUN_0051b990 at 0x51bba6: Event319_Handle(10, 2) on 0x92000121.
+    let mut setup = setup();
+    let alliance = ControlKind::Controlled(Faction::Alliance);
+    let yavin = rim_system(&mut setup.world, 0x121, "Yavin", alliance);
+    super::setup(&mut setup.world);
+    assert_eq!(setup.world.object_views.pushes, [(Faction::Empire, yavin)]);
+    step(&mut setup);
+    let id = setup.world.systems[yavin].dat_id;
+    let copy = setup
+        .world
+        .object_views
+        .system(Faction::Empire, id)
+        .unwrap();
+    assert_eq!(copy.control, alliance);
+    assert!(side_explored(&setup.world, Faction::Empire, yavin));
+}
+
+#[test]
+fn a_rim_system_stays_explored_with_its_last_seen_side_after_the_fleet_leaves() {
+    // FUN_0050ac80 makes the copy live while the fleet stands there
+    // (FUN_004f9a60 rebuilds it, explored included); it freezes with the
+    // values it had when the fleet left (ghidra/notes/fog-of-war.md).
+    let mut setup = setup();
+    let rim = rim_system(&mut setup.world, 3, "Kessel", ControlKind::Uncontrolled);
+    super::setup(&mut setup.world);
+    assert!(!side_explored(&setup.world, Faction::Alliance, rim));
+    let scout = fleet(&mut setup.world, rim, true);
+    step(&mut setup);
+    assert!(side_explored(&setup.world, Faction::Alliance, rim));
+    setup.world.fleets.remove(scout);
+    setup.world.systems[rim].fleets.clear();
+    step(&mut setup);
+    setup.world.systems[rim].control = ControlKind::Controlled(Faction::Empire);
+    step(&mut setup);
+    let id = setup.world.systems[rim].dat_id;
+    let copy = setup
+        .world
+        .object_views
+        .system(Faction::Alliance, id)
+        .unwrap();
+    assert!(!copy.live);
+    assert_eq!(copy.control, ControlKind::Uncontrolled);
+    assert!(side_explored(&setup.world, Faction::Alliance, rim));
+}
+
+#[test]
+fn a_push_explores_the_system_for_its_side_only() {
+    // Event319_Handle syncs explored into the pushed side's copy
+    // (System_SyncExplored FUN_0050fc80); the other side's copy is
+    // untouched (ghidra/notes/fog-of-war.md).
+    let mut setup = setup();
+    let rim = rim_system(&mut setup.world, 3, "Kessel", ControlKind::Uncontrolled);
+    super::setup(&mut setup.world);
+    setup.world.object_views.queue_push(Faction::Alliance, rim);
+    step(&mut setup);
+    assert!(side_explored(&setup.world, Faction::Alliance, rim));
+    assert!(!side_explored(&setup.world, Faction::Empire, rim));
+}
+
+#[test]
+fn a_copy_taken_of_a_destroyed_system_holds_its_destroyed_bit() {
+    // FUN_0045bbb0 reads +0x50 bit 3 of the viewer's copy: the side that
+    // sees the system destroyed holds the bit; the other keeps its setup
+    // copy (ghidra/notes/fog-of-war.md).
+    let mut setup = setup();
+    let rim = rim_system(&mut setup.world, 3, "Alderaan", ControlKind::Uncontrolled);
+    super::setup(&mut setup.world);
+    fleet(&mut setup.world, rim, true);
+    setup.world.systems[rim].is_destroyed = true;
+    step(&mut setup);
+    assert!(side_destroyed(&setup.world, Faction::Alliance, rim));
+    assert!(!side_destroyed(&setup.world, Faction::Empire, rim));
+    // A side's own system shows itself, whatever its old copy held.
+    setup.world.systems[rim].control = ControlKind::Controlled(Faction::Empire);
+    assert!(side_destroyed(&setup.world, Faction::Empire, rim));
+    // With no bits, a system shows its own.
+    let mut bare = self::setup();
+    bare.world.systems[bare.chandrila].is_destroyed = true;
+    assert!(side_destroyed(
+        &bare.world,
+        Faction::Alliance,
+        bare.chandrila
+    ));
+    assert!(!side_destroyed(
+        &bare.world,
+        Faction::Alliance,
+        bare.coruscant
+    ));
+}
+
+#[test]
+fn explored_without_a_setup_copy_follows_the_system_and_a_copy_without_bits_is_explored() {
+    // port: a world with no setup copies (a test, a fixture) reads the
+    // system's own exploration; a v126 save's copies carry no bits and
+    // were all synced from an explored master (hyp,
+    // ghidra/notes/fog-of-war.md).
+    let mut setup = setup();
+    let rim = rim_system(&mut setup.world, 3, "Kessel", ControlKind::Uncontrolled);
+    setup.world.systems[rim].exploration_status = ExplorationStatus::Unexplored;
+    assert!(!side_explored(&setup.world, Faction::Alliance, rim));
+    assert!(side_explored(
+        &setup.world,
+        Faction::Alliance,
+        setup.chandrila
+    ));
+    let id = setup.world.systems[rim].dat_id;
+    setup
+        .world
+        .object_views
+        .alliance_systems
+        .insert(id, SystemView::bare());
+    assert!(side_explored(&setup.world, Faction::Alliance, rim));
+    // The debug mode reads the system's own bit; a side's own system is
+    // explored to it.
+    setup.world.object_views.see_everything = true;
+    assert!(!side_explored(&setup.world, Faction::Alliance, rim));
+    setup.world.object_views.see_everything = false;
+    setup.world.systems[rim].control = ControlKind::Controlled(Faction::Empire);
+    assert!(side_explored(&setup.world, Faction::Empire, rim));
+}
