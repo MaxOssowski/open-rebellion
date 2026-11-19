@@ -40,7 +40,9 @@ objects found in the corpus is this stage.
 | Phase | Call | Work |
 |-------|------|------|
 | 0 | `FUN_0041e390` -> `FUN_0051dea0` | advance the sub-tick and, at the day boundary, the day |
-| 1-3, 7-11 | `thunk_FUN_00435a40` family | session synchronisation (multiplayer lockstep; inference from the shared session object) |
+| 1-3, 7, 9-11 | `thunk_FUN_00435a40` family | the players' lockstep and order intake (phase 3: stored orders to the scheduler); see `ai-scheduling.md` |
+| 8 | `FUN_0041cf20` -> `FUN_004361a0` | the AI tick, side 1's player then side 2's (`ai-scheduling.md`) |
+| 12, 13 | `FUN_0041e4d0`, `FUN_0041e500` | sync snapshot; the players' day-end slot `+0x54` when `+0x24` is set |
 | 4 | `FUN_0041e430` -> `FUN_0040f340` | returns 1, no work |
 | 5 | `FUN_0041e460` -> `FUN_0051df30` | run one due scheduler item per frame until none is due |
 | 6 | `FUN_0041e490` -> `FUN_0051e050` | end-of-step change flags, notification flush (`FUN_0051eaf0`), `+0xbc` callback |

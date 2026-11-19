@@ -2141,9 +2141,11 @@ impl Galaxy {
     /// (`+0x28 & 0x3e00000`) and `kinds` its kept `+0x30` bits
     /// ([`KEPT_KIND`]), which only the production modules change.
     ///
-    /// port: the original refreshes the sectors (with their systems)
-    /// before the fleets, so a system reads the previous refresh's fleet
-    /// records; the port builds the fleets first.
+    /// The fleets come first, as in the original: `FUN_00418500` walks
+    /// its state `+0x180` from 4 (people) to 2 (fleets, `FUN_00433620`),
+    /// 1 (sectors with their systems, `FUN_004321e0`) and 5 (the side
+    /// tallies), so a system reads this refresh's fleet records
+    /// (`ghidra/notes/ai-scheduling.md`).
     #[must_use]
     pub fn build(
         inputs: &SystemInputs<'_>,
