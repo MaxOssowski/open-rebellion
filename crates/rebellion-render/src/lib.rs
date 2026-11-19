@@ -17,7 +17,6 @@ pub mod system_finder;
 pub mod fleet_movement;
 pub mod fleet_registry;
 pub mod fleet_window;
-pub mod fog;
 pub mod game_menu;
 pub mod game_options;
 pub mod game_speed;
@@ -114,7 +113,6 @@ pub use fleet_window::{
     draw_fleet_windows, FleetWindowAction, FleetWindowState, FleetWindowTab, FLEET_WINDOW_HEIGHT,
     FLEET_WINDOW_WIDTH,
 };
-pub use fog::draw_fog_overlay;
 pub use game_options::{
     draw_game_options, GameOptionsAction, GameOptionsOrigin, GameOptionsState, SaveSlotInfo,
 };
