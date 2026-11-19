@@ -263,6 +263,33 @@ Tests (each written failing first):
 Gates: GID and sector-window interface-parity scenarios per side at day 1
 and after each A0 state below, compared with A0 pixel for pixel.
 
+## Ported (2026-11-19)
+
+- Removed: the sensor reach and half-way reveal (`FogSystem::advance` now
+  records only where fleets stand), the fog fallback in `system_sight`,
+  the "System X revealed" message, the informant's fog reveal, the
+  shared `exploration_status` writes of intelligence results and the
+  Final Battle, `render/fog.rs`. The special systems' seeding stays: it
+  sets the system's own (master) bit, which the hyp above holds explored.
+- `object_views::setup` at a new game: core copies with facilities (no
+  squadrons, special forces or characters), bare Rim copies, the
+  Empire's push of Yavin, taken at once.
+- `ObjectViews::system_bits` (explored, destroyed per copy), saved as
+  `SaveState::system_copy_bits` (save v127; a v126 save has none and its
+  copies read explored). `side_explored` / `side_destroyed` fall back to
+  the system's own bits where a side has no copy (tests, fixtures).
+- `viewed_contents::apparent_system`: the GID marks, unexplored mark and
+  HQ burst, and the sector window's name colour, destroyed art and tracks
+  read the player's copy. port: the facility-count displays still count
+  the system's own facilities, and the uprising mark is the system's
+  (`SystemView` holds no uprising bit yet).
+- The Defenses, Fleet, Manufacturing and Missions windows, the quadrant
+  icons, the System Finder tabs, the explored-container creation check
+  and the AI system record read the side's explored bit.
+- Not changed: the AI's own-system reads (`ai_strategy.rs`,
+  `agent_build.rs`), whose tests hold a side's own system unexplored; the
+  headless simulation's single fog (`rebellion-data/src/simulation.rs`).
+
 ## A0 frames to capture
 
 Each per side (Alliance game, Empire game), saved so the port's fixture can
