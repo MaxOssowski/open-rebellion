@@ -1191,6 +1191,34 @@ mod tests {
     }
 
     #[test]
+    fn a_cycle_keeps_the_length_it_started_with_when_upkeep_changes() {
+        // Timer 0x394 is armed only by FUN_0053b330 (slot +0x1e0, run when
+        // the Processing bit changes, FUN_0053a940) with the delay then in
+        // record +0x20. A new period from FUN_0055abf0 is only written to
+        // +0x20 (FUN_00501ba0), so it applies from the next cycle.
+        let mut world = world();
+        let here = system(&mut world);
+        let mine = facility(&mut world, here, MINE);
+        let mut state = ProductionState::new();
+
+        // Day 1: unallocated, the randomised first cycle is 5 at 0.5.
+        run(&mut state, &world, 1..=1, 0.5);
+        assert!(state.is_processing(mine));
+        upkeep(&mut world, 50);
+        run(&mut state, &world, 2..=5, 0.5);
+        assert_eq!(state.allocated(mine), 50);
+        assert_eq!(alliance(&state), (0, 0));
+        run(&mut state, &world, 6..=6, 0.5);
+        assert_eq!(alliance(&state), (1, 0));
+
+        // The next cycle takes the new period, 5 + ceil(50 / 10).
+        run(&mut state, &world, 7..=15, 0.5);
+        assert_eq!(alliance(&state), (1, 0));
+        run(&mut state, &world, 16..=16, 0.5);
+        assert_eq!(alliance(&state), (2, 0));
+    }
+
+    #[test]
     fn a_blocked_facility_stops_and_gives_up_its_allocation() {
         // FUN_0050bbb0 sets +0x60 bit 0 in a system in uprising or
         // blockaded; FUN_0055ab60 zeroes the allocated half and

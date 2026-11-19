@@ -152,7 +152,7 @@ it), slot `+0x2c` resolves the target's record, and slot `+0x30` acts.
 | `0x390` | `0x00663660` | `FUN_00566a90` | `0xf9..0xfa` | `FUN_00556be0`: resource incident on one random existing system (`FUN_0050cc70`) | `FUN_00556fa0` | GNPRTB 7719 (1) + rand 7720 (499); ported 2026-10-17 (`uprising.rs`) |
 | `0x392` | `0x00661f48` | `FUN_0054e620` | `0xf8..0xf9` | `FUN_00546f80` -> `FUN_00543af0(1)`: set `+0x58` bit 0 | `FUN_00549d60`, `FUN_0054a800` | GNPRTB 6146 (300) + rand 6147 (100) |
 | `0x393` | `0x00661f80` | `FUN_0054e970` | `0xf8..0xf9` | `FUN_00546fa0` (90 lines, not read) | `0x54b754` (unnamed) | `+100`: GNPRTB 6148 (300) + rand 6149 (300) (inference: set beside `0x392` in `FUN_00549d60`) |
-| `0x394` | `0x006694f0` | `FUN_00578700` | `0x28..0x30` | `FUN_0053aa20`: if `+0x58` == 2, `FUN_0053a8d0(1)` sets `+0x60` bit 2 | `FUN_0053b330` | object `+0x54`+`0x18`; min from `+0x20` |
+| `0x394` | `0x006694f0` | `FUN_00578700` | `0x28..0x30` | `FUN_0053aa20`: facility cycle end; if `+0x58` == 2, `FUN_0053a8d0(1)` sets `+0x60` bit 2 ("Timer 0x394" below) | `FUN_0053b330` | facility `+0x54`+`0x18`; min = the cycle period at `+0x20`, no spread; ported (`production_cycle.rs`) |
 
 Ids `0x391`, `0x395` and `0x396` have no factory in `FUN_0051ef80` and no
 arming site.
@@ -202,11 +202,56 @@ which contradict both iterator recoveries.
 
 The event factories' fire slots are not decompiled.
 
+## Timer 0x394: the facility cycle (read 2026-11-19)
+
+Family bytes `0x28..0x30` are the `ProcFacil` objects: MANFACSD yards
+(`0x28` shipyard, `0x29` training facility, `0x2a` construction yard) and
+PROFACSD mines (`0x2c`) and refineries (`0x2d`); `FUN_0053b760` walks the
+same `0x28..0x2f` (`bombardment.rs`). No character or special force is in
+the range.
+
+- **Arming.** The only site is `FUN_0053b330`, `ProcFacil` slot `+0x1e0`,
+  called by `FUN_0053a940` when facility `+0x60` bit 3 (Processing) changes.
+  `FUN_0053b1d0` (the `ProcFacilState` hook, slot `+0x1cc`) sets that bit
+  to `new state == 2`. With the bit set, `FUN_0053fab0` writes the minimum
+  delay from the timer record `+0x20` (`FUN_00540230`) and `FUN_0053fa60`
+  sets armed (`FUN_00540200`); `FUN_0053fb00` then schedules it. No code
+  writes the spread, so the delay is exactly `+0x20` (hyp: the record
+  constructor zeroes it). `SetProcFacilETC` stores `now + +0x20`
+  (`FUN_004fd340` + period), the facility's estimated completion. With the
+  bit cleared (any state other than 2) the armed bit is cleared, which
+  cancels the timer.
+- **Period.** Record `+0x20` is written only by `FUN_00501ba0`: from
+  `FUN_0055abf0` (`FUN_0055e2b0`, mines and refineries, see
+  `side-resource-monitors.md` "Cycle period") and from `FUN_0052cc90`
+  (yards: the class rate `FUN_00520b70`), plus three load/sync callers
+  (`FUN_0058d540`, `FUN_0058d6d0`, `FUN_0058dc10`). `FUN_00501ba0` only
+  stores the field; it does not re-arm. A period computed mid-cycle (an
+  upkeep reallocation, a new ProductionModifier) applies from the next
+  cycle.
+- **Expiry.** `FUN_00578700` validates the target (`FUN_00505bc0`) and calls
+  `FUN_0053aa20`: in state 2, `FUN_0053a8d0(1)` sets `+0x60` bit 2
+  (PointProcessed), whose hook (slot `+0x1dc`) runs `FUN_0053aa40`: state
+  2 -> 3. Entering 3 runs the cycle-end hook (one raw material for a mine
+  `FUN_00530670`, one refined for a refinery `FUN_005307e0`, one build point
+  for a yard `FUN_00530950`), and 3 -> 1 (bit 1 clear) starts the next
+  cycle. Outside state 2 the expiry does nothing.
+
+Port: `production_cycle.rs` keeps the cycle as `Phase::Processing {
+done_tick }` = start day + period, fixed when the cycle starts (`Day::begin`
+for mines and refineries, `YardDay::begin` for yards); leaving state 2
+(blocked, removed, a yard stopped by its manager) drops the phase, so the
+cycle never ends. Tests:
+`a_cycle_keeps_the_length_it_started_with_when_upkeep_changes`,
+`a_fully_allocated_mine_takes_ten_days`,
+`a_blocked_facility_stops_and_gives_up_its_allocation`,
+`an_order_completes_on_its_best_day_for_its_cost_in_refined_material`.
+
 ## Open
 
-- The record delays for `0x380`, `0x388..0x38b` and `0x394` (`0x38c`'s is
-  1 day, `FUN_005236e0`). Those of the
-  per-system timers `0x383..0x386`, `0x38d` and `0x38e` are set by the
+- The record delays for `0x380` and `0x388..0x38b` (`0x38c`'s is
+  1 day, `FUN_005236e0`; `0x394`'s is the facility cycle period, above).
+  Those of the per-system timers `0x383..0x386`, `0x38d` and `0x38e` are set by the
   system's setup `FUN_0050e200` (read from its disassembly, 2026-10-17;
   the decompile drops the record pointers). A spread it does not set is
   taken to be 0 (hyp: the record constructor zeroes it).
