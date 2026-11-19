@@ -3421,6 +3421,131 @@ async function captureMessages(browser, base, faction) {
   }
 }
 
+// EVT-01-C018: Jabba Delivers Prisoners (FUN_0048b6e0) on each of its two
+// backgrounds. Scenario::JabbaDelivers (151) files it alone under the
+// Mission rail, Luke's (0x32000242) DagobahCompleted set for the Empire's
+// reader and clear for the Alliance's. The Empire's against A0
+// 2026-11-18-edited-saves-9 c-13 (8aa20451a9f9, day 531; Luke's master
+// +0xb0 = 0x08 per 2026-11-19-edited-saves-10/README.md): picture 0x42b
+// (STRATEGY 1067); the Alliance's against 2026-11-18-edited-saves-7 b-12
+// (ec2681b5c72b, day 29; Luke's +0xb0 = 0): 0x42a (1066). Each: the text
+// word for word (TEXTSTRA 0x7201, A0's "deliverd" as written), the
+// picture, the title image, the rail and the corners every pixel A0's
+// (b-12's pointer and tooltip on Message Index left out), the white title
+// and body ink within A0's tolerance. `--a0-jabba-empire=DIR` and
+// `--a0-jabba-alliance=DIR` read A0 from DIR (defaults the repository's
+// .artifacts/a0-vm parts 9 and 7).
+const JABBA_DELIVERS = 152;
+const A0_JABBA = {
+  empire: [path.resolve(args["a0-jabba-empire"] ?? path.join(ROOT, ".artifacts/a0-vm/2026-11-18-edited-saves-9")),
+    "c-13-e508b512-msg-jabba-delivers-prisoners-empire-view-d531.png", []],
+  alliance: [path.resolve(args["a0-jabba-alliance"] ?? path.join(ROOT, ".artifacts/a0-vm/2026-11-18-edited-saves-7")),
+    "b-12-bntyd7-msg-jabba-delivers-prisoners-d29.png", [[495, 135, 590, 200]]],
+};
+
+async function jabbaDelivers(browser, base, faction) {
+  const name = `${faction.name}-jabba-delivers`;
+  const directory = path.join(OUT, name);
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const screen = async (label) => {
+    await page.mouse.move(2, 2);
+    await frames(page, 6);
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    return PNG.sync.read(bytes);
+  };
+  const alliance = faction.byte === 1;
+  const [a0Dir, a0File, pointer] = A0_JABBA[faction.name];
+  // A0's windows: the Alliance's at (62, 49), the Empire's at (125, 52).
+  const origin = alliance ? [62, 49] : [125, 52];
+  const differ = (original, shown, [px, py], [xa, ya, xb, yb], skip = []) => {
+    let count = 0;
+    for (let y = ya; y < yb; y += 1) {
+      for (let x = xa; x < xb; x += 1) {
+        const [sx, sy] = [origin[0] + x, origin[1] + y];
+        if (skip.some(([x0, y0, x1, y1]) => sx >= x0 && sx < x1 && sy >= y0 && sy < y1)) continue;
+        const i = (sy * 640 + sx) * 4;
+        const j = ((py + y) * 640 + px + x) * 4;
+        if ([0, 1, 2].some((c) => original.data[i + c] !== shown.data[j + c])) count += 1;
+      }
+    }
+    return count;
+  };
+  const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+    let found = null;
+    for (let y = ya; y < yb; y += 1) {
+      for (let x = xa; x < xb; x += 1) {
+        const k = ((y0 + y) * png.width + x0 + x) * 4;
+        if (!(png.data[k] > 150 && png.data[k + 1] > 150 && png.data[k + 2] > 150)) continue;
+        found = found ? [Math.min(found[0], x), Math.min(found[1], y), Math.max(found[2], x), Math.max(found[3], y)]
+          : [x, y, x, y];
+      }
+    }
+    return found;
+  };
+  const near = (a, p) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+    && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+  const checks = {};
+  try {
+    await page.goto(`${base}?fixture-code=${JABBA_DELIVERS | (faction.byte << 8)}`);
+    const ready = await waitReport(page, () => true, "the fixture reports");
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const opened = await waitReport(page, (value) => value.index_open, "the rail opens the index");
+    const [left, top] = [Math.round(opened.window_left), Math.round(opened.window_top)];
+    const showMessage = [left + (alliance ? 0x1a7 + 16 : 0x1aa + 22), top + (alliance ? 0x5d + 15 : 0x59 + 20)];
+    await click(page, [left + 41 + 8, top + 64 + 4]);
+    const all = await waitReport(page, (value) => value.mode === "list" && value.rows.length === 1,
+      "All Messages lists the one row");
+    checks.rows = all.rows;
+    await click(page, [left + 25 + 60, top + 108 + 10]);
+    await click(page, showMessage);
+    const title = "Jabba Delivers Prisoners";
+    const single = await waitReport(page, (value) => value.mode === "single" && value.viewing_title === title,
+      `Display Message shows ${title}`);
+    const shown = await screen("message");
+    const original = PNG.sync.read(await fs.readFile(path.join(a0Dir, a0File)));
+    const [px, py] = [Math.round(single.window_left), Math.round(single.window_top)];
+    Object.assign(checks, {
+      a0: a0File.slice(0, 4),
+      text: single.viewing_text,
+      origin: [px, py],
+      picture: differ(original, shown, [px, py], [12, 33, 412, 233], pointer),
+      title_image: differ(original, shown, [px, py], [15, 16, 30, 32], pointer),
+      rail: differ(original, shown, [px, py], [414, 11, 468, 296], pointer),
+      corners: differ(original, shown, [px, py], [0, 0, 12, 12]) + differ(original, shown, [px, py], [402, 0, 414, 12]),
+      title: { a0: ink(original, origin, [32, 12, 360, 32]), port: ink(shown, [px, py], [32, 12, 360, 32]) },
+      body: { a0: ink(original, origin, [12, 234, 412, 296]), port: ink(shown, [px, py], [12, 234, 412, 296]) },
+    });
+    console.log(JSON.stringify({ [name]: checks }));
+    assert.deepEqual(checks.rows, [title], JSON.stringify(checks));
+    // TEXTSTRA 0x7201 holds two spaces after "Vader."; A0 breaks the line
+    // there, so the pair shows as one line end.
+    assert.equal(single.viewing_text, "Jabba has deliverd Luke, Han, Chewbacca and Leia to Darth Vader.  "
+      + "They are now prisoners of the Empire.", JSON.stringify(single));
+    // STRATEGY 1067 = 0x42b for the Empire (c-13), 1066 = 0x42a for the
+    // Alliance (b-12), as scripts/matchbg.py matched A0's 400x200.
+    assert.equal(single.viewing_background, alliance ? 0x42a : 0x42b, JSON.stringify(single));
+    assert.deepEqual([checks.origin, checks.picture, checks.title_image, checks.rail, checks.corners],
+      [origin, 0, 0, 0, 0], JSON.stringify(checks));
+    assert.ok(near(checks.title.a0, checks.title.port), JSON.stringify(checks));
+    assert.ok(near(checks.body.a0, checks.body.port), JSON.stringify(checks));
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: faction.name, case: "jabba-delivers", status: "pass", checks };
+  } catch (error) {
+    await page.screenshot({ path: path.join(directory, "failure.png") }).catch(() => {});
+    return { faction: faction.name, case: "jabba-delivers", status: "fail",
+      error: String(error.stack || error), checks, errors };
+  } finally {
+    await context.close();
+  }
+}
+
 await fs.mkdir(OUT, { recursive: true });
 const server = await serve(SITE);
 const base = `http://127.0.0.1:${server.address().port}/`;
@@ -3432,7 +3557,8 @@ const browser = await chromium.launch({
 const results = [];
 try {
   // --only=<case> runs that one case (headquarters-taken, uprising-messages,
-  // jedi-training-messages, ghorman-bombardment, ghorman-assault, capture-messages).
+  // jedi-training-messages, ghorman-bombardment, ghorman-assault, capture-messages,
+  // jabba-delivers).
   if (!args.only) for (const faction of FACTIONS) results.push(await run(browser, base, faction));
   if (FACTIONS.some(({ name }) => name === "alliance") && (!args.only || args.only === "headquarters-taken")) {
     results.push(await headquartersTaken(browser, base));
@@ -3451,6 +3577,9 @@ try {
   }
   if (!args.only || args.only === "capture-messages") {
     for (const faction of FACTIONS) results.push(await captureMessages(browser, base, faction));
+  }
+  if (!args.only || args.only === "jabba-delivers") {
+    for (const faction of FACTIONS) results.push(await jabbaDelivers(browser, base, faction));
   }
 } finally {
   await browser.close();
