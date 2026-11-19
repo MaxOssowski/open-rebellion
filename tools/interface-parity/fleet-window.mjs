@@ -1656,35 +1656,66 @@ const cases = [
     name: "blockade-running",
     code: BLOCKADE_RUNNING,
     // The primary system is the other side's, blockaded by the player's
-    // fleet of 20 ships with no KDY-150 there, so the regiment the fleet
-    // carried in holds FUN_0055a020's withdraw percent 100 - 20 * GNPRTB
-    // 7684 (5) = 0 (FUN_0050b310). The fleet icon's Move asks nothing
-    // (FUN_00487cc0: the system is not the fleet's side); in hyperspace
-    // FUN_00504990 keeps the regiment only when random(0..=99) < 0, so it
-    // is destroyed (event 0x340), and Evacuation Losses (FUN_00495e90,
-    // TEXTSTRA 0x70a8..0x70aa) tells its side on background 0x407 (the
-    // Alliance's) or 0x406 (message_pictures.rs evacuation_losses).
+    // fleet of 20 ships with no KDY-150 there, so FUN_0055a020 gives the
+    // withdraw percent 100 - 20 * GNPRTB 7684 (5) = 0 (FUN_0050b310), which
+    // both regiments aboard hold, as their own Moves onto the fleet copied
+    // it (FUN_00514a60 -> FUN_00508660 -> FUN_0050c540). FUN_00504990 rolls
+    // only the moved object, whose in-transit bit FUN_00556430 sets
+    // (ghidra/notes/move-order.md, "Re-traced 2026-11-19"):
+    // - a regiment dragged out of the Troops tab onto the target leaves on
+    //   its own and is kept only when random(0..=99) < 0, so it is destroyed
+    //   (event 0x340), and Evacuation Losses (FUN_00495e90, TEXTSTRA
+    //   0x70a8..0x70aa) tells its side on background 0x407 (the Alliance's)
+    //   or 0x406 (message_pictures.rs evacuation_losses);
+    // - the fleet icon's Move asks nothing (FUN_00487cc0: the system is not
+    //   the fleet's side), and the regiment aboard is not rolled: A0
+    //   2026-11-19-blockade-15 d-04..d-21, a fleet left Corsin, which it
+    //   blockaded, three times with 11 regiments aboard and lost none.
     async run(page, faction, setup, directory) {
-      const start = await until(page, "the regiment rides the blockading fleet",
-        (o) => o.aboard && o.cargo === 1 && !o.in_transit && o.last_loss_title === null);
+      const start = await until(page, "two regiments ride the blockading fleet",
+        (o) => o.cargo === 2 && !o.in_transit && o.loss_count === 0);
       await shot(page, directory, "blockade-running-ready");
+      const opened = await openFleetWindow(page, setup);
+      const selected = await selectFleet(page, opened);
+      // The window opens over the target planet: its title bar drags it
+      // aside (window_focus.rs).
+      const title = { x: selected.origin[0] + 100, y: selected.origin[1] + 8 };
+      await dragItem(page, title, { x: title.x - 250, y: title.y });
+      const aside = await until(page, "the Fleet window moves aside",
+        (o, x) => o.window_open && o.origin[0] < x, selected.origin[0]);
+      await click(page, point(aside.troops_tab));
+      const troops = await until(page, "the Troops tab opens", (o) => o.tab === "Troops" && o.first_item);
+      assert.equal(troops.items.length, 2, "the Troops tab lists both regiments");
+      await dragItem(page, point(troops.first_item), point(setup.target_planet));
+      const left = await until(page, "one regiment leaves on its own", (o) => o.cargo === 1);
+      assert.equal(left.in_transit, false, "the fleet left with the regiment");
+      const speed = await runFast(page, setup);
+      const lost = await until(page, "the regiment leaving on its own is lost running the blockade",
+        (o) => o.loss_count === 1, null, 60_000);
+      assert.equal(lost.last_loss_title, "Evacuation Losses");
+      assert.match(lost.last_loss_text, /^The following units were lost running an enemy blockade of .+\./);
+      assert.equal(lost.last_loss_picture, faction.byte === 1 ? 0x407 : 0x406);
+      assert.equal(lost.cargo, 1);
+      await frames(page, 3);
+      await shot(page, directory, "blockade-running-lost");
+      const origin = { x: lost.origin[0], y: lost.origin[1] };
+      await click(page, { x: origin.x + 218 + 7, y: origin.y + 3 + 7 });
+      await until(page, "the close button closes the Fleet window", (o) => !o.window_open);
       const menu = await openMenu(page, point(setup.icon), directory, "fleet");
       await choose(page, menu, menu.move_row, "Move");
       await click(page, point(setup.target_planet));
       const departed = await until(page, "the fleet leaves the blockaded system",
         (o) => o.in_transit || o.confirmation_open);
       assert.equal(departed.confirmation_open, false, "the fleet icon's Move asked");
-      assert.equal(departed.aboard, true, "the regiment was lost before the fleet left");
-      const speed = await runFast(page, setup);
-      const lost = await until(page, "the regiment is lost running the blockade",
-        (o) => o.cargo === 0 && o.last_loss_title !== null, null, 60_000);
-      assert.equal(lost.aboard, false);
-      assert.equal(lost.last_loss_title, "Evacuation Losses");
-      assert.match(lost.last_loss_text, /^The following units were lost running an enemy blockade of .+\./);
-      assert.equal(lost.last_loss_picture, faction.byte === 1 ? 0x407 : 0x406);
+      assert.equal(departed.cargo, 1, "the regiment aboard was lost before the fleet left");
+      const arrived = await until(page, "the fleet arrives at the target with its regiment",
+        (o, target) => !o.in_transit && o.fleet_system_dat_id === target,
+        setup.target_dat_id, 90_000);
+      assert.equal(arrived.cargo, 1, "the regiment aboard the departing fleet is not rolled");
+      assert.equal(arrived.loss_count, 1);
       await frames(page, 3);
-      await shot(page, directory, "blockade-running-lost");
-      return { start, menu, departed, speed, lost };
+      await shot(page, directory, "blockade-running-carried");
+      return { start, troops, left, speed, lost, menu, departed, arrived };
     },
   },
   {
