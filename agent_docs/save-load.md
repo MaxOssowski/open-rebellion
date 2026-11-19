@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v127, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, each side's object views, the squadrons' losses, the system copies' bits, and the v116 to v126 migrations"
+description: "Native and browser save v128, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits, and the v116 to v127 migrations"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-10-29
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v127. v116 to v126 still load
+serializable snapshot. The current format is v128. v116 to v127 still load
 through their migrations (below); no other version does.
 
-## Native format (v127)
+## Native format (v128)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -83,7 +83,8 @@ Loading restores the RNG, dual-AI state, repair episodes, and combat memory
 instead of reseeding or clearing them. `campaign_config` keeps the selected
 difficulty, galaxy-size label, player faction, and victory mode. The clock
 keeps its original Game Speed and partial day, so a game saved while paused
-reloads paused. The save also holds blockade embarked-regiment tracking,
+reloads paused. The save also holds each regiment's blockade withdraw
+percent and rolled journey (v128; `BlockadeState`'s `embarked` map),
 the fleets holding regiments loaded through the Fleet window (v24),
 regiments travelling on their own (v25), the fleet a moving fleet joins on
 arrival (v26), the fleet naming mode (v28), and the player's Manage
@@ -105,9 +106,9 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## The v116 to v126 migrations
+## The v116 to v127 migrations
 
-The loader reads `SAVE_VERSION` (127), `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
+The loader reads `SAVE_VERSION` (128), `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
 `MIGRATED_VERSION` (116). Any other version is rejected with a message to
 start a new game.
 
@@ -129,8 +130,12 @@ takes `seed_extras_from_fog` (v116 to v118) and `seed_details_from_fog`
 A v121 save's copies load without state bits, a v122 save's without
 command words. A v123 or older save's queued units are placed in their
 containers on load (`products::reconcile`); its deliveries stay trips.
-The browser reads a slot's v126, v125, v124, v123, v122, v121, v120, v119, v118,
-v117, then v116 keys when it has no v127 ones; Delete removes all.
+A v127 body has v128's layout, but its blockade map tracked regiments
+aboard fleets, which the original never rolls
+(`ghidra/notes/move-order.md`, "Re-traced 2026-11-19"), so a v127 or
+older save drops it (`BlockadeState::forget_fleet_borne_percents`).
+The browser reads a slot's v127, v126, v125, v124, v123, v122, v121, v120, v119,
+v118, v117, then v116 keys when it has no v128 ones; Delete removes all.
 
 Changing `SaveState`, or any type it holds, including `GameWorld`, changes the
 bincode layout. Bincode is positional, so `#[serde(default)]` does not keep old

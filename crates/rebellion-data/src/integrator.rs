@@ -1740,8 +1740,8 @@ impl PerceptionIntegrator {
                     troop,
                     tick,
                 } => {
-                    // The regiment was aboard a fleet leaving the system.
-                    if transport.destroy_embarked(world, *troop) {
+                    // The regiment left the system on its own.
+                    if transport.destroy_travelling(world, *troop) {
                         self.events.push(GameEventRecord::new(
                             *tick,
                             self.wall_ms,
@@ -5214,32 +5214,24 @@ mod tests {
     }
 
     #[test]
-    fn a_regiment_lost_running_a_blockade_leaves_its_fleet_and_is_reported() {
-        // FUN_00504990 destroys the regiment; FUN_00504a00 raises event 0x340.
+    fn a_regiment_lost_running_a_blockade_leaves_its_journey_and_is_reported() {
+        // FUN_00504990 destroys the regiment that left on its own (the moved
+        // object, ghidra/notes/move-order.md "Re-traced 2026-11-19");
+        // FUN_00504a00 raises event 0x340.
         let mut world = GameWorld::default();
         let system = add_system(&mut world, "Bespin");
-        let class = world.capital_ship_classes.insert(CapitalShipClass {
-            troop_capacity: 1,
-            ..CapitalShipClass::default()
-        });
-        let fleet = world.fleets.insert(Fleet {
-            location: system,
-            capital_ships: vec![ShipInstance::new(class, 100, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
-        });
-        world.systems[system].fleets.push(fleet);
         let troop = world.troops.insert(rebellion_core::world::TroopUnit {
             class_dat_id: DatId::new(0x1000_0001),
             is_alliance: false,
             regiment_strength: 100,
         });
-        world.systems[system].ground_units.push(troop);
         let mut transport = TroopTransportState::default();
-        transport.embark(&mut world, fleet, &[troop]).unwrap();
+        transport.push_transit(rebellion_core::troop_transport::RegimentTransit {
+            troop,
+            origin: system,
+            leg: rebellion_core::troop_transport::RegimentLeg::Surface(system),
+            arrival_tick: 20,
+        });
         let mut integrator = PerceptionIntegrator::new(9, 0);
 
         integrator.apply_blockade_events(
@@ -5252,7 +5244,7 @@ mod tests {
             }],
         );
 
-        assert!(transport.cargo(fleet).is_empty());
+        assert!(transport.transits().is_empty());
         assert!(!world.troops.contains_key(troop));
         let events = integrator.finish();
         assert_eq!(events.len(), 1);

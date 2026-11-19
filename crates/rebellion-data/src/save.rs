@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 127;
+pub const SAVE_VERSION: u32 = 128;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -125,7 +125,11 @@ pub const V125: u32 = 125;
 /// (`SaveState::system_copy_bits`), its last field.
 pub const V126: u32 = 126;
 
-/// Whether a save of `version` loads (the current one, or v116 to v126
+/// v127: the save whose blockade state tracks regiments aboard fleets
+/// (`BlockadeState::forget_fleet_borne_percents`); the layout is v128's.
+pub const V127: u32 = 127;
+
+/// Whether a save of `version` loads (the current one, or v116 to v127
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -318,6 +322,12 @@ pub fn decode_body(
         rebellion_core::products::reconcile(&mut state.world, &state.manufacturing);
     }
     state.products = state.world.products.clone();
+    if version <= V127 {
+        // Its withdraw percents were copied into regiments aboard fleets,
+        // which the original never rolls (ghidra/notes/move-order.md,
+        // "Re-traced 2026-11-19"); every regiment starts at 100.
+        state.blockade.forget_fleet_borne_percents();
+    }
     let fingerprint = compute_state_fingerprint(&state)?;
     Ok((state, fingerprint))
 }
@@ -1094,6 +1104,7 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V127,
             V126,
             V125,
             V124,
@@ -1221,6 +1232,8 @@ pub mod wasm_impl {
             versioned_meta_key(V125, slot),
             versioned_slot_key(V126, slot),
             versioned_meta_key(V126, slot),
+            versioned_slot_key(V127, slot),
+            versioned_meta_key(V127, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1250,6 +1263,7 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V127,
             V126,
             V125,
             V124,
@@ -1912,6 +1926,16 @@ mod tests {
         body.truncate(body.len() - cut);
         // The old body alone is short of a current one.
         assert!(bincode::deserialize::<SaveState>(&body).is_err());
+        write_body(saves_dir, state, version, &body)
+    }
+
+    /// `body` written as a `version` file fingerprinted from `state`.
+    fn write_body(
+        saves_dir: &std::path::Path,
+        state: &SaveState,
+        version: u32,
+        body: &[u8],
+    ) -> usize {
         let fingerprint = fingerprint_as(state, version).unwrap();
         let mut bytes = Vec::new();
         bytes.extend_from_slice(SAVE_MAGIC);
@@ -1924,7 +1948,7 @@ mod tests {
         bytes.extend_from_slice(&STATE_FINGERPRINT_VERSION.to_le_bytes());
         let at = bytes.len();
         bytes.extend_from_slice(&fingerprint.value.to_le_bytes());
-        bytes.extend_from_slice(&body);
+        bytes.extend_from_slice(body);
         std::fs::create_dir_all(saves_dir).unwrap();
         std::fs::write(slot_path(saves_dir, 0), bytes).unwrap();
         at
@@ -2503,76 +2527,74 @@ mod tests {
         assert!(!loaded.world.object_views.see_everything);
     }
 
-    /// A save state with one regiment embarked on a fleet in orbit, already
-    /// tracked by `BlockadeSystem::running_regiments` (F-021).
-    fn state_with_tracked_regiment() -> (SaveState, rebellion_core::ids::TroopKey, SystemKey) {
-        use rebellion_core::blockade::BlockadeSystem;
-        use rebellion_core::movement::MovementState;
-
+    /// A save state with one regiment on its first system's planet holding
+    /// a withdraw percent of 40, as a battle withdrawal copies it
+    /// (`BlockadeSystem::copy_to_garrison`).
+    fn state_with_tracked_regiment() -> (SaveState, rebellion_core::ids::TroopKey) {
         let mut state = minimal_save_state();
         let system = state.world.systems.keys().next().unwrap();
-        let class =
-            state
-                .world
-                .capital_ship_classes
-                .insert(rebellion_core::world::CapitalShipClass {
-                    troop_capacity: 1,
-                    ..Default::default()
-                });
-        let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
-            location: system,
-            capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
-        });
-        state.world.systems[system].fleets.push(fleet);
         let troop = state.world.troops.insert(rebellion_core::world::TroopUnit {
             class_dat_id: rebellion_core::ids::DatId::new(0x1000_0008),
             is_alliance: false,
             regiment_strength: 100,
         });
         state.world.systems[system].ground_units.push(troop);
-        state
-            .troop_transport
-            .embark(&mut state.world, fleet, &[troop])
-            .unwrap();
-        BlockadeSystem::running_regiments(
-            &mut state.blockade,
-            &state.world,
-            &MovementState::new(),
-            &state.troop_transport,
-        );
-        assert!(
-            state.blockade.embarked_regiment(troop).is_some(),
-            "the regiment is tracked before saving"
-        );
-        (state, troop, system)
+        state.blockade.set_withdraw_percent(troop, 40);
+        (state, troop)
     }
 
-    /// A regiment's withdraw percent (`+0x60`, set by `FUN_0050b310` and rolled
-    /// by `FUN_00504990` when it leaves) must survive a save, or a reload
-    /// would let a regiment run a blockade without its roll (F-021).
+    /// A regiment's withdraw percent (`+0x60`, copied by `FUN_0050c540` and
+    /// rolled by `FUN_00504990` when it leaves on its own) must survive a
+    /// save, or a reload would let a regiment run a blockade without its
+    /// roll (F-021).
     #[test]
-    fn a_round_trip_preserves_an_embarked_regiments_orbit_and_withdraw_percent() {
-        use rebellion_core::blockade::EmbarkedRegiment;
+    fn a_round_trip_preserves_a_regiments_withdraw_percent() {
+        use rebellion_core::blockade::RegimentWithdraw;
 
-        let saves_dir = tmp_dir("v15_embarked_roundtrip");
-        let (state, troop, system) = state_with_tracked_regiment();
-        let tracked = state.blockade.embarked_regiment(troop).unwrap();
+        let saves_dir = tmp_dir("v128_withdraw_roundtrip");
+        let (state, troop) = state_with_tracked_regiment();
 
-        save_slot(&saves_dir, 0, "Embarked", &state, &[]).unwrap();
+        save_slot(&saves_dir, 0, "Withdraw", &state, &[]).unwrap();
         let (_, loaded) = load_slot(&saves_dir, 0).unwrap();
 
         assert_eq!(
-            loaded.blockade.embarked_regiment(troop),
-            Some(EmbarkedRegiment {
-                orbit: Some(system),
-                withdraw_percent: tracked.withdraw_percent,
+            loaded.blockade.regiment_withdraw(troop),
+            Some(RegimentWithdraw {
+                journey_from: None,
+                withdraw_percent: 40,
             })
         );
+    }
+
+    #[test]
+    fn a_v127_save_drops_its_fleet_borne_withdraw_percents() {
+        // v127 copied percents into regiments aboard fleets, which the
+        // original never rolls (FUN_00504990 runs for the moved object only,
+        // ghidra/notes/move-order.md "Re-traced 2026-11-19"); v128 keeps the
+        // layout, so a v127 body loads and its entries are dropped.
+        let saves_dir = tmp_dir("v127_migration");
+        let (state, troop) = state_with_tracked_regiment();
+        let body = bincode::serialize(&state).unwrap();
+        write_body(&saves_dir, &state, V127, &body);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v127 save loads");
+        assert_eq!(loaded.blockade.regiment_withdraw(troop), None);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v126_save_drops_its_fleet_borne_withdraw_percents_too() {
+        // The same entries in a v126 body, which also lacks the system copy
+        // bits (v127).
+        let saves_dir = tmp_dir("v126_withdraw_migration");
+        let (state, troop) = state_with_tracked_regiment();
+        write_v126(&saves_dir, &state);
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("a v126 save loads");
+        assert_eq!(loaded.blockade.regiment_withdraw(troop), None);
     }
 
     #[test]

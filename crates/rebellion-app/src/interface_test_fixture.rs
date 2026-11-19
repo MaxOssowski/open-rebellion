@@ -670,12 +670,12 @@ pub enum Scenario {
     /// b-12). See [`post_jabba_delivers`].
     JabbaDelivers = 151,
     /// Running the blockade: `FleetLoad` with the primary system the other
-    /// side's and the player's fleet blockading it, the regiment aboard,
-    /// carried in from the loading target. The fleet holds enough ships that
-    /// `FUN_0055a020` leaves a withdraw percent of 0 (no KDY-150 there,
-    /// `FUN_0050b310`), so the regiment is lost when the fleet leaves
-    /// (`FUN_00504990`, event `0x340`, Evacuation Losses `FUN_00495e90`).
-    /// See [`place_blockade_running`].
+    /// side's and the player's fleet blockading it, two regiments aboard,
+    /// each holding the primary's withdraw percent, which the fleet's ships
+    /// bring to 0 (`FUN_0055a020`, no KDY-150 there, `FUN_0050b310`). A
+    /// regiment that leaves on its own is lost (`FUN_00504990`, event
+    /// `0x340`, Evacuation Losses `FUN_00495e90`); one aboard the departing
+    /// fleet is not rolled. See [`place_blockade_running`].
     BlockadeRunning = 152,
     /// `CharacterMove` with the other side's fleet alone in orbit of the
     /// player's primary system, which it blockades: the agent's Confirmed
@@ -1688,7 +1688,7 @@ pub fn apply(
         place_blockade_arrival(request, world, movement, primary);
     }
     if request.scenario == Scenario::BlockadeRunning {
-        place_blockade_running(request, world, movement, blockade, troop_transport, primary);
+        place_blockade_running(request, world, blockade, troop_transport, primary);
     }
     if request.scenario == Scenario::SquadronBlockaded {
         place_blockaded_target(request, world, movement, blockade, primary);
@@ -5846,15 +5846,14 @@ fn place_blockade_arrival(
 /// The `BlockadeRunning` scenario: the primary system becomes the other
 /// side's, held by its support (`FUN_0050b610`), its defense facilities
 /// moved to the loading target (an active KDY-150 keeps the withdraw percent
-/// at 100, `FUN_0050b310`). The player's fleet, blockading it, takes the
-/// regiment aboard and copies of its ship until `FUN_0055a020` leaves
-/// `100 - ships * GNPRTB[7684]` at 0. The regiment is then observed carried
-/// in from the target, so it takes the primary's percent as an arriving
-/// regiment does (`FUN_00514a60` -> `FUN_00508660`).
+/// at 100, `FUN_0050b310`). The player's fleet, blockading it, holds copies
+/// of its ship until `FUN_0055a020` leaves `100 - ships * GNPRTB[7684]` at 0,
+/// and two of the player's regiments aboard. Each holds that 0, as a
+/// regiment does whose own Move brought it onto the fleet there
+/// (`FUN_00514a60` -> `FUN_00508660` -> `FUN_0050c540`).
 fn place_blockade_running(
     request: FixtureRequest,
     world: &mut GameWorld,
-    movement: &MovementState,
     blockade: &mut BlockadeState,
     transport: &mut TroopTransportState,
     primary: SystemKey,
@@ -5892,11 +5891,14 @@ fn place_blockade_running(
     if let Some(ship) = world.fleets[fleet].capital_ships.first().cloned() {
         world.fleets[fleet].capital_ships.resize(ships.max(1), ship);
     }
-    let _ = transport.embark(world, fleet, &[regiment]);
-    world.fleets[fleet].location = target;
-    let _ = BlockadeSystem::running_regiments(blockade, world, movement, transport);
-    world.fleets[fleet].location = primary;
-    let _ = BlockadeSystem::running_regiments(blockade, world, movement, transport);
+    let second = world.troops[regiment].clone();
+    let second = world.troops.insert(second);
+    world.systems[primary].ground_units.push(second);
+    let _ = transport.embark(world, fleet, &[regiment, second]);
+    let percent = BlockadeSystem::withdraw_percent(world, primary);
+    for troop in [regiment, second] {
+        blockade.set_withdraw_percent(troop, percent);
+    }
     let _ = BlockadeSystem::advance(blockade, world, &[TickEvent { tick: 1 }]);
 }
 
@@ -9707,6 +9709,8 @@ struct FleetLoadObservation {
     last_loss_title: Option<String>,
     last_loss_text: Option<String>,
     last_loss_picture: Option<u32>,
+    /// How many of those the player has.
+    loss_count: usize,
     /// The top Assault Summary window (`FUN_0044c410`).
     assault_summary: Option<FixtureAssaultSummary>,
 }
@@ -10063,6 +10067,7 @@ fn fleet_load_observation(
             .map(str::to_owned),
         last_loss_title: last_loss(request, messages).and_then(|message| message.title.clone()),
         last_loss_text: last_loss(request, messages).map(|message| message.text.clone()),
+        loss_count: losses(request, messages).count(),
         last_loss_picture: last_loss(request, messages)
             .and_then(|message| message.picture)
             .map(|picture| picture.background),
@@ -10104,15 +10109,22 @@ fn last_disaster(messages: &[GameMessage]) -> Option<&GameMessage> {
 /// (`FUN_00495e90`): TEXTSTRA `0x70a9`'s body, or the port's line without
 /// the texts.
 fn last_loss(request: FixtureRequest, messages: &[GameMessage]) -> Option<&GameMessage> {
+    losses(request, messages).last()
+}
+
+/// The player's Evacuation Losses, oldest first.
+fn losses(
+    request: FixtureRequest,
+    messages: &[GameMessage],
+) -> impl DoubleEndedIterator<Item = &GameMessage> {
     messages
         .iter()
-        .rev()
-        .filter(|message| {
+        .filter(move |message| {
             message
                 .audience
                 .includes(request.faction == CockpitFaction::Alliance)
         })
-        .find(|message| {
+        .filter(|message| {
             message.text.contains("running an enemy blockade")
                 || message.text.starts_with("Troops destroyed by blockade at ")
         })
@@ -13620,11 +13632,15 @@ mod tests {
     }
 
     #[test]
-    fn the_blockade_running_scenario_loses_the_carried_regiment_when_the_fleet_leaves() {
+    fn the_blockade_running_scenario_rolls_a_regiment_leaving_on_its_own_not_the_fleets_cargo() {
         // FUN_0050b310: a blockaded system without a KDY-150 has the
-        // withdraw percent FUN_0055a020 gives, 100 - 20 ships * 5 = 0; an
-        // arriving regiment copies it (FUN_00514a60 -> FUN_00508660) and
-        // FUN_00504990 keeps it only when random(0..=99) < 0, never.
+        // withdraw percent FUN_0055a020 gives, 100 - 20 ships * 5 = 0, which
+        // a regiment whose own Move brought it there copies (FUN_00514a60 ->
+        // FUN_00508660 -> FUN_0050c540). FUN_00504990 rolls only the moved
+        // object (FUN_00556430's in-transit bit): the regiment that leaves on
+        // its own, kept only when random(0..=99) < 0, never; the cargo of a
+        // departing fleet is not rolled (ghidra/notes/move-order.md,
+        // "Re-traced 2026-11-19"; A0 2026-11-19-blockade-15 d-04..d-21).
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let request = request(Scenario::BlockadeRunning, faction);
             let mut applied = apply_to_loading_world_with(request, shipped_withdraw_penalties);
@@ -13657,20 +13673,34 @@ mod tests {
             assert!(applied.world.systems[primary].defense_facilities.is_empty());
             assert_eq!(applied.world.fleets[fleet].capital_ships.len(), 20);
             let cargo = applied.transport.cargo(fleet).to_vec();
-            assert_eq!(cargo.len(), 1, "{faction:?}");
-            assert_eq!(
-                applied.blockade.embarked_regiment(cargo[0]),
-                Some(rebellion_core::blockade::EmbarkedRegiment {
-                    orbit: Some(primary),
-                    withdraw_percent: 0,
-                })
-            );
+            assert_eq!(cargo.len(), 2, "{faction:?}");
+            for &troop in &cargo {
+                assert_eq!(
+                    applied
+                        .blockade
+                        .regiment_withdraw(troop)
+                        .map(|value| value.withdraw_percent),
+                    Some(0)
+                );
+            }
 
-            assert!(applied.movement.order(fleet, primary, target, 3));
+            // The first regiment leaves on its own for the target.
+            let blockaded = applied.blockade.blockaded_systems().clone();
+            let moved = applied.transport.move_regiment(
+                &mut applied.world,
+                &applied.movement,
+                &blockaded,
+                cargo[0],
+                rebellion_core::troop_transport::RegimentTarget::System(target),
+                2,
+            );
+            assert!(
+                matches!(moved, Ok(rebellion_core::troop_transport::RegimentMove::Departed(_))),
+                "{moved:?}"
+            );
             let running = BlockadeSystem::running_regiments(
                 &mut applied.blockade,
                 &applied.world,
-                &applied.movement,
                 &applied.transport,
             );
             // Roll 0.0 is the best draw, 99 (BlockadeSystem::resolve_running).
@@ -13682,6 +13712,16 @@ mod tests {
                     tick: 2,
                 }]
             );
+
+            // The fleet leaves with the second: nothing rolls.
+            assert!(applied.movement.order(fleet, primary, target, 3));
+            assert!(BlockadeSystem::running_regiments(
+                &mut applied.blockade,
+                &applied.world,
+                &applied.transport,
+            )
+            .is_empty());
+            assert_eq!(applied.transport.cargo(fleet), [cargo[1]]);
         }
         assert_eq!(Scenario::decode(152), Some(Scenario::BlockadeRunning));
     }

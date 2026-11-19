@@ -880,6 +880,29 @@ impl TroopTransportState {
         self.transit.len() != before
     }
 
+    /// Destroy a regiment on its own journey, removing the journey and the
+    /// regiment (`FUN_00504400` on a regiment running a blockade). Returns
+    /// whether it was travelling.
+    pub fn destroy_travelling(&mut self, world: &mut GameWorld, troop: TroopKey) -> bool {
+        let found = self.forget_transit(troop);
+        if found {
+            world.troops.remove(troop);
+        }
+        found
+    }
+
+    /// Take `troop` out of its fleet's cargo without destroying it.
+    #[cfg(test)]
+    pub(crate) fn forget_cargo(&mut self, troop: TroopKey) -> bool {
+        let mut found = false;
+        for cargo in self.cargo.values_mut() {
+            let before = cargo.len();
+            cargo.retain(|&key| key != troop);
+            found |= cargo.len() != before;
+        }
+        found
+    }
+
     /// The fleet carrying `troop`, if any.
     #[must_use]
     pub fn carrier(&self, troop: TroopKey) -> Option<FleetKey> {

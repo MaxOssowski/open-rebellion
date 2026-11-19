@@ -99,5 +99,6 @@ withdrew from its battle) change, `FUN_0050a0b0` calls slot `+0x1f4`
 `FUN_00510b80`, which (with `DAT_006b90e0` set) copies `+0x74` into every
 regiment on the planet (`FUN_0050c210`). A0 2026-11-19-blockade-15 d-04..d-21:
 a 76% fleet left Corsin three times with 11 regiments aboard and lost none.
-port mismatch: `running_regiments` rolls embarked regiments when their fleet
-leaves (`move-order.md`, "Re-traced 2026-11-19").
+Ported 2026-11-19 (save v128): `running_regiments` rolls only a regiment's
+own journey; `copy_to_garrison` after a battle withdrawal (`move-order.md`,
+"Re-traced 2026-11-19").

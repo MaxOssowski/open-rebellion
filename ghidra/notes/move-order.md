@@ -773,11 +773,11 @@ the captures did not meet a set bit.
   hyp: `DAT_006b90e0` is the master flag). A0 d-04..d-21 (Imperial Fleet 1
   leaving Corsin, which it blockaded, three times with 4, 4 and 3
   regiments aboard, percent 100 - 2*5 - 7*2 = 76): no loss, about a 5%
-  chance under a per-regiment roll. **port mismatch**:
-  `BlockadeSystem::running_regiments` copies the percent into regiments
-  aboard an arriving fleet and rolls them when the fleet leaves; the
-  original rolls a regiment that moves itself out of a system it entered
-  (or sat in through a battle) while `+0x74` was below 100.
+  chance under a per-regiment roll. Ported 2026-11-19 (save v128):
+  `BlockadeSystem::running_regiments` rolls a regiment's own journey with
+  the percent it held, then copies the destination's percent;
+  `copy_to_garrison` follows a battle withdrawal; a fleet's cargo is never
+  rolled. port: the roll falls on the first tick after the Move.
 
 ## Still open
 

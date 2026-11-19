@@ -314,7 +314,7 @@ pub fn run_simulation_tick(
         integrator.record_loyalty_shifts(battle_shift.as_slice());
         // FUN_00516ef0: the loser's fleets and planet squadrons leave on
         // Autorouting.
-        rebellion_core::abstract_battle::withdraw_loser(
+        let withdrawals = rebellion_core::abstract_battle::withdraw_loser(
             world,
             &mut states.movement,
             &mut states.troop_transport.squadrons,
@@ -322,6 +322,9 @@ pub fn run_simulation_tick(
             battle_winner,
             current_tick,
         );
+        // FUN_0050a0b0 -> FUN_00510b80: the side that withdrew changes, and
+        // the garrison takes the system's withdraw percent.
+        BlockadeSystem::after_withdrawal(&mut states.blockade, world, sys_key, &withdrawals);
 
         integrator.emit_system_space_combat(world, &space_result);
         states.combat_cooldowns.insert(
@@ -365,18 +368,13 @@ pub fn run_simulation_tick(
         }
     }
 
-    // Observe embarked regiments after arrivals and landings, so a fleet that
-    // arrives and is ordered away again this tick still copies the arrival
-    // system's withdraw percent. Their rolls happen at the blockade step.
+    // Roll the regiments that set out on their own since the last tick
+    // (FUN_00504990) before anything else moves them; their rolls happen at
+    // the blockade step.
     let mut running_regiments = if tick_events.is_empty() {
         Vec::new()
     } else {
-        BlockadeSystem::running_regiments(
-            &mut states.blockade,
-            world,
-            &states.movement,
-            &states.troop_transport,
-        )
+        BlockadeSystem::running_regiments(&mut states.blockade, world, &states.troop_transport)
     };
 
     // ── 4. Fog of war ────────────────────────────────────────────────────
@@ -667,7 +665,6 @@ pub fn run_simulation_tick(
         running_regiments.extend(BlockadeSystem::running_regiments(
             &mut states.blockade,
             world,
-            &states.movement,
             &states.troop_transport,
         ));
         let running_rolls = take_rolls(running_regiments.len());

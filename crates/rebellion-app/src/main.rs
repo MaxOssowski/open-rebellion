@@ -3674,13 +3674,21 @@ async fn main() {
                 rebellion_core::loyalty::settle_battle(&mut world, battle_before, sys_key, winner);
                 // FUN_00516ef0: the loser's fleets and planet squadrons leave
                 // on Autorouting.
-                rebellion_core::abstract_battle::withdraw_loser(
+                let withdrawals = rebellion_core::abstract_battle::withdraw_loser(
                     &mut world,
                     &mut movement_state,
                     &mut troop_transport_state.squadrons,
                     sys_key,
                     winner,
                     current_tick,
+                );
+                // FUN_0050a0b0 -> FUN_00510b80: the side that withdrew changes,
+                // and the garrison takes the system's withdraw percent.
+                BlockadeSystem::after_withdrawal(
+                    &mut blockade_state,
+                    &world,
+                    sys_key,
+                    &withdrawals,
                 );
                 troop_transport_state.destroy_untransportable_cargo(&mut world);
                 // Record combat cooldown to prevent infinite re-trigger on draws.
@@ -3708,16 +3716,14 @@ async fn main() {
             // (ghidra/notes/planetary-assault.md).
             tactical_flow::occupy(&mut world, current_tick, &mut msg_log);
 
-            // Observe embarked regiments after arrivals and landings, so a
-            // fleet that arrives and is ordered away again this tick still
-            // copies the arrival system's withdraw percent.
+            // Roll the regiments that set out on their own since the last
+            // tick (FUN_00504990).
             let mut running_regiments = if tick_events.is_empty() {
                 Vec::new()
             } else {
                 BlockadeSystem::running_regiments(
                     &mut blockade_state,
                     &world,
-                    &movement_state,
                     &troop_transport_state,
                 )
             };
@@ -4360,7 +4366,6 @@ async fn main() {
                 running_regiments.extend(BlockadeSystem::running_regiments(
                     &mut blockade_state,
                     &world,
-                    &movement_state,
                     &troop_transport_state,
                 ));
                 let running_rolls: Vec<f64> = (0..running_regiments.len())
@@ -4431,8 +4436,8 @@ async fn main() {
                             );
                             (name, unit.is_alliance)
                         });
-                        // The regiment was aboard a fleet leaving the system.
-                        troop_transport_state.destroy_embarked(&mut world, *troop);
+                        // The regiment left the system on its own.
+                        troop_transport_state.destroy_travelling(&mut world, *troop);
                         let name = world
                             .systems
                             .get(*system)
@@ -9669,13 +9674,21 @@ async fn main() {
                             );
                             // FUN_00516ef0: the loser's fleets and planet
                             // squadrons leave on Autorouting.
-                            rebellion_core::abstract_battle::withdraw_loser(
+                            let withdrawals = rebellion_core::abstract_battle::withdraw_loser(
                                 &mut world,
                                 &mut movement_state,
                                 &mut troop_transport_state.squadrons,
                                 session.system,
                                 winner,
                                 clock.tick,
+                            );
+                            // FUN_0050a0b0 -> FUN_00510b80: the side that withdrew changes,
+                            // and the garrison takes the system's withdraw percent.
+                            BlockadeSystem::after_withdrawal(
+                                &mut blockade_state,
+                                &world,
+                                session.system,
+                                &withdrawals,
                             );
                             troop_transport_state.destroy_untransportable_cargo(&mut world);
 
@@ -9841,13 +9854,21 @@ async fn main() {
                         }
                         Some(rebellion_render::CombatWinner::Draw) | None => None,
                     };
-                    rebellion_core::abstract_battle::withdraw_loser(
+                    let withdrawals = rebellion_core::abstract_battle::withdraw_loser(
                         &mut world,
                         &mut movement_state,
                         &mut troop_transport_state.squadrons,
                         session.system,
                         winner,
                         clock.tick,
+                    );
+                    // FUN_0050a0b0 -> FUN_00510b80: the side that withdrew changes,
+                    // and the garrison takes the system's withdraw percent.
+                    BlockadeSystem::after_withdrawal(
+                        &mut blockade_state,
+                        &world,
+                        session.system,
+                        &withdrawals,
                     );
                     let winner_str = match battle_return.winner {
                         Some(rebellion_render::CombatWinner::Attacker) => {

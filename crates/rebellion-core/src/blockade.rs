@@ -8,10 +8,12 @@
 //! 2. **Emits `BlockadeEvent`s** when blockade state changes (enter/exit).
 //! 3. **Halts manufacturing** — `BlockadeState::is_blockaded()` is consulted
 //!    by `production_cycle::advance_yards` to suspend the yards of blocked systems.
-//! 4. **Destroys regiments running the blockade** — a regiment carried into a
-//!    blockaded system takes that system's withdraw percent, and rolls against
-//!    it when its fleet leaves. Surface garrisons and landed regiments are
-//!    never rolled.
+//! 4. **Destroys regiments running the blockade** — a regiment that itself
+//!    enters a blockaded system takes that system's withdraw percent, and
+//!    rolls against it when it next leaves for another system on its own. A
+//!    regiment aboard a fleet is never the moved object, so it neither takes
+//!    a percent nor rolls when its fleet comes or goes
+//!    (`ghidra/notes/move-order.md`, "Re-traced 2026-11-19").
 //!
 //! # Architecture
 //!
@@ -19,14 +21,14 @@
 //! ```text
 //! BlockadeSystem::advance(&mut BlockadeState, &world, &[TickEvent])
 //!     -> Vec<BlockadeEvent>
-//! BlockadeSystem::running_regiments(&mut BlockadeState, &world, &movement, &transport)
+//! BlockadeSystem::running_regiments(&mut BlockadeState, &world, &transport)
 //!     -> Vec<RunningRegiment>
 //! BlockadeSystem::resolve_running(&[RunningRegiment], &rolls, tick)
 //!     -> Vec<BlockadeEvent>
 //! ```
 //! The caller applies `BlockadeEvent::TroopDestroyed` to `GameWorld` and to
-//! `TroopTransportState` (the regiment is removed from its fleet's cargo and
-//! from the arena).
+//! `TroopTransportState` (the regiment is removed from its journey and from
+//! the arena).
 //!
 //! # Source
 //!
@@ -44,14 +46,20 @@
 //!   `FUN_0055a020(ships, fighters)` =
 //!   `max(0, 100 - ships * GNPRTB[7684] - fighters * GNPRTB[7685])`, counting
 //!   every active fleet's capital ships and fighters at the system.
-//! - A regiment added to a system copies that value (`FUN_00514a60` calls the
-//!   system's `+0xd0` slot `FUN_00508660`, which calls `FUN_0050c540` then
-//!   `FUN_00504470`). Later changes to the system value are not pushed to
-//!   regiments already there: the system's `+0x1ec` slot is `FUN_00524b10`,
-//!   which only returns 1.
+//! - A regiment that itself changes container into a system from another
+//!   copies that value (`FUN_00514a60` calls the new system's `+0xd0` slot
+//!   `FUN_00508660`, which calls `FUN_0050c540` then `FUN_00504470`). The
+//!   original changes the container when the Move is given, so the copy is
+//!   the destination's value at departure. Later changes to the system value
+//!   are not pushed (its `+0x1ec` slot `FUN_00524b10` only returns 1), except
+//!   when the side that withdrew from the system's battle (`+0x78` bits 2..3)
+//!   changes: `FUN_0050a0b0` calls slot `+0x1f4` `FUN_00510b80`, which copies
+//!   the value into every regiment on the planet (`FUN_0050c210`) when
+//!   `DAT_006b90e0` is set (hyp: always, in a game).
 //! - Activating a regiment resets it to 100 (`FUN_004f7410` calls slot `+0x110`
 //!   `FUN_00504960`).
-//! - When the regiment enters transit (`FUN_004f7640` sets `+0x50` bit 5), slot
+//! - When the regiment itself enters transit (`FUN_004f7640` sets `+0x50` bit
+//!   5 on the moved object only: `FUN_00556390`, `FUN_00556430`), slot
 //!   `+0x124` `FUN_00504990` keeps it only if `random(0..=99) < percent`
 //!   (`FUN_0053e2f0`). Otherwise `FUN_00504400` marks it destroyed, which
 //!   raises `TroopRegDestroyedRunningBlockade` (`FUN_00504a00`, event `0x340`)
@@ -72,7 +80,6 @@ use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{DatId, SystemKey, TroopKey};
-use crate::movement::MovementState;
 use crate::tick::TickEvent;
 use crate::troop_transport::TroopTransportState;
 use crate::world::ControlKind;
@@ -188,16 +195,19 @@ pub struct BlockadeState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_set"
     )]
     blockaded: HashSet<SystemKey>,
-    /// Last observed position and withdraw percent of each embarked regiment.
+    /// Each regiment's withdraw percent (`+0x60`) below 100, and each
+    /// regiment whose own journey has been rolled.
     ///
-    /// Persisted since save v15. Loading a v14 or older save starts every
-    /// embarked regiment at full withdraw percent, which never destroys one
-    /// wrongly (FUN_00504960 resets to 100 on activation).
+    /// Save v128 keeps v15..v127's layout and names (`embarked`, entries
+    /// `orbit` and `withdraw_percent`); those saves tracked regiments aboard
+    /// fleets, which the original never rolls, so loading one drops them
+    /// ([`BlockadeState::forget_fleet_borne_percents`]).
     #[serde(
+        rename = "embarked",
         serialize_with = "crate::serde_ordered::serialize_hash_map",
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
-    embarked: HashMap<TroopKey, EmbarkedRegiment>,
+    regiments: HashMap<TroopKey, RegimentWithdraw>,
     /// The tick timer `0x386` next fires at each blockaded system (v62).
     #[serde(
         serialize_with = "crate::serde_ordered::serialize_hash_map",
@@ -228,17 +238,20 @@ pub struct BlockadeLosses {
     pub losses: crate::loyalty::SideLosses,
 }
 
-/// An embarked regiment's last observed orbit and its withdraw percent.
+/// A regiment's withdraw percent and its own journey's origin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct EmbarkedRegiment {
-    /// The system its fleet orbits, or `None` while in transit.
-    pub orbit: Option<SystemKey>,
-    /// Chance in percent that it survives leaving `orbit` (regiment `+0x60`).
+pub struct RegimentWithdraw {
+    /// The system its own journey left, once that departure was rolled;
+    /// `None` when it is not travelling on its own.
+    #[serde(rename = "orbit")]
+    pub journey_from: Option<SystemKey>,
+    /// Chance in percent that it survives its next departure on its own
+    /// (regiment `+0x60`).
     pub withdraw_percent: u8,
 }
 
-/// A regiment whose fleet has just left a system with a withdraw percent below
-/// 100. `BlockadeSystem::resolve_running` decides whether it survives.
+/// A regiment that has just left a system on its own with a withdraw percent
+/// below 100. `BlockadeSystem::resolve_running` decides whether it survives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunningRegiment {
     pub troop: TroopKey,
@@ -251,7 +264,7 @@ impl BlockadeState {
     pub fn new() -> Self {
         BlockadeState {
             blockaded: HashSet::new(),
-            embarked: HashMap::new(),
+            regiments: HashMap::new(),
             support_timers: HashMap::new(),
             losses: HashMap::new(),
             ended: Vec::new(),
@@ -278,10 +291,32 @@ impl BlockadeState {
         std::mem::take(&mut self.ended)
     }
 
-    /// The tracked position and withdraw percent of an embarked regiment.
+    /// A regiment's tracked withdraw percent and journey, when its percent
+    /// is below 100 or its own journey has been rolled.
     #[must_use]
-    pub fn embarked_regiment(&self, troop: TroopKey) -> Option<EmbarkedRegiment> {
-        self.embarked.get(&troop).copied()
+    pub fn regiment_withdraw(&self, troop: TroopKey) -> Option<RegimentWithdraw> {
+        self.regiments.get(&troop).copied()
+    }
+
+    /// Set a regiment's withdraw percent (`FUN_00504470`), as a copy from a
+    /// system does.
+    pub fn set_withdraw_percent(&mut self, troop: TroopKey, percent: u8) {
+        let percent = percent.min(FULL_WITHDRAW_PERCENT);
+        let entry = self.regiments.entry(troop).or_insert(RegimentWithdraw {
+            journey_from: None,
+            withdraw_percent: FULL_WITHDRAW_PERCENT,
+        });
+        entry.withdraw_percent = percent;
+        if entry.journey_from.is_none() && percent == FULL_WITHDRAW_PERCENT {
+            self.regiments.remove(&troop);
+        }
+    }
+
+    /// A v127 or older save tracked regiments aboard fleets
+    /// (`ghidra/notes/move-order.md`, "Re-traced 2026-11-19"): drop them,
+    /// leaving every regiment at 100, which never destroys one wrongly.
+    pub fn forget_fleet_borne_percents(&mut self) {
+        self.regiments.clear();
     }
 
     /// Remove blockade state for a system (used when system is destroyed).
@@ -553,54 +588,95 @@ impl BlockadeSystem {
         u8::try_from(percent).unwrap_or(FULL_WITHDRAW_PERCENT)
     }
 
-    /// Track embarked regiments and return those whose fleet has just left a
-    /// system with a withdraw percent below 100.
+    /// Roll and copy for regiments that left a system on their own since
+    /// the last call, and return those leaving with a percent below 100.
     ///
-    /// A regiment first seen aboard a fleet was loaded from the surface, so it
-    /// starts at 100. Arriving in a system copies that system's withdraw
-    /// percent; leaving a system reports the regiment for a roll. Regiments
-    /// no longer embarked (landed or destroyed) are forgotten, which resets
-    /// them to 100 as `FUN_00504960` does on activation.
+    /// The original changes a moved regiment's container when its Move is
+    /// given (`FUN_00514a60`): `FUN_00556430` first sets its in-transit bit,
+    /// whose slot `+0x124` (`FUN_00504990`) rolls the percent it already
+    /// held, then the destination system's `+0xd0` slot copies that system's
+    /// percent into it (`FUN_00508660` -> `FUN_0050c540`). A regiment aboard
+    /// a fleet is not the moved object when the fleet comes or goes, so it is
+    /// never seen here. A0 2026-11-19-blockade-15 d-04..d-21: a fleet left
+    /// Corsin, which it blockaded at 76, three times with 11 regiments
+    /// aboard and lost none.
+    ///
+    /// port: the roll happens on the first tick after the Move, the journey
+    /// already begun.
     pub fn running_regiments(
         state: &mut BlockadeState,
         world: &GameWorld,
-        movement: &MovementState,
         transport: &TroopTransportState,
     ) -> Vec<RunningRegiment> {
         let mut running = Vec::new();
-        let mut aboard = HashSet::new();
-        for fleet_key in transport.fleet_keys() {
-            let Some(fleet) = world.fleets.get(fleet_key) else {
+        let mut travelling = HashSet::new();
+        for transit in transport.transits() {
+            travelling.insert(transit.troop);
+            let held = state.regiments.get(&transit.troop).copied();
+            if held.is_some_and(|value| value.journey_from.is_some()) {
                 continue;
-            };
-            let orbit = (!movement.is_in_transit(fleet_key)).then_some(fleet.location);
-            for &troop in transport.cargo(fleet_key) {
-                aboard.insert(troop);
-                let regiment = state.embarked.entry(troop).or_insert(EmbarkedRegiment {
-                    orbit,
-                    withdraw_percent: FULL_WITHDRAW_PERCENT,
-                });
-                match (regiment.orbit, orbit) {
-                    (previous, current) if previous == current => {}
-                    (Some(origin), None) => {
-                        if regiment.withdraw_percent < FULL_WITHDRAW_PERCENT {
-                            running.push(RunningRegiment {
-                                troop,
-                                system: origin,
-                                withdraw_percent: regiment.withdraw_percent,
-                            });
-                        }
-                    }
-                    (_, Some(system)) => {
-                        regiment.withdraw_percent = Self::withdraw_percent(world, system);
-                    }
-                    (None, None) => {}
-                }
-                regiment.orbit = orbit;
             }
+            let percent = held.map_or(FULL_WITHDRAW_PERCENT, |value| value.withdraw_percent);
+            if percent < FULL_WITHDRAW_PERCENT {
+                running.push(RunningRegiment {
+                    troop: transit.troop,
+                    system: transit.origin,
+                    withdraw_percent: percent,
+                });
+            }
+            let destination = match transit.leg {
+                crate::troop_transport::RegimentLeg::Surface(system) => Some(system),
+                crate::troop_transport::RegimentLeg::Fleet(fleet) => {
+                    world.fleets.get(fleet).map(|value| value.location)
+                }
+            };
+            state.regiments.insert(
+                transit.troop,
+                RegimentWithdraw {
+                    journey_from: Some(transit.origin),
+                    withdraw_percent: destination.map_or(FULL_WITHDRAW_PERCENT, |system| {
+                        Self::withdraw_percent(world, system)
+                    }),
+                },
+            );
         }
-        state.embarked.retain(|troop, _| aboard.contains(troop));
+        state.regiments.retain(|troop, value| {
+            if !travelling.contains(troop) {
+                value.journey_from = None;
+            }
+            world.troops.contains_key(*troop)
+                && (value.journey_from.is_some() || value.withdraw_percent < FULL_WITHDRAW_PERCENT)
+        });
         running
+    }
+
+    /// The side that withdrew from `system`'s battle changed (`FUN_0050a0b0`
+    /// -> slot `+0x1f4` `FUN_00510b80` -> `FUN_0050c210`): every regiment on
+    /// its planet takes the system's withdraw percent. hyp: `DAT_006b90e0`,
+    /// which gates the copy, is set in a game; and the copy sees the system
+    /// after the loser's withdrawal has been ordered.
+    pub fn copy_to_garrison(state: &mut BlockadeState, world: &GameWorld, system: SystemKey) {
+        let Some(value) = world.systems.get(system) else {
+            return;
+        };
+        let percent = Self::withdraw_percent(world, system);
+        for &troop in &value.ground_units {
+            state.set_withdraw_percent(troop, percent);
+        }
+    }
+
+    /// After a battle's end at `system` (`FUN_00516ef0`): when some loser
+    /// withdrew, the system's `+0x78` withdrawn side changes, and
+    /// [`Self::copy_to_garrison`] follows; with nobody withdrawn it does not.
+    pub fn after_withdrawal(
+        state: &mut BlockadeState,
+        world: &GameWorld,
+        system: SystemKey,
+        withdrawals: &[crate::abstract_battle::Withdrawal],
+    ) {
+        if !withdrawals.is_empty() {
+            Self::copy_to_garrison(state, world, system);
+        }
     }
 
     /// Roll each running regiment against its withdraw percent (`FUN_0053e2f0`).
@@ -1101,7 +1177,6 @@ mod tests {
 
     // ── Running the blockade (FUN_0050b310, FUN_00504990) ─────────────────
 
-    use crate::movement::MovementState;
     use crate::troop_transport::TroopTransportState;
     use crate::world::{
         CapitalShipClass, DefenseFacilityInstance, FighterClass, FighterEntry, GnprtbEntry,
@@ -1294,29 +1369,20 @@ mod tests {
     }
 
     impl Run {
-        /// Observe the regiments with the fleet orbiting its location.
-        fn observe_orbiting(&mut self) -> Vec<RunningRegiment> {
-            BlockadeSystem::running_regiments(
-                &mut self.state,
-                &self.world,
-                &MovementState::new(),
-                &self.transport,
-            )
+        /// Observe the regiments' own journeys.
+        fn observe(&mut self) -> Vec<RunningRegiment> {
+            BlockadeSystem::running_regiments(&mut self.state, &self.world, &self.transport)
         }
 
-        /// Observe the regiments with the fleet in hyperspace from `from`.
-        fn observe_departing(&mut self, from: SystemKey, to: SystemKey) -> Vec<RunningRegiment> {
-            let mut movement = MovementState::new();
+        /// The fleet leaves `from` for `to` (the regiment aboard stays put
+        /// in its cargo) and the regiments are observed.
+        fn fleet_departs(&mut self, from: SystemKey, to: SystemKey) -> Vec<RunningRegiment> {
+            let mut movement = crate::movement::MovementState::new();
             assert!(movement.order(self.fleet, from, to, 5));
             self.world.systems[from]
                 .fleets
                 .retain(|&key| key != self.fleet);
-            BlockadeSystem::running_regiments(
-                &mut self.state,
-                &self.world,
-                &movement,
-                &self.transport,
-            )
+            self.observe()
         }
 
         /// Move the fleet into `system`'s orbit.
@@ -1325,36 +1391,148 @@ mod tests {
             self.world.systems[system].fleets.push(self.fleet);
         }
 
-        /// Carry the regiment from the origin into the target and observe it.
+        /// The fleet carries the regiment from the origin into the target,
+        /// which it blockades.
         fn carry_into_target(&mut self) {
-            assert!(self.observe_orbiting().is_empty());
-            assert!(self.observe_departing(self.origin, self.target).is_empty());
+            assert!(self.observe().is_empty());
+            assert!(self.fleet_departs(self.origin, self.target).is_empty());
             self.arrive(self.target);
-            assert!(self.observe_orbiting().is_empty());
+            assert!(self.observe().is_empty());
+        }
+
+        /// A second regiment of the fleet's side, on the origin's surface,
+        /// sets out on its own for the fleet at the target (a Move released
+        /// on the fleet, `RegimentLeg::Fleet`), and is observed.
+        fn walk_onto_the_blockading_fleet(&mut self) -> (TroopKey, Vec<RunningRegiment>) {
+            self.world.systems[self.origin]
+                .fleets
+                .retain(|&key| key != self.fleet);
+            self.arrive(self.target);
+            let walker = add_troop(&mut self.world, self.origin, false);
+            self.world.systems[self.origin]
+                .ground_units
+                .retain(|&key| key != walker);
+            self.transport
+                .push_transit(crate::troop_transport::RegimentTransit {
+                    troop: walker,
+                    origin: self.origin,
+                    leg: crate::troop_transport::RegimentLeg::Fleet(self.fleet),
+                    arrival_tick: 4,
+                });
+            let running = self.observe();
+            (walker, running)
+        }
+
+        /// Every journey ends and the regiments are observed.
+        fn journeys_end(&mut self) -> Vec<RunningRegiment> {
+            let arrivals = self.transport.advance_transit(&mut self.world, u64::MAX);
+            assert!(arrivals.lost.is_empty());
+            self.observe()
+        }
+
+        /// `troop`, aboard the fleet at the target, leaves on its own for the
+        /// origin's surface, and is observed.
+        fn walk_out_to_the_origin(&mut self, troop: TroopKey) -> Vec<RunningRegiment> {
+            assert!(self.transport.forget_cargo(troop));
+            self.transport
+                .push_transit(crate::troop_transport::RegimentTransit {
+                    troop,
+                    origin: self.target,
+                    leg: crate::troop_transport::RegimentLeg::Surface(self.origin),
+                    arrival_tick: 9,
+                });
+            self.observe()
         }
     }
 
     #[test]
-    fn a_regiment_carried_into_a_blockaded_system_takes_its_withdraw_percent() {
-        // FUN_0050b310 + FUN_0055a020: 100 - 10 ships * 5 - 5 squadrons * 2 = 40,
-        // copied into the arriving regiment by FUN_0050c540 -> FUN_00504470.
+    fn a_regiment_aboard_a_fleet_leaving_a_blockaded_system_is_never_rolled() {
+        // FUN_00556390/FUN_00556430 set the in-transit bit (FUN_004f7640,
+        // slot +0x124 FUN_00504990) on the moved object only, the fleet; and
+        // FUN_00514a60 copies a percent (FUN_00508660 -> FUN_0050c540) only
+        // into the object changing system. A0 2026-11-19-blockade-15
+        // d-04..d-21: Fleet 1 left Corsin, which it blockaded, three times
+        // with 4, 4 and 3 regiments aboard and lost none.
         let mut run = setup_run(10, 5);
         run.carry_into_target();
+        assert_eq!(run.state.regiment_withdraw(run.troop), None);
+        assert!(run.fleet_departs(run.target, run.origin).is_empty());
+    }
 
+    #[test]
+    fn a_regiment_moving_itself_into_a_blockaded_system_takes_its_withdraw_percent() {
+        // FUN_0050b310 + FUN_0055a020: 100 - 10 ships * 5 - 5 squadrons * 2 =
+        // 40, copied when the regiment's Move changes its container
+        // (FUN_00514a60 -> FUN_00508660 -> FUN_0050c540 -> FUN_00504470).
+        // It left the origin at 100, so nothing rolls.
+        let mut run = setup_run(10, 5);
+        let (walker, running) = run.walk_onto_the_blockading_fleet();
+        assert!(running.is_empty());
         assert_eq!(
-            run.state.embarked_regiment(run.troop),
-            Some(EmbarkedRegiment {
-                orbit: Some(run.target),
+            run.state.regiment_withdraw(walker),
+            Some(RegimentWithdraw {
+                journey_from: Some(run.origin),
                 withdraw_percent: 40,
             })
         );
+        assert!(run.journeys_end().is_empty());
         assert_eq!(
-            run.observe_departing(run.target, run.origin),
+            run.state.regiment_withdraw(walker),
+            Some(RegimentWithdraw {
+                journey_from: None,
+                withdraw_percent: 40,
+            })
+        );
+    }
+
+    #[test]
+    fn a_regiment_leaving_on_its_own_rolls_the_percent_it_brought_in() {
+        // FUN_00556430 sets the in-transit bit before FUN_00514a60's copy, so
+        // FUN_00504990 rolls the percent held from the arrival (40), and the
+        // regiment then takes the origin's 100.
+        let mut run = setup_run(10, 5);
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
+        assert!(run.journeys_end().is_empty());
+        assert_eq!(
+            run.walk_out_to_the_origin(walker),
             vec![RunningRegiment {
-                troop: run.troop,
+                troop: walker,
                 system: run.target,
                 withdraw_percent: 40,
             }]
+        );
+        // One roll per journey.
+        assert!(run.observe().is_empty());
+        assert_eq!(
+            run.state.regiment_withdraw(walker),
+            Some(RegimentWithdraw {
+                journey_from: Some(run.target),
+                withdraw_percent: FULL_WITHDRAW_PERCENT,
+            })
+        );
+        assert!(run.journeys_end().is_empty());
+        assert_eq!(run.state.regiment_withdraw(walker), None);
+    }
+
+    #[test]
+    fn landing_in_the_same_system_keeps_a_regiments_withdraw_percent() {
+        // A container change within one system calls no +0xd0 slot
+        // (FUN_00514a60: FUN_00518530 finds the same system), and the reset
+        // to 100 (FUN_00504960) follows activation only.
+        let mut run = setup_run(10, 5);
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
+        assert!(run.journeys_end().is_empty());
+        let landed = run
+            .transport
+            .disembark_all(&mut run.world, run.fleet, run.target)
+            .unwrap();
+        assert!(landed.contains(&walker));
+        assert!(run.observe().is_empty());
+        assert_eq!(
+            run.state
+                .regiment_withdraw(walker)
+                .map(|r| r.withdraw_percent),
+            Some(40)
         );
     }
 
@@ -1362,10 +1540,10 @@ mod tests {
     fn the_withdraw_percent_never_falls_below_zero() {
         // FUN_0053e120 clamps the FUN_0055a020 result at 0: 100 - 30 * 5 < 0.
         let mut run = setup_run(30, 0);
-        run.carry_into_target();
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
         assert_eq!(
             run.state
-                .embarked_regiment(run.troop)
+                .regiment_withdraw(walker)
                 .map(|r| r.withdraw_percent),
             Some(0)
         );
@@ -1378,12 +1556,11 @@ mod tests {
         let mut run = setup_run(10, 5);
         let class = run.world.fleets[run.fleet].fighters[0].class;
         crate::squadrons::add(&mut run.world.systems[run.target].fighters, class, 3);
-        run.carry_into_target();
-
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
         assert_eq!(
             run.state
-                .embarked_regiment(run.troop)
-                .map(|regiment| regiment.withdraw_percent),
+                .regiment_withdraw(walker)
+                .map(|r| r.withdraw_percent),
             Some(34)
         );
     }
@@ -1401,58 +1578,87 @@ mod tests {
                 side: crate::dat::Faction::Alliance,
             });
         run.world.systems[run.target].defense_facilities.push(kdy);
-        run.carry_into_target();
-
-        assert!(run.observe_departing(run.target, run.origin).is_empty());
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
+        assert!(run.journeys_end().is_empty());
+        assert!(run.walk_out_to_the_origin(walker).is_empty());
     }
 
     #[test]
-    fn a_regiment_loaded_at_a_blockaded_system_leaves_it_safely() {
-        // Loading onto a fleet does not add the regiment to a new system, so
-        // FUN_00508660 never lowers the 100 set when it was activated.
-        let mut run = setup_run(10, 5);
-        // First seen aboard while already orbiting the blockaded target.
-        let (origin, fleet) = (run.origin, run.fleet);
-        run.world.systems[origin].fleets.retain(|&key| key != fleet);
-        run.arrive(run.target);
-
-        assert!(run.observe_orbiting().is_empty());
-        assert_eq!(
-            run.state
-                .embarked_regiment(run.troop)
-                .map(|r| r.withdraw_percent),
-            Some(FULL_WITHDRAW_PERCENT)
-        );
-        assert!(run.observe_departing(run.target, run.origin).is_empty());
-    }
-
-    #[test]
-    fn landing_resets_a_regiment_to_a_full_withdraw_percent() {
-        // Activation resets the percent to 100 (FUN_004f7410 -> FUN_00504960).
-        let mut run = setup_run(10, 5);
-        run.carry_into_target();
-        let landed = run
-            .transport
-            .disembark_all(&mut run.world, run.fleet, run.target)
-            .unwrap();
-        assert_eq!(landed, vec![run.troop]);
-        assert!(run.observe_orbiting().is_empty());
-        assert_eq!(run.state.embarked_regiment(run.troop), None);
-
-        run.transport
-            .embark(&mut run.world, run.fleet, &[run.troop])
-            .unwrap();
-        assert!(run.observe_orbiting().is_empty());
-        assert!(run.observe_departing(run.target, run.origin).is_empty());
-    }
-
-    #[test]
-    fn a_regiment_leaving_an_unblockaded_system_is_never_rolled() {
+    fn a_regiment_entering_an_unblockaded_system_keeps_a_full_percent() {
         let mut run = setup_run(10, 5);
         // An Alliance defender at the target means no blockade.
         add_fleet(&mut run.world, run.target, true);
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
+        assert!(run.journeys_end().is_empty());
+        assert!(run.walk_out_to_the_origin(walker).is_empty());
+    }
+
+    #[test]
+    fn a_battle_withdrawal_gives_the_garrison_the_systems_withdraw_percent() {
+        // FUN_0050a0b0 (system +0x78 bits 2..3, the side that withdrew) ->
+        // slot +0x1f4 FUN_00510b80 -> FUN_0050c210: every regiment on the
+        // planet copies +0x74 (FUN_0050c540).
+        let mut run = setup_run(10, 5);
         run.carry_into_target();
-        assert!(run.observe_departing(run.target, run.origin).is_empty());
+        let garrison = add_troop(&mut run.world, run.target, true);
+        BlockadeSystem::copy_to_garrison(&mut run.state, &run.world, run.target);
+        assert_eq!(
+            run.state.regiment_withdraw(garrison),
+            Some(RegimentWithdraw {
+                journey_from: None,
+                withdraw_percent: 40,
+            })
+        );
+        // The regiment aboard the fleet is not on the planet.
+        assert_eq!(run.state.regiment_withdraw(run.troop), None);
+        // A later copy at 100 resets it.
+        run.world.systems[run.target].fleets.clear();
+        BlockadeSystem::copy_to_garrison(&mut run.state, &run.world, run.target);
+        assert_eq!(run.state.regiment_withdraw(garrison), None);
+    }
+
+    #[test]
+    fn only_a_battle_with_a_withdrawal_copies_the_percent_to_the_garrison() {
+        // FUN_00516ef0 orders the loser away; the copy follows the change of
+        // the withdrawn side (+0x78 bits 2..3, FUN_0050a0b0 -> FUN_00510b80),
+        // which a battle nobody left does not make.
+        let mut run = setup_run(10, 5);
+        run.carry_into_target();
+        let garrison = add_troop(&mut run.world, run.target, true);
+        BlockadeSystem::after_withdrawal(&mut run.state, &run.world, run.target, &[]);
+        assert_eq!(run.state.regiment_withdraw(garrison), None);
+        let withdrawal = crate::abstract_battle::Withdrawal {
+            fleet: run.fleet,
+            destination: run.origin,
+            transit_ticks: 3,
+        };
+        BlockadeSystem::after_withdrawal(&mut run.state, &run.world, run.target, &[withdrawal]);
+        assert_eq!(
+            run.state
+                .regiment_withdraw(garrison)
+                .map(|r| r.withdraw_percent),
+            Some(40)
+        );
+    }
+
+    #[test]
+    fn forgetting_fleet_borne_percents_leaves_every_regiment_at_full() {
+        // Our save migration (v127): the tracked percents go, so no regiment
+        // can be destroyed by a percent the original never gave it.
+        let mut state = BlockadeState::new();
+        state.set_withdraw_percent(TroopKey::default(), 10);
+        state.forget_fleet_borne_percents();
+        assert_eq!(state.regiment_withdraw(TroopKey::default()), None);
+    }
+
+    #[test]
+    fn a_destroyed_regiment_loses_its_withdraw_percent() {
+        // Our bookkeeping: a regiment gone from the arena is forgotten.
+        let mut run = setup_run(10, 5);
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
+        assert!(run.transport.destroy_travelling(&mut run.world, walker));
+        assert!(run.observe().is_empty());
+        assert_eq!(run.state.regiment_withdraw(walker), None);
     }
 
     #[test]
@@ -1481,11 +1687,12 @@ mod tests {
     }
 
     #[test]
-    fn destroying_a_running_regiment_removes_it_from_cargo_and_the_arena() {
+    fn destroying_a_running_regiment_removes_it_from_its_journey_and_the_arena() {
         let mut run = setup_run(1, 0);
-        assert!(run.transport.destroy_embarked(&mut run.world, run.troop));
-        assert!(run.transport.cargo(run.fleet).is_empty());
-        assert!(!run.world.troops.contains_key(run.troop));
-        assert!(!run.transport.destroy_embarked(&mut run.world, run.troop));
+        let (walker, _) = run.walk_onto_the_blockading_fleet();
+        assert!(run.transport.destroy_travelling(&mut run.world, walker));
+        assert!(run.transport.transits().is_empty());
+        assert!(!run.world.troops.contains_key(walker));
+        assert!(!run.transport.destroy_travelling(&mut run.world, walker));
     }
 }
