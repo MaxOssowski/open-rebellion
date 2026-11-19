@@ -323,6 +323,8 @@ pub enum SquadronMoveError {
     IntoItself,
     /// The fleet has no room (`FUN_00500b40`, `0x14`/1).
     NoRoom,
+    /// The destination planet is blockaded (`FUN_005073d0`, `0x90`/4).
+    DestinationBlockaded,
 }
 
 impl fmt::Display for SquadronMoveError {
@@ -337,6 +339,7 @@ impl fmt::Display for SquadronMoveError {
             Self::OtherSidePlanet => "the destination planet belongs to another side",
             Self::IntoItself => "the squadron is already there",
             Self::NoRoom => "the fleet has no room for fighters",
+            Self::DestinationBlockaded => "the destination planet is blockaded",
         })
     }
 }
@@ -467,6 +470,14 @@ fn check_route(
             let holder = world.systems.get(system).and_then(|value| value.control.faction());
             if holder != Some(side) {
                 return Err(SquadronMoveError::OtherSidePlanet);
+            }
+            // FUN_00550700 asks the system's acceptance (+0x74,
+            // FUN_005073d0): a blockaded system gives 0x90/4, lifted for
+            // fleets and personnel but not a squadron's 0x204.
+            if world.systems.get(system).is_some_and(|value| {
+                crate::blockade::BlockadeSystem::system_is_blockaded(world, value)
+            }) {
+                return Err(SquadronMoveError::DestinationBlockaded);
             }
         }
     }
@@ -1434,6 +1445,43 @@ mod tests {
         ));
         s.world.systems[s.here].fleets.clear();
         assert!(!move_enabled(&s.world, true, s.x_wing, fleet));
+    }
+
+    #[test]
+    fn a_squadron_may_not_move_onto_its_sides_blockaded_planet() {
+        // FUN_00552d10 -> FUN_00550700 asks the destination system's
+        // acceptance (slot +0x74, System_vt74 FUN_005073d0) with the
+        // sub-order kind and the mover's family: a blockaded system (+0x88
+        // bit 0x20) gives 0x90/4, lifted only for 0x204 fleets (0x08..0x10),
+        // 0x240/0x241 personnel and kind 0x3f0, so not for a squadron's
+        // 0x204 (0x1c..0x1f).
+        let mut s = setup(2);
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 1);
+        let (here, there) = (
+            SquadronPlace::Planet(s.here),
+            SquadronPlace::Planet(s.there),
+        );
+        let blockader = s.world.fleets.insert(Fleet {
+            location: s.there,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        s.world.systems[s.there].fleets.push(blockader);
+        assert_eq!(
+            check_move(&s.world, true, s.x_wing, 1, here, there),
+            Err(SquadronMoveError::DestinationBlockaded)
+        );
+        // The same planet without the blockade takes it.
+        s.world.systems[s.there].fleets.clear();
+        assert_eq!(check_move(&s.world, true, s.x_wing, 1, here, there), Ok(()));
+        assert_eq!(
+            SquadronMoveError::DestinationBlockaded.to_string(),
+            "the destination planet is blockaded"
+        );
     }
 
     #[test]

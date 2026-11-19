@@ -2170,6 +2170,30 @@ fn place_squadron_enroute(
                 character.current_system = Some(primary);
             }
         }
+        // The other side's fleets leave it, for another system (the
+        // squadrons' origin in a world of three): alone there they would
+        // blockade it, and FUN_005073d0 refuses a squadron a blockaded
+        // planet (0x90/4).
+        let away = world
+            .systems
+            .keys()
+            .find(|&key| key != primary && key != secondary && Some(key) != origin)
+            .or(origin);
+        if let Some(away) = away {
+            let enemies: Vec<_> = world
+                .fleets
+                .iter()
+                .filter(|(_, fleet)| fleet.location == secondary && fleet.is_alliance != alliance)
+                .map(|(key, _)| key)
+                .collect();
+            for key in enemies {
+                world.fleets[key].location = away;
+                world.systems[secondary]
+                    .fleets
+                    .retain(|&listed| listed != key);
+                world.systems[away].fleets.push(key);
+            }
+        }
     }
     if let Some(origin) = origin.filter(|&origin| origin != primary && origin != secondary) {
         world.systems[origin].control = ControlKind::Controlled(side);
@@ -16810,6 +16834,49 @@ mod tests {
             assert_eq!(copy.class.raw(), class);
             assert!(!copy.live);
         }
+    }
+
+    #[test]
+    fn the_squadron_enroute_scenario_sends_the_other_sides_fleet_off_the_second_planet() {
+        // FUN_005073d0 refuses a squadron a blockaded planet (0x90/4), so the
+        // fixture moves the other side's fleet from the second planet to a
+        // fourth system; every other fleet stays.
+        let applied = apply_to_loading_world_with(
+            request(Scenario::SquadronEnroute, CockpitFaction::Alliance),
+            |world| {
+                world
+                    .fighter_classes
+                    .insert(rebellion_core::world::FighterClass {
+                        dat_id: rebellion_core::ids::DatId::new(0x1c00_0001),
+                        is_alliance: true,
+                        ..Default::default()
+                    });
+                let first = world.systems.keys().next().unwrap();
+                let mut fourth = world.systems[first].clone();
+                fourth.name = "Fourth".into();
+                fourth.fleets.clear();
+                let fourth = world.systems.insert(fourth);
+                let sector = world.systems[fourth].sector;
+                world.sectors[sector].systems.push(fourth);
+            },
+        );
+        let keys: Vec<_> = applied.world.systems.keys().collect();
+        let (primary, secondary, fourth) = (keys[0], keys[1], keys[3]);
+        let at = |system| {
+            applied
+                .world
+                .fleets
+                .values()
+                .filter(|fleet| fleet.location == system)
+                .map(|fleet| fleet.is_alliance)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(at(secondary), Vec::<bool>::new());
+        assert_eq!(at(fourth), [false]);
+        assert_eq!(at(primary), [true, false]);
+        assert_eq!(applied.world.systems[fourth].fleets.len(), 1);
+        assert!(applied.world.systems[secondary].fleets.is_empty());
+        assert_eq!(applied.transport.squadrons.transits().len(), 2);
     }
 
     // FUN_00556390 puts a squadron sent by Move in its destination at once.
