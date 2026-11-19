@@ -4839,6 +4839,27 @@ fn blockade_bortras(
     fleets.select(bortras, FleetWindowEntry::Fleet(fleet));
 }
 
+/// The cockpit the ending scenarios' games were started from: Headquarters
+/// Victory (A0 2026-11-16-edited-saves x-24), Expert and a Large galaxy.
+/// The ending's film returns through app state 3, whose new menu window
+/// (`FUN_00414a80` -> `FUN_00404c30`) shows none of them (x-43).
+#[must_use]
+pub fn starting_menu(request: FixtureRequest) -> Option<rebellion_render::MainMenuState> {
+    matches!(
+        request.scenario,
+        Scenario::EndingDefeat | Scenario::EndingVictory
+    )
+    .then(|| {
+        let mut menu = rebellion_render::MainMenuState::default();
+        menu.difficulty = rebellion_render::Difficulty::Hard;
+        // The lever reaches Large from Standard on its way to Huge.
+        menu.galaxy_size = rebellion_core::dat::GalaxySize::Large;
+        menu.lever_returning = true;
+        menu.headquarters_only = true;
+        menu
+    })
+}
+
 /// Whether the scenario runs the clock Fast from the start.
 #[must_use]
 pub fn runs_the_clock(request: FixtureRequest) -> bool {

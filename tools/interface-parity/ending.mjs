@@ -106,6 +106,24 @@ const A0_EDITED = path.join(A0_VM, "2026-11-16-edited-saves");
 // speed.
 const A0_ALLIANCE = path.join(A0_VM, "2026-11-17-edited-saves-5");
 
+// The cockpit's game type label (TEXTSTRA 10158 / 10159, green on black
+// under the centre monitor): its green ink's count and box in (260..389,
+// 366..391). A0 x-43 "Standard Game" [288, 377, 361, 384], x-24
+// "Headquarters Victory" [274, 377, 376, 386].
+function gameTypeInk(png) {
+  let count = 0;
+  let box = null;
+  for (let y = 366; y < 392; y += 1) {
+    for (let x = 260; x < 390; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (!(png.data[i + 1] > 120 && png.data[i] < 120 && png.data[i + 2] < 120)) continue;
+      count += 1;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return { count, box };
+}
+
 // The rows and columns of a frame holding any lit pixel (sum above 60).
 function litBox(png) {
   let box = null;
@@ -348,6 +366,28 @@ async function run(browser, base, faction) {
     for (let i = 0; i < png.data.length; i += 4) if (png.data[i] + png.data[i + 1] + png.data[i + 2] > 60) lit += 1;
     assert.ok(lit > 100_000, `the main menu shows: ${lit}`);
     assert.equal(later, null, "no movie follows the ending");
+    // The cockpit is built anew (state 3: FUN_00414a80 -> FUN_00404c30,
+    // game type +0xf4 = 1, difficulty +0xf8 = 0, galaxy +0xec = 1): the
+    // fixture's game was started from Headquarters Victory, Expert and a
+    // Large galaxy (interface_test_fixture::starting_menu, A0 x-24's game
+    // type), and the menu after its ending reads "Standard Game" as A0
+    // 2026-11-16-edited-saves x-43 does after the Empire's victory.
+    assert.ok(log.some((line) => line.includes(
+      "[main_menu] rebuilt headquarters_only=false difficulty=Easy galaxy=Standard")),
+      "the cockpit is rebuilt with its first selections");
+    const a0Menu = async (file) => gameTypeInk(PNG.sync.read(await fs.readFile(path.join(A0_EDITED, file))));
+    const gameType = {
+      port: gameTypeInk(png),
+      a0_after: await a0Menu("x-43-main-menu-after-empire-victory-standard-game.png"),
+      a0_before: await a0Menu("x-24-main-menu-headquarters-victory-type.png"),
+    };
+    console.log(JSON.stringify({ faction: faction.name, game_type: gameType }));
+    const width = ({ box }) => box ? box[2] - box[0] : null;
+    const off = (a, b) => Math.abs(width(a) - width(b)) + Math.abs(a.box[0] - b.box[0]);
+    assert.ok(gameType.port.box && gameType.port.box[1] >= 370 && gameType.port.box[3] <= 392
+      && off(gameType.port, gameType.a0_after) < off(gameType.port, gameType.a0_before)
+      && Math.abs(width(gameType.port) - width(gameType.a0_after)) <= 6,
+      `the game type reads Standard Game: ${JSON.stringify(gameType)}`);
     // END-01-C004's A0 of 2026-11-16 (seq-ds2-trench-duros, an Empire game
     // with an edited Death Star; the Alliance's AI took Coruscant): the
     // caption film 103 "The Alliance has seized the Imperial capital system

@@ -1907,6 +1907,9 @@ async fn main() {
             &mut troop_transport_state,
             &mut uprising_state,
         );
+        if let Some(menu) = interface_test_fixture::starting_menu(request) {
+            main_menu_state = menu;
+        }
         interface_test_fixture::place_deliveries(request, &world, &mut delivery_state);
         // The fixture's queued units are products from their orders on
         // (FUN_0052a140; rebellion_core::products).
@@ -5087,6 +5090,12 @@ async fn main() {
                 // The film's end (0x405, ids 0x6a..0x6d) is app state 3,
                 // which builds the cockpit anew (FUN_00414a80).
                 main_menu_state = main_menu_state.rebuilt();
+                macroquad::logging::info!(
+                    "[main_menu] rebuilt headquarters_only={} difficulty={:?} galaxy={:?}",
+                    main_menu_state.headquarters_only,
+                    main_menu_state.difficulty,
+                    main_menu_state.galaxy_size
+                );
                 cutscene_player = open_cutscene(
                     Path::new(&story_cutscene_path(number)),
                     audio_vol.cutscene_volume(),
