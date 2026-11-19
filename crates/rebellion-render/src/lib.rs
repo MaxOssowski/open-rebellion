@@ -516,7 +516,16 @@ pub fn draw_galaxy_map(
     state.gid_markers.clear();
     state.drawn_gid_markers.clear();
     if gid_mode.is_active() {
-        for (key, system) in &world.systems {
+        let player = match faction {
+            CockpitFaction::Alliance => rebellion_core::dat::Faction::Alliance,
+            CockpitFaction::Empire => rebellion_core::dat::Faction::Empire,
+        };
+        for key in world.systems.keys() {
+            // FUN_0042b330 reads the player's copy (FUN_004f2d10).
+            let Some(shown) = viewed_contents::apparent_system(world, player, key) else {
+                continue;
+            };
+            let system: &System = &shown;
             let resource_id = gid_marker_for_system(world, key, system, faction, gid_mode, gid);
             if let Some(bitmap) = gid_item_bitmap(gid_mode, system, resource_id) {
                 state.gid_markers.insert(key, bitmap);
@@ -2600,6 +2609,64 @@ mod interaction_tests {
         assert_eq!(gid_headquarters_burst(&system, art::GID_UNEXPLORED), None);
         system.is_headquarters = false;
         assert_eq!(gid_headquarters_burst(&system, art::GID_ALLIANCE_LARGEST), None);
+    }
+
+    #[test]
+    fn the_empires_gid_shows_the_headquarters_system_gray_with_no_burst() {
+        // FUN_0042b330 reads the Empire's copy (FUN_004f2d10), a bare Rim
+        // copy after the setup push (FUN_0051b990): unexplored, so the
+        // unexplored mark and no burst (manual p. 69;
+        // ghidra/notes/fog-of-war.md).
+        use rebellion_core::dat::Faction;
+        let mut world = GameWorld::default();
+        let sector = world.sectors.insert(rebellion_core::world::Sector {
+            dat_id: rebellion_core::ids::DatId::new(0x8000_0001),
+            name: "Churba".into(),
+            group: rebellion_core::dat::SectorGroup::RimInner,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let hq = world.systems.insert(System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9200_0010),
+            name: "Tokmia".into(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 1.0,
+            popularity_empire: 0.0,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: true,
+            is_destroyed: false,
+            control: ControlKind::Controlled(Faction::Alliance),
+        });
+        rebellion_core::object_views::setup(&mut world);
+        let shown = viewed_contents::apparent_system(&world, Faction::Empire, hq).unwrap();
+        assert!(gid_shows_unexplored(GidMode::PopularSupport, &shown));
+        assert_eq!(
+            gid_item_bitmap(GidMode::PopularSupport, &shown, 10_146),
+            None
+        );
+        assert_eq!(
+            gid_headquarters_burst(&shown, bmp_cache::resources::strategy::GID_UNEXPLORED),
+            None
+        );
+        // The Alliance sees its own headquarters.
+        let own = viewed_contents::apparent_system(&world, Faction::Alliance, hq).unwrap();
+        assert!(!gid_shows_unexplored(GidMode::PopularSupport, &own));
+        assert_eq!(gid_headquarters_burst(&own, 10_146), Some(10_166));
     }
 
     #[test]

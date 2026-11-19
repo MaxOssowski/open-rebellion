@@ -119,6 +119,64 @@ pub(crate) fn see_live(world: &mut GameWorld, side: Faction, system: SystemKey) 
     };
 }
 
+/// `system` as `player` sees it on the galaxy map and in a sector window:
+/// the GID item (`FUN_0042b330`) and the planet (`FUN_0045bbb0`) read the
+/// viewer's copy (`FUN_004f2d10`, `FUN_004f3220`;
+/// `ghidra/notes/fog-of-war.md`). A live copy, the player's own system and
+/// the debug mode show the system itself; a frozen copy shows its side,
+/// support, population, resources, explored and destroyed bits and whether
+/// it holds the headquarters (families `0x20..0x21`). port: the facility
+/// lists stay the system's own.
+#[must_use]
+pub fn apparent_system<'a>(
+    world: &'a GameWorld,
+    player: Faction,
+    system: SystemKey,
+) -> Option<std::borrow::Cow<'a, rebellion_core::world::System>> {
+    use std::borrow::Cow;
+    let value = world.systems.get(system)?;
+    if sees_everything(world) || value.control.is_controlled_by(player) {
+        return Some(Cow::Borrowed(value));
+    }
+    let explored = |yes: bool| {
+        if yes {
+            rebellion_core::dat::ExplorationStatus::Explored
+        } else {
+            rebellion_core::dat::ExplorationStatus::Unexplored
+        }
+    };
+    match world.object_views.system(player, value.dat_id) {
+        Some(view) if !view.live => {
+            let mut shown = value.clone();
+            shown.control = view.control;
+            shown.popularity_alliance = view.popularity_alliance;
+            shown.popularity_empire = view.popularity_empire;
+            shown.is_populated = view.is_populated;
+            shown.total_energy = view.total_energy;
+            shown.raw_materials = view.raw_materials;
+            shown.exploration_status = explored(rebellion_core::object_views::side_explored(
+                world, player, system,
+            ));
+            shown.is_destroyed =
+                rebellion_core::object_views::side_destroyed(world, player, system);
+            shown.is_headquarters = view
+                .manufacturing_facilities
+                .iter()
+                .chain(&view.defense_facilities)
+                .any(|facility| matches!(facility.class.family(), 0x20..=0x21));
+            Some(Cow::Owned(shown))
+        }
+        // A live copy is synced from the system, explored (hyp: the master
+        // is explored for every system, ghidra/notes/fog-of-war.md).
+        Some(_) if value.exploration_status != explored(true) => {
+            let mut shown = value.clone();
+            shown.exploration_status = explored(true);
+            Some(Cow::Owned(shown))
+        }
+        _ => Some(Cow::Borrowed(value)),
+    }
+}
+
 /// The player's frozen copy of `system`'s fleets, missions and
 /// travellers, when it sees the system through a frozen copy.
 #[must_use]
@@ -297,5 +355,95 @@ mod tests {
         let planet_copy =
             regiment_view(&world, Faction::Alliance, DatId::new(0x1000_0003)).unwrap();
         assert_eq!(view_attached(&world, planet_copy), "System 1");
+    }
+
+    /// A Rim system (SYSTEMSD family 0x92) of `id`, the Alliance's
+    /// headquarters. port: test data.
+    fn headquarters(world: &mut GameWorld, id: u32) -> SystemKey {
+        let key = system(world, id);
+        let value = &mut world.systems[key];
+        value.dat_id = DatId::new(0x9200_0000 | id);
+        value.control = ControlKind::Controlled(Faction::Alliance);
+        value.is_headquarters = true;
+        key
+    }
+
+    #[test]
+    fn a_rim_system_the_side_never_saw_shows_unexplored_with_no_side_or_headquarters() {
+        // FUN_0051b990 gives the Empire a bare copy of a Rim system
+        // (mode 2), and FUN_0042b330 / FUN_0045bbb0 read that copy
+        // (ghidra/notes/fog-of-war.md): manual p. 69, "The Empire does not
+        // know the location of Alliance headquarters".
+        let mut world = GameWorld::default();
+        let hq = headquarters(&mut world, 7);
+        rebellion_core::object_views::setup(&mut world);
+        let shown = apparent_system(&world, Faction::Empire, hq).unwrap();
+        assert_eq!(shown.exploration_status, ExplorationStatus::Unexplored);
+        assert_eq!(shown.control, ControlKind::Uncontrolled);
+        assert!(!shown.is_headquarters);
+        // The Alliance sees its own system as it is.
+        let own = apparent_system(&world, Faction::Alliance, hq).unwrap();
+        assert!(own.is_headquarters);
+        assert_eq!(own.control, ControlKind::Controlled(Faction::Alliance));
+        // The debug mode sees everything.
+        world.object_views.see_everything = true;
+        let all = apparent_system(&world, Faction::Empire, hq).unwrap();
+        assert!(all.is_headquarters);
+        assert_eq!(all.exploration_status, ExplorationStatus::Explored);
+    }
+
+    #[test]
+    fn a_frozen_copy_shows_its_side_support_and_destroyed_bit_as_last_seen() {
+        // FUN_0045bbb0 reads +0x24 (side) and +0x50 bit 3 (destroyed) from
+        // the viewer's copy, FUN_0042b330 its support (FUN_00507270).
+        let mut world = GameWorld::default();
+        let at = system(&mut world, 4);
+        world.systems[at].control = ControlKind::Uncontrolled;
+        rebellion_core::object_views::setup(&mut world);
+        world.systems[at].control = ControlKind::Controlled(Faction::Alliance);
+        world.systems[at].popularity_empire = 0.1;
+        world.systems[at].is_destroyed = true;
+        let shown = apparent_system(&world, Faction::Empire, at).unwrap();
+        assert_eq!(shown.control, ControlKind::Uncontrolled);
+        assert!((shown.popularity_empire - 0.5).abs() < f32::EPSILON);
+        assert!(!shown.is_destroyed);
+        assert_eq!(shown.exploration_status, ExplorationStatus::Explored);
+    }
+
+    #[test]
+    fn a_live_copy_shows_the_system_as_it_is_and_explored() {
+        // FUN_004f9a60: a side's fleet in the system keeps its copy live,
+        // synced from the system (explored included, hyp in
+        // ghidra/notes/fog-of-war.md).
+        let mut world = GameWorld::default();
+        let at = system(&mut world, 5);
+        world.systems[at].dat_id = DatId::new(0x9200_0005);
+        world.systems[at].exploration_status = ExplorationStatus::Unexplored;
+        world.systems[at].control = ControlKind::Uncontrolled;
+        rebellion_core::object_views::setup(&mut world);
+        world.fleets.insert(rebellion_core::world::Fleet {
+            location: at,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        rebellion_core::object_views::advance(
+            &mut world,
+            &rebellion_core::troop_transport::TroopTransportState::new(),
+            &rebellion_core::movement::MovementState::new(),
+        );
+        world.systems[at].control = ControlKind::Controlled(Faction::Empire);
+        let shown = apparent_system(&world, Faction::Alliance, at).unwrap();
+        assert_eq!(shown.control, ControlKind::Controlled(Faction::Empire));
+        assert_eq!(shown.exploration_status, ExplorationStatus::Explored);
+        // With no copy at all, the system shows its own bits.
+        let mut bare = GameWorld::default();
+        let at = system(&mut bare, 6);
+        bare.systems[at].exploration_status = ExplorationStatus::Unexplored;
+        let shown = apparent_system(&bare, Faction::Alliance, at).unwrap();
+        assert_eq!(shown.exploration_status, ExplorationStatus::Unexplored);
     }
 }

@@ -950,9 +950,14 @@ fn draw_sector_window(
                 }
             }
             for system_key in &sector.systems {
-                let Some(system) = world.systems.get(*system_key) else {
+                // FUN_0045bbb0 reads the player's copy (FUN_004f3220): its
+                // name colour, destroyed art and tracks follow the copy.
+                let Some(shown) =
+                    crate::viewed_contents::apparent_system(world, player, *system_key)
+                else {
                     continue;
                 };
+                let system: &rebellion_core::world::System = &shown;
                 let (planet_x, planet_y) =
                     sector_planet_position(sector.x, sector.y, system.x, system.y);
                 let planet_rect = planet_rect(window_rect, layout.scale, planet_x, planet_y);
