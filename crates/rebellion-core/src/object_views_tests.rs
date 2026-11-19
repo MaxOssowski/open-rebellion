@@ -2041,11 +2041,11 @@ fn a_copy_taken_of_a_destroyed_system_holds_its_destroyed_bit() {
 }
 
 #[test]
-fn explored_without_a_setup_copy_follows_the_system_and_a_copy_without_bits_is_explored() {
-    // port: a world with no setup copies (a test, a fixture) reads the
-    // system's own exploration; a v126 save's copies carry no bits and
-    // were all synced from an explored master (hyp,
-    // ghidra/notes/fog-of-war.md).
+fn explored_without_bits_follows_the_system() {
+    // port: a world with no setup copies (a test, a fixture) and a v126
+    // save's copies, which carry no bits, read the system's own
+    // exploration, as the port showed it before the copies held the bit
+    // (ghidra/notes/fog-of-war.md).
     let mut setup = setup();
     let rim = rim_system(&mut setup.world, 3, "Kessel", ControlKind::Uncontrolled);
     setup.world.systems[rim].exploration_status = ExplorationStatus::Unexplored;
@@ -2061,7 +2061,10 @@ fn explored_without_a_setup_copy_follows_the_system_and_a_copy_without_bits_is_e
         .object_views
         .alliance_systems
         .insert(id, SystemView::bare());
+    assert!(!side_explored(&setup.world, Faction::Alliance, rim));
+    setup.world.systems[rim].exploration_status = ExplorationStatus::Explored;
     assert!(side_explored(&setup.world, Faction::Alliance, rim));
+    setup.world.systems[rim].exploration_status = ExplorationStatus::Unexplored;
     // The debug mode reads the system's own bit; a side's own system is
     // explored to it.
     setup.world.object_views.see_everything = true;
@@ -2069,4 +2072,33 @@ fn explored_without_a_setup_copy_follows_the_system_and_a_copy_without_bits_is_e
     setup.world.object_views.see_everything = false;
     setup.world.systems[rim].control = ControlKind::Controlled(Faction::Empire);
     assert!(side_explored(&setup.world, Faction::Empire, rim));
+}
+
+#[test]
+fn a_seeded_copy_is_explored_as_the_system_is_unless_the_side_stands_there() {
+    // port: a copy seeded from the fog (an older save, a fixture) takes the
+    // system's own explored bit, or the explored bit a live copy takes when
+    // the side's fleet stands there (FUN_004f9a60, FUN_0050fc80;
+    // ghidra/notes/fog-of-war.md).
+    let mut setup = setup();
+    let far = rim_system(&mut setup.world, 3, "Ithor", ControlKind::Uncontrolled);
+    let held = rim_system(&mut setup.world, 4, "Kessel", ControlKind::Uncontrolled);
+    for key in [far, held] {
+        setup.world.systems[key].exploration_status = ExplorationStatus::Unexplored;
+    }
+    fleet(&mut setup.world, held, true);
+    let mut fog = FogState::new(Faction::Alliance);
+    fog.reveal(far);
+    fog.reveal(held);
+    seed_systems_from_fog(
+        &mut setup.world,
+        &setup.movement,
+        [&fog, &FogState::new(Faction::Empire)],
+    );
+    assert!(!side_explored(&setup.world, Faction::Alliance, far));
+    assert!(side_explored(&setup.world, Faction::Alliance, held));
+    // A copy that freezes keeps its bit; a day's step does not explore it.
+    step(&mut setup);
+    assert!(!side_explored(&setup.world, Faction::Alliance, far));
+    assert!(side_explored(&setup.world, Faction::Alliance, held));
 }

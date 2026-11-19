@@ -275,9 +275,11 @@ and after each A0 state below, compared with A0 pixel for pixel.
   squadrons, special forces or characters), bare Rim copies, the
   Empire's push of Yavin, taken at once.
 - `ObjectViews::system_bits` (explored, destroyed per copy), saved as
-  `SaveState::system_copy_bits` (save v127; a v126 save has none and its
-  copies read explored). `side_explored` / `side_destroyed` fall back to
-  the system's own bits where a side has no copy (tests, fixtures).
+  `SaveState::system_copy_bits` (save v127). `side_explored` /
+  `side_destroyed` fall back to the system's own bits where a copy holds
+  none (a v126 save, tests, fixtures). A live copy takes explored, a
+  freezing one keeps its bit, every push sets it; a copy seeded from the
+  fog takes the system's own bit or, where the side's fleet stands, explored.
 - `viewed_contents::apparent_system`: the GID marks, unexplored mark and
   HQ burst, and the sector window's name colour, destroyed art and tracks
   read the player's copy. port: the facility-count displays still count

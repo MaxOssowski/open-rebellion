@@ -188,12 +188,20 @@ pub fn apparent_system<'a>(
                 .any(|facility| matches!(facility.class.family(), 0x20..=0x21));
             Some(Cow::Owned(shown))
         }
-        // A live copy is synced from the system, explored (hyp: the master
-        // is explored for every system, ghidra/notes/fog-of-war.md).
-        Some(_) if value.exploration_status != explored(true) => {
-            let mut shown = value.clone();
-            shown.exploration_status = explored(true);
-            Some(Cow::Owned(shown))
+        // A live copy shows the system with the copy's explored bit (set when
+        // it was synced: hyp, the master is explored for every system,
+        // ghidra/notes/fog-of-war.md).
+        Some(_) => {
+            let status = explored(rebellion_core::object_views::side_explored(
+                world, player, system,
+            ));
+            if value.exploration_status == status {
+                Some(Cow::Borrowed(value))
+            } else {
+                let mut shown = value.clone();
+                shown.exploration_status = status;
+                Some(Cow::Owned(shown))
+            }
         }
         _ => Some(Cow::Borrowed(value)),
     }

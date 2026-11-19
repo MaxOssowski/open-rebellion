@@ -237,9 +237,8 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         )?);
     }
     if version <= V126 {
-        // No copy of an older save holds bits: each side reads a copy as
-        // explored, and a system with no copy by its own exploration
-        // (object_views::side_explored).
+        // No copy of an older save holds bits: each side reads a system's
+        // own exploration, as before (object_views::side_explored).
         body.extend(bincode::serialize(&rebellion_core::object_views::SystemCopyBitsMap::default())?);
     }
     Ok(body)
@@ -2169,7 +2168,8 @@ mod tests {
     fn a_v126_save_loads_with_no_copy_bits() {
         // v127 adds each side's copies' explored and destroyed bits
         // (ghidra/notes/fog-of-war.md); a v126 save kept none, so its
-        // copies read as explored (object_views::side_explored).
+        // copies read the systems' own exploration
+        // (object_views::side_explored).
         let saves_dir = tmp_dir("v126_migration");
         let state = minimal_save_state();
         write_v126(&saves_dir, &state);

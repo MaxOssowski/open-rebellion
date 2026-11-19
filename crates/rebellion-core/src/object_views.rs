@@ -1738,10 +1738,10 @@ pub fn compute_systems(
     out
 }
 
-/// Puts each copy in its side's views. A copy made from the system takes
-/// its explored bit and destroyed bit: hyp, the master is explored for
-/// every system, so a copy synced from it is explored
-/// (`ghidra/notes/fog-of-war.md`, "Untraced").
+/// Puts each copy in its side's views. A live copy takes the explored bit
+/// (hyp: the master is explored for every system, so a copy synced from it
+/// is explored, `ghidra/notes/fog-of-war.md`, "Untraced") and the
+/// system's destroyed bit; a copy that freezes keeps its explored bit.
 fn apply_systems(world: &mut GameWorld, updates: Vec<(Faction, DatId, SystemView)>) {
     for (side, id, view) in updates {
         let destroyed = world
@@ -1749,11 +1749,19 @@ fn apply_systems(world: &mut GameWorld, updates: Vec<(Faction, DatId, SystemView
             .values()
             .find(|value| value.dat_id == id)
             .is_some_and(|value| value.is_destroyed);
+        // A live copy is synced from the system, explored; one that
+        // freezes keeps the bit it had.
+        let explored = view.live
+            || world
+                .object_views
+                .system_bits
+                .get(side, id)
+                .is_some_and(|bits| bits.explored);
         world.object_views.system_bits.set(
             side,
             id,
             SystemCopyBits {
-                explored: true,
+                explored,
                 destroyed,
             },
         );
@@ -1779,7 +1787,6 @@ pub fn side_explored(world: &GameWorld, side: Faction, system: SystemKey) -> boo
     }
     match world.object_views.system_bits.get(side, value.dat_id) {
         Some(bits) => bits.explored,
-        None if world.object_views.system(side, value.dat_id).is_some() => true,
         None => value.exploration_status == crate::dat::ExplorationStatus::Explored,
     }
 }
@@ -2011,16 +2018,25 @@ pub fn advance(world: &mut GameWorld, transport: &TroopTransportState, movement:
     number_regiments(world);
     let mut updates = compute(world, transport, movement);
     let mut systems = compute_systems(world, movement);
+    let mut pushed = Vec::new();
     for (side, system) in std::mem::take(&mut world.object_views.pushes) {
         updates.extend(push_system(world, transport, movement, side, system));
         // Event319_Handle levels 8 and 10 copy the whole system.
         if let Some(value) = world.systems.get(system) {
             let live = system_seen(world, movement, side, system);
             systems.push((side, value.dat_id, SystemView::of(world, value, live)));
+            pushed.push((side, value.dat_id));
         }
     }
     apply(world, &updates);
     apply_systems(world, systems);
+    // Every push level syncs explored (System_SyncExplored FUN_0050fc80).
+    for (side, id) in pushed {
+        if let Some(mut bits) = world.object_views.system_bits.get(side, id) {
+            bits.explored = true;
+            world.object_views.system_bits.set(side, id, bits);
+        }
+    }
 }
 
 /// Seeds the views from the current state for the systems each side's fog
@@ -2075,7 +2091,21 @@ pub fn seed_systems_from_fog(
             }
         }
     }
+    let seeded: Vec<(Faction, DatId)> = systems.iter().map(|(side, id, _)| (*side, *id)).collect();
     apply_systems(world, systems);
+    // port: a seeded copy (an older save's, a fixture's) is explored as the
+    // system is, as the port showed it before the copies held the bit.
+    for (side, id) in seeded {
+        let explored = world.systems.iter().any(|(key, value)| {
+            value.dat_id == id
+                && (value.exploration_status == crate::dat::ExplorationStatus::Explored
+                    || system_seen(world, movement, side, key))
+        });
+        if let Some(mut bits) = world.object_views.system_bits.get(side, id) {
+            bits.explored = explored;
+            world.object_views.system_bits.set(side, id, bits);
+        }
+    }
 }
 
 #[cfg(test)]
