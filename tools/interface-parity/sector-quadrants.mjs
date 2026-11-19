@@ -66,6 +66,12 @@ const QUADRANTS_HEADQUARTERS_FROZEN = 138;
 // QuadrantsHeadquartersLive (148): with the Empire's copy of it live.
 const QUADRANTS_HEADQUARTERS_HIDDEN = 148;
 const QUADRANTS_HEADQUARTERS_LIVE = 149;
+// QuadrantsRegimentQueued (149): QUADRANTS_FREE_TEAM with a regiment of the
+// player's queued elsewhere for the primary (its unfinished product in the
+// primary); QuadrantsRegimentEnRoute (150): that regiment trained and on
+// its way in (CMD-03-C018, A0 2026-11-19-edited-saves-10 c-01, c-05).
+const QUADRANTS_REGIMENT_QUEUED = 150;
+const QUADRANTS_REGIMENT_EN_ROUTE = 151;
 // A0 captures these cases read, by path under .artifacts/a0-vm, with the
 // SHA-256 of each (its directory's SHA256SUMS).
 const A0_FILES = {
@@ -101,6 +107,26 @@ const A0_FILES = {
     "e90b648691f86c26ea12affd677ea1601d1619cbb50846ac2b0fd092e416d40a",
   "2026-11-13-defenses-missions-drop/28-3s-after-drop.png":
     "6c4af518ed4feb63bb91856340d2d52006fd043bdb919d0ce96caef55bd82d54",
+  "2026-11-19-edited-saves-10/a-02-slot5-corfai-defenses-menu-queued-pointer-off-encyclopedia-stays-lit-d132.png":
+    "b4dec10b8d6850668de38154847adaafe1efb70e2cdc6d56d52ef2c124309b79",
+  "2026-11-19-edited-saves-10/a-03-slot5-corfai-defenses-menu-regiment-en-route-d156.png":
+    "536753c3de5ebfd6c3ecd90ce1b598c423cff4bb8c1a61c6acd30443db1d6815",
+  "2026-11-19-edited-saves-10/a-08-slot5-corfai-defenses-menu-regiment-arrived-d196.png":
+    "be169befa4422a3938573ef60f8d78d845dba90ec67387737814dc1e1a832632",
+  "2026-11-19-edited-saves-10/c-01-slot5-run2-corfai-defenses-menu-second-regiment-queued-d196.png":
+    "c93f0aabdad13718d0eff78d1c88948013cc1ff7af669a67b48ea5acfed21dd1",
+  "2026-11-19-edited-saves-10/c-05-slot5-run2-corfai-defenses-menu-second-regiment-en-route-d221.png":
+    "2cc634d40bf2e97cbe3d5252b03fc388c1d7ba9d00e0eb8237c692e28e21262c",
+  "2026-11-19-edited-saves-10/c-09-slot5-run2-corfai-defenses-menu-after-arrival-d260.png":
+    "0051e81bff9fbc79cebdf7a9d041ec0b83c8e31421b0a940ba2ddf84d770e71e",
+  "2026-11-19-edited-saves-10/b-03-slot5-fleet-menu-pointer-left-to-the-left-d132.png":
+    "bb5f44f7dbad06058c335dcff462e7a5593655ccc46e3a85d01d065a8aab5d2d",
+  "2026-11-19-edited-saves-10/b-04-slot5-fleet-menu-pointer-off-2s-later-d132.png":
+    "bb5f44f7dbad06058c335dcff462e7a5593655ccc46e3a85d01d065a8aab5d2d",
+  "2026-11-19-edited-saves-10/b-08-slot5-facility-menu-pointer-left-to-the-right-d133.png":
+    "7af42b9b87082f437a25080df483000910062ae62c5966e3a8f7e7c8ad2a748a",
+  "2026-11-19-edited-saves-10/b-09-slot5-facility-menu-pointer-off-2s-later-d133.png":
+    "1316d40b6a64f93b93e0d4ea52bf5f48ad7190f7e47575793956f7c5edec7563",
 };
 const factions = [
   { name: "alliance", byte: 1, side: 1, other: 2, galaxyRight: 540 },
@@ -434,6 +460,79 @@ function menuAgainstA0(port, [mx, my], a0, [ax, ay], { width, height }, cursor) 
     }
   }
   return { port: portRows, a0: a0Rows, inkDiffs, ring, differing: differing.length, first: differing.slice(0, 8) };
+}
+
+// An icon's menu opened by a right click at `press` (its corner), the
+// pointer left there as A0's arrow is: the reported menu and the screen.
+async function openIconMenu(page, press, directory, label) {
+  await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+  await rightClick(page, press);
+  await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+    null, { timeout: 10_000 });
+  const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+  await frames(page, 2);
+  await page.waitForTimeout(300);
+  await frames(page, 2);
+  const screen = PNG.sync.read((await shot(page, directory, label)).bytes);
+  return { menu, screen };
+}
+
+// menuAgainstA0 with the usual verdicts: both sides' row classes are
+// `kinds`, each row's ink within a pixel of A0's (the right edge within
+// two, the accepted text-width deviation, user decision 2026-10-30), and
+// no frame-art pixel of the ring differs.
+// A lit row's ink box: its pixels in the side's highlight hue (one channel
+// above 100 and over 40 above the others). The port's lit glyphs are
+// antialiased into the fill, so few of their pixels are the pure 0,255,0
+// or 255,0,0 textInk counts; A0's are all pure (the accepted text
+// deviation, user decision 2026-10-30).
+function litBox(png, [x0, y0], { width, height }, row, cursor) {
+  const masked = (x, y) => x >= cursor[0] && y >= cursor[1] && x < cursor[0] + cursor[2] && y < cursor[1] + cursor[3];
+  let box = null;
+  for (let y = 2 + 20 * row; y < Math.min(22 + 20 * row, height - 2); y += 1) {
+    for (let x = 3; x < width - 3; x += 1) {
+      if (masked(x, y)) continue;
+      const i = ((y0 + y) * png.width + x0 + x) * 4;
+      const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+      const lit = (g > 100 && g > r + 40 && g > b + 40) || (r > 100 && r > g + 40 && r > b + 40);
+      if (!lit) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return box;
+}
+
+function assertMenuAgainstA0(port, corner, a0, a0Corner, size, kinds, cursor) {
+  const compared = menuAgainstA0(port, corner, a0, a0Corner, size, cursor);
+  kinds.forEach((kind, row) => {
+    if (kind !== "highlight") return;
+    const [p, a] = [litBox(port, corner, size, row, cursor), litBox(a0, a0Corner, size, row, cursor)];
+    compared.port[row].box = p;
+    compared.a0[row].box = a;
+    compared.inkDiffs[row] = p && a ? a.map((value, k) => p[k] - value) : null;
+  });
+  assert.deepEqual(compared.a0.map(({ kind }) => kind), kinds, `A0: ${JSON.stringify(compared)}`);
+  assert.deepEqual(compared.port.map(({ kind }) => kind), kinds, `port: ${JSON.stringify(compared)}`);
+  assert.ok(compared.inkDiffs.every((d) => d && d.every((value, k) => Math.abs(value) <= (k === 2 ? 2 : 1))),
+    `rows' ink against A0: ${JSON.stringify(compared)}`);
+  assert.equal(compared.differing, 0, `the frame differs from A0: ${JSON.stringify(compared.first)}`);
+  return compared;
+}
+
+// A0 2026-11-19-edited-saves-10 b-02..b-04, b-07..b-09, a-02: the pointer
+// rests on `row` (lit), walks out of the menu to `away` and stays there
+// 2 s; the screens with the pointer on the row and 2 s after it left.
+async function leaveFromRow(page, [mx, my], width, row, away, directory, label) {
+  await page.mouse.move(mx + Math.round(width / 2), my + 2 + 20 * row + 10, { steps: 4 });
+  await frames(page, 2);
+  await page.waitForTimeout(300);
+  await frames(page, 2);
+  const on = PNG.sync.read((await shot(page, directory, `${label}-pointer-on-row`)).bytes);
+  await page.mouse.move(away.x, away.y, { steps: 8 });
+  await frames(page, 2);
+  await page.waitForTimeout(2000);
+  const off = await stableScreen(page, directory, `${label}-pointer-off-2s`);
+  return { on, off };
 }
 
 async function click(page, point) {
@@ -1764,6 +1863,178 @@ const cases = [
         assert.equal(differing.length, 0, `the frame differs from A0 at ${JSON.stringify(differing.slice(0, 8))}`);
       }
       return { menu, port, a0 };
+    },
+  },
+  {
+    name: "defenses-icon-menu-queued-a0",
+    scenario: QUADRANTS_REGIMENT_QUEUED,
+    // CMD-03-C018: a regiment of the player's queued elsewhere for the
+    // primary. Its unfinished product stands in the primary
+    // (FUN_0052a140 -> FUN_00507750), so it is in both of the defenses
+    // icon's teams (FUN_00512700 kind 8, walks in mode 3). Move skips its
+    // status 2 (FUN_0053c100) and stays white; Scrap's FUN_004f9860 refuses
+    // it, so Scrap is grey (ghidra/notes/scrap-order.md). A0
+    // 2026-11-19-edited-saves-10 c-01 (the Empire, Corfai, the menu at
+    // (150, 325), 104 by 102, the arrow at its corner): Move, Confirmed
+    // Move, Encyclopedia white, Status and Scrap grey. Then the pointer
+    // walks over Encyclopedia and out of the menu: Encyclopedia stays lit
+    // (FUN_004aab50 +0x118; A0 a-02, same menu, the pointer gone).
+    async run(page, faction, setup, directory) {
+      const [left, top] = quadrant(setup, "primary", "defenses");
+      const press = { x: Math.round(left) + 5, y: Math.round(top) + 13 };
+      const size = { width: 104, height: 102 };
+      const { menu, screen } = await openIconMenu(page, press, directory, "defenses-icon-menu-queued");
+      assert.deepEqual(menu.row_states,
+        [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true], ["Status", false], ["Scrap", false]],
+        JSON.stringify(menu));
+      assert.deepEqual([menu.left, menu.top, menu.width, menu.height], [press.x, press.y, 104, 102], JSON.stringify(menu));
+      const result = { menu };
+      const queued = a0Capture("2026-11-19-edited-saves-10/c-01-slot5-run2-corfai-defenses-menu-second-regiment-queued-d196.png");
+      if (queued && faction.side === 2) {
+        result.a0Queued = assertMenuAgainstA0(screen, [press.x, press.y], queued, [150, 325], size,
+          ["white", "white", "white", "grey", "grey"], [0, 0, 22, 40]);
+      }
+      const away = { x: press.x + 120, y: press.y + 60 };
+      const { on, off } = await leaveFromRow(page, [press.x, press.y], 104, 2, away, directory, "defenses-icon-menu-queued");
+      const kinds = ["white", "white", "highlight", "grey", "grey"];
+      const own = (png) => menuAgainstA0(png, [press.x, press.y], png, [press.x, press.y], size, [0, 0, 0, 0]);
+      assert.deepEqual(own(on).port.map(({ kind }) => kind), kinds, "Encyclopedia under the pointer");
+      assert.deepEqual(own(off).port.map(({ kind }) => kind), kinds, "Encyclopedia after the pointer left");
+      const pointerGone = a0Capture("2026-11-19-edited-saves-10/a-02-slot5-corfai-defenses-menu-queued-pointer-off-encyclopedia-stays-lit-d132.png");
+      if (pointerGone && faction.side === 2) {
+        result.a0Left = assertMenuAgainstA0(off, [press.x, press.y], pointerGone, [150, 325], size, kinds, [0, 0, 0, 0]);
+      }
+      return result;
+    },
+  },
+  {
+    name: "defenses-icon-menu-en-route-a0",
+    scenario: QUADRANTS_REGIMENT_EN_ROUTE,
+    // CMD-03-C018: the queued regiment trained and on its way in
+    // (FUN_0052bee0: Completed and en route in the primary). Its own move
+    // and scrap checks refuse status 4 (FUN_004f9860), so Move, Confirmed
+    // Move and Scrap are grey. A0 2026-11-19-edited-saves-10 c-05 (Corfai,
+    // a regiment there and the second on its way, the menu at (151, 324))
+    // and a-03 (the first regiment on its way, none there yet).
+    async run(page, faction, setup, directory) {
+      const [left, top] = quadrant(setup, "primary", "defenses");
+      const press = { x: Math.round(left) + 5, y: Math.round(top) + 13 };
+      const size = { width: 104, height: 102 };
+      const { menu, screen } = await openIconMenu(page, press, directory, "defenses-icon-menu-en-route");
+      assert.deepEqual(menu.row_states,
+        [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true], ["Status", false], ["Scrap", false]],
+        JSON.stringify(menu));
+      const result = { menu };
+      const kinds = ["grey", "grey", "white", "grey", "grey"];
+      for (const [key, file] of [
+        ["c05", "2026-11-19-edited-saves-10/c-05-slot5-run2-corfai-defenses-menu-second-regiment-en-route-d221.png"],
+        ["a03", "2026-11-19-edited-saves-10/a-03-slot5-corfai-defenses-menu-regiment-en-route-d156.png"],
+      ]) {
+        const a0 = a0Capture(file);
+        if (a0 && faction.side === 2) {
+          result[key] = assertMenuAgainstA0(screen, [press.x, press.y], a0, [151, 324], size, kinds, [0, 0, 22, 40]);
+        }
+      }
+      return result;
+    },
+  },
+  {
+    name: "defenses-icon-menu-arrived-a0",
+    scenario: QUADRANTS_FREE_TEAM,
+    // CMD-03-C018: with the regiment arrived (here: none on its way, the
+    // free team at rest), Move, Confirmed Move and Scrap are white again.
+    // A0 2026-11-19-edited-saves-10 c-09 and a-08 (the menu at (151, 324)).
+    async run(page, faction, setup, directory) {
+      const [left, top] = quadrant(setup, "primary", "defenses");
+      const press = { x: Math.round(left) + 5, y: Math.round(top) + 13 };
+      const size = { width: 104, height: 102 };
+      const { menu, screen } = await openIconMenu(page, press, directory, "defenses-icon-menu-arrived");
+      assert.deepEqual(menu.row_states,
+        [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true], ["Status", false], ["Scrap", true]],
+        JSON.stringify(menu));
+      const result = { menu };
+      const kinds = ["white", "white", "white", "grey", "white"];
+      for (const [key, file] of [
+        ["c09", "2026-11-19-edited-saves-10/c-09-slot5-run2-corfai-defenses-menu-after-arrival-d260.png"],
+        ["a08", "2026-11-19-edited-saves-10/a-08-slot5-corfai-defenses-menu-regiment-arrived-d196.png"],
+      ]) {
+        const a0 = a0Capture(file);
+        if (a0 && faction.side === 2) {
+          result[key] = assertMenuAgainstA0(screen, [press.x, press.y], a0, [151, 324], size, kinds, [0, 0, 22, 40]);
+        }
+      }
+      return result;
+    },
+  },
+  {
+    name: "fleet-icon-menu-lit-row-a0",
+    scenario: QUADRANTS_NEUTRAL_FLEET,
+    // CMD-03-C018: the fleet icon's menu is the same Game Menu Window
+    // (FUN_004ac5c0 -> FUN_004aab50): the row last under the pointer (+0x118)
+    // stays lit after the pointer leaves. A0 2026-11-19-edited-saves-10
+    // b-02 (the pointer on Confirmed Move), b-03 (walked out to the left)
+    // and b-04 (2 s later, byte-identical): Corfai's fleet icon, the menu at
+    // (192, 296), 172 by 142, Confirmed Move green, Planetary Assault and
+    // Status grey.
+    async run(page, faction, setup, directory) {
+      const [left, top] = setup.neutral_fleets;
+      const press = { x: Math.round(left) + 17, y: Math.round(top) + 5 };
+      const size = { width: 172, height: 142 };
+      const { menu } = await openIconMenu(page, press, directory, "fleet-icon-menu-lit");
+      assert.deepEqual(menu.row_states, [["Move", true], ["Confirmed Move", true], ["Planetary Bombardment", true],
+        ["Planetary Assault", false], ["Encyclopedia", true], ["Status", false], ["Scrap", true]], JSON.stringify(menu));
+      const away = { x: press.x - 40, y: press.y + 30 };
+      const { on, off } = await leaveFromRow(page, [press.x, press.y], 172, 1, away, directory, "fleet-icon-menu-lit");
+      const kinds = ["white", "highlight", "white", "grey", "white", "grey", "white"];
+      const own = (png) => menuAgainstA0(png, [press.x, press.y], png, [press.x, press.y], size, [0, 0, 0, 0]);
+      assert.deepEqual(own(on).port.map(({ kind }) => kind), kinds, "Confirmed Move under the pointer");
+      assert.deepEqual(own(off).port.map(({ kind }) => kind), kinds, "Confirmed Move after the pointer left");
+      const result = { menu };
+      for (const [key, file] of [
+        ["b03", "2026-11-19-edited-saves-10/b-03-slot5-fleet-menu-pointer-left-to-the-left-d132.png"],
+        ["b04", "2026-11-19-edited-saves-10/b-04-slot5-fleet-menu-pointer-off-2s-later-d132.png"],
+      ]) {
+        const a0 = a0Capture(file);
+        if (a0 && faction.side === 2) {
+          result[key] = assertMenuAgainstA0(off, [press.x, press.y], a0, [192, 296], size, kinds, [0, 0, 0, 0]);
+        }
+      }
+      return result;
+    },
+  },
+  {
+    name: "facility-icon-menu-lit-row-a0",
+    scenario: QUADRANTS_FACILITY,
+    // CMD-03-C018: the facility icon's menu keeps its last lit row too
+    // (FUN_004aab50 +0x118). A0 2026-11-19-edited-saves-10 b-07 (the
+    // pointer on Reserved), b-08 (walked out to the right), b-09 (2 s
+    // later): Corfai's facility icon, the menu at (152, 297), 90 by 102,
+    // Reserved green, Status grey.
+    async run(page, faction, setup, directory) {
+      const [left, top] = quadrant(setup, "primary", "system");
+      const press = { x: Math.round(left) + 14, y: Math.round(top) + 9 };
+      const size = { width: 90, height: 102 };
+      const { menu } = await openIconMenu(page, press, directory, "facility-icon-menu-lit");
+      assert.deepEqual(menu.row_states,
+        [["Destination", true], ["Encyclopedia", true], ["Status", false], ["Reserved", true], ["Scrap", true]],
+        JSON.stringify(menu));
+      const away = { x: press.x + 130, y: press.y + 70 };
+      const { on, off } = await leaveFromRow(page, [press.x, press.y], 90, 3, away, directory, "facility-icon-menu-lit");
+      const kinds = ["white", "white", "grey", "highlight", "white"];
+      const own = (png) => menuAgainstA0(png, [press.x, press.y], png, [press.x, press.y], size, [0, 0, 0, 0]);
+      assert.deepEqual(own(on).port.map(({ kind }) => kind), kinds, "Reserved under the pointer");
+      assert.deepEqual(own(off).port.map(({ kind }) => kind), kinds, "Reserved after the pointer left");
+      const result = { menu };
+      for (const [key, file] of [
+        ["b08", "2026-11-19-edited-saves-10/b-08-slot5-facility-menu-pointer-left-to-the-right-d133.png"],
+        ["b09", "2026-11-19-edited-saves-10/b-09-slot5-facility-menu-pointer-off-2s-later-d133.png"],
+      ]) {
+        const a0 = a0Capture(file);
+        if (a0 && faction.side === 2) {
+          result[key] = assertMenuAgainstA0(off, [press.x, press.y], a0, [152, 297], size, kinds, [0, 0, 0, 0]);
+        }
+      }
+      return result;
     },
   },
   {

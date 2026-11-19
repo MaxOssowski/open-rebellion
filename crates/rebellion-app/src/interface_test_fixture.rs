@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 149;
+const SCENARIO_COUNT: u8 = 151;
 
 
 extern "C" {
@@ -652,6 +652,16 @@ pub enum Scenario {
     /// under the Empire's blockade. port: the live copy alone, no fleet.
     /// For the Alliance it is `Quadrants`.
     QuadrantsHeadquartersLive = 148,
+    /// CMD-03-C018: `QuadrantsFreeTeam` with a regiment of the player's
+    /// queued at a yard in another sector for the primary: an unfinished product
+    /// in the primary itself (`FUN_0052a140` -> `FUN_00507750`), which
+    /// leaves the defenses icon's Move white and greys its Scrap
+    /// (`FUN_004f9860` status 2), as A0 2026-11-19-edited-saves-10 c-01.
+    QuadrantsRegimentQueued = 149,
+    /// CMD-03-C018: as `QuadrantsRegimentQueued` with the regiment trained
+    /// and on its way in (`FUN_0052bee0`, status 4 en route): Move,
+    /// Confirmed Move and Scrap grey, as A0 2026-11-19-edited-saves-10 c-05.
+    QuadrantsRegimentEnRoute = 150,
 }
 
 impl Scenario {
@@ -806,6 +816,8 @@ impl Scenario {
             146 => Self::PersonnelPickup,
             147 => Self::QuadrantsHeadquartersHidden,
             148 => Self::QuadrantsHeadquartersLive,
+            149 => Self::QuadrantsRegimentQueued,
+            150 => Self::QuadrantsRegimentEnRoute,
             _ => return None,
         })
     }
@@ -883,6 +895,8 @@ impl Scenario {
             || self == Self::Quadrants
             || self == Self::QuadrantsNeutralFleet
             || self == Self::QuadrantsFreeTeam
+            || self == Self::QuadrantsRegimentQueued
+            || self == Self::QuadrantsRegimentEnRoute
             || self == Self::QuadrantsFacility
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
@@ -1636,6 +1650,8 @@ pub fn apply(
         Scenario::Quadrants
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
+            | Scenario::QuadrantsRegimentQueued
+            | Scenario::QuadrantsRegimentEnRoute
             | Scenario::QuadrantsHeadquartersFrozen
             | Scenario::QuadrantsHeadquartersHidden
             | Scenario::QuadrantsHeadquartersLive
@@ -1645,6 +1661,18 @@ pub fn apply(
     ) {
         place_quadrant_contents(
             request, world, movement, missions, uprisings, sectors, primary,
+        );
+    }
+    if matches!(
+        request.scenario,
+        Scenario::QuadrantsRegimentQueued | Scenario::QuadrantsRegimentEnRoute
+    ) {
+        place_regiment_for_primary(
+            request,
+            world,
+            manufacturing,
+            primary,
+            request.scenario == Scenario::QuadrantsRegimentEnRoute,
         );
     }
     if matches!(
@@ -3643,6 +3671,8 @@ fn quadrant_systems(request: FixtureRequest, world: &GameWorld) -> Option<(Syste
         Scenario::Quadrants
         | Scenario::QuadrantsNeutralFleet
         | Scenario::QuadrantsFreeTeam
+        | Scenario::QuadrantsRegimentQueued
+        | Scenario::QuadrantsRegimentEnRoute
         | Scenario::QuadrantsHeadquartersFrozen
         | Scenario::QuadrantsHeadquartersHidden
         | Scenario::QuadrantsHeadquartersLive
@@ -3960,6 +3990,57 @@ fn place_unfinished_ship(
     );
     fleets.open(world, talus, (180, 91), request.faction, layout);
     fleets.select(talus, FleetWindowEntry::Fleet(fleet));
+}
+
+/// `QuadrantsRegimentQueued` and `QuadrantsRegimentEnRoute`: a regiment of
+/// the player's ordered at a yard of the player's with the primary as its
+/// destination, so its product stands in the primary (`products::reconcile`;
+/// A0 2026-11-19-edited-saves-10: Coruscant's Troops band, Destination
+/// Corfai). With `en_route` it is trained and travelling in, its arrival
+/// far ahead so the trip outlasts the gate (`products::settle`).
+fn place_regiment_for_primary(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    manufacturing: &mut ManufacturingState,
+    primary: SystemKey,
+    en_route: bool,
+) {
+    use rebellion_core::manufacturing::{BuildableKind, CompletionEvent, QueueItem};
+    // The yard: a system of the player's in another sector, off the
+    // sector window (A0's Coruscant, Sesswenna, for Corfai, Corellian).
+    let Some(yard) = world
+        .systems
+        .keys()
+        .find(|&key| world.systems[key].sector != world.systems[primary].sector)
+    else {
+        return;
+    };
+    world.systems[yard].control = ControlKind::Controlled(Faction::of_alliance(
+        request.faction == CockpitFaction::Alliance,
+    ));
+    let class = rebellion_core::ids::DatId::new(if request.faction == CockpitFaction::Alliance {
+        0x1000_0001
+    } else {
+        0x1000_0006
+    });
+    let kind = BuildableKind::Troop(class);
+    manufacturing.enqueue(yard, QueueItem::new(kind, 24).delivered_to(primary));
+    rebellion_core::products::reconcile(world, manufacturing);
+    if !en_route {
+        return;
+    }
+    *manufacturing = ManufacturingState::new();
+    rebellion_core::products::settle(
+        world,
+        vec![CompletionEvent {
+            system: yard,
+            tick: 100_000,
+            kind,
+            name: None,
+            fleet: None,
+        }],
+        Vec::new(),
+    );
 }
 
 /// The `FleetWindowSelonia` scenario: A0's Fleets 1 and 4 at Selonia, and
@@ -6582,8 +6663,12 @@ fn place_quadrant_contents(
         };
         world.characters[agent].current_system = Some(system);
         // QuadrantsFreeTeam: the player's agent at the primary stays free.
-        if request.scenario == Scenario::QuadrantsFreeTeam
-            && system == primary
+        if matches!(
+            request.scenario,
+            Scenario::QuadrantsFreeTeam
+                | Scenario::QuadrantsRegimentQueued
+                | Scenario::QuadrantsRegimentEnRoute
+        ) && system == primary
             && alliance == player_is_alliance
         {
             continue;
@@ -6830,6 +6915,8 @@ fn object_menu_report<'a>(
                 | Scenario::Quadrants
                 | Scenario::QuadrantsNeutralFleet
                 | Scenario::QuadrantsFreeTeam
+                | Scenario::QuadrantsRegimentQueued
+                | Scenario::QuadrantsRegimentEnRoute
                 | Scenario::QuadrantsHeadquartersFrozen
                 | Scenario::QuadrantsHeadquartersHidden
                 | Scenario::QuadrantsHeadquartersLive
@@ -8873,6 +8960,8 @@ fn quadrant_setup(
         Scenario::Quadrants
             | Scenario::QuadrantsNeutralFleet
             | Scenario::QuadrantsFreeTeam
+            | Scenario::QuadrantsRegimentQueued
+            | Scenario::QuadrantsRegimentEnRoute
             | Scenario::QuadrantsHeadquartersFrozen
             | Scenario::QuadrantsHeadquartersHidden
             | Scenario::QuadrantsHeadquartersLive
@@ -15360,6 +15449,35 @@ mod tests {
     }
 
     #[test]
+    fn the_regiment_scenarios_put_a_regiment_product_queued_or_travelling_in_the_primary() {
+        // port: the fixture's own stocking for A0 2026-11-19-edited-saves-10
+        // c-01 (queued) and c-05 (trained, on its way in).
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            for (scenario, travelling) in [
+                (Scenario::QuadrantsRegimentQueued, false),
+                (Scenario::QuadrantsRegimentEnRoute, true),
+            ] {
+                let applied = apply_quadrants_as(scenario, faction);
+                let world = &applied.world;
+                let primary = world.systems.keys().next().unwrap();
+                let held: Vec<_> = world.products.in_system(primary).collect();
+                assert_eq!(held.len(), 1, "{scenario:?} {faction:?}");
+                assert_eq!(
+                    held[0].is_alliance,
+                    faction == CockpitFaction::Alliance,
+                    "{scenario:?} {faction:?}"
+                );
+                assert_ne!(held[0].yard, primary, "{scenario:?} {faction:?}");
+                assert_eq!(
+                    world.products.arrival(held[0].id).is_some(),
+                    travelling,
+                    "{scenario:?} {faction:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn the_free_team_scenario_leaves_the_players_agent_at_the_primary_free_to_move() {
         // port: the fixture's own stocking; the team is FUN_00512700 kind 8
         // and its Move check the 0x241's FUN_0054c110 (ghidra/notes/
@@ -17019,6 +17137,8 @@ mod tests {
                 Scenario::GravityWellBattle,
                 Scenario::PersonnelAbode,
                 Scenario::PersonnelRetired,
+                Scenario::QuadrantsRegimentQueued,
+                Scenario::QuadrantsRegimentEnRoute,
             ]
         );
     }
