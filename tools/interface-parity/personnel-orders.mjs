@@ -33,6 +33,8 @@ const QUADRANTS = 50;
 const RECON_TARGETING = 63;
 const CHARACTER_COMMAND = 69;
 const CHARACTER_MOVE = 70;
+// Scenario::CharacterEvacuation (153).
+const CHARACTER_EVACUATION = 154;
 // `galaxy` is the galaxy view: the Defenses window opens 5 pixels in from
 // its top-right corner (mission-dialog.mjs), and the order confirmation is
 // centred in it (fleet-move.mjs).
@@ -239,6 +241,28 @@ const cases = [
       const moved = await log.logged("the release orders the Move", new RegExp(
         `character_move character=Some\\(".+"\\) to=Some\\("${escapeRegExp(menu.target_name)}"\\) fleet=None result=Ok\\(\\d+\\)$`));
       return { menu, moved };
+    },
+  },
+  {
+    name: "character-evacuation",
+    code: CHARACTER_EVACUATION,
+    // The other side's fleet alone in orbit blockades the agent's own
+    // system (FUN_0050b8e0). The Confirmed Move (0x202 -> 0x241) opens
+    // FUN_00487cc0 with the evacuation warning, since the agent's
+    // container is a blockaded system (FUN_0049a350; move_confirmation.rs
+    // EVACUATION, picture 1031 or 1030); the checkmark sends the agent.
+    async run(page, faction, directory, log) {
+      const menu = await openMenu(page, agentCell(faction), directory, "agent");
+      await choose(page, menu, menu.confirmed_move_row, "Confirmed Move");
+      await release(page, menu);
+      const asked = await log.logged("the Confirmed Move asks with the evacuation warning",
+        /character_move confirm days=\d+ blockaded=true$/);
+      await frames(page, 3);
+      const confirmationShot = await shot(page, directory, "evacuation-confirmation");
+      await click(page, confirmationCheckmark(faction));
+      const moved = await log.logged("the checkmark orders the Move", new RegExp(
+        `character_move character=Some\\(".+"\\) to=Some\\("${escapeRegExp(menu.target_name)}"\\) fleet=None result=Ok\\(\\d+\\)$`));
+      return { menu, asked, confirmationShot, moved };
     },
   },
   {

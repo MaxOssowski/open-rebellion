@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 152;
+const SCENARIO_COUNT: u8 = 154;
 
 
 extern "C" {
@@ -669,6 +669,19 @@ pub enum Scenario {
     /// it); the Alliance's has not (0x42a, A0 2026-11-18-edited-saves-7
     /// b-12). See [`post_jabba_delivers`].
     JabbaDelivers = 151,
+    /// Running the blockade: `FleetLoad` with the primary system the other
+    /// side's and the player's fleet blockading it, the regiment aboard,
+    /// carried in from the loading target. The fleet holds enough ships that
+    /// `FUN_0055a020` leaves a withdraw percent of 0 (no KDY-150 there,
+    /// `FUN_0050b310`), so the regiment is lost when the fleet leaves
+    /// (`FUN_00504990`, event `0x340`, Evacuation Losses `FUN_00495e90`).
+    /// See [`place_blockade_running`].
+    BlockadeRunning = 152,
+    /// `CharacterMove` with the other side's fleet alone in orbit of the
+    /// player's primary system, which it blockades: the agent's Confirmed
+    /// Move asks with the evacuation warning (`FUN_0049a350`, picture 1031
+    /// or 1030).
+    CharacterEvacuation = 153,
 }
 
 impl Scenario {
@@ -826,6 +839,8 @@ impl Scenario {
             149 => Self::QuadrantsRegimentQueued,
             150 => Self::QuadrantsRegimentEnRoute,
             151 => Self::JabbaDelivers,
+            152 => Self::BlockadeRunning,
+            153 => Self::CharacterEvacuation,
             _ => return None,
         })
     }
@@ -859,6 +874,7 @@ impl Scenario {
                 | Self::FleetLoadUnfinished
                 | Self::ShipShieldHit
                 | Self::ShipRepaired
+                | Self::BlockadeRunning
         )
     }
 
@@ -883,6 +899,7 @@ impl Scenario {
             || self == Self::ForceStatus
             || self == Self::CharacterCommand
             || self == Self::CharacterMove
+            || self == Self::CharacterEvacuation
             || self == Self::CharacterBoard
             || self == Self::CharacterAboard
             || self == Self::ReconTargeting
@@ -1115,7 +1132,7 @@ pub fn apply(
         Scenario::Uprising => {
             world.systems[primary].control = ControlKind::Uprising(player_control);
         }
-        Scenario::CharacterMove => {
+        Scenario::CharacterMove | Scenario::CharacterEvacuation => {
             world.systems[secondary].control = ControlKind::Controlled(player_control);
         }
         _ => {}
@@ -1160,6 +1177,7 @@ pub fn apply(
                 request.scenario,
                 Scenario::CharacterCommand
                     | Scenario::CharacterMove
+                    | Scenario::CharacterEvacuation
                     | Scenario::CharacterBoard
                     | Scenario::CharacterAboard
             ) || c.can_be_admiral
@@ -1187,6 +1205,7 @@ pub fn apply(
                 | Scenario::UprisingTargeting
                 | Scenario::CharacterCommand
                 | Scenario::CharacterMove
+                | Scenario::CharacterEvacuation
                 | Scenario::CharacterBoard
                 | Scenario::CharacterAboard
         ) || request.scenario.targets_an_object()
@@ -1242,6 +1261,24 @@ pub fn apply(
         }
     }
     reconcile_fleet_orbits(movement, world);
+
+    // The evacuation variant: the first fleet turns the other side's and,
+    // alone at the primary system with no squadron on its planet, blockades
+    // it (`FUN_0050b8e0`; a squadron would make it a battle, `FUN_00509710`).
+    if request.scenario == Scenario::CharacterEvacuation {
+        let away = *system_keys.last().unwrap_or(&secondary);
+        for (key, fleet) in &mut world.fleets {
+            if Some(key) == transit_fleet {
+                fleet.is_alliance = !player_is_alliance;
+            } else if fleet.location == primary {
+                fleet.location = away;
+            }
+        }
+        world.systems[primary].fighters.clear();
+        world.systems[primary].control = ControlKind::Controlled(player_control);
+        reconcile_fleet_orbits(movement, world);
+        let _ = BlockadeSystem::advance(blockade, world, &[TickEvent { tick: 1 }]);
+    }
 
     if request.scenario == Scenario::FleetsBothSides {
         // An enemy fleet in orbit beside the player's own (gid-fleet-marks.md):
@@ -1644,6 +1681,9 @@ pub fn apply(
     if request.scenario == Scenario::BlockadeArrival {
         place_blockade_arrival(request, world, movement, primary);
     }
+    if request.scenario == Scenario::BlockadeRunning {
+        place_blockade_running(request, world, movement, blockade, troop_transport, primary);
+    }
     if request.scenario == Scenario::SupportFlip {
         place_support_flip(request, world, primary);
     }
@@ -2033,6 +2073,7 @@ pub fn apply(
             | Scenario::UprisingTargeting
             | Scenario::CharacterCommand
             | Scenario::CharacterMove
+            | Scenario::CharacterEvacuation
     ) {
         // The primary system's Defenses window at the galaxy view's right
         // edge holds the agent first on its personnel page; the second
@@ -5744,6 +5785,63 @@ fn place_blockade_arrival(
     if let Some(fleet) = world.fleets.keys().next() {
         let _ = begin_fleet_transit(movement, world, fleet, target, 3);
     }
+}
+
+/// The `BlockadeRunning` scenario: the primary system becomes the other
+/// side's, held by its support (`FUN_0050b610`), its defense facilities
+/// moved to the loading target (an active KDY-150 keeps the withdraw percent
+/// at 100, `FUN_0050b310`). The player's fleet, blockading it, takes the
+/// regiment aboard and copies of its ship until `FUN_0055a020` leaves
+/// `100 - ships * GNPRTB[7684]` at 0. The regiment is then observed carried
+/// in from the target, so it takes the primary's percent as an arriving
+/// regiment does (`FUN_00514a60` -> `FUN_00508660`).
+fn place_blockade_running(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &MovementState,
+    blockade: &mut BlockadeState,
+    transport: &mut TroopTransportState,
+    primary: SystemKey,
+) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let (Some(target), Some(fleet), Some(regiment)) = (
+        loading_target(world, primary),
+        world.fleets.keys().next(),
+        loading_regiment(world, primary),
+    ) else {
+        return;
+    };
+    let enemy = if player_is_alliance {
+        Faction::Empire
+    } else {
+        Faction::Alliance
+    };
+    let system = &mut world.systems[primary];
+    system.control = ControlKind::Controlled(enemy);
+    system.is_populated = true;
+    system.popularity_alliance = if player_is_alliance { 0.0 } else { 1.0 };
+    system.popularity_empire = 1.0 - system.popularity_alliance;
+    let defenses = std::mem::take(&mut system.defense_facilities);
+    world.systems[target].defense_facilities.extend(defenses);
+    let per_ship = world.gnprtb.value(
+        rebellion_core::blockade::GNPRTB_WITHDRAW_PENALTY_PER_CAPSHIP,
+        world.difficulty_index,
+    );
+    let full = i32::from(rebellion_core::blockade::FULL_WITHDRAW_PERCENT);
+    let ships = if per_ship > 0 {
+        usize::try_from((full + per_ship - 1) / per_ship).unwrap_or(1)
+    } else {
+        1
+    };
+    if let Some(ship) = world.fleets[fleet].capital_ships.first().cloned() {
+        world.fleets[fleet].capital_ships.resize(ships.max(1), ship);
+    }
+    let _ = transport.embark(world, fleet, &[regiment]);
+    world.fleets[fleet].location = target;
+    let _ = BlockadeSystem::running_regiments(blockade, world, movement, transport);
+    world.fleets[fleet].location = primary;
+    let _ = BlockadeSystem::running_regiments(blockade, world, movement, transport);
+    let _ = BlockadeSystem::advance(blockade, world, &[TickEvent { tick: 1 }]);
 }
 
 /// The `SupportFlip` scenario: the loading target's support goes all to the
@@ -9519,6 +9617,11 @@ struct FleetLoadObservation {
     /// The player's System Joins title (`0x100`, `FUN_00499760`) for the
     /// loading target.
     last_joins_title: Option<String>,
+    /// The player's last Evacuation Losses (`0x340`, `FUN_00495e90`): its
+    /// title, body and background picture.
+    last_loss_title: Option<String>,
+    last_loss_text: Option<String>,
+    last_loss_picture: Option<u32>,
     /// The top Assault Summary window (`FUN_0044c410`).
     assault_summary: Option<FixtureAssaultSummary>,
 }
@@ -9873,6 +9976,11 @@ fn fleet_load_observation(
             .filter_map(|message| message.title.as_deref())
             .find(|title| title.contains("Blockade"))
             .map(str::to_owned),
+        last_loss_title: last_loss(request, messages).and_then(|message| message.title.clone()),
+        last_loss_text: last_loss(request, messages).map(|message| message.text.clone()),
+        last_loss_picture: last_loss(request, messages)
+            .and_then(|message| message.picture)
+            .map(|picture| picture.background),
         last_joins_title: messages
             .iter()
             .rev()
@@ -9905,6 +10013,24 @@ fn last_disaster(messages: &[GameMessage]) -> Option<&GameMessage> {
             .is_some_and(|title| title.starts_with("Natural Disaster on "))
             || message.text.starts_with("Natural disaster strikes ")
     })
+}
+
+/// The player's last line for a regiment lost running a blockade
+/// (`FUN_00495e90`): TEXTSTRA `0x70a9`'s body, or the port's line without
+/// the texts.
+fn last_loss(request: FixtureRequest, messages: &[GameMessage]) -> Option<&GameMessage> {
+    messages
+        .iter()
+        .rev()
+        .filter(|message| {
+            message
+                .audience
+                .includes(request.faction == CockpitFaction::Alliance)
+        })
+        .find(|message| {
+            message.text.contains("running an enemy blockade")
+                || message.text.starts_with("Troops destroyed by blockade at ")
+        })
 }
 
 /// Emits a [`FleetLoadObservation`] whenever it changes. The regiment it
@@ -13380,6 +13506,197 @@ mod tests {
         assert_eq!(background(CockpitFaction::Empire), Some(0x42b));
         assert_eq!(background(CockpitFaction::Alliance), Some(0x42a));
         assert_eq!(Scenario::decode(151), Some(Scenario::JabbaDelivers));
+    }
+
+    /// GNPRTB 7684 and 7685 as shipped, 5 and 2
+    /// (`ghidra/notes/blockade-troop-withdrawal.md`, `FUN_00558bb0`).
+    fn shipped_withdraw_penalties(world: &mut GameWorld) {
+        let entry = |id: u16, value: i32| rebellion_core::world::GnprtbEntry {
+            parameter_id: u32::from(id),
+            development: value,
+            alliance_sp_easy: value,
+            alliance_sp_medium: value,
+            alliance_sp_hard: value,
+            empire_sp_easy: value,
+            empire_sp_medium: value,
+            empire_sp_hard: value,
+            multiplayer: value,
+        };
+        world.gnprtb = rebellion_core::world::GnprtbParams::new(vec![
+            entry(
+                rebellion_core::blockade::GNPRTB_WITHDRAW_PENALTY_PER_CAPSHIP,
+                5,
+            ),
+            entry(
+                rebellion_core::blockade::GNPRTB_WITHDRAW_PENALTY_PER_FIGHTER,
+                2,
+            ),
+        ]);
+    }
+
+    #[test]
+    fn the_blockade_running_scenario_loses_the_carried_regiment_when_the_fleet_leaves() {
+        // FUN_0050b310: a blockaded system without a KDY-150 has the
+        // withdraw percent FUN_0055a020 gives, 100 - 20 ships * 5 = 0; an
+        // arriving regiment copies it (FUN_00514a60 -> FUN_00508660) and
+        // FUN_00504990 keeps it only when random(0..=99) < 0, never.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::BlockadeRunning, faction);
+            let mut applied = apply_to_loading_world_with(request, shipped_withdraw_penalties);
+            let mut systems = applied.world.systems.keys();
+            let primary = systems.next().unwrap();
+            let target = loading_target(&applied.world, primary).unwrap();
+            let fleet = applied.world.fleets.keys().next().unwrap();
+            let alliance = faction == CockpitFaction::Alliance;
+
+            assert!(request.scenario.uses_the_fleet_window());
+            assert!(!runs_the_clock(request));
+            assert_eq!(
+                applied.world.systems[primary].control,
+                ControlKind::Controlled(if alliance {
+                    Faction::Empire
+                } else {
+                    Faction::Alliance
+                })
+            );
+            assert!(applied.blockade.is_blockaded(primary), "{faction:?}");
+            // Held by the other side's support (FUN_0050b610).
+            let held = &applied.world.systems[primary];
+            let (enemy_support, own_support) = if alliance {
+                (held.popularity_empire, held.popularity_alliance)
+            } else {
+                (held.popularity_alliance, held.popularity_empire)
+            };
+            assert!((enemy_support - 1.0).abs() < f32::EPSILON, "{faction:?}");
+            assert!(own_support.abs() < f32::EPSILON, "{faction:?}");
+            assert!(applied.world.systems[primary].defense_facilities.is_empty());
+            assert_eq!(applied.world.fleets[fleet].capital_ships.len(), 20);
+            let cargo = applied.transport.cargo(fleet).to_vec();
+            assert_eq!(cargo.len(), 1, "{faction:?}");
+            assert_eq!(
+                applied.blockade.embarked_regiment(cargo[0]),
+                Some(rebellion_core::blockade::EmbarkedRegiment {
+                    orbit: Some(primary),
+                    withdraw_percent: 0,
+                })
+            );
+
+            assert!(applied.movement.order(fleet, primary, target, 3));
+            let running = BlockadeSystem::running_regiments(
+                &mut applied.blockade,
+                &applied.world,
+                &applied.movement,
+                &applied.transport,
+            );
+            // Roll 0.0 is the best draw, 99 (BlockadeSystem::resolve_running).
+            assert_eq!(
+                BlockadeSystem::resolve_running(&running, &[0.0], 2),
+                [rebellion_core::blockade::BlockadeEvent::TroopDestroyed {
+                    system: primary,
+                    troop: cargo[0],
+                    tick: 2,
+                }]
+            );
+        }
+        assert_eq!(Scenario::decode(152), Some(Scenario::BlockadeRunning));
+    }
+
+    #[test]
+    fn the_blockade_running_report_keeps_the_players_last_evacuation_losses() {
+        // Our report: the reader's latest line of either form.
+        let line = |text: &str, alliance: bool| {
+            let mut message = GameMessage::new(1, text, rebellion_render::MessageCategory::Combat)
+                .with_title("Evacuation Losses");
+            message.audience = rebellion_render::message_log::RailAudience::side(alliance);
+            message
+        };
+        let request = request(Scenario::BlockadeRunning, CockpitFaction::Alliance);
+        let messages = [
+            line("Troops destroyed by blockade at Mine", true),
+            line(
+                "The following units were lost running an enemy blockade of Theirs.",
+                false,
+            ),
+            line("Fleet 3 has initiated a blockade of Mine.", true),
+        ];
+        assert_eq!(
+            last_loss(request, &messages).map(|message| message.text.as_str()),
+            Some("Troops destroyed by blockade at Mine")
+        );
+        let ours = [
+            line("Troops destroyed by blockade at Mine", true),
+            line(
+                "The following units were lost running an enemy blockade of Mine.",
+                true,
+            ),
+        ];
+        assert_eq!(
+            last_loss(request, &ours).map(|message| message.text.as_str()),
+            Some("The following units were lost running an enemy blockade of Mine.")
+        );
+        assert!(last_loss(request, &messages[1..]).is_none());
+    }
+
+    #[test]
+    fn the_blockade_running_scenario_needs_one_ship_without_a_penalty() {
+        // Our fixture: with no GNPRTB 7684 the percent stays 100 whatever
+        // the ships, so the fleet keeps its one.
+        let request = request(Scenario::BlockadeRunning, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |_| {});
+        let fleet = applied.world.fleets.keys().next().unwrap();
+        assert_eq!(applied.world.fleets[fleet].capital_ships.len(), 1);
+    }
+
+    #[test]
+    fn the_character_evacuation_scenario_blockades_the_agents_own_system() {
+        // FUN_0050b8e0: a system held by one side with only the other's
+        // fleet in orbit is blockaded; FUN_0049a350 then warns a member
+        // leaving it (move_confirmation.rs EVACUATION).
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::CharacterEvacuation, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                world.characters.insert(rebellion_core::world::Character {
+                    name: "Admiral".into(),
+                    can_be_admiral: true,
+                    ..Default::default()
+                });
+            });
+            let primary = applied.world.systems.keys().next().unwrap();
+            let alliance = faction == CockpitFaction::Alliance;
+            let player = if alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            };
+
+            assert!(request.scenario.reports_object_menu());
+            assert_eq!(
+                applied.world.systems[primary].control,
+                ControlKind::Controlled(player)
+            );
+            assert!(applied.blockade.is_blockaded(primary), "{faction:?}");
+            let orbiting = &applied.world.systems[primary].fleets;
+            assert_eq!(orbiting.len(), 1, "{faction:?}");
+            assert_eq!(
+                Some(&orbiting[0]),
+                applied.world.fleets.keys().next().as_ref()
+            );
+            assert_ne!(applied.world.fleets[orbiting[0]].is_alliance, alliance);
+            // The Move's target is the player's own (FUN_004f4b60).
+            let secondary = applied.world.systems.keys().nth(1).unwrap();
+            assert_eq!(
+                applied.world.systems[secondary].control,
+                ControlKind::Controlled(player)
+            );
+            assert!(applied.world.characters.values().any(|character| {
+                character.current_system == Some(primary)
+                    && character.current_fleet.is_none()
+                    && character.recruited
+                    && !character.on_mission
+                    && character.is_alliance == alliance
+            }));
+        }
+        assert_eq!(Scenario::decode(153), Some(Scenario::CharacterEvacuation));
     }
 
     // FUN_00490340: A0 alliance-game2/han-solo-captured and
@@ -17217,6 +17534,8 @@ mod tests {
                 Scenario::PersonnelRetired,
                 Scenario::QuadrantsRegimentQueued,
                 Scenario::QuadrantsRegimentEnRoute,
+                Scenario::BlockadeRunning,
+                Scenario::CharacterEvacuation,
             ]
         );
     }

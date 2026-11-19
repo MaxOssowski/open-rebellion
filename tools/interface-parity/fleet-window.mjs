@@ -52,6 +52,8 @@ const FLEET_WINDOW_EMPTY = 84;
 const FLEET_WINDOW_YAVIN = 85;
 const FLEET_WINDOW_DESTINATION = 86;
 const FLEET_WINDOW_BLOCKADE = 87;
+// Scenario::BlockadeRunning (152).
+const BLOCKADE_RUNNING = 153;
 // Scenario::UnfinishedShipMini (127) and UnfinishedShipEnroute (128).
 const UNFINISHED_SHIP_MINI = 128;
 const UNFINISHED_SHIP_ENROUTE = 129;
@@ -1621,6 +1623,41 @@ const cases = [
       await frames(page, 3);
       await shot(page, directory, "blockade-initiated");
       return { before, blockade };
+    },
+  },
+  {
+    name: "blockade-running",
+    code: BLOCKADE_RUNNING,
+    // The primary system is the other side's, blockaded by the player's
+    // fleet of 20 ships with no KDY-150 there, so the regiment the fleet
+    // carried in holds FUN_0055a020's withdraw percent 100 - 20 * GNPRTB
+    // 7684 (5) = 0 (FUN_0050b310). The fleet icon's Move asks nothing
+    // (FUN_00487cc0: the system is not the fleet's side); in hyperspace
+    // FUN_00504990 keeps the regiment only when random(0..=99) < 0, so it
+    // is destroyed (event 0x340), and Evacuation Losses (FUN_00495e90,
+    // TEXTSTRA 0x70a8..0x70aa) tells its side on background 0x407 (the
+    // Alliance's) or 0x406 (message_pictures.rs evacuation_losses).
+    async run(page, faction, setup, directory) {
+      const start = await until(page, "the regiment rides the blockading fleet",
+        (o) => o.aboard && o.cargo === 1 && !o.in_transit && o.last_loss_title === null);
+      await shot(page, directory, "blockade-running-ready");
+      const menu = await openMenu(page, point(setup.icon), directory, "fleet");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, point(setup.target_planet));
+      const departed = await until(page, "the fleet leaves the blockaded system",
+        (o) => o.in_transit || o.confirmation_open);
+      assert.equal(departed.confirmation_open, false, "the fleet icon's Move asked");
+      assert.equal(departed.aboard, true, "the regiment was lost before the fleet left");
+      const speed = await runFast(page, setup);
+      const lost = await until(page, "the regiment is lost running the blockade",
+        (o) => o.cargo === 0 && o.last_loss_title !== null, null, 60_000);
+      assert.equal(lost.aboard, false);
+      assert.equal(lost.last_loss_title, "Evacuation Losses");
+      assert.match(lost.last_loss_text, /^The following units were lost running an enemy blockade of .+\./);
+      assert.equal(lost.last_loss_picture, faction.byte === 1 ? 0x407 : 0x406);
+      await frames(page, 3);
+      await shot(page, directory, "blockade-running-lost");
+      return { start, menu, departed, speed, lost };
     },
   },
   {
@@ -3961,7 +3998,8 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.equal(start.window_open, false, JSON.stringify(start));
       // The refused variant's regiment starts aboard (interface_test_fixture.rs),
       // and the taken assault's player regiment is the one aboard.
-      const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED || testCase.code === FLEET_ASSAULT_TAKEN;
+      const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED || testCase.code === FLEET_ASSAULT_TAKEN
+        || testCase.code === BLOCKADE_RUNNING;
       assert.equal(start.aboard, startsAboard, JSON.stringify(start));
       assert.equal(start.troop_system_dat_id, startsAboard ? null : setup.primary_dat_id, JSON.stringify(start));
     }
