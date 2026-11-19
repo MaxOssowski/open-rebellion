@@ -87,3 +87,17 @@ function named here has a `FUN_<address>.c` note in this directory.
 `running_regiments`, `resolve_running`. Since 2026-10-15 the fighter count
 includes the squadrons on the planet (`planet-squadrons.md`). The port treats
 "active" as present.
+
+## Who rolls (2026-11-19)
+
+Only the moved object gets `+0x50` bit `0x20` (`FUN_00556390`,
+`FUN_00556430`, `FUN_0052bee0`), so slot `+0x124` rolls a regiment that
+moves itself across systems, not one aboard a departing fleet; and step 2's
+copy reaches a regiment only when it is itself the object entering the
+system. A third copy: when the system's `+0x78` bits 2..3 (the side that
+withdrew from its battle) change, `FUN_0050a0b0` calls slot `+0x1f4`
+`FUN_00510b80`, which (with `DAT_006b90e0` set) copies `+0x74` into every
+regiment on the planet (`FUN_0050c210`). A0 2026-11-19-blockade-15 d-04..d-21:
+a 76% fleet left Corsin three times with 11 regiments aboard and lost none.
+port mismatch: `running_regiments` rolls embarked regiments when their fleet
+leaves (`move-order.md`, "Re-traced 2026-11-19").

@@ -685,9 +685,10 @@ corpus: `FUN_00433e40`, `FUN_004ebe40` (display flags), `FUN_00487cc0`
   squadron, character or special force. `0x201` from the member's own
   blockaded system asks (`FUN_00487cc0`); for a non-fleet first member the
   window shows the evacuation warning (`FUN_0049a350`, TEXTSTRA `0x7056`,
-  pictures 1031/1030). `0x202` always asks. A regiment carried in while
-  the system was blockaded rolls its withdraw percent in hyperspace
-  (`blockade-troop-withdrawal.md`). The only refusal is `FUN_005555e0`'s
+  pictures 1031/1030). `0x202` always asks. A regiment that itself entered
+  the system while it was blockaded rolls its withdraw percent when it
+  moves itself out (`blockade-troop-withdrawal.md`; corrected below,
+  "Re-traced 2026-11-19": not a regiment aboard a fleet). The only refusal is `FUN_005555e0`'s
   for an ALLFACSD object (families `0x20..0x21`, the headquarters):
   `0x90`/4 when `FUN_0055a020` over the system's fleets is below 31
   (`headquarters_move.rs`).
@@ -703,6 +704,80 @@ corpus: `FUN_00433e40`, `FUN_004ebe40` (display flags), `FUN_00487cc0`
 - `FUN_00507d00` (`System_vt1bc`) refuses `0x90`/6 when the system is not
   blockaded: an order that needs a blockade (hyp: bombardment, beside its
   GNPRTB 7683 limit `0x90`/5); not a move.
+
+### Re-traced 2026-11-19 against A0 blockade-15
+
+A0 `.artifacts/a0-vm/2026-11-19-blockade-15` (Empire, unedited saves) saw
+a TIE squadron and a regiment accepted into Corfai and Selonia after "...
+is now under blockade by Alliance forces", no evacuation text on Move,
+Confirmed Move or drag out of them, and no regiment lost. The trace stands;
+the captures did not meet a set bit.
+
+- **Who is refused** (`FUN_005073d0`, disassembly `0x5073d0..0x507735`).
+  Its stack arguments are the route context's `+0x14`, `+0x18`, `+0x1c` (the
+  kind) and the member's family range, then the status (`FUN_00550700` at
+  `0x550818..0x55083d`). `FUN_00551190` -> `FUN_00551100` fills `+0x14` with
+  the order's side (1, 2, else 0) and `+0x18` with the mover's side bits
+  (`FUN_005542f0` passes object `+0x24 >> 6 & 3`). `FUN_00553410` refuses
+  `1`/`0x24` when the system's side is not the order's and `1`/`0x28` when
+  it is not the mover's. The blockade test at `0x5076a8` runs only while no
+  refusal is set, so `0x90`/4 meets only a system **held by the mover's own
+  side**; an enemy or neutral destination already failed `0x24`. Fleets
+  (`0x204`, `0x08..0x10`) and `0x240` personnel have the side refusal
+  lifted (`0x507616`) and the blockade refusal lifted again (`0x5076e8`);
+  `0x241` and `0x3f0` only the blockade one. So the port's
+  `squadrons.rs`/`troop_transport.rs` `DestinationBlockaded` (own planet
+  only, after the side check) matches.
+- **When the bit is right.** A fleet (`0x08..0x0f`) or squadron
+  (`0x1c..0x1f`) entering or leaving a system (`FUN_00508660`, slot `+0xd0`)
+  and an owner change (`FUN_00510820`) set `+0x88` `0x100000`
+  (`System_SetBlockadeAndBattlePendingManagementRequired`); its notification
+  `FUN_00511b30` posts event `0x311` and clears it, and the handler
+  `FUN_00515ef0` reruns `FUN_0050b8e0`. So the bit follows every arrival and
+  departure: set while an enemy fleet is in orbit and the holder has no
+  active fleet or squadron there (`blockade-bit.md`), clear once that fleet
+  leaves.
+- **The battle text is not the bit.** "now under blockade" (`0x7008`/
+  `0x7006`) comes from the report's winner/withdrawn fields and the
+  system's side (`battle-summary-window.md`); it reads no `+0x88`. A winner
+  that moves on the same day leaves no blockade.
+- **No blockade mark on the map.** `FUN_0045bbb0` draws only the uprising
+  marks `0x389`/`0x38a` (`+0x88` bit 4) and the headquarters `0x388`. The
+  flame-and-face over Selonia in A0 f-04..f-21 is the uprising mark, not a
+  blockade mark.
+- **The A0 frames read the bit clear.** `FUN_0049a350` shows `0x7056`
+  (pictures 1030/1031) for `0x201` and `0x202` whenever the first non-fleet
+  member's container is a system with bit `0x20` in the viewer's copy (the
+  setter `FUN_0050a5f0` updates both copies). The Confirmed Moves out of
+  Selonia (f-07, day 317), Corfai (f-15, day 319, the battle day) and
+  Corfai (h-09, day 384) show `0x7057` and picture 1018/1019: bit clear.
+  Corfai's fleet icon (`FUN_0045ccc0`: the player's fleets, else the other
+  side's) shows no Alliance fleet at Corfai on days 319, 320, 340, 347,
+  360, 372, 384 or 385, nor at Selonia on day 317 (work/ s265..s326, g-12,
+  f-16..f-21).
+- **Evacuation warning** (`FUN_00487cc0` `0x201`): asks only when the first
+  team id's container is a system (`0x90..0x97`) with bit `0x20` and the
+  member's side equals the system's. `0x202` always asks, and the window
+  text is `0x7056` under the same container test without the side test.
+- **Regiment roll** (`FUN_00504990`, regiment slot `+0x124`): runs when the
+  regiment's **own** `+0x50` bit `0x20` turns on. Only the moved object gets
+  it (`FUN_00556390`, `FUN_00556430`; `FUN_0052bee0` for a delivered
+  build); a regiment aboard a departing fleet is not the moved object and
+  does not roll. It survives when `FUN_0053e2e0()` (0..99) is below its
+  `+0x60`; loss chance `100 - percent`. `+0x60` is copied from the system's
+  `+0x74` only when the regiment itself enters a system from another
+  (`FUN_00514a60` -> slot `+0xd0` -> `FUN_0050c540`), or, when
+  `DAT_006b90e0` is set, for every regiment on the planet when the
+  system's `+0x78` bits 2..3 (the side that withdrew) change
+  (`FUN_0050a0b0` -> slot `+0x1f4` `FUN_00510b80` -> `FUN_0050c210`;
+  hyp: `DAT_006b90e0` is the master flag). A0 d-04..d-21 (Imperial Fleet 1
+  leaving Corsin, which it blockaded, three times with 4, 4 and 3
+  regiments aboard, percent 100 - 2*5 - 7*2 = 76): no loss, about a 5%
+  chance under a per-regiment roll. **port mismatch**:
+  `BlockadeSystem::running_regiments` copies the percent into regiments
+  aboard an arriving fleet and rolls them when the fleet leaves; the
+  original rolls a regiment that moves itself out of a system it entered
+  (or sat in through a battle) while `+0x74` was below 100.
 
 ## Still open
 

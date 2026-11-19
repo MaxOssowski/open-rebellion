@@ -59,7 +59,12 @@ never blockaded.
   `0x08..0x0f`) does not rerun the rule. It copies the system's current
   blockade bit into the fleet's `+0x58` bit 5 (`FUN_0050c0b0`).
 
-Who calls slot `+0xc8` and when the command is posted are untraced.
+Who calls slot `+0xc8` is untraced. The command is event `0x311`
+(2026-11-19): a fleet or squadron entering or leaving (`FUN_00508660`, slot
+`+0xd0`) or an owner change (`FUN_00510820`) sets `+0x88` `0x100000`, whose
+notification `FUN_00511b30` posts `0x311` and clears it; `FUN_00515ef0`
+then reruns this rule. The bit therefore follows each arrival and
+departure (`move-order.md`, "Re-traced 2026-11-19").
 
 ## Consequence for Move (`0x201`)
 
