@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 159;
+const SCENARIO_COUNT: u8 = 160;
 
 
 extern "C" {
@@ -704,6 +704,13 @@ pub enum Scenario {
     /// energy and raw materials changed: the frozen copy keeps the values
     /// it had when the fleet left; A0 fog-14 e-13, e-28.
     TritonStale = 158,
+    /// `FleetAssaultTaken` against Coruscant (`0x90000109`) in a
+    /// Headquarters Victory game (galaxy `+0x60` = 1) whose Alliance
+    /// headquarters stands elsewhere, with the player's advisor: the
+    /// assault takes Coruscant, so the victory conditions word
+    /// (`FUN_005180e0`) ends the game, as in A0 2026-11-17-edited-saves-5
+    /// run 2 (caption film 103, then 105 and the main menu).
+    EndingAssaultCoruscant = 159,
 }
 
 impl Scenario {
@@ -868,6 +875,7 @@ impl Scenario {
             156 => Self::TritonEnroute,
             157 => Self::TritonArrived,
             158 => Self::TritonStale,
+            159 => Self::EndingAssaultCoruscant,
             _ => return None,
         })
     }
@@ -897,6 +905,7 @@ impl Scenario {
                 | Self::FleetBombardment
                 | Self::FleetAssault
                 | Self::FleetAssaultTaken
+                | Self::EndingAssaultCoruscant
                 | Self::FleetDestroySystem
                 | Self::ProductionDelivery
                 | Self::UprisingIncident
@@ -1117,6 +1126,30 @@ pub fn apply(
         return;
     }
 
+    // The Coruscant assault's primary system (the first, which every
+    // observer reads) stands as Coruscant: it takes Coruscant's key
+    // 0x90000109, by which FUN_005180e0 reads it, and its name, and gives
+    // its own to the system that held them.
+    if request.scenario == Scenario::EndingAssaultCoruscant {
+        let first = world.systems.keys().next();
+        if let (Some(first), Some(coruscant)) = (first, coruscant_key(world)) {
+            if first != coruscant {
+                let (id, name) = (
+                    world.systems[coruscant].dat_id,
+                    world.systems[coruscant].name.clone(),
+                );
+                let (own_id, own_name) = (
+                    world.systems[first].dat_id,
+                    world.systems[first].name.clone(),
+                );
+                (world.systems[first].dat_id, world.systems[first].name) = (id, name);
+                (
+                    world.systems[coruscant].dat_id,
+                    world.systems[coruscant].name,
+                ) = (own_id, own_name);
+            }
+        }
+    }
     let system_keys: Vec<_> = world.systems.keys().take(10).collect();
     let Some(&primary) = system_keys.first() else {
         return;
@@ -4860,6 +4893,64 @@ pub fn starting_menu(request: FixtureRequest) -> Option<rebellion_render::MainMe
     })
 }
 
+/// Coruscant, `0x90000109` (`FUN_005180e0` reads it by that key).
+fn coruscant_key(world: &GameWorld) -> Option<SystemKey> {
+    world
+        .systems
+        .iter()
+        .find(|(_, system)| system.dat_id.index() == 0x109)
+        .map(|(key, _)| key)
+}
+
+/// The `EndingAssaultCoruscant` scenario's game: the Alliance headquarters
+/// (the HQ object, ALLFACSD `0x20000001`) at an Alliance system outside
+/// Coruscant's sector with no fleet in orbit, so the word's `0x1` stays
+/// clear. Returns the headquarters' system and Coruscant, for the app's
+/// `VictoryState`; the game type is Headquarters Victory.
+#[must_use]
+pub fn place_headquarters_victory(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+) -> Option<(SystemKey, SystemKey)> {
+    if request.scenario != Scenario::EndingAssaultCoruscant {
+        return None;
+    }
+    let coruscant = coruscant_key(world)?;
+    let sector = world.systems[coruscant].sector;
+    let hq = world
+        .systems
+        .iter()
+        .skip(10)
+        .find(|&(key, system)| {
+            system.sector != sector
+                && system.ground_units.is_empty()
+                && !world.fleets.values().any(|fleet| fleet.location == key)
+        })
+        .map(|(key, _)| key)?;
+    for system in world.systems.values_mut() {
+        system.is_headquarters = false;
+    }
+    let value = &mut world.systems[hq];
+    value.is_headquarters = true;
+    value.is_destroyed = false;
+    // Populated, with no regiment and the Alliance's support, so the
+    // economy keeps it the Alliance's (FUN_0050b610, FUN_0055a080).
+    value.is_populated = true;
+    value.exploration_status = ExplorationStatus::Explored;
+    value.control = ControlKind::Controlled(Faction::Alliance);
+    (value.popularity_alliance, value.popularity_empire) = (0.9, 0.1);
+    move_headquarters_object(world, hq);
+    Some((hq, coruscant))
+}
+
+/// Whether the scenario's player has the advisor's messages
+/// (C3POACT.SPT / IMP22ACT.SPT), whose game-over clip starts the ending
+/// (`FUN_004c3060` kind 3 -> `FUN_00425c90`).
+#[must_use]
+pub fn has_the_advisor(request: FixtureRequest) -> bool {
+    runs_the_clock(request) || request.scenario == Scenario::EndingAssaultCoruscant
+}
+
 /// Whether the scenario runs the clock Fast from the start.
 #[must_use]
 pub fn runs_the_clock(request: FixtureRequest) -> bool {
@@ -6629,6 +6720,7 @@ fn place_loading_fleet(
         Scenario::FleetBombardment
             | Scenario::FleetAssault
             | Scenario::FleetAssaultTaken
+            | Scenario::EndingAssaultCoruscant
             | Scenario::FleetDestroySystem
     ) {
         place_bombarding_fleet(world, fleet, primary, elsewhere, player_is_alliance);
@@ -6639,7 +6731,9 @@ fn place_loading_fleet(
     // The assault variant: one of the player's regiments aboard the fleet.
     if matches!(
         request.scenario,
-        Scenario::FleetAssault | Scenario::FleetAssaultTaken
+        Scenario::FleetAssault
+            | Scenario::FleetAssaultTaken
+            | Scenario::EndingAssaultCoruscant
     ) {
         let key = world.troops.insert(regiment());
         world.systems[primary].ground_units.push(key);
@@ -6649,7 +6743,10 @@ fn place_loading_fleet(
     // messages-day633's Alliance Forces list them (its bar's 57-pixel thumb
     // is six 70-pixel rows), on copies of the fleet's ship enough to carry
     // them; the other side's regiments leave the planet.
-    if request.scenario == Scenario::FleetAssaultTaken {
+    if matches!(
+        request.scenario,
+        Scenario::FleetAssaultTaken | Scenario::EndingAssaultCoruscant
+    ) {
         let ship = world.fleets[fleet].capital_ships.first().cloned();
         if let Some(ship) = ship {
             let capacity = world
@@ -17964,6 +18061,7 @@ mod tests {
                 Scenario::BlockadeRunning,
                 Scenario::CharacterEvacuation,
                 Scenario::SquadronBlockaded,
+                Scenario::EndingAssaultCoruscant,
             ]
         );
     }

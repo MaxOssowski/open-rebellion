@@ -1853,6 +1853,7 @@ async fn main() {
                 interface_test_fixture::Scenario::StoryMovie
                     | interface_test_fixture::Scenario::EndingDefeat
                     | interface_test_fixture::Scenario::EndingVictory
+                    | interface_test_fixture::Scenario::EndingAssaultCoruscant
             )
         });
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
@@ -1924,6 +1925,19 @@ async fn main() {
         advisor_state.set_faction(side);
         if interface_test_fixture::runs_the_clock(request) {
             choose_game_speed(&mut clock, GameSpeed::Fast);
+        }
+        if let Some((headquarters, coruscant)) =
+            interface_test_fixture::place_headquarters_victory(request, &mut world)
+        {
+            victory_state = VictoryState::new(headquarters, coruscant);
+            campaign_config.victory_conditions = VictoryConditions::HeadquartersOnly;
+            macroquad::logging::info!(
+                "[fixture] headquarters_victory headquarters={} coruscant={}",
+                world.systems[headquarters].name,
+                world.systems[coruscant].name
+            );
+        }
+        if interface_test_fixture::has_the_advisor(request) {
             // The clock-running fixtures give the player's advisor its
             // messages, without the opening briefing, so their
             // notifications reach its event slot (FUN_0048a060).

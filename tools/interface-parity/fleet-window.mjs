@@ -35,6 +35,8 @@ const GRAVITY_WELL_BATTLE = 139;
 const FLEET_BOMBARDMENT = 67;
 const FLEET_ASSAULT = 68;
 const FLEET_ASSAULT_TAKEN = 97;
+// Scenario::EndingAssaultCoruscant (159).
+const ENDING_ASSAULT_CORUSCANT = 160;
 const ENEMY_ASSAULT_TAKEN = 106;
 // Scenario::OwnAssaultRepulsed (121).
 const OWN_ASSAULT_REPULSED = 122;
@@ -648,6 +650,61 @@ async function shot(page, directory, label) {
 
 // The Fleet window's place in A0's captures.
 const a0Origin = { x: 305, y: 86 };
+
+// The assault-ending case against A0 2026-11-17-edited-saves-5 run 2.
+// `--a0-ending=DIR` names another copy of it.
+const A0_ALLIANCE_ENDING = process.argv.find((arg) => arg.startsWith("--a0-ending="))?.slice(12)
+  ?? path.join(root, ".artifacts/a0-vm/2026-11-17-edited-saves-5");
+
+// The rows and columns of a frame holding any lit pixel (sum above 60),
+// as ending.mjs measures the films.
+function litBox(png) {
+  let box = null;
+  for (let y = 0; y < png.height; y += 1) {
+    for (let x = 0; x < png.width; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (png.data[i] + png.data[i + 1] + png.data[i + 2] <= 60) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return box;
+}
+
+function litCount(png) {
+  let lit = 0;
+  for (let i = 0; i < png.data.length; i += 4) if (png.data[i] + png.data[i + 1] + png.data[i + 2] > 60) lit += 1;
+  return lit;
+}
+
+// The white ink box in a story movie's caption field (4, 404) 580 by 70
+// (FUN_00421790), as ending.mjs.
+function captionInk(png, bottom = 474) {
+  let box = null;
+  for (let y = 404; y < bottom; y += 1) {
+    for (let x = 4; x < 584; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 140) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return box;
+}
+
+// The cockpit's game type label's green ink (TEXTSTRA 10158 / 10159), as
+// ending.mjs.
+function gameTypeInk(png) {
+  let count = 0;
+  let box = null;
+  for (let y = 366; y < 392; y += 1) {
+    for (let x = 260; x < 390; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (!(png.data[i + 1] > 120 && png.data[i] < 120 && png.data[i + 2] < 120)) continue;
+      count += 1;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return { count, box };
+}
 
 // `--a0-drag=DIR` (.artifacts/a0-vm/2026-11-13-drag): A0's Yavin Fleet 1
 // with Corellian Corvette 1 and Medium Transport 1 selected (01), dragged
@@ -2029,6 +2086,119 @@ const cases = [
       await press(page, "Escape");
       await until(page, "Escape closes the Assault Summary", (o) => o.assault_summary === null);
       return { summary, checks };
+    },
+  },
+  {
+    name: "assault-ending",
+    code: ENDING_ASSAULT_CORUSCANT,
+    factions: ["alliance"],
+    // The films the ending plays, from data/video (one request each or a
+    // repeat; not part of the startup set).
+    extraRequests: ["/data/video/103.webm", "/data/video/105.webm"],
+    // END-01-C001 through a played assault: Scenario::EndingAssaultCoruscant
+    // is a Headquarters Victory game (galaxy +0x60 = 1) whose Alliance
+    // headquarters stands outside Coruscant's sector. The Alliance's
+    // Planetary Assault takes Coruscant (0x90000109), so the victory word
+    // (FUN_005180e0) has 0x100 and the Alliance's win 0x1000000 with the
+    // game over 0x10000000: the caption film 103 "The Alliance has seized
+    // the Imperial capital system of Coruscant." (FUN_0048f790), the
+    // advisor's message 0x56 under it (FUN_004c3010), its kind-3 clip
+    // (FUN_00425c90 state 0x10), the victory film 105 and its crawl, then
+    // the main menu (state 3). A0 2026-11-17-edited-saves-5 run 2: h-01
+    // assault (day 94), h-04 103 with its caption, h-08 one strategy frame
+    // (day 94), h-10 and h-13 105 and its crawl, h-15 the main menu; no
+    // 102, as the headquarters stands.
+    async run(page, faction, setup, directory, _source, log) {
+      await until(page, "the planet holds none of the other side's regiments",
+        (o) => o.enemy_regiments === 0 && o.last_assault_message === null);
+      const menu = await openMenu(page, point(setup.icon), directory, "assault-ending");
+      assert.notEqual(menu.assault_row, null, JSON.stringify(menu));
+      await choose(page, menu, menu.assault_row, "Planetary Assault");
+      const after = await until(page, "the assault takes Coruscant and its Assault Summary opens",
+        (o) => o.assault_summary?.page === "Summary");
+      assert.match(after.assault_summary.title, /^Assault on Coruscant/, JSON.stringify(after.assault_summary));
+      // A0 run 2 closed the summary and gave no other input.
+      await press(page, "Escape");
+      await until(page, "Escape closes the Assault Summary", (o) => o.assault_summary === null);
+      // The fixture starts paused; A0 ran at Fast (story movies wait on a
+      // paused game, FUN_0041dc10).
+      await runFast(page, setup);
+      const word = await log.logged("the victory word ends the game",
+        /\[victory\] word=0x[0-9a-f]*1[0-9a-f]{7} day=/, 1, 30_000);
+      const value = parseInt(word.match(/word=0x([0-9a-f]+)/)[1], 16);
+      // 0x100 Coruscant the Alliance's, 0x1000000 the Alliance wins,
+      // 0x10000000 the game is over; 0x1 clear (the headquarters stands).
+      assert.equal(value & 0x11100101, 0x11000100, word);
+      const stems = [];
+      let end103 = null;
+      let seen105 = null;
+      const deadline = Date.now() + 240_000;
+      for (;;) {
+        if (Date.now() > deadline) throw new Error(`no victory film: ${stems}`);
+        const stem = await page.evaluate(() => {
+          const c = window.__openRebellionCutscene;
+          const v = document.querySelector("video");
+          return c && c.state === 1 && v && v.currentTime > 1.0 ? c.stem : null;
+        });
+        if (stem && stem !== stems.at(-1)) {
+          if (stem === "105") seen105 = Date.now();
+          stems.push(stem);
+          await shot(page, directory, `movie-${stem}`);
+          if (stem === "105") {
+            // h-10's moment, about 15 s into 105 (played through fast).
+            await page.evaluate(() => { document.querySelector("video").playbackRate = 8; });
+            await page.waitForFunction(() => document.querySelector("video")?.currentTime >= 15, null,
+              { timeout: 60_000 });
+            await page.evaluate(() => { document.querySelector("video").playbackRate = 1; });
+            await page.waitForTimeout(700);
+            await shot(page, directory, "movie-105-film");
+            await press(page, "Escape");
+            break;
+          }
+          // 103 runs to its end, as in A0 run 2 (no input).
+          await page.waitForFunction(() => window.__openRebellionCutscene?.stem !== "103"
+            || !document.querySelector("video"), null, { timeout: 120_000 });
+          end103 = Date.now();
+        }
+        await page.waitForTimeout(200);
+      }
+      assert.deepEqual(stems, ["103", "105"]);
+      const day = async (pattern) => Number((await log.logged(`${pattern}`, pattern)).match(/day=(\d+)/)[1]);
+      const days = { word: await day(/\[victory\] word=0x[0-9a-f]*1[0-9a-f]{7} day=/),
+        ending: await day(/\[cutscene\] ending=105 day=/) };
+      // The day stands from the take-over to the victory film (h-01, h-02,
+      // h-08 all read 94).
+      assert.ok(Number.isFinite(days.word) && days.word === days.ending, JSON.stringify(days));
+      assert.ok(await log.logged("the advisor's game-over clip ends", /\[advisor\] clip finished kind=3 /));
+      await page.waitForFunction(() => !document.querySelector("video"), null, { timeout: 30_000 });
+      await page.waitForTimeout(1500);
+      const menuShot = await shot(page, directory, "main-menu");
+      const a0 = (file) => PNG.sync.read(fs.readFileSync(path.join(A0_ALLIANCE_ENDING, file)));
+      const port = (label) => PNG.sync.read(fs.readFileSync(path.join(directory, `${label}.png`)));
+      const checks = {
+        stems,
+        days,
+        caption_film_box: { a0: litBox(a0("h-04-run2-caption-film-103-second-frame-caption-0230-21.png")), port: litBox(port("movie-103")) },
+        caption_ink: { a0: captionInk(a0("h-04-run2-caption-film-103-second-frame-caption-0230-21.png")), port: captionInk(port("movie-103")) },
+        victory_film_box: { a0: litBox(a0("h-10-run2-victory-film-alliance-fleet-0237-39.png")), port: litBox(port("movie-105-film")) },
+        menu_game_type: { a0: gameTypeInk(a0("h-15-run2-main-menu-after-ending-0239-52.png")), port: gameTypeInk(PNG.sync.read(menuShot.bytes)) },
+        menu_lit: litCount(PNG.sync.read(menuShot.bytes)),
+        // Not compared: an upper bound (105 is seen once 1 s of it has
+        // played); A0 shows one strategy frame, about 660 ms.
+        gap_after_103_ms: end103 === null || seen105 === null ? null : seen105 - end103,
+      };
+      const rows = ({ a0: a, port: p }) => a && p && a[1] === p[1] && a[3] === p[3];
+      const near = ({ a0: a, port: p }) => a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+        && Math.abs(a[2] - p[2]) <= Math.max(3, 0.15 * (a[2] - a[0])) && Math.abs(a[3] - p[3]) <= 2;
+      assert.ok(rows(checks.caption_film_box) && rows(checks.victory_film_box), JSON.stringify(checks));
+      assert.ok(near(checks.caption_ink), JSON.stringify(checks));
+      // The main menu (h-15): its shell fills the screen and its game type
+      // reads "Standard Game" as A0's (the cockpit is built anew).
+      assert.ok(checks.menu_lit > 100_000, JSON.stringify(checks));
+      const { a0: ga, port: gp } = checks.menu_game_type;
+      assert.ok(ga.box && gp.box && Math.abs(ga.box[0] - gp.box[0]) <= 4 && Math.abs(ga.box[2] - gp.box[2]) <= 4,
+        JSON.stringify(checks));
+      return checks;
     },
   },
   {
@@ -4057,7 +4227,7 @@ async function inspect(server, source, faction, testCase, executable) {
       // The refused variant's regiment starts aboard (interface_test_fixture.rs),
       // and the taken assault's player regiment is the one aboard.
       const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED || testCase.code === FLEET_ASSAULT_TAKEN
-        || testCase.code === BLOCKADE_RUNNING;
+        || testCase.code === ENDING_ASSAULT_CORUSCANT || testCase.code === BLOCKADE_RUNNING;
       assert.equal(start.aboard, startsAboard, JSON.stringify(start));
       assert.equal(start.troop_system_dat_id, startsAboard ? null : setup.primary_dat_id, JSON.stringify(start));
     }
@@ -4081,9 +4251,18 @@ async function inspect(server, source, faction, testCase, executable) {
     await page.mouse.move(2, 2);
     await frames(page);
     const { bytes: _final, ...after } = await shot(page, directory, "final");
-    assert.deepEqual(requests.map(({ url }) => url).sort(), [...expectedRequests].sort());
+    // A case's own media (the ending's films) are requested on top of the
+    // startup set, each at least once.
+    const extra = testCase.extraRequests ?? [];
+    assert.deepEqual(requests.map(({ url }) => url).filter((url) => !extra.includes(url)).sort(),
+      [...expectedRequests].sort());
+    for (const url of extra) assert.ok(requests.some((request) => request.url === url), `${url} is requested`);
     assert.ok(requests.every(({ status }) => status === 200), "startup has non-200 requests");
-    assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
+    // A film skipped with Escape aborts the rest of its download.
+    const skipped = (error) => extra.some((url) => error.startsWith("requestfailed:")
+      && error.includes(url) && error.endsWith("net::ERR_ABORTED"));
+    assert.deepEqual(errors.filter((error) => !skipped(error)), [],
+      `browser diagnostics: ${errors.join("; ")}`);
     result = {
       status: "pass",
       faction: faction.name,
