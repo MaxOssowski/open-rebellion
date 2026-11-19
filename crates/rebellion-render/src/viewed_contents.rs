@@ -387,10 +387,12 @@ mod tests {
         assert_eq!(view_attached(&world, planet_copy), "System 1");
     }
 
-    /// A Rim system (SYSTEMSD family 0x92) of `id`, the Alliance's
-    /// headquarters. port: test data.
+    /// A Rim system (SYSTEMSD family 0x92, in a Rim sector as every such
+    /// record lies) of `id`, the Alliance's headquarters. port: test data.
     fn headquarters(world: &mut GameWorld, id: u32) -> SystemKey {
         let key = system(world, id);
+        let sector = world.systems[key].sector;
+        world.sectors[sector].group = SectorGroup::RimOuter;
         let value = &mut world.systems[key];
         value.dat_id = DatId::new(0x9200_0000 | id);
         value.control = ControlKind::Controlled(Faction::Alliance);

@@ -942,7 +942,10 @@ mod tests {
             ControlKind::Controlled(Faction::Alliance),
             true,
         );
+        // A Rim system lies in a Rim sector, which setup reads as its family.
         world.systems[tokmia].dat_id = DatId::new(0x9200_0010);
+        let sector = world.systems[tokmia].sector;
+        world.sectors[sector].group = SectorGroup::RimOuter;
         rebellion_core::object_views::setup(&mut world);
         assert_eq!(
             names(&rows(&world, Faction::Alliance, SystemTab::Rebel)),
