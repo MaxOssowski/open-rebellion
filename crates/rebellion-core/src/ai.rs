@@ -668,56 +668,70 @@ pub struct MissionPlanner {
     pub subtype: u32,
 }
 
-/// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`. It
-/// keeps its previous one while that is still the side's (system record
-/// `+0x30` bit 1, `+0x28` bit 2 clear); else it takes the target `+0x34`
-/// when that is the side's; else a system of the side picked by the
-/// nearness query from the target (`FUN_0041a460`); else the system the
-/// first team member stands in.
+/// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`, a
+/// system whose record is the side's (`+0x30` bit 1) and not blockaded
+/// (`+0x28` bit 2). The first that gives one:
 ///
-/// hyp: the nearness query's arguments (`1, 2`) read as the side's
-/// systems, nearest first; the port takes the side's unblockaded system
-/// nearest the target by map distance.
+/// 1. the previous place while its record still qualifies;
+/// 2. the target `+0x34` when its record qualifies;
+/// 3. when the target has a record that does not, a random qualifying
+///    system of the target's sector (`FUN_004bd7d0`, then `FUN_0041a460`,
+///    order 1, at `0x4bd1f7`), else in the nearest other sector with one a
+///    random system of the side with no enemy fleet (`FUN_0041b2b0`:
+///    `+0x30` 1 forbidding `0x200`, at `0x4bd2bb`);
+/// 4. the system of the first team member, walking up its containers,
+///    whose record qualifies.
+///
+/// The queries are those of the sector planners' state 3
+/// ([`sector_staging`], `FUN_004bdcd0`), from the target's sector.
+///
+/// port: a member aboard a fleet gives no system in step 4, as in
+/// [`sector_staging`].
 fn staging_point(
-    world: &GameWorld,
-    is_alliance: bool,
     previous: Option<SystemKey>,
     target: SystemKey,
     team: &[crate::missions::MissionMember],
+    planner: &mut Planner<'_>,
+    (world, galaxy): (&GameWorld, &crate::ai_records::Galaxy),
 ) -> Option<SystemKey> {
-    let side = crate::dat::Faction::of_alliance(is_alliance);
-    let own = |system: SystemKey| {
-        world.systems.get(system).is_some_and(|sys| {
-            crate::uprising::holder(sys) == Some(side)
-                && !sys.is_destroyed
-                && !crate::blockade::BlockadeSystem::system_is_blockaded(world, sys)
-        })
+    use crate::ai_records::{Mask, Order};
+    let fit = |s: SystemKey| {
+        galaxy
+            .system(s)
+            .is_some_and(|r| r.kind & 1 != 0 && r.state & 2 == 0)
     };
-    if let Some(previous) = previous.filter(|&p| own(p)) {
+    if let Some(previous) = previous.filter(|&s| fit(s)) {
         return Some(previous);
     }
-    if own(target) {
-        return Some(target);
+    if galaxy.system(target).is_some() {
+        if fit(target) {
+            return Some(target);
+        }
+        if let Some(sector) = world.systems.get(target).map(|sys| sys.sector) {
+            let any = Mask::new(0, 0);
+            let near = random_system(
+                planner,
+                galaxy,
+                Some(sector),
+                [Mask::new(0, 2), any, Mask::new(1, 0)],
+                Order::Ascending,
+            )
+            .or_else(|| {
+                nearest_sector_random_system(
+                    planner,
+                    galaxy,
+                    sector,
+                    [any, any, Mask::new(1, 0x200)],
+                )
+            });
+            if near.is_some() {
+                return near;
+            }
+        }
     }
-    let at = world
-        .systems
-        .get(target)
-        .map(|sys| (i64::from(sys.x), i64::from(sys.y)));
-    let nearest = at.and_then(|(x, y)| {
-        world
-            .systems
-            .iter()
-            .filter(|&(key, _)| own(key))
-            .min_by_key(|(_, sys)| {
-                let (dx, dy) = (i64::from(sys.x) - x, i64::from(sys.y) - y);
-                dx * dx + dy * dy
-            })
-            .map(|(key, _)| key)
-    });
-    nearest.or_else(|| {
-        team.first()
-            .and_then(|&m| crate::mission_planning::standing_system(world, m))
-    })
+    team.iter()
+        .filter_map(|&m| crate::mission_planning::standing_system(world, m))
+        .find(|&s| fit(s))
 }
 
 /// port: a mission planner that is neither standing nor a sector
@@ -1790,7 +1804,7 @@ impl AISystem {
             let Some(target) = p.target_system else {
                 return true;
             };
-            p.staging = staging_point(world, is_alliance, p.staging, target, &p.team);
+            p.staging = staging_point(p.staging, target, &p.team, planner, (world, galaxy));
             let Some(staging) = p.staging else {
                 return true;
             };
@@ -7336,11 +7350,12 @@ mod tests {
         adopted(&mut state, 1, &mut vec![rescue_order(team.clone(), target)]);
 
         let mut actions = Vec::new();
+        let mut galaxy = galaxy_of(&state, &world);
         AISystem::mission_planner_cycle(
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
-            &mut crate::ai_records::Galaxy::default(),
+            &mut galaxy,
             2,
             &mut actions,
         );
@@ -7352,11 +7367,12 @@ mod tests {
         assert_eq!(state.mission_planners.len(), 1);
         // A second AI tick the same day leaves the planner as it is.
         let mut again = Vec::new();
+        let mut galaxy = galaxy_of(&state, &world);
         AISystem::mission_planner_cycle(
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
-            &mut crate::ai_records::Galaxy::default(),
+            &mut galaxy,
             2,
             &mut again,
         );
@@ -7366,11 +7382,12 @@ mod tests {
         // One there, one still away: no order yet.
         world.characters[a].current_system = Some(target);
         let mut actions = Vec::new();
+        let mut galaxy = galaxy_of(&state, &world);
         AISystem::mission_planner_cycle(
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
-            &mut crate::ai_records::Galaxy::default(),
+            &mut galaxy,
             3,
             &mut actions,
         );
@@ -7379,11 +7396,12 @@ mod tests {
 
         world.characters[b].current_system = Some(target);
         let mut actions = Vec::new();
+        let mut galaxy = galaxy_of(&state, &world);
         AISystem::mission_planner_cycle(
             &mut state,
             &mut planner_for(&world, AiFaction::Empire),
             &world,
-            &mut crate::ai_records::Galaxy::default(),
+            &mut galaxy,
             4,
             &mut actions,
         );
@@ -7446,60 +7464,43 @@ mod tests {
     }
 
     #[test]
-    fn a_mission_planner_gathers_at_the_side_s_system_nearest_an_enemy_target() {
-        // FUN_004bd0a0: the previous place while it is the side's; else the
-        // target when it is; else the side's system nearest the target
-        // (FUN_0041a460); else the first member's system.
+    fn a_mission_planner_gathers_at_an_own_system_of_the_target_s_sector() {
+        // FUN_004bd0a0: the previous place while its record is the side's
+        // (+0x30 1) and not blockaded (+0x28 2); else the target when it
+        // is; else a random such system of the target's sector
+        // (FUN_0041a460 at 0x4bd1f7), else of the nearest other sector
+        // (FUN_0041b2b0 at 0x4bd2bb); else the first member's system when
+        // its record qualifies.
         let (mut world, [a, _], [here, there, target]) = gathering_world();
         let team = [MissionMember::Character(a)];
+        let state = AIState::new(AiFaction::Empire);
+        let place = |world: &GameWorld, previous| {
+            let galaxy = galaxy_of(&state, world);
+            let mut planner = planner_for(world, AiFaction::Empire);
+            staging_point(previous, target, &team, &mut planner, (world, &galaxy))
+        };
+        let empire = ControlKind::Controlled(crate::dat::Faction::Empire);
         world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-        world.systems[target].x = 100;
-        world.systems[here].x = 10;
-        world.systems[there].x = 90;
-        assert_eq!(
-            staging_point(&world, false, None, target, &team),
-            Some(here),
-            "none own yet"
-        );
-        world.systems[here].control = ControlKind::Controlled(crate::dat::Faction::Empire);
-        world.systems[there].control = ControlKind::Controlled(crate::dat::Faction::Empire);
-        assert_eq!(
-            staging_point(&world, false, None, target, &team),
-            Some(there)
-        );
-        assert_eq!(
-            staging_point(&world, false, Some(here), target, &team),
-            Some(here)
-        );
-        world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Empire);
-        assert_eq!(
-            staging_point(&world, false, None, target, &team),
-            Some(target)
-        );
-        // The distance counts both axes (squared).
-        world.systems[target].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
-        world.systems[target].y = 100;
-        world.systems[here].x = 100;
-        world.systems[here].y = 10;
-        world.systems[there].x = 100;
-        world.systems[there].y = 120;
-        assert_eq!(
-            staging_point(&world, false, None, target, &team),
-            Some(there)
-        );
-        world.systems[here].y = 95;
-        assert_eq!(
-            staging_point(&world, false, None, target, &team),
-            Some(here)
-        );
-        world.systems[here].x = 140;
-        world.systems[here].y = 100;
-        world.systems[there].x = 100;
-        world.systems[there].y = 70;
-        assert_eq!(
-            staging_point(&world, false, None, target, &team),
-            Some(there)
-        );
+        assert_eq!(place(&world, None), None, "no system of the side");
+        world.systems[here].control = empire;
+        assert_eq!(place(&world, None), Some(here), "the member's own system");
+        world.characters[a].current_system = Some(there);
+        assert_eq!(place(&world, None), Some(here), "the sector's own system");
+        world.systems[here].control = ControlKind::Uncontrolled;
+        assert_eq!(place(&world, None), None, "a neutral member");
+        // Not the nearest: the sector's only own system, though another
+        // sector's lies beside the target.
+        let far = add_sector(&mut world);
+        world.sectors[far].x = 500;
+        let beside = add_system(&mut world, far, 0.2, 0.8);
+        world.systems[beside].control = empire;
+        assert_eq!(place(&world, None), Some(beside), "next sector");
+        world.systems[there].control = empire;
+        world.systems[there].x = 900;
+        assert_eq!(place(&world, None), Some(there), "its own sector first");
+        assert_eq!(place(&world, Some(beside)), Some(beside), "kept");
+        world.systems[target].control = empire;
+        assert_eq!(place(&world, None), Some(target), "the target itself");
     }
 
     #[test]

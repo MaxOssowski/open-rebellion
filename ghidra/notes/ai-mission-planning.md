@@ -809,6 +809,9 @@ The user approved the save change and the AI change.
     from the target;
   - else the system the first team member stands in.
 
+  (Corrected 2026-11-20, see "The gathering place re-read" below: the
+  query is a random system of the target's sector, not the nearest.)
+
   A Move to another side's system ends at once with code 8, so the team
   never gathers at an enemy target.
 - `AIState::mission_planners` holds each `MissionPlanner`:
@@ -837,7 +840,7 @@ The user approved the save change and the AI change.
     planner (port);
   - a planner older than `MISSION_PLANNER_DAYS` (60) ends;
   - the nearness query is read as the side's unblockaded system nearest
-    the target.
+    the target (replaced 2026-11-20 by the original's queries).
 - Campaigns: 24 seeds of 1500 days, before and after.
   - Dispatched missions: 41,485 before, 13,590 after.
   - Successes: 17,811 before, 14,889 after.
@@ -1869,6 +1872,43 @@ AI, against `5ecdbf78`:
 - results: 7,672 successes and 2,586 failures before, 7,622 and 2,477
   after;
 - Subdue orders 186 and 134, Incite 56 and 38, Recon 2,745 and 2,888.
+
+## The gathering place re-read (ported 2026-11-20)
+
+The tracker's stage 5 named the strategy planners' gathering place as a
+hypothesis. `FUN_004bd0a0` (state 6), read with its disassembly:
+- it clears `+0x20` bit 4. Without bit 1 (no member) it empties `+0x38`
+  and fails;
+- it keeps `+0x38` while that system's record has `+0x30` bit 1 and lacks
+  `+0x28` bit 2;
+- else, when the target `+0x34` has a record (`FUN_00403d30`):
+  - a qualifying target becomes the place;
+  - otherwise `FUN_0041a460(FUN_004bd7d0(record), ..., order 1)` at
+    `0x4bd1f7`, pushed `1, 0, 0, 2, 1, 0, 0, sector`, gives a random
+    qualifying system of the target's sector. It is the call of the
+    sector planners' state 3 (`FUN_004bdcd0`), so the same masks;
+  - with none, `FUN_0041b2b0` at `0x4bd2bb` (`0x200, 0, 0, 1, 0, 0,
+    sector`) gives, in the nearest other sector with one, a random
+    system of the side with no enemy fleet;
+- else it walks the team (list `+0x3c`). It takes each member's place
+  `+0x38`, walking up its containers (`+0x1c`, `FUN_004f2d10`) to a
+  system, and takes the first whose record qualifies.
+
+The port read the query as the side's system nearest the target by map
+distance, and the last step took the first member's system without the
+record test. Ported: `staging_point` now takes the planner and the
+records and reuses `random_system` and `nearest_sector_random_system`.
+port: a member aboard a fleet gives no system in the last step, as in
+`sector_staging`.
+
+Campaigns: 8 seeds of 1500 days, both sides AI, against the injured-bit
+commit:
+- mission orders 14,616 before, 13,880 after; Move orders 8,220 and
+  7,756;
+- results: 7,622 successes and 2,477 failures before, 7,490 and 2,398
+  after;
+- Abduction 353 and 402, Assassination 348 and 305, Recon 2,888 and
+  2,669.
 
 ## The planner's `+0x20` bit `0x80` (traced 2026-11-20)
 
