@@ -15550,9 +15550,7 @@ mod tests {
 
     #[test]
     fn the_blockade_variant_leaves_the_fleet_blockading_an_enemy_system() {
-        use rebellion_core::movement::{
-            fleet_move_confirms, validate_fleet_destination, FleetDispatchError,
-        };
+        use rebellion_core::movement::{fleet_move_confirms, validate_fleet_dispatch};
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let applied = apply_to_fleet_world(request(Scenario::FleetMoveBlockade, faction));
             let world = &applied.world;
@@ -15563,16 +15561,12 @@ mod tests {
             let is_alliance = faction == CockpitFaction::Alliance;
 
             assert!(blockaded.contains(&here), "{faction:?}");
+            // No order path refuses a fleet leaving a blockade: the System
+            // window's 0x214 carries only facilities (FUN_00422ce0 type 9,
+            // FUN_004568a0), and FUN_005073d0 lifts its 0x90/4 for fleets.
             assert_eq!(
-                validate_fleet_destination(
-                    &applied.movement,
-                    world,
-                    blockaded,
-                    fleet,
-                    target,
-                    is_alliance
-                ),
-                Err(FleetDispatchError::Blockaded)
+                validate_fleet_dispatch(&applied.movement, world, fleet, target, is_alliance),
+                Ok(())
             );
             // The enemy holds the system, so a menu Move does not ask.
             assert!(!fleet_move_confirms(world, blockaded, fleet, false));

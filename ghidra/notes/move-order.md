@@ -415,9 +415,13 @@ not found. The confirmation window's own Escape is recovered
   so the line uses the system window's "Fleet N" label. The checkmark
   dispatches the fleet, which validates again; the X and Escape drop the
   order, and the galaxy view's own Escape stands aside while it is open.
-- Phase 5a: `validate_fleet_destination` is `0x214`'s check for a fleet:
-  the move's refusals (hyp) plus the blockade refusal of step 7 below, with
-  no confirmation and no enemy-destination refusal.
+- Phase 5a (removed 2026-11-19): `validate_fleet_destination` modelled
+  `0x214`'s check for a fleet, with the blockade refusal of step 7 below.
+  No fleet ever travels in a `0x214` order: type 9 lists only facilities
+  (`FUN_004568a0`) and type 1 splits off only the facility icon's entries
+  (`sector-icon-menus.md`, "Drags by kind"). The refusal was unreachable in
+  the original and unused by the app, so it is gone; see "Blockades and
+  moves" below.
 - Phase 5b: a left press on a system window item holds a drag until the
   left release, and the galaxy map ignores the pointer meanwhile (the
   list's capture). A release past `sqrt(24)` list pixels and outside the
@@ -589,9 +593,8 @@ built:
    (`FUN_00552000`) and iterates them with `FUN_00551900` and
    `FUN_00583f50`. For a fleet, `+0x58` bit 5 is the system's blockade bit,
    copied by `FUN_0050c0b0` to every active fleet in the system
-   (`blockade-troop-withdrawal.md`). hyp: a fleet's `+0x58` is otherwise zero
-   outside combat, so a drag refuses exactly a fleet in a blockaded system,
-   on either side.
+   (`blockade-troop-withdrawal.md`). But no fleet is ever in a `0x214`
+   team (Phase 5a, "Port notes"), so this never refuses a fleet.
 
 ### The command (vtable `0x00669a30`)
 
@@ -660,14 +663,46 @@ straight to `FUN_00487740(order, 0)`.
   Move variant applies only to types 1, 4 and 10.
 - The enemy-destination refusal (`1`/`0x28`) lacks `0x204`'s regiment
   exception, and never refuses a sided fleet (step 3 above).
-- A fleet in a blockaded system is refused (`1`/`1`, step 7); a menu Move
-  from the same system would open the evacuation warning instead.
+- Step 7 meets only the facility managers `0x214` carries; no fleet is in
+  its team (Phase 5a above).
 - `CoolDragList` (`FUN_006083c0`) posts `0x29a` on a left release more than
   `sqrt(24)` pixels from the press (squared distance above `0x18`) and
   outside the list's client rect, or anywhere when list flag `+0xf4` bit
   `0x100000` is clear (hyp: set for the system window's list). While dragging it draws the item through
   `FUN_0060dc80`/`FUN_0060dcb0`/`FUN_0060dce0` and sets cursor `+0xb4`; those
   are not read.
+
+## Blockades and moves (read 2026-11-19)
+
+Every reader of the system blockade bit (`+0x88 & 0x20`) in the decompile
+corpus: `FUN_00433e40`, `FUN_004ebe40` (display flags), `FUN_00487cc0`
+(the Move confirmation), `FUN_00499760`, `FUN_005073d0`, `FUN_00507d00`,
+`FUN_0050b310` (withdraw percent), `FUN_005109f0`, `FUN_00511300`
+(support timer), `FUN_00554e80`/`FUN_005550e0` (autoroute targets) and
+`FUN_005555e0`. For moves:
+
+- **Out of a blockaded system** nothing refuses a fleet, regiment,
+  squadron, character or special force. `0x201` from the member's own
+  blockaded system asks (`FUN_00487cc0`); for a non-fleet first member the
+  window shows the evacuation warning (`FUN_0049a350`, TEXTSTRA `0x7056`,
+  pictures 1031/1030). `0x202` always asks. A regiment carried in while
+  the system was blockaded rolls its withdraw percent in hyperspace
+  (`blockade-troop-withdrawal.md`). The only refusal is `FUN_005555e0`'s
+  for an ALLFACSD object (families `0x20..0x21`, the headquarters):
+  `0x90`/4 when `FUN_0055a020` over the system's fleets is below 31
+  (`headquarters_move.rs`).
+- **Into a blockaded system**: each route leg asks the destination
+  system's acceptance (`FUN_00552d10` -> `FUN_00550700`, slot `+0x74`,
+  `System_vt74` `FUN_005073d0`) with the sub-order kind and the mover's
+  family. A blockaded system gives `0x90`/4, then set back to no error for
+  `0x204` fleets (`0x08..0x10`), `0x240` and `0x241` personnel
+  (`0x30..0x40`) and kind `0x3f0`. So a regiment (`troop_transport.rs`
+  `DestinationBlockaded`) and a squadron (`squadrons.rs`
+  `DestinationBlockaded`, 2026-11-19) cannot move onto a blockaded planet;
+  fleets, characters and special forces can.
+- `FUN_00507d00` (`System_vt1bc`) refuses `0x90`/6 when the system is not
+  blockaded: an order that needs a blockade (hyp: bombardment, beside its
+  GNPRTB 7683 limit `0x90`/5); not a move.
 
 ## Still open
 
