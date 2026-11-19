@@ -5084,6 +5084,9 @@ async fn main() {
             if let Some(number) = pending_ending.take() {
                 macroquad::logging::info!("[cutscene] ending={number} day={}", clock.tick);
                 game_mode = GameMode::MainMenu;
+                // The film's end (0x405, ids 0x6a..0x6d) is app state 3,
+                // which builds the cockpit anew (FUN_00414a80).
+                main_menu_state = main_menu_state.rebuilt();
                 cutscene_player = open_cutscene(
                     Path::new(&story_cutscene_path(number)),
                     audio_vol.cutscene_volume(),
@@ -5463,6 +5466,10 @@ async fn main() {
                     }
                     GameOptionsAction::Restart => {
                         game_mode = GameMode::MainMenu;
+                        // Restart's 0x476 is FUN_00401040(3) (0x406fe5, jump
+                        // table 0x4070cc): the cockpit is built anew
+                        // (FUN_00414a80).
+                        main_menu_state = main_menu_state.rebuilt();
                         macroquad::logging::info!("[game_options] command=restart");
                     }
                     GameOptionsAction::Exit => quit_requested = true,

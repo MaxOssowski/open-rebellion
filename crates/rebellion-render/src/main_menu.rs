@@ -238,6 +238,22 @@ impl Default for MainMenuState {
 }
 
 impl MainMenuState {
+    /// The cockpit as it is rebuilt when a game is left (an ending's film,
+    /// Restart): app state 3 (`FUN_00414a80`) builds a new menu window
+    /// (`FUN_00404c30`), whose constructor sets the game type `+0xf4` to
+    /// Standard (1), the difficulty `+0xf8` to Easy (0) and the galaxy size
+    /// `+0xec` to 1, the values the first menu shows. So the selections of
+    /// the game just left are gone (A0 2026-11-16-edited-saves x-43: "Standard
+    /// Game" after a Headquarters Victory game's ending). The Fleet
+    /// Registry's naming, a port extension, is kept.
+    #[must_use]
+    pub fn rebuilt(&self) -> Self {
+        Self {
+            fleet_naming: self.fleet_naming,
+            ..Self::default()
+        }
+    }
+
     /// Take the sound assigned by the original COMMON.DLL control constructor.
     pub fn take_sfx(&mut self) -> Option<SfxKind> {
         self.pending_sfx.take()
@@ -1263,6 +1279,29 @@ mod tests {
                 headquarters_only: true,
             })
         );
+    }
+
+    #[test]
+    fn leaving_a_game_rebuilds_the_cockpit_with_its_first_selections() {
+        // FUN_00414a80 state 3 builds a new menu window (FUN_00404c30:
+        // game type +0xf4 = 1 Standard, difficulty +0xf8 = 0 Easy, galaxy
+        // +0xec = 1); A0 2026-11-16-edited-saves x-24 "Headquarters Victory"
+        // before the game, x-43 "Standard Game" after its ending.
+        let mut state = MainMenuState::default();
+        activate(MainMenuControl::Expert, &mut state);
+        activate(MainMenuControl::GalaxyLever, &mut state);
+        activate(MainMenuControl::GameType, &mut state);
+        state.fleet_naming = FleetNaming::Canonical;
+
+        let rebuilt = state.rebuilt();
+        assert_eq!(rebuilt.difficulty, Difficulty::Easy);
+        assert_eq!(rebuilt.galaxy_size, GalaxySize::Standard);
+        assert!(!rebuilt.lever_returning);
+        assert!(!rebuilt.headquarters_only);
+        assert!(!rebuilt.registry_open());
+        assert!(!rebuilt.quit_question_open());
+        // The Fleet Registry's choice is a port extension and stays.
+        assert_eq!(rebuilt.fleet_naming, FleetNaming::Canonical);
     }
 
     #[test]
