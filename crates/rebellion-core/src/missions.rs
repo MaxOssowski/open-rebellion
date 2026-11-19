@@ -1008,9 +1008,14 @@ fn creation_target_ok(kind: MissionKind, object: Option<MissionTarget>) -> bool 
 /// Adrift run `FUN_00523450` alone, and Dagobah's and Pickup's records
 /// leave column 12 clear.
 ///
-/// port: the container is the mission's system, read from the world; the
-/// original reads the side's own copy of it before phase 5.
-fn creation_container_ok(world: &GameWorld, kind: MissionKind, system: SystemKey) -> bool {
+/// The container is the side's own copy of the mission's system
+/// (`object_views::side_explored`; `ghidra/notes/fog-of-war.md`).
+fn creation_container_ok(
+    world: &GameWorld,
+    side: MissionFaction,
+    kind: MissionKind,
+    system: SystemKey,
+) -> bool {
     if kind.target_rules() == TargetRules::Place {
         return true;
     }
@@ -1018,10 +1023,8 @@ fn creation_container_ok(world: &GameWorld, kind: MissionKind, system: SystemKey
         return true;
     };
     !record.rules.explored_container
-        || world
-            .systems
-            .get(system)
-            .is_none_or(|sys| sys.exploration_status == crate::dat::ExplorationStatus::Explored)
+        || !world.systems.contains_key(system)
+        || crate::object_views::side_explored(world, side.into(), system)
 }
 
 /// The creation member check of research (`FUN_0056c510` with creation flag
@@ -1198,7 +1201,7 @@ pub fn available_kinds(
         })
         .filter(|(kind, _)| kind.target_rules() == target.rules())
         .filter(|(kind, _)| creation_target_ok(*kind, target.object))
-        .filter(|(kind, _)| creation_container_ok(world, *kind, target.system))
+        .filter(|(kind, _)| creation_container_ok(world, faction, *kind, target.system))
         .filter(|(kind, _)| {
             team.iter()
                 .chain(decoys)
@@ -1842,9 +1845,8 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
                 amount,
             } => raise_skill(world, *character, *skill, *amount),
             MissionEffect::SystemIntelligenceGathered { system, faction } => {
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    sys.exploration_status = crate::dat::ExplorationStatus::Explored;
-                }
+                // Event319_Handle explores the side's copy only
+                // (object_views::side_explored, ghidra/notes/fog-of-war.md);
                 // Event319_Handle (FUN_0050d5a0): the side's copies of the
                 // system's objects take their state.
                 world
@@ -2234,7 +2236,7 @@ impl MissionState {
     ) -> Result<u64, MissionRefusal> {
         let side_is_alliance = request.faction == MissionFaction::Alliance;
         if !creation_target_ok(request.kind, request.target_object)
-            || !creation_container_ok(world, request.kind, request.target_system)
+            || !creation_container_ok(world, request.faction, request.kind, request.target_system)
         {
             return Err(MissionRefusal::TargetUnavailable);
         }
@@ -12041,6 +12043,9 @@ mod tests {
         // creation (0x40/0x11), in the dialog's list and at dispatch.
         let (mut world, here, envoy) = dialog_world(vec![diplomacy_record()]);
         world.systems[here].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+        // Not the side's own system, which its copy always shows explored
+        // (object_views::side_explored).
+        world.systems[here].control = crate::world::ControlKind::Uncontrolled;
         let kinds = |world: &GameWorld| {
             available_kinds(
                 world,
@@ -12103,7 +12108,40 @@ mod tests {
         let mut record = diplomacy_record();
         record.rules.explored_container = false;
         world.mission_records = vec![record];
-        assert!(creation_container_ok(&world, MissionKind::Diplomacy, here));
+        assert!(creation_container_ok(
+            &world,
+            MissionFaction::Alliance,
+            MissionKind::Diplomacy,
+            here
+        ));
+    }
+
+    #[test]
+    fn the_explored_container_check_reads_the_sides_own_copy() {
+        // FUN_00592600's +0x70 block reads the side's copy of the system
+        // (+0x88 bit 1): a push that explored it for one side leaves it
+        // unexplored to the other (ghidra/notes/fog-of-war.md).
+        let (mut world, here, _) = dialog_world(vec![diplomacy_record()]);
+        world.systems[here].exploration_status = crate::dat::ExplorationStatus::Unexplored;
+        world.systems[here].control = crate::world::ControlKind::Uncontrolled;
+        crate::object_views::setup(&mut world);
+        world.object_views.queue_push(crate::dat::Faction::Alliance, here);
+        crate::object_views::advance(
+            &mut world,
+            &crate::troop_transport::TroopTransportState::new(),
+            &crate::movement::MovementState::new(),
+        );
+        let ok = |side| creation_container_ok(&world, side, MissionKind::Diplomacy, here);
+        assert!(ok(MissionFaction::Alliance));
+        assert!(!ok(MissionFaction::Empire));
+        // A record with column 12 clear asks nothing of the copy.
+        world.mission_records[0].rules.explored_container = false;
+        assert!(creation_container_ok(
+            &world,
+            MissionFaction::Empire,
+            MissionKind::Diplomacy,
+            here
+        ));
     }
 
     #[test]
@@ -12117,7 +12155,12 @@ mod tests {
         }]);
         world.systems[here].exploration_status = crate::dat::ExplorationStatus::Unexplored;
         assert!(world.mission_records[0].rules.explored_container);
-        assert!(creation_container_ok(&world, MissionKind::Move, here));
+        assert!(creation_container_ok(
+            &world,
+            MissionFaction::Alliance,
+            MissionKind::Move,
+            here
+        ));
     }
 
     #[test]

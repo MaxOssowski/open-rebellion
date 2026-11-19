@@ -3101,10 +3101,9 @@ mod tests {
         assert_eq!(world.characters[luke].encounter, None);
         assert_eq!(world.characters[luke].encounter_day, 0);
         assert!(world.characters[luke].heritage_known);
-        assert_eq!(
-            world.systems[here].exploration_status,
-            crate::dat::ExplorationStatus::Explored
-        );
+        // The encounter's push (FUN_0055ff60, level 6) explores the sides'
+        // copies, not the system's own bit (ghidra/notes/fog-of-war.md).
+        assert!(world.object_views.pushes.iter().any(|(_, at)| *at == here));
     }
 
     #[test]

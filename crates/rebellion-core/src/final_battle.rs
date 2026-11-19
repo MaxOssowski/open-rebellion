@@ -385,10 +385,8 @@ fn move_order(
 /// Emperor `0x34000280`).
 fn fight(battle: &FinalBattle, missions: &mut MissionState, world: &mut GameWorld) -> Option<u64> {
     if battle.at_system {
-        if let Some(system) = battle.system.and_then(|key| world.systems.get_mut(key)) {
-            system.exploration_status = crate::dat::ExplorationStatus::Explored;
-        }
-        // FUN_0050d5a0(6, 1) and (6, 2): both sides' copies take the system.
+        // FUN_0050d5a0(6, 1) and (6, 2): both sides' copies take the
+        // system, explored included (ghidra/notes/fog-of-war.md).
         if let Some(system) = battle.system {
             crate::object_views::queue_push_both(world, system);
         }
@@ -735,11 +733,9 @@ mod tests {
             let luke = &cast.world.characters[cast.luke];
             assert!(luke.is_captive && luke.escape_barred);
             assert_eq!(i32::from(luke.injury), injury);
-            assert_eq!(
-                cast.world.systems[cast.court].exploration_status,
-                crate::dat::ExplorationStatus::Explored
-            );
-            // FUN_0050d5a0(6, 1) and (6, 2): both sides' copies.
+            // FUN_0050d5a0(6, 1) and (6, 2): both sides' copies, explored
+            // included; the system's own bit is not the port's to set
+            // (ghidra/notes/fog-of-war.md).
             assert_eq!(
                 cast.world.object_views.pushes,
                 [

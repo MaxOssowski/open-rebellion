@@ -2023,9 +2023,8 @@ fn apply_mission_effects_inner(
                 rebellion_core::uprising::apply_uprising_event(world, event);
             }
             MissionEffect::SystemIntelligenceGathered { system, faction } => {
-                if let Some(sys) = world.systems.get_mut(*system) {
-                    sys.exploration_status = rebellion_core::dat::ExplorationStatus::Explored;
-                }
+                // Event319_Handle explores the side's copy only
+                // (object_views::side_explored, ghidra/notes/fog-of-war.md);
                 // Event319_Handle (FUN_0050d5a0): the side's copies of the
                 // system's objects take their state.
                 world
