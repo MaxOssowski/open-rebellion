@@ -266,6 +266,95 @@ Tokmia. Ignored store; nothing committed.
   beginning on the first update, as the clock above says.
 - No hull fireball ran during a pause in these runs.
 
+### A hull death under the pause (A0 2026-11-19, `.artifacts/a0-vm/2026-11-19-edited-saves-10`)
+
+Same edited save and battle (Tokmia), run r6 (`seq-t6`, t-01..t-11; local
+only). Imperial Dreadnaught 1, the Empire's last ship, takes its killing hit
+at 477.562 s (t-01, running); Pause Battle is pressed at 477.654; the view
+stands still until 478.031 (t-02); "Battle Paused" is drawn at 478.063
+(t-03); under the label the fire runs on (t-04 478.164, t-05 478.284, t-06
+478.304) and is gone at 478.357 (t-07). The result screen comes only after
+Resume (t-11). Read against the port:
+
+1. **The fire runs to its end while paused: match.** `fireball-frame-a0.py
+   --window=60,340,140,390` puts t-04 and t-05 on **3367** (44 px decal,
+   174 of 330 fire pixels the same colour; the next best 3366 has 80) with
+   the hull still drawn between the two balls, and t-06 on **3372** (45 px,
+   452 of 522), the hull gone; 3374/3375 never show (the effect ends at
+   16). That is the one-node Destroyed sequence (hull deleted at count 11,
+   between 3367 and 3372, gone at 16) with its swaps at counters 7 and 12
+   instead of 5/10/15: the 0.1 s swap timer `+0xf0` ran on through the
+   frozen 0.4 s, so the first render after the freeze swapped at once at
+   whatever count it had, and the later swaps kept 5 renders apart. The
+   port runs the same sequence while paused (`advance_presentational_effects`
+   on every frame, 051844cd); with no freeze its swaps fall at 5/10/15. The
+   "two fireballs with the hull breaking up" is the texture 3365..3367
+   itself drawn over the still-present hull, not a second effect.
+2. **The panel: match; the group bar: no change to compare.** The selected
+   ship's panel shows the Dreadnaught in t-01 and t-02 and the empty
+   Imperial plate from t-03 (the label frame) on. The task-force strip
+   (0..470 x 0..24) is byte-identical in t-01, t-03 and t-10: no slot lit or
+   cleared while paused (the README's "group 1 gone" is not in the strip).
+   The port drops a ship from the panel and the strip when it dies
+   (`TacticalGroupHud::from_session` reads `alive`), at the killing step,
+   which the original's freeze hides.
+3. **The 0.35-0.5 s freeze after the press: not traced; not ported.** The
+   press path does no waiting: the CoolStrobeButton (`FUN_00602150`,
+   window proc `Class_0066df58_vt14` `FUN_006028c0`) posts WM_COMMAND on
+   button-up (`PostMessageA(..., 0x111, ...)`); `FUN_0059b130` case 0xad22
+   reads the button (`FUN_00604500`), calls `FUN_00596a10` -> battle vt0
+   (`FUN_005aac30`: `+0x8c8`++ and `FUN_005c0f80` -> `FUN_0059cbe0`, the
+   button bit through `FUN_006030c0`/`InvalidateRect`) and sets the tooltip
+   (`FUN_00600c40` -> `FUN_00600cc0`, `SendMessageA` 0x40c
+   TTM_UPDATETIPTEXT). The label is drawn by every paused render
+   (`FUN_005c25b0`: `GetDC` on the view, `FUN_00596a50` = 1 ->
+   `FUN_00601ce0`, plain `DrawTextA`), and the message loop `FUN_00413560`
+   runs the idle step after each `PeekMessageA` drain. The first paused
+   frame (`FUN_0059f380` -> the state's slot `+0x30`) stops the selected
+   unit's hum (`FUN_005bab10` -> `FUN_006117d0` -> `FUN_006126e0`: buffer
+   slot `+0x34`, then `FUN_00612b80` frees the sound object): a DirectSound
+   call on the VM's emulated audio is the only candidate for a stall found,
+   and it is untested (hyp:). A0 to settle it: press Pause with no unit
+   selected (no hum) and with one selected, and compare the freeze. The
+   port pauses on the click's frame.
+4. **The end of the battle: mismatch, fixed.** The original does not end
+   the battle on the last kill. `FUN_005a9ec0` (frame slot `+0x98`), finding
+   a side with no unit in the fight, moves the manager state `+0x8b4` from
+   4 to 5 (`0x005aa49e`), stores `DAT_0066c244` = 4000.0 in `+0xe70`
+   (`0x005aa4b4`) and asks the outcome voice `+0xe98` (0x96..0x99,
+   0x118..0x11b, `FUN_005ba8b0`/`FUN_005ba980`). The manager update
+   `FUN_005bea30` takes the turn length `+0x8a8` (1000) off `+0xe70` at
+   each turn's end (`0x005bebb6`); at or below `_DAT_0066c770` = 0.0 it
+   sets state 6 (`0x005bebcf`), marks every unit `+0x108` = 1, fills the
+   result (`FUN_005a6150`) and returns 1, and `FUN_005aacb0` sets `+0x8c4`.
+   So the battle ends at the fourth turn end after the last unit leaves
+   the fight (A0 `seq-t1`: fire at 44.707 s, result screen at 49.5 s), and
+   while paused the update does not run, so the wait holds (r6: the result
+   after Resume). `FUN_005c0500` (the other manager, `0x66c880`) counts the
+   same `+0xe70` by frame time instead. Slot `+0x20` (`FUN_005bf290`, from
+   command 0x7c in `FUN_0059fd40`) is the only immediate end (`+0xa08` =
+   1). The port ended the battle in the killing step, so the last ship's
+   fire was never drawn and a pause could not hold the end.
+
+Port (applied 2026-11-19): `BattleSession::end_wait_ms`
+(`ORIGINAL_TACTICAL_END_WAIT_MILLISECONDS` = 4000): `step` starts it and
+queues the outcome voice when a side is out of the fight, takes a turn off
+it on each turn's first step, and ends the battle (winner, `Results`) when
+it reaches 0. Paused frames do not step, so the wait holds; the resumed
+frame's overdue turn (`resume_paused_turn_clock`) takes its turn off at
+once. Tests: `a_battle_ends_four_turn_ends_after_a_side_is_out_of_the_fight`,
+`the_last_ships_fire_runs_out_while_paused_and_the_battle_waits`;
+`losing_the_committed_death_star_attackers_routes_failure_once` and
+`the_battle_ends_when_a_side_has_nothing_left_in_it` now read the end after
+the wait. The browser journey `production-battle-last-ship-lost` pauses on
+the `[tactical-end] wait_started` log, holds 6 s (no end, no summary), and
+resumes (the end within 5 s); its fixture lets paused effects run. Run
+`2026-11-19T00-04-43-571Z-1454885` (all 180 battle cases pass; Arch
+Chromium 157, test WASM `2ad40fb59f32`, worktree artifacts): in all four
+last-ship cases the hull's fire ended with `paused=true` at the kill's
+tick (168 Alliance, 228 Empire), and the end came 2.21-2.33 s after the
+Resume press (the overdue turn at once, then up to three more turns).
+
 ## The Death Star kill (read 2026-11-18)
 
 The question: does the superlaser add a node before its kill, so that its
