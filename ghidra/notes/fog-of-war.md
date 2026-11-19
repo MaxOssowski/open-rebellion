@@ -292,6 +292,52 @@ and after each A0 state below, compared with A0 pixel for pixel.
   `agent_build.rs`), whose tests hold a side's own system unexplored; the
   headless simulation's single fog (`rebellion-data/src/simulation.rs`).
 
+## The GID's gray cross and Yavin to the Empire (traced 2026-11-19)
+
+A0 2026-11-19-fog-13 (an unedited new Empire game) seemed to disagree with
+the Yavin push: its README reads Yavin on e-02 (day 7, Popular Support) as
+a gray cross, while e-12 (Sumitra) shows Yavin red with icons and tracks.
+Zoomed, e-02's Yavin point is not the unexplored cross: it is the smallest
+red (Alliance) mark, the same small red cross e-12 copies under Yavin's
+planet and e-03 under Corfai's. e-01 (the briefing's Unexplored Systems,
+`0x17`) marks nine of Sumitra's ten points cyan and leaves Yavin the gray
+cross, so the Empire's copy of Yavin is explored. Both frames agree.
+
+What `FUN_0042b330` draws (read in full):
+- The gray cross: for every display but `0x17`, a copy whose `+0x88`
+  bit 1 (explored, `System_SyncExplored` `FUN_0050fc80` copies it from the
+  master with mask 2) is clear jumps to `LAB_0042b4f5`, which sets the
+  item's flag `0x80` and leaves bitmap 0; so does a destroyed copy
+  (`+0x50` bit 3) outside the fleet and personnel displays (`bVar4`).
+  `0x17` turns the test round: explored takes the cross, unexplored is
+  marked (`0x52`, the largest no-side mark).
+- Popular Support (`0x10`, `0x11`): `FUN_00507270` gives the copy's support
+  for the viewer's side; `FUN_00426e70(support, holder, 0x51, 0x50, 0x3c,
+  0x3b, 0x32)` takes the holder's table (`+0x294` side 1, `+0x2a4` side 2,
+  `+0x2b4` side 3) and its entry 6 for 81 and over, 4 for 60..80, 2 for
+  50..59, else 0, the smallest. The Empire's support at Yavin is 0, so the
+  smallest Alliance mark.
+- Neither the sync mode nor zero support makes the cross; only the
+  copy's explored bit (and the destroyed bit) does.
+
+Why the Empire's Yavin copy is explored: `RimSystem_vtbc` (`FUN_0056a550`)
+for id `0x121` sets the master's populated bit and loyalty 100, then syncs
+the Empire's copy (`FUN_00539fd0(2)`) with a mode-1, state-2 context:
+owner (`FUN_004f9ca0`), loyalty, populated and explored
+(`System_SyncExplored`). `System_vtbc` (`FUN_005081f0`), which it calls
+first, sets the master's explored bit (`System_SetExplored(this, 1)`).
+The setup push's level-10 `Event319_Handle` on Yavin then runs the
+copy's vtable `+0x24` in mode 1 (`local_134 = 1`), which syncs explored
+again.
+
+Port finding: `object_views::setup` told core systems and Yavin apart by
+the DatId family byte, which the loader drops (`rebellion-data`
+`lib.rs`: a system's `DatId` is SYSTEMSD's sequence id). Every copy was
+bare and Yavin was never pushed, so a new game's GID showed every
+system but the player's own gray. Fixed: core systems are those of Core
+sectors (every family-`0x90` SYSTEMSD record lies in a SECTORSD group-1
+sector), and Yavin is matched on `0x121`.
+
 ## A0 frames to capture
 
 Each per side (Alliance game, Empire game), saved so the port's fixture can
