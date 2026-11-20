@@ -58,6 +58,7 @@ pub mod object_views;
 pub mod production_cycle;
 pub mod products;
 pub mod pictures;
+pub mod portable_math;
 pub mod repair;
 pub mod research;
 pub mod scrap;

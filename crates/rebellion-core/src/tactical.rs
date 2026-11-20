@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 
 use crate::ids::{CapitalShipKey, DatId, FighterKey, FleetKey, SystemKey};
 use crate::pictures::planet_picture_id;
+use crate::portable_math as pm;
 use crate::tactical_resources::{
     capital_ship_tactical_resource, death_star_tactical_resource, fighter_tactical_resource,
     TacticalCapitalShipResource, TacticalDeathStarResource, TacticalFighterResource,
@@ -497,7 +498,7 @@ impl TacticalWorldVector {
     };
 
     pub fn normalized(self) -> Self {
-        let magnitude = self.x.hypot(self.y).hypot(self.z);
+        let magnitude = pm::hypot(pm::hypot(self.x, self.y), self.z);
         if magnitude > f32::EPSILON {
             Self {
                 x: self.x / magnitude,
@@ -3740,9 +3741,9 @@ pub fn turn_original_fighter(
     }
     let f = forward.normalized();
     let h = heading.normalized();
-    let level = (f.x * h.x + f.z * h.z).clamp(-1.0, 1.0).acos() * q;
+    let level = pm::acos((f.x * h.x + f.z * h.z).clamp(-1.0, 1.0)) * q;
     let level = if h.z * f.x - h.x * f.z < 0.0 { -level } else { level };
-    let (sin, cos) = level.sin_cos();
+    let (sin, cos) = pm::sin_cos(level);
     TacticalWorldVector {
         x: f.x * cos - sin * f.z,
         y: f.y + (h.y - f.y) * q,
@@ -3762,7 +3763,7 @@ pub fn step_fighter_anchor(
     delta_milliseconds: f32,
 ) -> bool {
     let delta = source_delta(point, mover.anchor);
-    let length = delta.x.hypot(delta.y).hypot(delta.z);
+    let length = pm::hypot(pm::hypot(delta.x, delta.y), delta.z);
     if delta == TacticalWorldVector::ZERO || length <= radius {
         mover.velocity = TacticalWorldVector::ZERO;
         return false;
@@ -3805,7 +3806,7 @@ pub fn turn_original_vector(
         *current = to;
         return sign * angle;
     }
-    let (sin, cos) = (sign * step).sin_cos();
+    let (sin, cos) = pm::sin_cos(sign * step);
     *current = TacticalWorldVector {
         x: from.x * cos - sin * from.z,
         y: from.y,
@@ -3928,7 +3929,7 @@ pub fn original_capital_turn_rate(maneuverability: u32) -> f32 {
 pub fn source_direction_angle(current: TacticalWorldVector, desired: TacticalWorldVector) -> f32 {
     let current = current.normalized();
     let desired = desired.normalized();
-    current.dot(desired).clamp(-1.0, 1.0).acos()
+    pm::acos(current.dot(desired).clamp(-1.0, 1.0))
 }
 
 /// Apply `FUN_005cd460`'s signed XZ turn and snap branch.
@@ -3954,7 +3955,7 @@ pub fn turn_original_tactical_ship(ship: &mut TacticalShip, delta_milliseconds: 
         } else {
             turn_step
         };
-    let (sin, cos) = signed_angle.sin_cos();
+    let (sin, cos) = pm::sin_cos(signed_angle);
     ship.source_forward = TacticalWorldVector {
         x: current.x * cos - sin * current.z,
         y: current.y,
@@ -5077,7 +5078,7 @@ impl BattleSession {
         mover.slot_turn = 0.0;
         let speed = mover.speed * ORIGINAL_FORMATION_SPEED_SHARE;
         let delta = source_delta(point, mover.anchor);
-        let length = delta.x.hypot(delta.y).hypot(delta.z);
+        let length = pm::hypot(pm::hypot(delta.x, delta.y), delta.z);
         let arrived = if delta == TacticalWorldVector::ZERO || length <= radius {
             mover.velocity = TacticalWorldVector::ZERO;
             true
@@ -5150,7 +5151,7 @@ impl BattleSession {
             // `0x005eae40` → `FUN_005ead90`: the slots turn with it, and
             // the detours with them.
             mover.slot_turn = applied;
-            let (sin, cos) = applied.sin_cos();
+            let (sin, cos) = pm::sin_cos(applied);
             let lateral = mover.lateral;
             mover.lateral = TacticalWorldVector {
                 x: lateral.x * cos - sin * lateral.z,
@@ -5179,7 +5180,7 @@ impl BattleSession {
     pub fn nearby_capitals(&self, index: usize, travel: f32) -> Vec<usize> {
         let reach = |ship: &TacticalShip| {
             let velocity = ship.source_velocity;
-            let speed = velocity.x.hypot(velocity.y).hypot(velocity.z);
+            let speed = pm::hypot(pm::hypot(velocity.x, velocity.y), velocity.z);
             0.5 * speed
                 + ORIGINAL_NEIGHBOUR_DIAMETER_SHARE
                     * ship
@@ -5320,7 +5321,7 @@ impl BattleSession {
         let heading = ship.source_desired_forward;
         let alignment = (forward.x * heading.x + forward.z * heading.z).max(0.0);
         delta = to_place(ship);
-        let level_distance = delta.x.hypot(delta.z);
+        let level_distance = pm::hypot(delta.x, delta.z);
         if level_distance != 0.0
             && level_distance <= reach
             && alignment >= ORIGINAL_MEMBER_SNAP_ALIGNMENT
@@ -5361,7 +5362,7 @@ impl BattleSession {
             let arc = crate::abstract_battle::strongest_arc(&ship.weapon_arcs, false).unwrap_or(0);
             let bearing = source_delta(target, ship.source_position);
             let turn = arc as f32 * std::f32::consts::FRAC_PI_2;
-            let (sin, cos) = turn.sin_cos();
+            let (sin, cos) = pm::sin_cos(turn);
             TacticalWorldVector {
                 x: bearing.x * cos - sin * bearing.z,
                 y: bearing.y,
@@ -5491,7 +5492,7 @@ impl BattleSession {
             let turn = self.force_movers[mover_index].slot_turn;
             if turn != 0.0 {
                 let force = self.force_movers[mover_index].force;
-                let (sin, cos) = turn.sin_cos();
+                let (sin, cos) = pm::sin_cos(turn);
                 for detour in self.force_detours.iter_mut().filter(|detour| detour.force == force) {
                     let offset = detour.offset;
                     detour.offset = TacticalWorldVector {
@@ -5773,7 +5774,9 @@ impl BattleSession {
                     if let Some(carrier) = fighter.recovery_target {
                         let delta =
                             source_delta(self.carrier_underside(carrier), fighter.source_position);
-                        if delta.x.hypot(delta.y).hypot(delta.z) < ORIGINAL_FIGHTER_DOCKING_DISTANCE {
+                        if pm::hypot(pm::hypot(delta.x, delta.y), delta.z)
+                            < ORIGINAL_FIGHTER_DOCKING_DISTANCE
+                        {
                             self.fighters[member].recovery_state =
                                 TacticalFighterRecoveryState::Docking;
                             self.post_turn_event(
@@ -7547,7 +7550,8 @@ impl BattleSession {
             (Some(target), held) => {
                 let powered = original_effective_tractor_power(ship) != 0.0;
                 let delta = source_delta(self.unit_position(target), ship.source_position);
-                let within = delta.x.hypot(delta.y).hypot(delta.z) <= ship.tractor_beam_range;
+                let within =
+                    pm::hypot(pm::hypot(delta.x, delta.y), delta.z) <= ship.tractor_beam_range;
                 match held {
                     Some(held) if held == target => {
                         if self.unit_in_the_fight(Self::fire_target_of(target)) && powered && within {
@@ -7911,7 +7915,7 @@ impl BattleSession {
                 continue;
             }
             let delta = source_delta(position, own);
-            let distance = delta.x.hypot(delta.y).hypot(delta.z);
+            let distance = pm::hypot(pm::hypot(delta.x, delta.y), delta.z);
             for (family, kind) in [(1, WeaponKind::LaserCannon), (2, WeaponKind::Turbolaser)] {
                 let count = original_weapon_count(arc, kind);
                 if count == 0 || distance > self.unit_weapon_range(unit, kind) {
@@ -8021,7 +8025,7 @@ impl BattleSession {
             return;
         };
         let delta = source_delta(position, fighter.source_position);
-        let distance = delta.x.hypot(delta.y).hypot(delta.z);
+        let distance = pm::hypot(pm::hypot(delta.x, delta.y), delta.z);
         if unshielded && fighter.torpedo_strength > 0 && distance <= fighter.torpedo_range {
             shots.push(TacticalShot {
                 source: TacticalUnitRef::Fighter(index),
@@ -9699,7 +9703,7 @@ impl BattleSession {
     pub fn nearby_capitals_of_squadron(&self, index: usize, travel: f32) -> Vec<usize> {
         let reach = |ship: &TacticalShip| {
             let velocity = ship.source_velocity;
-            let speed = velocity.x.hypot(velocity.y).hypot(velocity.z);
+            let speed = pm::hypot(pm::hypot(velocity.x, velocity.y), velocity.z);
             0.5 * speed
                 + ORIGINAL_NEIGHBOUR_DIAMETER_SHARE
                     * ship
@@ -9709,7 +9713,7 @@ impl BattleSession {
         let own = self.fighters[index].source_position;
         let own_reach = self.fighter_frames.get(index).map_or(0.0, |frame| {
             let velocity = frame.velocity;
-            0.5 * velocity.x.hypot(velocity.y).hypot(velocity.z)
+            0.5 * pm::hypot(pm::hypot(velocity.x, velocity.y), velocity.z)
         });
         let mut sorted = (0..self.ships.len())
             .filter(|&other| {
@@ -9860,7 +9864,7 @@ impl BattleSession {
                 }
                 self.fighter_orbit_angles[lead] = angle;
                 let radius = (size * 2.4).max(1.5);
-                let (sin, cos) = angle.sin_cos();
+                let (sin, cos) = pm::sin_cos(angle);
                 // On arrival the anchor goes to the circling point at once.
                 self.fighter_movers[at].anchor = TacticalWorldPosition {
                     x: target_position.x + (cos * radius - sin * radius),
@@ -10002,7 +10006,7 @@ impl BattleSession {
                     z: -5.0 * side_z,
                 };
             }
-            let distance = delta.x.hypot(delta.y).hypot(delta.z);
+            let distance = pm::hypot(pm::hypot(delta.x, delta.y), delta.z);
             let tactic = self.force_tactic(leader);
             if band.min <= distance + ORIGINAL_ENGAGEMENT_MARGIN
                 && distance + ORIGINAL_ENGAGEMENT_MARGIN <= band.max
@@ -10771,8 +10775,8 @@ pub fn original_maneuver_waypoint(
 ) -> Option<TacticalWorldPosition> {
     let delta = source_delta(target, current);
     let (sin, cos) = match order {
-        TacticalOrder::LeftHook | TacticalOrder::Anvil => ORIGINAL_MANEUVER_ANGLE.sin_cos(),
-        TacticalOrder::RightHook | TacticalOrder::Hammer => (-ORIGINAL_MANEUVER_ANGLE).sin_cos(),
+        TacticalOrder::LeftHook | TacticalOrder::Anvil => pm::sin_cos(ORIGINAL_MANEUVER_ANGLE),
+        TacticalOrder::RightHook | TacticalOrder::Hammer => pm::sin_cos(-ORIGINAL_MANEUVER_ANGLE),
         _ => return None,
     };
     let rotated = match order {
