@@ -192,6 +192,13 @@ impl GameClock {
         self.sub_tick + part
     }
 
+    /// The part of the current day already run, in `[0, 1)`: the AI's
+    /// passes run as its sub-ticks begin (`crate::ai_schedule::AiDay::due`).
+    #[must_use]
+    pub const fn day_part(&self) -> f32 {
+        self.accumulator
+    }
+
     /// The sub-ticks of one day at the current speed
     /// ([`GameSpeed::sub_ticks_per_day`]); a play-test day counts Fast's.
     fn sub_ticks_per_day(&self) -> u64 {

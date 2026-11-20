@@ -75,7 +75,7 @@ pub fn shift(world: &mut GameWorld, side: Faction, amount: i32) {
 }
 
 /// What [`settle`] compares across a day.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LoyaltyWatch {
     /// Coruscant's holder, when one side holds it.
     coruscant: Option<Faction>,

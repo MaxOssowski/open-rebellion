@@ -968,6 +968,13 @@ impl BombardEnv {
         }
     }
 
+    /// The stream's state, which [`Self::new`] takes back to continue it
+    /// (`crate::ai_schedule::AiDay::bombard_state`).
+    #[must_use]
+    pub const fn rng_state(&self) -> u64 {
+        self.state
+    }
+
     /// A draw from 0 to `m - 1` (`m` at least 1). port: `SplitMix64` in
     /// place of `FUN_005f5700`.
     pub fn draw(&mut self, m: i32) -> i32 {
