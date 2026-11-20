@@ -4324,11 +4324,12 @@ fn sector_cycle(
     actions: &mut Vec<AIAction>,
 ) {
     use crate::mission_planning::{decoy_limit, standing_system, team_size};
-    let staging = p
-        .target_system
-        .and_then(|_| sector_staging(p.staging, sector, &p.team, planner, (world, galaxy)));
-    p.staging = staging;
-    let (Some(target), Some(staging)) = (p.target_system, staging) else {
+    // A failed state 2 goes to state 9 without state 3, so the gathering
+    // place `+0x38` stays for the next cycle (FUN_004bda60).
+    if p.target_system.is_some() {
+        p.staging = sector_staging(p.staging, sector, &p.team, planner, (world, galaxy));
+    }
+    let (Some(target), Some(staging)) = (p.target_system, p.staging) else {
         if p.mission.is_none() {
             p.team.clear();
             p.decoys.clear();
@@ -10162,11 +10163,14 @@ mod tests {
         state.module8.planners[0].sector = None;
         run(&mut state, &world, &mut galaxy, 8);
         assert_eq!(state.mission_planners[0].team.len(), 2);
-        // No mission running and no target: the members go.
+        // No mission running and no target: the members go. State 3 did
+        // not run, so the gathering place stays (FUN_004bda60: state 2 ->
+        // 9).
         state.mission_planners[0].mission = None;
         run(&mut state, &world, &mut galaxy, 9);
         assert!(state.mission_planners[0].team.is_empty());
         assert!(state.mission_planners[0].decoys.is_empty());
+        assert_eq!(state.mission_planners[0].staging, Some(staging));
     }
 
     fn ended(mission_id: u64) -> crate::missions::MissionEnded {
