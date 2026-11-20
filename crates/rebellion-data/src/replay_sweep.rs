@@ -361,6 +361,16 @@ pub fn run_sweep_battle(world: GameWorld, seed: u64) -> anyhow::Result<SweepBatt
     Ok(battle)
 }
 
+/// Whether two runs of one seed on different AI schedules reached the same
+/// states, orders and events.
+fn schedules_agree(burst: &SweepRun, spread: &SweepRun) -> bool {
+    burst.initial_fingerprint == spread.initial_fingerprint
+        && burst.samples == spread.samples
+        && burst.final_fingerprint == spread.final_fingerprint
+        && burst.ai_orders == spread.ai_orders
+        && burst.event_digest == spread.event_digest
+}
+
 /// Run the whole sweep: every seed in both schedules, then the battle.
 /// `load` builds a galaxy from seed options on the host's own file access.
 ///
@@ -396,11 +406,7 @@ where
             let options = campaign_seed_options(seed);
             let burst = run_sweep_campaign(load(&options)?, seed, days, AiPassSchedule::Burst)?;
             let spread = run_sweep_campaign(load(&options)?, seed, days, AiPassSchedule::Spread)?;
-            let agree = burst.initial_fingerprint == spread.initial_fingerprint
-                && burst.samples == spread.samples
-                && burst.final_fingerprint == spread.final_fingerprint
-                && burst.ai_orders == spread.ai_orders
-                && burst.event_digest == spread.event_digest;
+            let agree = schedules_agree(&burst, &spread);
             report.runs.push(burst);
             report.runs.push(spread);
             if !agree {
@@ -482,6 +488,147 @@ mod tests {
 
     #[test]
     #[ignore = "requires original data/base DAT files"]
+    fn a_sweep_run_counts_what_its_days_report() {
+        // port: the run's totals and samples against the same days counted
+        // here from the runner directly.
+        let dir = original_data();
+        let load = || crate::load_game_data_with_options(&dir, &campaign_seed_options(1)).unwrap();
+        // Seed 1's one ground battle falls inside 210 days.
+        let run = run_sweep_campaign(load(), 1, 210, AiPassSchedule::Burst).unwrap();
+
+        let mut runner = dual_ai_runner(load(), 1).unwrap();
+        assert_eq!(
+            run.initial_fingerprint,
+            runner.fingerprint().unwrap().to_string()
+        );
+        let (mut orders, mut events, mut space, mut ground) = (0, 0, 0, 0);
+        for _ in 0..210 {
+            let day = runner.run_day(AiPassSchedule::Burst);
+            orders += u64::from(day.ai_orders);
+            events += day.events.len() as u64;
+            space += day
+                .events
+                .iter()
+                .filter(|e| e.event_type == EVT_COMBAT_SPACE)
+                .count() as u64;
+            ground += day
+                .events
+                .iter()
+                .filter(|e| e.event_type == EVT_COMBAT_GROUND)
+                .count() as u64;
+        }
+        assert!(orders > 0 && events > 0 && ground > 0);
+        assert_eq!(
+            (
+                run.ai_orders,
+                run.events,
+                run.space_battles,
+                run.ground_battles
+            ),
+            (orders, events, space, ground)
+        );
+        let ticks: Vec<u64> = run.samples.iter().map(|sample| sample.tick).collect();
+        assert_eq!(ticks, [25, 50, 75, 100, 125, 150, 175, 200, 210]);
+        let last = runner.fingerprint().unwrap().to_string();
+        assert_eq!(run.samples[8].state_fingerprint, last);
+        assert_eq!(run.final_fingerprint, last);
+        assert_ne!(
+            run.samples[0].state_fingerprint,
+            run.samples[1].state_fingerprint
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_staged_fleets_are_each_side_s_first_largest() {
+        // port: the battle's staging picks, per side, the first fleet in key
+        // order with the most capital ships.
+        let world = crate::load_game_data_with_options(
+            &original_data(),
+            &campaign_seed_options(SWEEP_BATTLE_SEED),
+        )
+        .unwrap();
+        for alliance in [true, false] {
+            let side: Vec<(FleetKey, usize)> = world
+                .fleets
+                .iter()
+                .filter(|(_, fleet)| fleet.is_alliance == alliance && !fleet.has_death_star)
+                .map(|(key, fleet)| (key, fleet.capital_ships.len()))
+                .collect();
+            let most = side.iter().map(|&(_, ships)| ships).max().unwrap();
+            let first = side.iter().find(|&&(_, ships)| ships == most).unwrap().0;
+            assert_eq!(largest_fleet(&world, alliance), Some(first));
+        }
+
+        // Staging moves only the staged fleet out of its system.
+        let mut world = world;
+        let empire = largest_fleet(&world, false).unwrap();
+        let target = world.fleets[largest_fleet(&world, true).unwrap()].location;
+        let from = world.fleets[empire].location;
+        let mut stays = world.systems[from].fleets.clone();
+        stays.retain(|&key| key != empire);
+        place_fleet(&mut world, empire, target);
+        assert_eq!(world.systems[from].fleets, stays);
+        assert_eq!(world.fleets[empire].location, target);
+        assert!(world.systems[target].fleets.contains(&empire));
+    }
+
+    #[test]
+    fn two_runs_agree_only_when_every_compared_field_matches() {
+        let run = SweepRun {
+            seed: 1,
+            schedule: AiPassSchedule::Burst,
+            days: 1,
+            initial_fingerprint: "v1:a".into(),
+            samples: vec![SweepSample {
+                tick: 1,
+                state_fingerprint: "v1:b".into(),
+            }],
+            final_fingerprint: "v1:b".into(),
+            ai_orders: 3,
+            events: 4,
+            event_digest: "c".into(),
+            space_battles: 0,
+            ground_battles: 0,
+        };
+        let spread = SweepRun {
+            schedule: AiPassSchedule::Spread,
+            ..run.clone()
+        };
+        assert!(schedules_agree(&run, &spread));
+        let changes: [fn(&mut SweepRun); 5] = [
+            |run| run.initial_fingerprint.push('x'),
+            |run| run.samples[0].tick = 2,
+            |run| run.final_fingerprint.push('x'),
+            |run| run.ai_orders += 1,
+            |run| run.event_digest.push('x'),
+        ];
+        for change in changes {
+            let mut other = spread.clone();
+            change(&mut other);
+            assert!(!schedules_agree(&run, &other));
+        }
+    }
+
+    #[test]
+    fn a_sweep_whose_galaxy_fails_to_load_fails() {
+        let data = crate::replay::compute_simulation_data_manifest([("A.DAT", b"a")]).unwrap();
+        let report = run_sweep_gate("native", &data, &[1], 1, |_| bail!("no galaxy"));
+        assert!(!report.passed());
+        assert_eq!(report.failure_phase.as_deref(), Some("seed_1"));
+        assert_eq!(report.error.as_deref(), Some("no galaxy"));
+    }
+
+    #[test]
+    fn the_digest_is_fnv_1a_64() {
+        // port: FNV-1a 64 of "a" (the published test vector).
+        let mut digest = Fnv::new();
+        digest.update(b"a");
+        assert_eq!(digest.hex(), "af63dc4c8601ec8c");
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
     fn a_staged_battle_ends_on_both_engines() {
         // port: FUN_005ae9c0 resolves the battle automatically; the tactical
         // engine with Observe Battle (FUN_0059fd40) runs it to its end.
@@ -489,8 +636,10 @@ mod tests {
         assert!(report.passed(), "{report:?}");
         let battle = report.battle.unwrap();
         assert_eq!(battle.auto_results.len(), 1);
+        assert!(battle.auto_results[0].get("winner").is_some(), "{battle:?}");
         assert!(battle.tactical_ended);
-        assert!(battle.tactical_steps < SWEEP_TACTICAL_STEP_LIMIT);
+        assert!(battle.tactical_steps > 100 && battle.tactical_steps < SWEEP_TACTICAL_STEP_LIMIT);
+        assert_ne!(battle.tactical_digest, Fnv::new().hex());
         let alive: usize = battle.tactical_ships_alive.iter().sum();
         assert!(
             alive < battle.alliance_ships + battle.empire_ships,
