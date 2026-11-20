@@ -1298,7 +1298,9 @@ runs (`FUN_004f3000`, `FUN_00520b30`):
   v83);
 - `AIState::bind_mission` and `note_mission_results` now reach the
   standing planners.
-- port: the `0x80` bit is not kept, and no reader of it is traced.
+- the `0x80` bit is kept in `pending` since 2026-11-20; its reader is the
+  Destroyed hook `FUN_0047ae50` (below, "The planner's `+0x20` bit
+  `0x80`").
 
 The other classes' report slots (ported 2026-10-19):
 - Recruitment, `FUN_0047dad0` (at `0x47dad0`):
@@ -1792,7 +1794,7 @@ port:
 - one Move per member (`0x201` expands per character, `move-order.md`);
 - the cycle runs once a day;
 - `0x40` is read as "the place is outside the sector";
-- `+0x20` `0x80` is not kept;
+- `+0x20` `0x80` is kept in `pending` (2026-11-20);
 - the bound mission stands for `0x80000000`, and a mission that ends
   without a result clears it.
 
@@ -2019,9 +2021,35 @@ So after too many failures the planner frees its whole team when the
 mission ends. It also drops a captured or injured member at
 once, without waiting for state 2.
 
-port: not ported. It is driven by a notification (slot `+0x16c`), which
-is the tracker item "AI na powiadomieniach i timerach". The port's
-daily state 2 already drops a member whose record has `0x50`.
+`FUN_0047c890` (Diplomacy, Incite, Subdue and the research planners),
+`FUN_0047dad0` (Recruitment), `FUN_00480860` (a sector planner's
+Espionage) and `FUN_0047d4d0` (Sabotage, class `0x65a9b0`) call
+`FUN_0047ae20`; Reconnaissance and the standing Espionage do not.
+`FUN_0047ae50` clears `+0x20 & 0xe0000000` first, so a check or abort
+that `FUN_0047c890` set and state 1 has not yet read is lost with the
+mission. A member whose record is gone (`FUN_004f5940` returns 0) is let
+go as well.
+
+Ported 2026-11-20:
+- `MissionPlanner::note_report`, from `AIState::note_mission_results`:
+  the count and the `+0x20` bits (`0x80`, and `FUN_0047c890`'s check and
+  abort) change when the report arrives, as slot `+0x30` runs on the
+  notification. The rest of each report (seen marks, gathering place,
+  aborts) still runs with the AI (`mission_planner_reports`,
+  `sector_report`).
+- `AIState::note_missions_ended` (`FUN_0042f7d0`) and
+  `MissionPlanner::mission_destroyed` (`FUN_0047ae50`), called by the
+  simulation and the app after a day's mission results and their
+  effects, for each mission that reached its end phase (`MissionEnded`).
+- `mission_planning::fit_to_keep`: a record exists (a character not
+  killed, a special force) without `0x50`.
+
+port:
+- a research planner keeps no `+0x20`; at its mission's end it lets only
+  a captured, injured or killed designer go. Its whole-team release
+  after a 1001st failure is not ported (it needs a save layout change).
+- `FUN_0042f700` returns the first planner of the one list; the port
+  looks through the mission planners, then the research planners.
 
 ## The port's 60-day limit (checked 2026-11-20)
 

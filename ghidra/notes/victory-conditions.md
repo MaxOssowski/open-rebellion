@@ -330,3 +330,39 @@ sub-ticks (the rollover sub-tick does not count in `+0x20`): Fast 5 x
 1.26 / 3.22 / ~15 s (game-speed-timing.md, which reads the extra as the
 day's own work). The port's day was rate x 0.25 s; ported 2026-11-17
 (`GameSpeed::sub_ticks_per_day`, game-speed-timing.md).
+
+## A side that holds no system (checked 2026-11-20)
+
+Nothing ends the game when a side holds no system. `FUN_005180e0` reads
+only the four leaders, Coruscant and the Alliance headquarters (its
+calls are `FUN_00506e10`, `FUN_00505190` four times, `FUN_00505f60`,
+`FUN_00506110`). `FUN_0051e050` compares two list counts at `+0x6c` /
+`+0x88` for its `+0x30`/`+0x38`/`+0x40` flags, then calls
+`FUN_00518460` and `FUN_0051eaf0` (a message drain). Neither counts
+systems. A Standard game therefore goes on until both Imperial leaders
+are held at once with Coruscant the Alliance's or destroyed.
+
+Port run (`rebellion-playtest data/base --dual-ai --ticks 5000 --seed 5`,
+release, on main 9d20f441): on day 5000 the Empire holds 0 systems,
+0 fleets and 0 regiments; the Alliance 53 systems, 51 fleets (94
+capital ships) and 713 regiments. The Empire has 10 free characters
+(Vader, Piett, Ferrier, Nothos, Rix and Labansat at Chazwa, Daala at
+Chalcedon, Lemelisk at Talus, Griff on a mission), 7 held and the rest
+killed. Its AI keeps 24 mission planners but gives its last order on day
+4910 (days 4500 to 5000: 30 mission orders and one ship move, against
+about 1500 to 2000 orders per 500 days before). With no system of its
+own, state 6 (`FUN_004bd0a0`) finds no gathering place, and nothing
+else has an own system to build at.
+
+The word, from the run's `victory_conditions` events: Vader held from
+day 3138 (`0x1000`), Coruscant the Alliance's from day 4065 (`0x100`),
+Vader escaped on day 4833 (`captive-escape.md`; word `0x100`), the
+Emperor held on day 4972 (`0x2100`). The two leaders were never held
+together, so no win, as in the original. The Alliance AI still abducted
+at Chazwa (Zuggs 4739, Piett 4804, Menndo 4872, the Emperor 4972), so
+the run is not stuck; it ran out of days.
+
+The same command on 60d2e20a and on the Destroyed-hook branch does not
+reach the state: seed 5 ends at Empire 27 and 17 systems, seed 4 at 38
+systems (60d2e20a) or an Empire win on day 1780 (hook branch). Seeds 0
+to 3 and 6 to 9 never drop the Empire below 6 systems.
