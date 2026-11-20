@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 128;
+pub const SAVE_VERSION: u32 = 129;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -129,7 +129,11 @@ pub const V126: u32 = 126;
 /// (`BlockadeState::forget_fleet_borne_percents`); the layout is v128's.
 pub const V127: u32 = 127;
 
-/// Whether a save of `version` loads (the current one, or v116 to v127
+/// v128: the save without the AI's movement planners
+/// (`SaveState::ai_command_planners`), its last field.
+pub const V128: u32 = 128;
+
+/// Whether a save of `version` loads (the current one, or v116 to v128
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -245,6 +249,11 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         // own exploration, as before (object_views::side_explored).
         body.extend(bincode::serialize(&rebellion_core::object_views::SystemCopyBitsMap::default())?);
     }
+    if version <= V128 {
+        // An older save's AI made no movement planners: module 0xc starts
+        // its cycle afresh and the strategy asks for them again.
+        body.extend(bincode::serialize(&AiCommandPlanners::default())?);
+    }
     Ok(body)
 }
 
@@ -283,6 +292,7 @@ pub fn decode_body(
         &state.squadron_damage,
     );
     state.world.object_views.system_bits = state.system_copy_bits.clone();
+    state.restore_command_planners();
     let fogs = [&state.fog_alliance, &state.fog_empire];
     if version == MIGRATED_VERSION {
         rebellion_core::object_views::seed_from_fog(
@@ -433,6 +443,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V128 {
+            fields.remove("ai_command_planners");
+        }
         if version <= V126 {
             fields.remove("system_copy_bits");
         }
@@ -598,6 +611,38 @@ pub struct SaveState {
     /// one ([`migrate_body`]). The loaders put it back into the world's
     /// views, whose own encoding skips it.
     pub system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap,
+    // ── v129: the AI's movement planners ────────────────────────────────
+    /// Module `0xc` of each AI player (`ai`, then `ai2`): its cycle, its
+    /// movement planners and the strategy's requests
+    /// ([`rebellion_core::ai_module_c::ModuleC`]). It stays the last field:
+    /// an older body is read by appending empty ones ([`migrate_body`]).
+    /// The loaders put it back into the AI states, whose own encoding
+    /// skips it ([`SaveState::restore_command_planners`]).
+    pub ai_command_planners: AiCommandPlanners,
+}
+
+/// [`SaveState::ai_command_planners`]: module `0xc` of `ai` and of `ai2`.
+pub type AiCommandPlanners = (
+    rebellion_core::ai_module_c::ModuleC,
+    Option<rebellion_core::ai_module_c::ModuleC>,
+);
+
+/// The movement planners of `ai` and `ai2` for
+/// [`SaveState::ai_command_planners`].
+#[must_use]
+pub fn command_planners(ai: &AIState, ai2: Option<&AIState>) -> AiCommandPlanners {
+    (ai.module_c.clone(), ai2.map(|a| a.module_c.clone()))
+}
+
+impl SaveState {
+    /// Put [`Self::ai_command_planners`] back into the AI states.
+    pub fn restore_command_planners(&mut self) {
+        let (first, second) = self.ai_command_planners.clone();
+        self.ai.module_c = first;
+        if let (Some(ai2), Some(second)) = (self.ai2.as_mut(), second) {
+            ai2.module_c = second;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1422,6 +1467,7 @@ mod tests {
             products: rebellion_core::products::Products::default(),
             squadron_damage: Vec::new(),
             system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
+            ai_command_planners: AiCommandPlanners::default(),
         }
     }
 
@@ -1852,11 +1898,27 @@ mod tests {
             + bits_tail()
     }
 
-    /// The length of the empty system copy bits v127 added.
+    /// The length of the empty system copy bits v127 added, and what came
+    /// after.
     fn bits_tail() -> usize {
         bincode::serialize(&rebellion_core::object_views::SystemCopyBitsMap::default())
             .unwrap()
             .len()
+            + planners_tail()
+    }
+
+    /// The length of the empty movement planners v129 added.
+    fn planners_tail() -> usize {
+        bincode::serialize(&AiCommandPlanners::default())
+            .unwrap()
+            .len()
+    }
+
+    /// `state` written as a v128 file: no movement planners. `state` holds
+    /// none.
+    fn write_v128(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.ai_command_planners, AiCommandPlanners::default());
+        write_old(saves_dir, state, V128, planners_tail())
     }
 
     /// `state` written as a v126 file: no system copy bits. `state` holds
@@ -2185,6 +2247,56 @@ mod tests {
         assert_eq!(
             fingerprint_as(&state, V121).unwrap(),
             fingerprint_as(&loaded, V121).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v128_save_loads_with_no_movement_planners() {
+        // v129 adds module 0xc of each AI (FUN_004c8260); a v128 save made
+        // none, so the strategy asks for them again (FUN_004e57e0).
+        let saves_dir = tmp_dir("v128_migration");
+        let state = minimal_save_state();
+        write_v128(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v128 save migrates");
+        assert_eq!(loaded.ai_command_planners, AiCommandPlanners::default());
+        assert_eq!(
+            loaded.ai.module_c,
+            rebellion_core::ai_module_c::ModuleC::default()
+        );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V128).unwrap(),
+            fingerprint_as(&loaded, V128).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_each_ai_s_movement_planners() {
+        // SaveState::ai_command_planners (v129): the AI state's own
+        // encoding skips module 0xc, so the save carries it and the loader
+        // puts it back.
+        let saves_dir = tmp_dir("command_planners");
+        let mut state = minimal_save_state();
+        let planner = rebellion_core::ai_module_c::CommandPlanner {
+            id: 3,
+            kind: 1,
+            ..Default::default()
+        };
+        state.ai.module_c.planners.push(planner);
+        state.ai.module_c.made = [1, 0];
+        state.ai_command_planners = command_planners(&state.ai, state.ai2.as_ref());
+        save_slot(&saves_dir, 0, "Planners", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.ai.module_c, state.ai.module_c);
+        assert_eq!(loaded.ai_command_planners, state.ai_command_planners);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&state).unwrap()
         );
     }
 

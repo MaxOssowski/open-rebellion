@@ -843,6 +843,7 @@ impl LiveCampaign<'_> {
                 &self.troop_transport.squadrons,
             ),
             system_copy_bits: self.world.object_views.system_bits.clone(),
+            ai_command_planners: rebellion_data::save::command_planners(self.ai, self.ai2.as_ref()),
         }
     }
 
@@ -853,6 +854,7 @@ impl LiveCampaign<'_> {
         *self.missions = state.missions;
         *self.events = state.events;
         *self.ai = state.ai;
+        self.ai.module_c = state.ai_command_planners.0;
         *self.movement = state.movement;
         *self.fog_alliance = state.fog_alliance;
         *self.fog_empire = state.fog_empire;
@@ -868,6 +870,9 @@ impl LiveCampaign<'_> {
         *self.economy = state.economy;
         *self.sim_rng = state.sim_rng;
         *self.ai2 = state.ai2;
+        if let (Some(ai2), Some(second)) = (self.ai2.as_mut(), state.ai_command_planners.1) {
+            ai2.module_c = second;
+        }
         *self.repair = state.repair;
         *self.production = state.production;
         *self.autoscrap = state.autoscrap;
@@ -15891,6 +15896,21 @@ fn apply_ai_actions(
                         world,
                         rebellion_core::missions::MissionMember::Character(character),
                         Some(*to),
+                    );
+                }
+            }
+            // FUN_00561bb0, re-checked by FUN_004ed750.
+            AIAction::Command { character, kind } => {
+                if let Some(side) = ai_state.faction {
+                    let en_route = mission_state.is_en_route(
+                        rebellion_core::missions::MissionMember::Character(*character),
+                    );
+                    let _ = rebellion_core::character_command::give(
+                        world,
+                        *character,
+                        *kind,
+                        matches!(side, rebellion_core::ai::AiFaction::Alliance),
+                        en_route,
                     );
                 }
             }

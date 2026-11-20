@@ -255,6 +255,13 @@ fn accepts(
         } => {
             crate::bombardment::order_enabled(world, movement, is_alliance, fleets, *system, *kind)
         }
+        // The Command order's check (FUN_004ed750), before the effect
+        // (FUN_00561bb0) re-checks it.
+        AIAction::Command { character, kind } => {
+            world.characters.get(*character).is_some_and(|c| {
+                crate::character_command::order_allowed(c, *kind, is_alliance, false).is_ok()
+            })
+        }
         // Planetary Assault's enabled check (assault::order_enabled).
         AIAction::Assault { fleets, system } => {
             crate::assault::order_enabled(world, movement, transport, is_alliance, fleets, *system)
@@ -502,6 +509,11 @@ pub struct AIState {
     /// controller `+0xd8`).
     #[serde(default)]
     pub module8: crate::ai_module8::Module8,
+    /// Module `0xc`'s fields and its movement planners (`FUN_004c8260`).
+    /// The save keeps it apart (`SaveState::ai_command_planners`, v129),
+    /// so this encoding skips it.
+    #[serde(skip)]
+    pub module_c: crate::ai_module_c::ModuleC,
     /// What the AI keeps on its ship records (`+0x24` bits, `+0x30`,
     /// `+0x34`), by [`crate::world::ShipInstance::id`]; a ship without an
     /// entry has the constructor's ([`crate::ai_records::ShipHold`]).
@@ -770,6 +782,7 @@ impl AIState {
             module_b: crate::ai_module_b::ModuleB::default(),
             strategy: crate::ai_strategy::Strategy::default(),
             module8: crate::ai_module8::Module8::default(),
+            module_c: crate::ai_module_c::ModuleC::default(),
             ship_holds: HashMap::new(),
             fleet_holds: HashMap::new(),
             seen: HashMap::new(),
@@ -1068,6 +1081,14 @@ pub enum AIAction {
         cost: u32,
         count: i32,
     },
+
+    /// A Command order (`0x260..0x263`) on one of the side's characters:
+    /// a movement planner's (module `0xc`, `FUN_004bbf50`), carried out by
+    /// [`crate::character_command::give`].
+    Command {
+        character: CharacterKey,
+        kind: crate::character_command::CommandKind,
+    },
 }
 
 /// Why the AI is moving a fleet.
@@ -1213,6 +1234,10 @@ impl AISystem {
                 planner.hold(member);
             }
         }
+        // FUN_0047a5b0: a movement planner's member too.
+        for c in state.module_c.members() {
+            planner.hold(crate::missions::MissionMember::Character(c));
+        }
         Self::sync_sector_missions(state);
         let mut galaxy = Self::records(
             state,
@@ -1329,6 +1354,7 @@ impl AISystem {
                         7 => state.module7.refused(),
                         8 => state.module8.refused(),
                         0xb => state.module_b.refused(),
+                        0xc => state.module_c.refused(),
                         _ => {}
                     }
                     state.module_priority[module] = 0;
@@ -1503,9 +1529,36 @@ impl AISystem {
                 coin: &mut coin,
             };
             state.strategy.step(&mut io);
+            // States 4 (FUN_004e57e0) and 6 (FUN_004e5870); state 5
+            // (FUN_004e69d0, the planners of FUN_00474070) is not ported.
+            let is_alliance = matches!(ctx.faction, AiFaction::Alliance);
+            state.module_c.strategy_requests(
+                crate::ai_module_c::guarded(galaxy),
+                minor_classes(ctx.world, is_alliance),
+                crate::ai_module_c::holds_coruscant(galaxy),
+                is_alliance,
+            );
+            let mut io = crate::ai_module_c::InputsC {
+                world: ctx.world,
+                galaxy,
+                kinds: &mut state.record_kinds,
+                planner,
+                is_alliance,
+            };
+            state.module_c.guard(&mut io);
         }
         if id == 8 {
             return Self::module8_step(state, planner, ctx, galaxy, tallies);
+        }
+        if id == 0xc {
+            let mut io = crate::ai_module_c::InputsC {
+                world: ctx.world,
+                galaxy,
+                kinds: &mut state.record_kinds,
+                planner,
+                is_alliance: matches!(ctx.faction, AiFaction::Alliance),
+            };
+            return state.module_c.step(&mut io);
         }
         if state.module_pending[module].is_empty() {
             let mut decided = Vec::new();
@@ -1594,14 +1647,15 @@ impl AISystem {
     ///   strategy ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
     /// - `0xa`: the production heuristic's manufacturing facilities.
-    /// - 8: Death Star escort and fleet deployment; `0xc`: troop movement.
     ///
     /// port: the assignment of the port's heuristics to modules is a first
     /// read (the modules' roles in the note above); modules 9 and `0xe`
-    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5, 6, 7
-    /// and `0xb` are ported ([`crate::ai_module1`], [`crate::ai_module2`],
-    /// [`crate::ai_module3`], [`crate::ai_module5`], [`crate::ai_module6`],
-    /// [`crate::ai_module7`], [`crate::ai_module_b`]).
+    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5, 6, 7,
+    /// 8, `0xb` and `0xc` are ported ([`crate::ai_module1`],
+    /// [`crate::ai_module2`], [`crate::ai_module3`], [`crate::ai_module5`],
+    /// [`crate::ai_module6`], [`crate::ai_module7`], [`crate::ai_module8`],
+    /// [`crate::ai_module_b`], [`crate::ai_module_c`]) and run in
+    /// [`Self::step_module`].
     fn run_module(
         id: u8,
         state: &mut AIState,
@@ -1643,7 +1697,6 @@ impl AISystem {
             }
             4 => Self::mission_step(state, planner, ctx, galaxy, actions),
             0xa => production(actions),
-            0xc => Self::evaluate_troop_deployment(world, faction, config, actions),
             _ => {}
         }
     }
@@ -2872,117 +2925,6 @@ impl AISystem {
                 class: d.class_dat_id,
                 is_alliance: d.side == crate::dat::Faction::Alliance,
             })
-    }
-
-    // -----------------------------------------------------------------------
-    // Fleet deployment heuristics
-    // -----------------------------------------------------------------------
-
-    /// Redistribute troops from oversupplied to undersupplied friendly systems.
-    ///
-    /// Two-pass approach:
-    /// 1. **Frontline reinforcement**: controlled systems adjacent to enemy
-    ///    territory (any enemy-controlled neighbor) with below-minimum garrisons
-    ///    receive priority reinforcements.
-    /// 2. **General redistribution**: remaining undersupplied systems (HQ first)
-    ///    receive troops from donor systems.
-    ///
-    /// Donor threshold and receiver minimum are configurable via `AiConfig`.
-    /// Each move is one regiment's own Move to the receiver.
-    fn evaluate_troop_deployment(
-        world: &GameWorld,
-        faction: AiFaction,
-        config: &GameConfig,
-        actions: &mut Vec<AIAction>,
-    ) {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        let our_faction = if is_alliance {
-            crate::dat::Faction::Alliance
-        } else {
-            crate::dat::Faction::Empire
-        };
-        let enemy_faction = if is_alliance {
-            crate::dat::Faction::Empire
-        } else {
-            crate::dat::Faction::Alliance
-        };
-
-        // Build set of enemy-controlled system positions for adjacency detection.
-        let enemy_positions: Vec<(u16, u16)> = world
-            .systems
-            .iter()
-            .filter(|(_, s)| s.control.is_controlled_by(enemy_faction))
-            .map(|(_, s)| (s.x, s.y))
-            .collect();
-
-        // Collect garrison counts per controlled system.
-        let mut donors: Vec<(SystemKey, Vec<TroopKey>)> = Vec::new();
-        // (system, priority: 0=frontline HQ, 1=frontline, 2=HQ, 3=other)
-        let mut receivers: Vec<(SystemKey, u8)> = Vec::new();
-
-        for (sys_key, system) in &world.systems {
-            if !system.control.is_controlled_by(our_faction) {
-                continue;
-            }
-
-            let friendly_troops: Vec<TroopKey> = system
-                .ground_units
-                .iter()
-                .filter(|tk| {
-                    world
-                        .troops
-                        .get(**tk)
-                        .is_some_and(|t| t.is_alliance == is_alliance)
-                })
-                .copied()
-                .collect();
-
-            let count = friendly_troops.len();
-
-            // Check if this system is a frontline system (near enemy territory).
-            // "Near" = within 150 coordinate units of any enemy system.
-            let is_frontline = enemy_positions.iter().any(|&(ex, ey)| {
-                let dx = i32::from(system.x) - i32::from(ex);
-                let dy = i32::from(system.y) - i32::from(ey);
-                (dx * dx + dy * dy) < 150 * 150
-            });
-
-            if count > config.ai.troop_garrison_donor_threshold {
-                donors.push((sys_key, friendly_troops));
-            } else if count < config.ai.troop_garrison_min {
-                let priority = match (is_frontline, system.is_headquarters) {
-                    (true, true) => 0,   // frontline HQ — absolute priority
-                    (true, false) => 1,  // frontline — high priority
-                    (false, true) => 2,  // HQ — medium priority
-                    (false, false) => 3, // other — low priority
-                };
-                receivers.push((sys_key, priority));
-            }
-        }
-
-        // Sort receivers by priority (lowest number = highest priority).
-        receivers.sort_by_key(|(_, priority)| *priority);
-
-        // Each weak system takes one regiment from an oversupplied donor,
-        // which travels on its own (Move 0x201 of the regiment, as module
-        // 6's moves give; port: the heuristic stands in for module 0xc).
-        let mut reserved_troops = HashSet::new();
-        for (receiver, _) in receivers {
-            let Some(troop) = donors.iter().find_map(|(_, troops)| {
-                troops
-                    .iter()
-                    .rev()
-                    .copied()
-                    .find(|troop| !reserved_troops.contains(troop))
-            }) else {
-                continue;
-            };
-            actions.push(AIAction::MoveRegiments {
-                troops: vec![troop],
-                to: receiver,
-            });
-            reserved_troops.insert(troop);
-        }
     }
 }
 
@@ -7212,182 +7154,6 @@ mod tests {
     // -----------------------------------------------------------------------
 
     // -----------------------------------------------------------------------
-    // D2: Troop deployment tests
-    // -----------------------------------------------------------------------
-
-    #[test]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-    )]
-    fn troop_deployment_prioritizes_frontline_systems() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let config = GameConfig::default();
-
-        // Donor system: 5 empire troops.
-        let donor_sys = world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(0),
-            name: "Donor".into(),
-            sector,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.9,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        });
-        for _ in 0..5 {
-            let tk = world.troops.insert(crate::world::TroopUnit {
-                class_dat_id: DatId(0),
-                is_alliance: false,
-                regiment_strength: 100,
-            });
-            world.systems[donor_sys].ground_units.push(tk);
-        }
-
-        // Frontline receiver: 0 troops, near enemy territory.
-        let frontline_sys = world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(1),
-            name: "Frontline".into(),
-            sector,
-            x: 100,
-            y: 0, // close to enemy
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.9,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        });
-
-        // Interior receiver: 0 troops, far from enemy.
-        let _interior_sys = world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(2),
-            name: "Interior".into(),
-            sector,
-            x: 0,
-            y: 500, // far from enemy
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.9,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        });
-
-        // Enemy system at x=120 (near frontline_sys).
-        let _ = world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(3),
-            name: "Enemy".into(),
-            sector,
-            x: 120,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.9,
-            popularity_empire: 0.1,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Alliance),
-        });
-
-        let mut actions = Vec::new();
-        AISystem::evaluate_troop_deployment(&world, AiFaction::Empire, &config, &mut actions);
-
-        // Should dispatch at least one troop move.
-        assert!(!actions.is_empty(), "expected troop deployment actions");
-
-        // Module 0xc, the movement planners, issues the troop moves.
-        let (missions, research, mfg, uprisings) = (
-            MissionState::new(),
-            ResearchState::new(),
-            ManufacturingState::new(),
-            crate::uprising::UprisingState::default(),
-        );
-        let ctx = ModuleInputs {
-            faction: AiFaction::Empire,
-            ..inputs(&world, &missions, &research, &mfg, &config, &uprisings)
-        };
-        let busy = HashSet::new();
-        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
-        let mut by_module = Vec::new();
-        AISystem::run_module(
-            0xc,
-            &mut AIState::new(AiFaction::Empire),
-            &mut planner,
-            &ctx,
-            &mut crate::ai_records::Galaxy::default(),
-            &mut by_module,
-        );
-        assert_eq!(by_module, actions);
-
-        // The first troop move goes to the frontline system (higher
-        // priority): one donor regiment's own Move (0x201). It rode a
-        // transport fleet until the port's automatic landing was retired
-        // (2026-10-17): carried regiments now stay aboard without an order
-        // (ghidra/notes/regiment-unload.md).
-        let AIAction::MoveRegiments { troops, to } = &actions[0] else {
-            panic!("expected a regiment's own Move: {actions:?}");
-        };
-        assert_eq!(
-            *to, frontline_sys,
-            "first troop deployment should target frontline system"
-        );
-        assert_eq!(troops.len(), 1);
-        assert!(world.systems[donor_sys].ground_units.contains(&troops[0]));
-    }
-
-    // -----------------------------------------------------------------------
     // D5: Reconnaissance test
     // -----------------------------------------------------------------------
 
@@ -11152,14 +10918,16 @@ mod tests {
     }
 
     /// Module indices in [`MODULE_IDS`]: the strategy, the missions, the
-    /// sector fleet planners, the troop module `0xc`.
+    /// sector fleet planners, and module 9, which has no port counterpart
+    /// and so issues only what its queue holds.
     const STRATEGY: usize = 0;
     const MISSIONS: usize = 6;
     const FLEETS: usize = 8;
-    const TROOPS: usize = 12;
+    const QUEUE: usize = 9;
 
-    /// An order a module keeps in its queue (port: module `0xc`'s
-    /// heuristic decides several at once and issues one a step).
+    /// An order a module keeps in its queue (port: a heuristic module
+    /// decides several at once and issues one a step; the scheduler tests
+    /// queue theirs on module 9).
     fn queued(id: u64) -> AIAction {
         AIAction::AbortMission { mission_id: id }
     }
@@ -11277,18 +11045,18 @@ mod tests {
         // the next ready module after the one last run (+0x10), wrapping.
         let (world, ship) = cadence_world(1);
         let mut state = AIState::new(AiFaction::Alliance);
-        state.module_pending[TROOPS] = vec![queued(1)];
+        state.module_pending[QUEUE] = vec![queued(1)];
 
         assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["move"]);
         assert_eq!(state.module_cursor, Some(MISSIONS));
         // The caller applies the Move: the designer is busy.
         state.mark_busy(ship.character().unwrap());
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(1)]);
-        assert_eq!(state.module_cursor, Some(TROOPS));
-        // Round from module 0xe to 0xc again: the rest order nothing.
-        state.module_pending[TROOPS] = vec![queued(2)];
+        assert_eq!(state.module_cursor, Some(QUEUE));
+        // Round from module 0xe to 9 again: the rest order nothing.
+        state.module_pending[QUEUE] = vec![queued(2)];
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(2)]);
-        assert_eq!(state.module_cursor, Some(TROOPS));
+        assert_eq!(state.module_cursor, Some(QUEUE));
         assert_eq!(state.orders_today, 3);
     }
 
@@ -11300,19 +11068,19 @@ mod tests {
         // FUN_00485b40 zeroes it before the step.
         let (world, _) = cadence_world(1);
         let mut state = AIState::new(AiFaction::Alliance);
-        state.module_pending[TROOPS] = vec![queued(1), queued(2)];
+        state.module_pending[QUEUE] = vec![queued(1), queued(2)];
         assert_eq!(kinds(&cadence_pass(&mut state, &world)), vec!["move"]);
 
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(1)]);
-        assert_eq!(state.module_priority[TROOPS], 1);
-        assert_eq!(state.module_pending[TROOPS].len(), 1);
+        assert_eq!(state.module_priority[QUEUE], 1);
+        assert_eq!(state.module_pending[QUEUE].len(), 1);
         // The round robin would go on from module 0xe and come round to the
         // mission module first, whose designer is still free; the priority
         // sends the queued order.
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(2)]);
-        assert_eq!(state.module_priority[TROOPS], 0);
-        assert!(state.module_pending[TROOPS].is_empty());
-        assert_eq!(state.module_cursor, Some(TROOPS));
+        assert_eq!(state.module_priority[QUEUE], 0);
+        assert!(state.module_pending[QUEUE].is_empty());
+        assert_eq!(state.module_cursor, Some(QUEUE));
     }
 
     #[test]
@@ -11322,7 +11090,7 @@ mod tests {
         let world = empty_world();
         let order = queued;
         let mut state = AIState::new(AiFaction::Alliance);
-        for (module, id) in [(MISSIONS, 1), (TROOPS, 2)] {
+        for (module, id) in [(MISSIONS, 1), (QUEUE, 2)] {
             state.module_priority[module] = 1;
             state.module_pending[module] = vec![order(id)];
         }
@@ -11332,7 +11100,7 @@ mod tests {
         assert_eq!(cadence_pass(&mut state, &world), vec![order(2)]);
 
         let mut state = AIState::new(AiFaction::Alliance);
-        for (module, id) in [(MISSIONS, 1), (TROOPS, 2)] {
+        for (module, id) in [(MISSIONS, 1), (QUEUE, 2)] {
             state.module_priority[module] = 1;
             state.module_pending[module] = vec![order(id)];
         }
@@ -12757,19 +12525,19 @@ mod tests {
         // count at the day boundary. A module's orders left wait for it.
         let (world, ship) = cadence_world(1);
         let mut state = AIState::new(AiFaction::Alliance);
-        state.module_pending[TROOPS] = vec![queued(1), queued(2)];
+        state.module_pending[QUEUE] = vec![queued(1), queued(2)];
         state.mark_busy(ship.character().unwrap());
         state.orders_today = ORDERS_PER_DAY - 1;
 
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(1)]);
         assert_eq!(state.orders_today, ORDERS_PER_DAY);
         assert!(cadence_pass(&mut state, &world).is_empty());
-        assert_eq!(state.module_pending[TROOPS].len(), 1);
+        assert_eq!(state.module_pending[QUEUE].len(), 1);
 
         state.begin_day();
         assert_eq!(state.orders_today, 0);
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(2)]);
-        assert!(state.module_pending[TROOPS].is_empty());
+        assert!(state.module_pending[QUEUE].is_empty());
     }
 
     #[test]

@@ -223,6 +223,11 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
             "system": sys_name(world, *system),
             "kind": format!("{kind:#x}"),
         }),
+        AIAction::Command { character, kind } => serde_json::json!({
+            "type": "Command",
+            "character": member_name(world, MissionMember::Character(*character)),
+            "kind": format!("{kind:?}"),
+        }),
         AIAction::Assault { fleets, system } => serde_json::json!({
             "type": "Assault",
             "fleets": fleets.len(),
@@ -2682,6 +2687,18 @@ fn apply_ai_actions_inner(
                 }
                 !characters.is_empty()
             }
+            // FUN_00561bb0, re-checked by FUN_004ed750.
+            AIAction::Command { character, kind } => ai_state.faction.is_some_and(|side| {
+                let en_route = mission_state.is_en_route(MissionMember::Character(*character));
+                rebellion_core::character_command::give(
+                    world,
+                    *character,
+                    *kind,
+                    matches!(side, rebellion_core::ai::AiFaction::Alliance),
+                    en_route,
+                )
+                .is_ok()
+            }),
             AIAction::SetDestination {
                 system,
                 area,

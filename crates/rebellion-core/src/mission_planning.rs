@@ -59,6 +59,9 @@ const SPECIAL_FORCE: u32 = 0x1000_0000;
 const CHARACTER: u32 = 0x2000_0000;
 /// One of the four leaders (`FUN_004024d0`).
 const LEADER: u32 = 0x4000_0000;
+/// The leader `0x34000280`, the Emperor, alongside [`LEADER`]
+/// (`FUN_00401d20`).
+const EMPEROR: u32 = 0x400;
 
 /// The flags an emitted member may not carry (`FUN_0047b360`).
 const NOT_SENT: u32 = 0x0740_00f1;
@@ -414,7 +417,7 @@ impl<'a> Planner<'a> {
     /// it (`FUN_004182a0`), and no record is a leader.
     pub(crate) fn without_leaders(&mut self) {
         for record in &mut self.records {
-            record.flags &= !LEADER;
+            record.flags &= !(LEADER | EMPEROR);
         }
     }
 
@@ -502,6 +505,71 @@ impl<'a> Planner<'a> {
             list.insert(at, (item, key));
         }
         list.last().map(|&(item, _)| item)
+    }
+
+    /// A movement planner's member selector (module `0xc`: `FUN_0047a5b0`,
+    /// `FUN_004bc6d0`, `FUN_0047a050`, `FUN_00479c00`): the side's
+    /// characters passing `query` by leadership (`FUN_00403460`, skill 6,
+    /// `min..=10000`, order 1), joined with `near`'s list when given
+    /// (`FUN_00403750`, order 2: the squared distance of the record's
+    /// system to the target's), taken best first (`FUN_004357b0`) until one
+    /// does not stand at a blockaded system (`FUN_004bc180`). The pick is
+    /// held (`FUN_0047b610`'s `0x800000` cleared).
+    ///
+    /// A record another planner holds lacks `0x800000`, so a query that
+    /// requires it passes it over; type 6's (`0x402`) does not require it.
+    /// hyp: a record with no system to measure (aboard a fleet in transit)
+    /// is missing from `near`'s list, so `FUN_004357b0` drops it.
+    pub(crate) fn pick_officer(
+        &mut self,
+        (req_flags, req_caps, forbid_flags, min): (u32, u32, u32, u32),
+        near: Option<&dyn Fn(MissionMember) -> Option<i32>>,
+    ) -> Option<CharacterKey> {
+        let skill = Skill::Leadership as usize;
+        let flags = |r: &AgentRecord| {
+            if r.sent {
+                r.flags & !UNASSIGNED
+            } else {
+                r.flags
+            }
+        };
+        let hits: Vec<(usize, i32)> = self
+            .records
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| {
+                flags(r) & req_flags == req_flags
+                    && flags(r) & forbid_flags == 0
+                    && r.caps & req_caps == req_caps
+                    && (min..=10_000).contains(&r.skills[skill])
+            })
+            .map(|(i, r)| (i, i32::try_from(r.skills[skill]).unwrap_or(i32::MAX)))
+            .collect();
+        let mut lists = vec![crate::ai_records::ranked(
+            hits.iter().copied(),
+            crate::ai_records::Order::Ascending,
+            &mut || self.rng.draw(9) < 5,
+        )];
+        if let Some(near) = near {
+            let keyed: Vec<(usize, i32)> = hits
+                .iter()
+                .filter_map(|&(i, _)| near(self.records[i].member).map(|d| (i, d)))
+                .collect();
+            lists.push(crate::ai_records::ranked(
+                keyed,
+                crate::ai_records::Order::Descending,
+                &mut || self.rng.draw(9) < 5,
+            ));
+        }
+        while let Some(best) = pop_best(&mut lists) {
+            if self.records[best].at_blockade {
+                continue;
+            }
+            let member = self.records[best].member;
+            self.hold(member);
+            return member.character();
+        }
+        None
     }
 
     /// `FUN_0041bc10`: the side's characters (record flags `0x2` and
@@ -709,6 +777,9 @@ fn records(
         // Only game ([`Planner::without_leaders`]).
         if c.is_major && LEADERS.contains(&id) {
             flags |= LEADER;
+            if id == 0x280 {
+                flags |= EMPEROR;
+            }
         }
         if c.is_captive {
             flags |= PRISONER;
@@ -959,6 +1030,21 @@ mod tests {
         assert!(!p.outranked(MissionKind::Recruitment, member));
         p.hold(better);
         assert!(!p.outranked(MissionKind::Diplomacy, member));
+    }
+
+    #[test]
+    fn the_emperor_s_record_alone_carries_0x400_while_leaders_are_marked() {
+        // FUN_00401d20: under controller +4 bit 0 clear, the leader
+        // 0x34000280 also takes +0x30 bit 0x400 (module 0xc's type 6
+        // query, FUN_00479c00, asks for 0x402).
+        let mut world = world();
+        let emperor = agent(&mut world, 0x280, |c| c.is_major = true);
+        let vader = agent(&mut world, 0x281, |c| c.is_major = true);
+        let mut p = planner(&world);
+        assert_eq!(p.flags(emperor).map(|f| f & 0x400), Some(0x400));
+        assert_eq!(p.flags(vader).map(|f| f & 0x400), Some(0));
+        p.without_leaders();
+        assert_eq!(p.flags(emperor).map(|f| f & 0x400), Some(0));
     }
 
     #[test]

@@ -765,7 +765,13 @@ impl ReplayRuntime {
             products,
             squadron_damage,
             system_copy_bits,
+            ai_command_planners,
         } = state;
+        let (mut ai, mut ai2) = (ai, ai2);
+        ai.module_c = ai_command_planners.0;
+        if let (Some(ai2), Some(second)) = (ai2.as_mut(), ai_command_planners.1) {
+            ai2.module_c = second;
+        }
         let mut world = world;
         world.object_views = object_views;
         world.object_views.system_bits = system_copy_bits;
@@ -934,6 +940,10 @@ impl ReplayRuntime {
                 &self.states.troop_transport.squadrons,
             ),
             system_copy_bits: self.world.object_views.system_bits.clone(),
+            ai_command_planners: crate::save::command_planners(
+                &self.states.ai,
+                self.states.ai2.as_ref(),
+            ),
         }
     }
 }
@@ -1275,6 +1285,7 @@ mod tests {
             products: rebellion_core::products::Products::default(),
             squadron_damage: Vec::new(),
             system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
+            ai_command_planners: crate::save::AiCommandPlanners::default(),
         }
     }
 
