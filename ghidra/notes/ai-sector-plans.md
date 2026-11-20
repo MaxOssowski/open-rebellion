@@ -303,7 +303,10 @@ An order sets `+0x68`.
 Kind 3 (`0x65c160`): slot `+0x50` `FUN_004b4920` (wants at least 1.2
 times the sector's `+0x190`, `+0x194` and `+0x198` + `+0x138`, or
 controller `+0x164`/`+0x168`, never less than before; one laser ship;
-a Death Star with controller `+4` `0x1000000`; the regiments held);
+a Death Star with controller `+4` `0x1000000`; the regiments held; kinds
+4 to 6 want a Death Star fleet with controller `+4` bit 4, an own Death
+Star fleet, which module 8 reads since 2026-11-20,
+`ai-mission-planning.md` "The controller's Death Star bit");
 slot `+0x20` `FUN_004b3830` (`0x4000000`, with the sector `0x8000000`,
 with an own system `0x20000`); slot `+0x18` `FUN_004b7150` (missions by
 the counts of each kind held: Recon `0x54`, Espionage `0x52`, Sabotage

@@ -1860,7 +1860,10 @@ impl AISystem {
                 kinds: &mut state.record_kinds,
                 transport: ctx.transport,
                 people: &people,
-                controller_flags: state.controller.flags,
+                // Controller +4 with the refresh's bits (bit 4, an own
+                // Death Star fleet, FUN_0041ba80), which the plans' wants
+                // read (FUN_004b3300, FUN_004b6a60, FUN_004b8b70).
+                controller_flags: state.controller.flags_with(&tallies),
                 is_alliance: matches!(ctx.faction, AiFaction::Alliance),
                 day: ctx.tick,
                 seen: &state.seen,

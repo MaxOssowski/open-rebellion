@@ -449,7 +449,8 @@ tallies of phase 4:
 - Incite: `S+0x218` = (opponent systems where the side's support exceeds
   50, `+0x2c` bit `0x100`) / 6 + 1.
 - DS Sabotage: strategy `+4 == 1` and `F & 4`, set by `FUN_0041ba80` for a
-  fleet record with bit `0x10` (hyp: the Death Star).
+  fleet record with bit `0x10`: a Death Star (confirmed 2026-11-20, "The
+  controller's Death Star bit").
 - Rescue: `F & 0x200`, set by `FUN_0041bc10` when a character of the side is
   a prisoner.
 - Recon: fewer planners than the side's pending system requests (`+0xd8`,
@@ -2222,10 +2223,108 @@ the daily Incite reported from another run did not occur on this
 branch: seeds 1 to 5 sent 0 Rescues to Zebitrope IV and 15 to 53
 Incites per campaign.
 
+## The controller's Death Star bit (traced and ported 2026-11-20)
+
+The "Still open" item "the fleet record bit `0x10` behind `F & 4`":
+- `FUN_004739b0` gives a capital ship class of families `0x18..0x1b`
+  bit `0x80` in its class record `+0x18`; CAPSHPSD's only such class is
+  the Death Star (`ai_records::CLASS_SHIP_SPECIAL`).
+- The ship record keeps the class's `& 0x4ff` (`FUN_00484230`), so the
+  Death Star's record has `+0x24` bit `0x80`.
+- `FUN_00433780` adds each ship record to its fleet's: ship `0x80` gives
+  fleet record `+0x38` bit `0x10` (ship `0x400`, an interdictor, gives
+  `0x20`).
+- `FUN_00418500` (phase 4), when a fleet record changed (controller `+4`
+  `0x40000000`), clears controller `+4` bits 4 and 8 (`& 0xfffffff3`) and
+  runs `FUN_0041ba80` over the fleet records (call at `0x418890`:
+  `this` the controller, then the record's id, `+0x50` the values and
+  `+0x38` the bits). For a fleet of the record's side (`+0x38` bit 1) it
+  sets controller `+4` bit 4 with fleet bit `0x10` and bit 8 with `0x20`.
+
+So `F & 4` is "a fleet of the side holds a Death Star". The hyp is
+confirmed.
+
+Its readers:
+- the strategy's row 8 (`FUN_004e8290` at `0x4e8554..0x4e85b3`: `ecx =
+  controller + 4`, `FUN_005f4960` returns the word, `test al,4`), only for
+  strategy `+4 == 1`, the Alliance. The Alliance never holds a Death Star
+  (an Empire-only class), so the row never asks and never cancels; it
+  stays unported (`mission_strategy`'s port note);
+- the sector plans' wants: kinds 5, 6 and 4 (`FUN_004b3300`,
+  `FUN_004b6a60`, `FUN_004b8b70`; `ecx = plan+0xc` (the controller)
+  `+ 4` at `0x4b33a4`) want one Death Star fleet (`+0x44`, the
+  planner's count 4, held fleets with bit `0x10`) with bit 4 and the
+  sector's `+0x19c` above 0; kinds 1 to 3 want none;
+- module `0xb`'s Death Star role (`FUN_004ca5e0`), which the port reads
+  from `Tallies::death_star`.
+
+The port computed the bit (`Tallies::death_star`, from the own fleet
+records' `0x10`), but module 8's planners read `controller_flags` from
+`Controller::flags`, which holds only the bits the modules set. So no
+plan ever wanted the Death Star. Fixed: `Tallies::controller_bits` gives
+the refresh's bits of controller `+4` that the tallies hold (4; `0x10`
+and `0x20` from the sector records, `FUN_0041b7e0`), and module 8's
+inputs take them with the controller's own flags.
+
+port: the tallies are taken each pass, where the original recomputes
+bits 4 and 8 only when a fleet record changed; the bits are the same.
+Bit 8 (an interdictor fleet) and `0x1000000` (no writer found) are not
+kept; no port reader asks for them except `0x1000000`, which stays 0.
+
+A throwaway trace in seed 1 (5,000 days, both sides AI) showed the bit
+reaching the wants: kind 5 and 6 planners read it in 5,614 cycles; in
+465 of them (kind 6) the sector had `+0x19c` above 0, and the plan
+wanted the Death Star. The
+campaigns did not change: seeds 1 to 3 ran event for event as before
+this fix (277,932, 247,813 and 241,474 events). Why the want orders
+nothing there (the Death Star's record not free, or held by module
+`0xb`) is not traced.
+
+Campaigns (`rebellion-playtest data/base --dual-ai --ticks 5000`), at
+`15e8c8ec` before this note's three changes, then after them (systems
+Alliance/Empire at the end, missions dispatched, most fleets):
+
+| Seed | Before | After |
+|---|---|---|
+| 1 | day 5000, 32/22, 5,310, 33/23 | day 5000, 41/20, 3,793, 24/21 |
+| 2 | day 5000, 33/21, 4,123, 37/24 | day 5000, 31/44, 4,325, 28/33 |
+| 3 | Alliance victory, 50/0, 3,014, 52/15 | day 5000, 19/34, 4,316, 21/19 |
+
+The research release and the gathering place change the campaigns from
+their first use; the Death Star bit adds nothing in these seeds.
+
+## The posture and the sector bits (checked 2026-11-20)
+
+The "Still open" item "the posture (`FUN_00478000`, `FUN_004b7150`) and
+its sector bits" dates from the early reading of `+0xbc` as "the kind
+the posture recommends" (corrected 2026-10-19, above). `FUN_004b7150` is
+not a posture: it is every plan kind's slot `+0x18`, the sector
+planner's mission request, read and ported in "The sector planners'
+mission planners" (`SectorPlanner::missions`). Re-read against the
+decompile on 2026-11-20:
+- the four rows and their order, the request/cancel conditions, and the
+  subtype 4 with `0x62 + (side != 1)` match `SectorPlanner::missions`;
+- `FUN_00478000` clears `+0xbc..+0xc4`, sets `+0x64` `0x100` with a
+  request, and walks the held list for `0x20000000`, `0x400` and
+  `0x80000000` (`SectorPlanner::mission_bits`). Its cancellation takes the
+  held planner of the kind (`+0x2c >> 24`) and subtype (slot `+0x14`)
+  without `+0x20` `0x10000000` with the least slot `+0x18`, the first on
+  a tie, as `take_sector_request` does; the decompile shows the kind and
+  subtype as `unaff_EDI`/`unaff_ESI` (the locals `FUN_004b7150` filled);
+- the sector bits it reads, `+0x2c` 8 (an opponent's system), `0x10` (a
+  neutral one) and `0x40000` (a system with another side's fleet,
+  system `+0x30` `0x200`), are `FUN_00432350`'s and the port's
+  (`SectorRecord::add_system`).
+
+Nothing is left open there.
+
 ## Still open
 
-- The fleet record bit `0x10` behind `F & 4`.
-- The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits.
+- The fleet record bit `0x10` behind `F & 4`: traced 2026-11-20 ("The
+  controller's Death Star bit"); the strategy's row 8 stays dead and
+  unported.
+- The posture (`FUN_00478000`, `FUN_004b7150`) and its sector bits:
+  checked 2026-11-20 ("The posture and the sector bits"); nothing open.
 - Whether the per-system record's `+0x34` is a DatId or coordinates: it is
   the system's map position (2026-10-14, see above).
 

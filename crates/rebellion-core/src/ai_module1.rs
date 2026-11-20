@@ -242,7 +242,39 @@ pub struct Tallies {
     pub planner_balance: i32,
 }
 
+impl Controller {
+    /// Controller `+4` as its readers see it: the bits the modules set
+    /// ([`Self::flags`]) with those the refresh writes
+    /// ([`Tallies::controller_bits`]).
+    #[must_use]
+    pub fn flags_with(&self, tallies: &Tallies) -> u32 {
+        self.flags | tallies.controller_bits()
+    }
+}
+
 impl Tallies {
+    /// The bits of controller `+4` that the refresh writes and these
+    /// tallies hold: 4 for an own fleet with the Death Star
+    /// ([`Self::death_star`]; `FUN_0041ba80`), `0x10` and `0x20` from the
+    /// sector records ([`Self::sector_invading`], [`Self::sector_short`];
+    /// `FUN_0041b7e0`). `FUN_00418500` clears and sets them in phase 4;
+    /// the port keeps the controller's own bits apart and joins these for
+    /// the readers (module 8's planners).
+    #[must_use]
+    pub fn controller_bits(&self) -> u32 {
+        let mut bits = 0;
+        if self.death_star {
+            bits |= 4;
+        }
+        if self.sector_invading {
+            bits |= 0x10;
+        }
+        if self.sector_short {
+            bits |= 0x20;
+        }
+        bits
+    }
+
     /// The mines, refineries and defense maintenance summed over the
     /// side's sector records (`+0xa8`, `+0xac`, `+0x100`, `FUN_0041b7e0`),
     /// with the side's maintenance.
@@ -2549,6 +2581,36 @@ pub(crate) mod tests {
         assert_eq!(t.troops_wanted, 6);
         galaxy.fleets.values_mut().for_each(|r| r.flags |= 0x10);
         assert!(Tallies::of(&galaxy, 7, 3).death_star);
+    }
+
+    #[test]
+    fn the_controller_bits_carry_the_death_star_and_the_sector_marks() {
+        // FUN_0041ba80: an own fleet record with bit 0x10 (a Death Star,
+        // ship class bit 0x80 through FUN_00433780) sets controller +4
+        // bit 4; FUN_0041b7e0: a sector with +0x2c 0x1000000 sets 0x10,
+        // with 0x2000000 0x20.
+        let mut t = Tallies::default();
+        assert_eq!(t.controller_bits(), 0);
+        t.death_star = true;
+        assert_eq!(t.controller_bits(), 4);
+        t.sector_invading = true;
+        assert_eq!(t.controller_bits(), 0x14);
+        t.death_star = false;
+        t.sector_short = true;
+        assert_eq!(t.controller_bits(), 0x30);
+        // The modules' own bits stay beside them.
+        let controller = Controller {
+            flags: NO_SITE | 1,
+            ..Controller::default()
+        };
+        assert_eq!(controller.flags_with(&t), NO_SITE | 1 | 0x30);
+        assert_eq!(controller.flags_with(&Tallies::default()), NO_SITE | 1);
+        // A bit both hold stays set.
+        let both = Controller {
+            flags: 0x20,
+            ..Controller::default()
+        };
+        assert_eq!(both.flags_with(&t), 0x30);
     }
 
     #[test]
