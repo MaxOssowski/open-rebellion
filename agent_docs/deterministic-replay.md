@@ -203,9 +203,11 @@ synthetic data and run in normal repository test passes.
 
 F-011B4 proves replay-executor equivalence for one 25-tick campaign, and the
 sweep extends it to three seeds over 200 days, both AI schedules and one
-battle on each combat engine. Still open: the interactive app's other day
-work is not the shared `close_simulation_day` (F-012: the day's systems are
-written twice); player commands from the app (orders, missions, production)
+battle on each combat engine. The app and the runner now share one day
+(F-012), checked natively by
+`the_app_s_day_with_its_presentation_matches_the_headless_runner`; the sweep
+runs that day's AI passes spread in WASM but not the app's own presentation
+host. Still open: player commands from the app (orders, missions, production)
 have no replay command, so no app session can be replayed; a played tactical
 battle has no recorded command stream; and the sweep has run on Linux
 x86_64 and Chromium 157 only (macOS, other browsers and other CPUs are

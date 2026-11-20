@@ -642,7 +642,7 @@ would tune around known simulation feedback defects.
   2026-11-20: the `sweep-v1` gate matches native and WASM on seeds 1-3 over
   200 days with the AI passes burst and spread, and on one staged battle on
   each combat engine (`portable_math` fixed a tactical `f32` divergence).
-  Open: the app's remaining day work and player commands, played tactical
+  Open: the app's player commands, played tactical
   battles, and automatic = tactical, which are different engines
   (`deterministic-replay.md`).
 
