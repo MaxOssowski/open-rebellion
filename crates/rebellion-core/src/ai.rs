@@ -2165,12 +2165,16 @@ impl AISystem {
             .target_system
             .and_then(|t| galaxy.system(t))
             .map(|r| r.values[29]);
-        let (team, decoys) = planner.refill(
-            (p.kind, strategy_subtype(p.kind)),
-            p.team.len(),
-            p.decoys.len(),
-            defense,
-        );
+        let (team, decoys) = {
+            let near = nearness(world, galaxy, p.staging);
+            planner.refill_near(
+                (p.kind, strategy_subtype(p.kind)),
+                (p.team.len(), p.decoys.len()),
+                defense,
+                near.as_ref()
+                    .map(|f| f as &dyn Fn(crate::missions::MissionMember) -> Option<i32>),
+            )
+        };
         p.team.extend(team);
         p.decoys.extend(decoys);
         if p.standing {
@@ -4347,7 +4351,14 @@ fn sector_cycle(
     }
     let class = (p.kind, p.subtype);
     let defense = galaxy.system(target).map(|r| r.values[29]);
-    let (team, decoys) = planner.refill(class, p.team.len(), p.decoys.len(), defense);
+    let near = nearness(world, galaxy, Some(staging));
+    let (team, decoys) = planner.refill_near(
+        class,
+        (p.team.len(), p.decoys.len()),
+        defense,
+        near.as_ref()
+            .map(|f| f as &dyn Fn(crate::missions::MissionMember) -> Option<i32>),
+    );
     p.team.extend(team);
     p.decoys.extend(decoys);
     let limit = decoy_limit(p.kind, p.subtype, defense);
@@ -4389,6 +4400,24 @@ fn sector_cycle(
             target_object: p.target_object,
         });
     }
+}
+
+/// The nearness query's key (`FUN_00403750`) from the gathering place
+/// `place` (`+0x38`): a member's squared map distance (`FUN_0041b7b0` over
+/// the system records' `+0x34`) from its system, its location walked up to
+/// a system (`FUN_00403c20`). None while the place is no system with a
+/// record, when the query does not join.
+fn nearness<'g>(
+    world: &'g GameWorld,
+    galaxy: &'g crate::ai_records::Galaxy,
+    place: Option<SystemKey>,
+) -> Option<impl Fn(crate::missions::MissionMember) -> Option<i32> + 'g> {
+    let here = galaxy.system(place?)?.position;
+    Some(move |m| {
+        let system = crate::ai_module_c::located(world, m)?;
+        let there = galaxy.system(system)?.position;
+        Some(crate::ai_records::squared_distance(there, here))
+    })
 }
 
 /// State 3 of a sector planner's mission planner (`FUN_004bdcd0`): its
@@ -10171,6 +10200,32 @@ mod tests {
         assert!(state.mission_planners[0].team.is_empty());
         assert!(state.mission_planners[0].decoys.is_empty());
         assert_eq!(state.mission_planners[0].staging, Some(staging));
+    }
+
+    #[test]
+    fn the_nearness_key_is_the_squared_map_distance_from_the_gathering_place() {
+        // FUN_00403750: with +0x38 a system that has a record, each
+        // member's system (FUN_00403c20 walks its location up to one) is
+        // keyed by the squared difference of the records' +0x34 map
+        // positions (FUN_0041b7b0); a member with no system has no key.
+        let (mut world, home, rebels, _) = recon_world(0, true);
+        let state = AIState::new(AiFaction::Empire);
+        let galaxy = galaxy_of(&state, &world);
+        let spy = add_commando(&mut world, false, 90, 0);
+        let MissionMember::SpecialForce(key) = spy else {
+            unreachable!()
+        };
+        world.systems[home].special_forces.push(key);
+        let lost = add_commando(&mut world, false, 90, 0);
+        let position = |s| galaxy.system(s).unwrap().position;
+        let near = nearness(&world, &galaxy, Some(rebels[0])).unwrap();
+        let expected = crate::ai_records::squared_distance(position(home), position(rebels[0]));
+        assert!(expected > 0);
+        assert_eq!(near(spy), Some(expected));
+        assert_eq!(near(lost), None);
+        let here = nearness(&world, &galaxy, Some(home)).unwrap();
+        assert_eq!(here(spy), Some(0));
+        assert!(nearness(&world, &galaxy, None).is_none());
     }
 
     fn ended(mission_id: u64) -> crate::missions::MissionEnded {

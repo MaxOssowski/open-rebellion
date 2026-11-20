@@ -8,11 +8,10 @@
 //! (`FUN_00403460`), ranks the hits, and takes the best (`FUN_004357b0`)
 //! until its team, then its decoy list, is full.
 //!
-//! port: the original planner runs one state per tick (`FUN_004bced0`) and
-//! re-enters its selectors on later cycles. The port plans in one cycle, so
-//! the target system (`+0x38`, set in state 6 after the first cycle's
-//! selectors) is unset while the selectors run and the nearness query
-//! (`FUN_00403750`) never joins.
+//! The planners live across cycles (`ai.rs`, `MissionPlanner`), and the
+//! selectors re-run each cycle (`Planner::refill`). Once a cycle has set the
+//! gathering place (`+0x38`), the nearness query (`FUN_00403750`) joins the
+//! selectors that call it (`Planner::refill_near`).
 
 use std::collections::HashSet;
 
@@ -189,6 +188,10 @@ struct Query {
 struct Selectors {
     team: &'static [Query],
     team_size: usize,
+    /// Whether the team selector joins the nearness query
+    /// (`FUN_00403750`) while the gathering place `+0x38` is a system.
+    /// Every decoy selector joins it.
+    team_near: bool,
     /// The decoy query and its cap; `None` for a class that takes no decoys.
     decoys: Option<(Query, DecoyCap)>,
 }
@@ -320,9 +323,22 @@ fn selectors(kind: MissionKind, subtype: u32) -> Option<Selectors> {
         MissionKind::TroopTrainingResearch => (TROOP_RESEARCH, 1, None),
         MissionKind::FacilityDesignResearch => (FACILITY_RESEARCH, 1, None),
     };
+    // The team selectors that call FUN_00403750: FUN_00480f30,
+    // FUN_004808c0, FUN_00482ce0, FUN_0047d520, FUN_0047f790 and
+    // FUN_0047f320. FUN_004815a0, FUN_0047db40, FUN_0047ff90, FUN_0047cee0,
+    // FUN_0047e270, FUN_00483290, FUN_00482180 and the research selectors
+    // do not.
+    let team_near = matches!(
+        kind,
+        MissionKind::Espionage
+            | MissionKind::Assassination
+            | MissionKind::Sabotage
+            | MissionKind::Reconnaissance
+    ) || (kind == MissionKind::Abduction && subtype == 4);
     Some(Selectors {
         team,
         team_size,
+        team_near,
         decoys,
     })
 }
@@ -477,7 +493,7 @@ impl<'a> Planner<'a> {
     /// its best candidate, which the planner then holds.
     pub(crate) fn pick(&mut self, kind: MissionKind) -> Option<MissionMember> {
         let selectors = selectors(kind, 0)?;
-        let index = *self.select(selectors.team, 1).first()?;
+        let index = *self.select(selectors.team, 1, None).first()?;
         let member = self.records[index].member;
         self.hold(member);
         Some(member)
@@ -594,24 +610,49 @@ impl<'a> Planner<'a> {
     ///
     /// `defense` is `v[29]` of the record of the target the planner holds
     /// (`+0x34`), for the defense cap.
+    #[cfg(test)]
     pub(crate) fn refill(
         &mut self,
-        (kind, subtype): (MissionKind, u32),
+        class: (MissionKind, u32),
         team: usize,
         decoys: usize,
         defense: Option<i32>,
     ) -> (Vec<MissionMember>, Vec<MissionMember>) {
+        self.refill_near(class, (team, decoys), defense, None)
+    }
+
+    /// States 3 and 4 (`refill`, above) with the nearness query
+    /// (`FUN_00403750`, order 2)
+    /// joined while the planner's gathering place `+0x38` is a system:
+    /// `near` keys a member by the squared distance of its system (its
+    /// location walked up to a system, `FUN_00403c20`) to that place, and
+    /// a member with none is left out of the list, so the pick
+    /// (`FUN_004357b0`) passes it over. The decoy selectors and some team
+    /// selectors join it (`Selectors::team_near`); the list's masks are
+    /// the selector's own query's, with no skill bound.
+    pub(crate) fn refill_near(
+        &mut self,
+        (kind, subtype): (MissionKind, u32),
+        (team, decoys): (usize, usize),
+        defense: Option<i32>,
+        near: Option<&dyn Fn(MissionMember) -> Option<i32>>,
+    ) -> (Vec<MissionMember>, Vec<MissionMember>) {
         let Some(selectors) = selectors(kind, subtype) else {
             return (Vec::new(), Vec::new());
         };
-        let new_team = self.select(selectors.team, selectors.team_size.saturating_sub(team));
+        let team_near = near.filter(|_| selectors.team_near);
+        let new_team = self.select(
+            selectors.team,
+            selectors.team_size.saturating_sub(team),
+            team_near,
+        );
         let cap = match selectors.decoys {
             Some((_, DecoyCap::Defense)) => defense_cap(defense),
             Some((_, DecoyCap::Fixed(cap))) => cap,
             None => 0,
         };
         let new_decoys = match selectors.decoys {
-            Some((query, _)) => self.select(&[query], cap.saturating_sub(decoys)),
+            Some((query, _)) => self.select(&[query], cap.saturating_sub(decoys), near),
             None => Vec::new(),
         };
         let members = |picked: Vec<usize>, records: &mut [AgentRecord]| -> Vec<MissionMember> {
@@ -631,11 +672,37 @@ impl<'a> Planner<'a> {
     /// Run `queries` and take their best common hit until `size` are taken
     /// (`FUN_004357b0` in the selector loop). A taken record loses
     /// `UNASSIGNED`.
-    fn select(&mut self, queries: &[Query], size: usize) -> Vec<usize> {
+    fn select(
+        &mut self,
+        queries: &[Query],
+        size: usize,
+        near: Option<&dyn Fn(MissionMember) -> Option<i32>>,
+    ) -> Vec<usize> {
         let mut lists: Vec<Vec<usize>> = queries
             .iter()
             .map(|q| ranked(&self.records, *q, &mut self.rng))
             .collect();
+        if let (Some(near), Some(q)) = (near, queries.first()) {
+            let keyed: Vec<(usize, i32)> = self
+                .records
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| {
+                    !r.sent
+                        && r.flags & q.req_flags == q.req_flags
+                        && r.flags & q.forbid_flags == 0
+                        && r.caps & q.req_caps == q.req_caps
+                        && r.caps & q.forbid_caps == 0
+                })
+                .filter_map(|(i, r)| near(r.member).map(|d| (i, d)))
+                .collect();
+            let rng = &mut self.rng;
+            lists.push(crate::ai_records::ranked(
+                keyed,
+                crate::ai_records::Order::Descending,
+                &mut || rng.draw(9) < 5,
+            ));
+        }
         let mut taken = Vec::new();
         while taken.len() < size {
             let Some(best) = pop_best(&mut lists) else {
@@ -1134,6 +1201,85 @@ mod tests {
         // Without the target's record, no decoys.
         let (_, decoys) = planner(&world).refill((MissionKind::Espionage, 0), 0, 0, None);
         assert!(decoys.is_empty());
+    }
+
+    #[test]
+    fn the_nearness_query_joins_the_selectors_that_call_it() {
+        // FUN_00480f30 joins FUN_00403750 (order 2) while +0x38 is a
+        // system: the pick (FUN_004357b0) sums each candidate's rank in the
+        // espionage list and in the nearness list, the earliest of equal
+        // sums winning, and a candidate with no system is in no nearness
+        // list, so it goes. FUN_004815a0 (Diplomacy) never joins it.
+        let mut world = world();
+        let spies: Vec<_> = (0..2).map(|i| unit(&mut world, 90 - i * 30, 0)).collect();
+        let distance = |far: MissionMember| {
+            move |m: MissionMember| Some(if m == far { 100 } else { 0 })
+        };
+        // Without the query: the better spy.
+        let (team, _) = planner(&world).refill((MissionKind::Espionage, 6), 0, 0, Some(0));
+        assert_eq!(team, spies[0..1]);
+        // The better one far, the other near: equal sums, the earlier in
+        // the espionage list (the lower skill) wins.
+        let far = distance(spies[0]);
+        let (team, _) = planner(&world).refill_near(
+            (MissionKind::Espionage, 6),
+            (0, 0),
+            Some(0),
+            Some(&far),
+        );
+        assert_eq!(team, spies[1..2]);
+        // The better one has no system: it is passed over.
+        let nowhere = |m: MissionMember| (m != spies[0]).then_some(0);
+        let (team, _) = planner(&world).refill_near(
+            (MissionKind::Espionage, 6),
+            (0, 0),
+            Some(0),
+            Some(&nowhere),
+        );
+        assert_eq!(team, spies[1..2]);
+        // The decoys of the sector Espionage class join it too.
+        let (_, decoys) = planner(&world).refill_near(
+            (MissionKind::Espionage, 0),
+            (2, 0),
+            Some(0),
+            Some(&nowhere),
+        );
+        assert_eq!(decoys, spies[1..2]);
+        // FUN_00482ce0 (Abduction subtype 4) joins it; FUN_00483290
+        // (Abduction of another subtype) does not.
+        let mut camp = GameWorld::default();
+        let fighters: Vec<_> = (0..2).map(|i| unit(&mut camp, 0, 90 - i * 30)).collect();
+        let shunned = |m: MissionMember| (m != fighters[0]).then_some(0);
+        let (team, _) = planner(&camp).refill_near(
+            (MissionKind::Abduction, 4),
+            (0, 0),
+            Some(0),
+            Some(&shunned),
+        );
+        assert_eq!(team, fighters[1..2]);
+        let (team, _) = planner(&camp).refill_near(
+            (MissionKind::Abduction, 0),
+            (0, 0),
+            Some(0),
+            Some(&shunned),
+        );
+        assert_eq!(team, fighters);
+        // Diplomacy's selector does not.
+        let diplomats: Vec<_> = (0..2)
+            .map(|i| {
+                agent(&mut world, 0x350 + i, |c| {
+                    c.diplomacy = pair(90 - i * 10);
+                })
+            })
+            .collect();
+        let shun = |m: MissionMember| (m != diplomats[0]).then_some(0);
+        let (team, _) = planner(&world).refill_near(
+            (MissionKind::Diplomacy, 0),
+            (0, 0),
+            Some(0),
+            Some(&shun),
+        );
+        assert_eq!(team, diplomats[0..1]);
     }
 
     #[test]

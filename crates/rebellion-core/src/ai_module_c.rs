@@ -856,7 +856,7 @@ fn member(p: &mut CommandPlanner, io: &mut InputsC<'_, '_>) -> bool {
 /// The system a member is at: the planet it stands on, else its fleet's
 /// system while the fleet stands (`FUN_00403750` walks the location up to
 /// a system).
-fn located(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
+pub(crate) fn located(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
     standing_system(world, member).or_else(|| {
         let c = world.characters.get(member.character()?)?;
         let fleet = world.fleets.get(c.current_fleet?)?;
