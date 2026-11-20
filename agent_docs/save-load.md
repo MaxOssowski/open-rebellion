@@ -175,9 +175,9 @@ store `saves`), through `rebellionSaveStore` in `web/gl.js`:
 - Game Options holds the window (`GameOptionsState::save_in_flight`) until
   the commit settles, then shows the original's message: REBDLOG 0x1217
   "Selected Game Saved Successfully" or 0x1219 "Selected Game Failed To
-  Save" (`FUN_00408240`). On `QuotaExceededError` the port also writes
-  its cause on the window's error line (port: the original has no
-  disk-full string). A corrupt save keeps the existing behaviour: an
+  Save" (`FUN_00408240`). A `QuotaExceededError` shows 0x1219 like
+  any other failure (the original has no disk-full string); its cause goes
+  to the console only. A corrupt save keeps the existing behaviour: an
   unreadable header leaves its row empty (`FUN_00415cd0`), a corrupt body
   fails its load on the error line.
 - On the first load, save entries an older build left in `localStorage`

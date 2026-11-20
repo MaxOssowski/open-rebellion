@@ -3,7 +3,7 @@
 // back with its fingerprint; a save an older build left in localStorage
 // moves into IndexedDB on the next load and loads; a save over a full
 // browser quota shows "Selected Game Failed To Save" (FUN_00408240, REBDLOG
-// 0x1219) and the port's cause line, and leaves the stored slot as it was.
+// 0x1219) alone, logs its cause, and leaves the stored slot as it was.
 //
 // Serve a production WASM build with its runtime pack first:
 //   SAVE_TEST_URL=http://127.0.0.1:8791 CHROMIUM_PATH=/usr/bin/chromium \
@@ -68,6 +68,19 @@ const toMainMenu = async () => {
 };
 // Pixels the save message (REBDLOG 10622, over the window's middle) changes
 // against `closed`, a capture of the window without it.
+// Pixels changed in the strip under the window, where the port writes
+// its error line (game_options.rs, logical y 440).
+const stripDiff = async closed => {
+  const shot = PNG.sync.read(await page.screenshot());
+  let count = 0;
+  for (let y = 880; y < 920; y++) for (let x = 40; x < 1240; x++) {
+    const i = (y * shot.width + x) * 4;
+    const d = Math.abs(shot.data[i] - closed.data[i]) + Math.abs(shot.data[i + 1] - closed.data[i + 1])
+      + Math.abs(shot.data[i + 2] - closed.data[i + 2]);
+    if (d > 90) count++;
+  }
+  return count;
+};
 const dialogDiff = async closed => {
   const shot = PNG.sync.read(await page.screenshot());
   let count = 0;
@@ -155,8 +168,9 @@ try {
   await page.waitForTimeout(1500);
   check('a localStorage save moves into IndexedDB on load and loads');
 
-  // 4. A full quota: the save fails, shows the failed message and the
-  // cause, and the stored slot stays as it was.
+  // 4. A full quota: the save fails and shows the failed message alone
+  // (the original has no disk-full string; the cause goes to the console),
+  // and the stored slot stays as it was.
   const before = await indexedDb();
   const cdp = await context.newCDPSession(page);
   // A one-byte quota: the origin's storage is full (Chromium enforces it
@@ -179,6 +193,8 @@ try {
   assert.ok(consoleLog.some(line => line.includes('QuotaExceededError')), 'IndexedDB refused the write for its quota');
   const failedDiff = await dialogDiff(closed);
   assert.ok(failedDiff > 40000, `the failed message shows (${failedDiff} pixels)`);
+  const errorLine = await stripDiff(closed);
+  assert.ok(errorLine < 50, `no line under the window (${errorLine} pixels changed)`);
   assert.deepEqual(await indexedDb(), before, 'the failed save leaves IndexedDB as it was');
   assert.deepEqual(
     await page.evaluate(() => rebellionSaveStore.entries()),
@@ -186,7 +202,7 @@ try {
     'the page copy rolls back to what IndexedDB holds',
   );
   assert.ok(!Object.keys(before).some(key => /_1$/.test(key)), 'the second slot was empty');
-  check('a save over the quota shows Failed To Save and its cause, and the slot stays empty');
+  check('a save over the quota shows Failed To Save alone, logs QuotaExceededError, and the slot stays empty');
   await screenshot('06-quota-row-restored');
   await click(637, 600);
   await screenshot('06-after-failed-ok');

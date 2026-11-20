@@ -760,18 +760,13 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
         .collect()
 }
 
-/// The line under the Game Options window after the browser refused a
-/// save for lack of space. port: the original has only "Selected Game
-/// Failed To Save" (`FUN_00408240`, REBDLOG 0x1219), which the window
-/// still shows; a disk-full cause has no string of its own there.
-const SAVE_QUOTA_MESSAGE: &str =
-    "Browser storage is full. Free some space for this site, then save again.";
-
 /// Settles the Game Options save whose commit was `status`: once it is no
 /// longer pending the rows show what is stored and the window shows
 /// `FUN_00408240`'s message, "Selected Game Saved Successfully" or
 /// "Selected Game Failed To Save". Returns the slot and whether it saved.
 /// A native save settles at once; a browser one when IndexedDB answers.
+/// The original has no string for a full disk, so a quota failure shows
+/// 0x1219 like any other and its cause goes to the log only.
 fn settle_game_options_save(
     state: &mut GameOptionsState,
     save_slots: &mut Vec<rebellion_render::SaveSlotInfo>,
@@ -795,9 +790,6 @@ fn settle_game_options_save(
         state.saved_this_visit = true;
     } else {
         macroquad::logging::warn!("[save] slot={} commit failed: {:?}", slot, status);
-        if status == WriteStatus::QuotaExceeded {
-            state.error = Some(SAVE_QUOTA_MESSAGE.to_owned());
-        }
     }
     Some((slot, saved))
 }
@@ -17103,13 +17095,14 @@ mod options_save_tests {
     }
 
     #[test]
-    fn a_save_over_the_quota_shows_the_failed_message_and_its_cause() {
-        // FUN_00408240: REBDLOG 0x1219 "Selected Game Failed To Save".
+    fn a_save_over_the_quota_shows_only_the_failed_message() {
+        // FUN_00408240: REBDLOG 0x1219 "Selected Game Failed To Save"; the
+        // original has no disk-full string, so no other line is written.
         let (state, settled) = settle(WriteStatus::QuotaExceeded);
         assert_eq!(settled, Some((3, false)));
         assert_eq!(state.saved_notice, Some(false));
         assert!(!state.saved_this_visit);
-        assert_eq!(state.error.as_deref(), Some(super::SAVE_QUOTA_MESSAGE));
+        assert_eq!(state.error.as_deref(), Some("stale"));
     }
 
     #[test]
