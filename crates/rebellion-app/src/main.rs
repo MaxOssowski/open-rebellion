@@ -4147,6 +4147,12 @@ async fn main() {
                     advisor_mission_result(&mut advisor_state, &kind_name, success);
                 }
             }
+            // Destroyed 0x302 after the reports and their
+            // effects (FUN_0047ae50).
+            ai_state.note_missions_ended(&mission_advance.ended, &world);
+            if let Some(second_ai) = secondary_ai_state.as_mut() {
+                second_ai.note_missions_ended(&mission_advance.ended, &world);
+            }
 
             // ── Character escapes ────────────────────────────────────────────
             // Each captive draws at most an attempt and its next delay.

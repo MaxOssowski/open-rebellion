@@ -829,6 +829,20 @@ fn records(
     records
 }
 
+/// What the Destroyed hook (`FUN_0047ae50`) asks of a held member: its
+/// record exists ([`records`] keeps every character not killed and every
+/// special force) and lacks `+0x30 & 0x50`, a prisoner ([`PRISONER`]) or
+/// injured ([`INJURED`]) character.
+pub(crate) fn fit_to_keep(world: &GameWorld, member: MissionMember) -> bool {
+    match member {
+        MissionMember::Character(key) => world
+            .characters
+            .get(key)
+            .is_some_and(|c| !c.is_killed && !c.is_captive && c.injury == 0),
+        MissionMember::SpecialForce(key) => world.special_forces.contains_key(key),
+    }
+}
+
 /// The system an object stands at, when its location (`+0x38`) is a
 /// system rather than a fleet.
 pub(crate) fn standing_system(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {

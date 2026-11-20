@@ -680,6 +680,103 @@ pub struct MissionPlanner {
     pub subtype: u32,
 }
 
+/// Planner `+0x20` bit `0x80`: a failure passed slot `+0x24`
+/// (`FUN_0047ae20`). The Destroyed hook (`FUN_0047ae50`) then lets the
+/// whole team go and empties the gathering place `+0x38`.
+pub const PAST_FAILURE_LIMIT: u32 = 0x80;
+/// Planner `+0x20` bit `0x40000000`: check the target (`FUN_0047c890`).
+const REPORT_CHECK: u32 = 0x4000_0000;
+/// Planner `+0x20` bit `0x20000000`: abort the mission (`FUN_0047c890`).
+const REPORT_ABORT: u32 = 0x2000_0000;
+
+impl MissionPlanner {
+    /// Slot `+0x24` of a planner whose slot `+0x30` counts failures with
+    /// `FUN_0047ae20`: Diplomacy and Subdue 5 (`FUN_00404c20`), Incite 10
+    /// (`FUN_004820c0`) through `FUN_0047c890`; Recruitment 1000
+    /// (`FUN_00480df0`) through `FUN_0047dad0`; a sector planner's
+    /// Espionage (`FUN_00480860`) and Sabotage (`FUN_0047d4d0`) 10, its
+    /// Abduction and Assassination (class `0x65a9b0`) 5. Reconnaissance
+    /// (`FUN_0047f2c0`, `FUN_0047f720`) and the standing Espionage
+    /// (`FUN_00480eb0`) count nothing.
+    fn failure_limit(&self) -> Option<u32> {
+        if self.owner != 0 {
+            match self.kind {
+                MissionKind::Reconnaissance => None,
+                MissionKind::Abduction | MissionKind::Assassination => Some(5),
+                _ => Some(10),
+            }
+        } else if self.standing {
+            match self.kind {
+                MissionKind::Diplomacy | MissionKind::SubdueUprising => Some(5),
+                MissionKind::InciteUprising => Some(10),
+                MissionKind::Recruitment => Some(1000),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    /// The part of the Mission Report (slot `+0x30`) that the original
+    /// runs when the notification `0x1f0` arrives, before a later
+    /// Destroyed (`0x302`) reads it: a success clears the count `+0x6c`; a
+    /// failure counts against slot `+0x24` (`FUN_0047ae20`), past which
+    /// the count clears and `+0x20` gains [`PAST_FAILURE_LIMIT`].
+    /// Diplomacy, Subdue and Incite (`FUN_0047c890`) then set the abort
+    /// past the limit, else the check. The rest of each report reads the
+    /// galaxy and runs with the AI ([`AISystem::mission_planner_reports`]).
+    fn note_report(&mut self, outcome: crate::missions::MissionOutcome) {
+        use crate::missions::MissionOutcome;
+        self.report = Some(outcome);
+        if !self.standing && self.owner == 0 {
+            return;
+        }
+        let passed = match outcome {
+            MissionOutcome::Success => {
+                self.failures = 0;
+                false
+            }
+            MissionOutcome::Failure => self.failure_limit().is_some_and(|limit| {
+                self.failures = self.failures.saturating_add(1);
+                let passed = self.failures > limit;
+                if passed {
+                    self.failures = 0;
+                    self.pending |= PAST_FAILURE_LIMIT;
+                }
+                passed
+            }),
+        };
+        if self.standing
+            && matches!(
+                self.kind,
+                MissionKind::Diplomacy | MissionKind::SubdueUprising | MissionKind::InciteUprising
+            )
+        {
+            self.pending |= if passed { REPORT_ABORT } else { REPORT_CHECK };
+        }
+    }
+
+    /// The Destroyed hook (`FUN_0047ae50`) when the planner's mission ends:
+    /// `+0x20` loses `0xe0000000`; each team member whose record is gone,
+    /// a prisoner or injured (record `+0x30 & 0x50`), or every member when
+    /// `+0x20` has [`PAST_FAILURE_LIMIT`], is let go (`FUN_0047b870`); with
+    /// that bit the gathering place `+0x38` empties (`FUN_004ece80`) and the
+    /// bit clears; each decoy whose record is gone or has `0x50` is let go
+    /// (`FUN_0047b8e0`).
+    fn mission_destroyed(&mut self, world: &GameWorld) {
+        self.pending &= 0x1fff_ffff;
+        let past = self.pending & PAST_FAILURE_LIMIT != 0;
+        self.team
+            .retain(|&m| !past && crate::mission_planning::fit_to_keep(world, m));
+        if past {
+            self.staging = None;
+        }
+        self.pending &= !PAST_FAILURE_LIMIT;
+        self.decoys
+            .retain(|&m| crate::mission_planning::fit_to_keep(world, m));
+    }
+}
+
 /// State 6 (`FUN_004bd0a0`): the planner's gathering place `+0x38`, a
 /// system whose record is the side's (`+0x30` bit 1) and not blockaded
 /// (`+0x28` bit 2). The first that gives one:
@@ -831,8 +928,41 @@ impl AIState {
             }
             for p in &mut self.mission_planners {
                 if p.mission == Some(result.mission_id) {
-                    p.report = Some(result.outcome);
+                    p.note_report(result.outcome);
                 }
+            }
+        }
+    }
+
+    /// Destroyed `0x302` of a mission (slot `+0x16c`, `FUN_00418db0`):
+    /// for a mission (family `0x40..0x7f`) `FUN_0042f7d0` finds the first
+    /// planner whose `+0x28` is that mission (`FUN_0042f700`, the list
+    /// `FUN_0042f7f0` also searches for the Mission Report) and runs
+    /// `FUN_0047ae50` on it ([`MissionPlanner::mission_destroyed`]). The
+    /// port hears each mission that reached its end phase (`0xb`).
+    ///
+    /// A research planner's designer goes the same way when captured,
+    /// injured or killed. port: a research planner keeps no `+0x20` bit
+    /// `0x80` (its slot `+0x30` is `FUN_0047c890`, slot `+0x24` 1000), so
+    /// its whole-team release after a 1001st failure is not ported; the
+    /// bit would need a save layout change.
+    pub fn note_missions_ended(
+        &mut self,
+        ended: &[crate::missions::MissionEnded],
+        world: &GameWorld,
+    ) {
+        for end in ended {
+            let id = Some(end.mission_id);
+            if let Some(p) = self.mission_planners.iter_mut().find(|p| p.mission == id) {
+                p.mission_destroyed(world);
+            } else if let Some(p) = self.research_planners.iter_mut().find(|p| p.mission == id) {
+                let fit = |c| {
+                    crate::mission_planning::fit_to_keep(
+                        world,
+                        crate::missions::MissionMember::Character(c),
+                    )
+                };
+                p.member = p.member.filter(|&c| fit(c));
             }
         }
     }
@@ -1950,8 +2080,8 @@ impl AISystem {
         actions: &mut Vec<AIAction>,
     ) {
         use crate::missions::MissionOutcome;
-        const CHECK: u32 = 0x4000_0000;
-        const ABORT: u32 = 0x2000_0000;
+        const CHECK: u32 = REPORT_CHECK;
+        const ABORT: u32 = REPORT_ABORT;
         let seen = &mut state.seen;
         for p in state.mission_planners.iter_mut().filter(|p| p.owner != 0) {
             sector_report(p, galaxy, seen, (missions, day));
@@ -1960,7 +2090,6 @@ impl AISystem {
             match (p.kind, p.report) {
                 (MissionKind::Recruitment, Some(MissionOutcome::Success)) => {
                     p.report = None;
-                    p.failures = 0;
                     let own = p
                         .target_system
                         .and_then(|t| galaxy.system(t))
@@ -1971,10 +2100,6 @@ impl AISystem {
                 }
                 (MissionKind::Recruitment, Some(MissionOutcome::Failure)) => {
                     p.report = None;
-                    p.failures = p.failures.saturating_add(1);
-                    if p.failures > 1000 {
-                        p.failures = 0;
-                    }
                 }
                 (MissionKind::Reconnaissance | MissionKind::Espionage, Some(outcome)) => {
                     p.report = None;
@@ -1982,7 +2107,6 @@ impl AISystem {
                         if let Some(t) = p.target_system.filter(|&t| galaxy.system(t).is_some()) {
                             seen.insert(t, day);
                         }
-                        p.failures = 0;
                     }
                     p.target_system = None;
                     if p.kind == MissionKind::Espionage {
@@ -1991,28 +2115,15 @@ impl AISystem {
                 }
                 _ => {}
             }
-            let (limit, bit) = match p.kind {
-                MissionKind::Diplomacy => (5, 0x40),
-                MissionKind::SubdueUprising => (5, 0x20),
-                MissionKind::InciteUprising => (10, 0x100),
+            let bit = match p.kind {
+                MissionKind::Diplomacy => 0x40,
+                MissionKind::SubdueUprising => 0x20,
+                MissionKind::InciteUprising => 0x100,
                 _ => continue,
             };
-            match p.report.take() {
-                Some(crate::missions::MissionOutcome::Failure) => {
-                    p.failures += 1;
-                    if p.failures > limit {
-                        p.failures = 0;
-                        p.pending |= ABORT;
-                    } else {
-                        p.pending |= CHECK;
-                    }
-                }
-                Some(crate::missions::MissionOutcome::Success) => {
-                    p.failures = 0;
-                    p.pending |= CHECK;
-                }
-                None => {}
-            }
+            // The count and the bits were set with the report
+            // (MissionPlanner::note_report).
+            p.report = None;
             if p.pending & (CHECK | ABORT) == 0 {
                 continue;
             }
@@ -4144,8 +4255,11 @@ fn nearest_sector_random_system(
 /// - either result runs `FUN_0047b950`, which clears `+0x20` `0x80000000`,
 ///   the bit its order's running mission keeps (result 0).
 ///
-/// port: `+0x20` `0x80`, which `FUN_0047ae20` sets past the count, is not
-/// kept; a mission that ends without a result frees the planner too.
+/// The count and `+0x20` `0x80` past it are kept when the report arrives
+/// ([`MissionPlanner::note_report`]); the Destroyed hook reads the bit
+/// ([`AIState::note_missions_ended`]).
+///
+/// port: a mission that ends without a result frees the planner too.
 fn sector_report(
     p: &mut MissionPlanner,
     galaxy: &crate::ai_records::Galaxy,
@@ -4155,26 +4269,13 @@ fn sector_report(
     use crate::missions::MissionOutcome;
     if let Some(outcome) = p.report.take() {
         p.mission = None;
-        match (p.kind, outcome) {
-            (MissionKind::Reconnaissance | MissionKind::Espionage, MissionOutcome::Success) => {
-                if let Some(t) = p.target_system.filter(|&t| galaxy.system(t).is_some()) {
-                    seen.insert(t, day);
-                }
-                p.failures = 0;
+        // The count was kept with the report (MissionPlanner::note_report).
+        if matches!(p.kind, MissionKind::Reconnaissance | MissionKind::Espionage)
+            && outcome == MissionOutcome::Success
+        {
+            if let Some(t) = p.target_system.filter(|&t| galaxy.system(t).is_some()) {
+                seen.insert(t, day);
             }
-            (MissionKind::Reconnaissance, MissionOutcome::Failure) => {}
-            (kind, MissionOutcome::Failure) => {
-                let limit = if matches!(kind, MissionKind::Abduction | MissionKind::Assassination) {
-                    5
-                } else {
-                    10
-                };
-                p.failures += 1;
-                if p.failures > limit {
-                    p.failures = 0;
-                }
-            }
-            (_, MissionOutcome::Success) => p.failures = 0,
         }
     }
     let running = p.mission.is_some_and(|id| {
@@ -5917,7 +6018,8 @@ mod tests {
         AISystem::mission_planner_reports(&mut state, &galaxy, (&ended, 1), &mut Vec::new());
         state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Success)]);
         AISystem::mission_planner_reports(&mut state, &galaxy, (&ended, 1), &mut Vec::new());
-        assert_eq!(state.mission_planners[1].pending, 0x6000_0000);
+        // The failure past the count also set +0x20 0x80 (FUN_0047ae20).
+        assert_eq!(state.mission_planners[1].pending, 0x6000_0080);
         let mut actions = Vec::new();
         AISystem::mission_planner_reports(&mut state, &galaxy, (&missions, 1), &mut actions);
         assert_eq!(aborted(&actions), vec![id]);
@@ -5958,7 +6060,10 @@ mod tests {
             MissionMember::Character(add_character(&mut GameWorld::default(), false, true, 0));
         state.mission_planners = vec![
             planner(1, MissionKind::Reconnaissance, scout),
-            planner(2, MissionKind::Espionage, spy),
+            MissionPlanner {
+                target_system: Some(rebels[1]),
+                ..planner(2, MissionKind::Espionage, spy)
+            },
             MissionPlanner {
                 target_system: Some(home),
                 staging: None,
@@ -5994,6 +6099,8 @@ mod tests {
             (None, Some(home), 0)
         );
         assert_eq!(state.seen.get(&rebels[0]), Some(&40));
+        // A failed Espionage marks nothing seen.
+        assert_eq!(state.seen.get(&rebels[1]), None);
         assert_eq!(
             (
                 espionage.target_system,
@@ -6016,18 +6123,22 @@ mod tests {
                 (&MissionState::new(), 41),
                 &mut Vec::new(),
             );
+            assert_eq!(state.mission_planners[2].report, None);
             (
                 state.mission_planners[2].staging,
                 state.mission_planners[2].failures,
+                state.mission_planners[2].pending,
             )
         };
         state.mission_planners[2].staging = None;
         state.mission_planners[2].target_system = Some(rebels[1]);
-        assert_eq!(read(&mut state, Success), (None, 0));
-        assert_eq!(read(&mut state, Failure), (None, 1));
+        // FUN_0047dad0 sets no check or abort; past the count
+        // FUN_0047ae20 sets +0x20 0x80.
+        assert_eq!(read(&mut state, Success), (None, 0, 0));
+        assert_eq!(read(&mut state, Failure), (None, 1, 0));
         state.mission_planners[2].failures = 999;
-        assert_eq!(read(&mut state, Failure), (None, 1000));
-        assert_eq!(read(&mut state, Failure), (None, 0));
+        assert_eq!(read(&mut state, Failure), (None, 1000, 0));
+        assert_eq!(read(&mut state, Failure), (None, 0, PAST_FAILURE_LIMIT));
     }
 
     #[test]
@@ -9687,6 +9798,148 @@ mod tests {
         assert!(state.mission_planners[0].decoys.is_empty());
     }
 
+    fn ended(mission_id: u64) -> crate::missions::MissionEnded {
+        crate::missions::MissionEnded {
+            mission_id,
+            kind: MissionKind::Sabotage,
+            faction: MissionFaction::Empire,
+            character: None,
+            target_system: SystemKey::default(),
+            end_code: 1,
+            tick: 9,
+            returning_to: None,
+        }
+    }
+
+    #[test]
+    fn a_mission_s_end_lets_its_captured_or_injured_members_go() {
+        // Destroyed 0x302 (slot +0x16c, FUN_00418db0 -> FUN_0042f7d0 ->
+        // FUN_0047ae50): the planner whose +0x28 is the mission lets go
+        // each member and decoy whose record is gone or has +0x30 0x50
+        // (prisoner 0x40, injured 0x10), keeps the rest and its gathering
+        // place, and clears +0x20 & 0xe0000000.
+        use crate::missions::MissionMember::Character as C;
+        let mut world = GameWorld::default();
+        let [held, hurt, well, dead, decoy_hurt, decoy_well] =
+            [0; 6].map(|_| add_character(&mut world, false, false, 0));
+        world.characters[held].is_captive = true;
+        world.characters[hurt].injury = 4;
+        world.characters[dead].is_killed = true;
+        world.characters[decoy_hurt].injury = 1;
+        let commando = add_commando(&mut world, false, 60, 0);
+        let staging = slotmap::SlotMap::<SystemKey, ()>::with_key().insert(());
+        let mut state = AIState::new(AiFaction::Empire);
+        let planner = MissionPlanner {
+            id: 1,
+            kind: MissionKind::Sabotage,
+            team: vec![C(held), C(hurt), C(well), C(dead), commando],
+            decoys: vec![C(decoy_hurt), C(decoy_well)],
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: Some(staging),
+            standing: false,
+            claimed: None,
+            sector: None,
+            mission: Some(5),
+            report: None,
+            failures: 3,
+            pending: 0xe000_0103,
+            owner: 7,
+            subtype: 0,
+        };
+        let other = MissionPlanner {
+            id: 2,
+            mission: Some(6),
+            ..planner.clone()
+        };
+        state.mission_planners = vec![planner, other.clone()];
+        state.note_missions_ended(&[ended(5)], &world);
+        let p = &state.mission_planners[0];
+        assert_eq!(p.team, vec![C(well), commando]);
+        assert_eq!(p.decoys, vec![C(decoy_well)]);
+        assert_eq!(
+            (p.staging, p.pending, p.failures),
+            (Some(staging), 0x103, 3)
+        );
+        // Another mission's planner is not touched.
+        assert_eq!(state.mission_planners[1], other);
+    }
+
+    #[test]
+    fn after_too_many_failures_a_mission_s_end_lets_the_whole_team_go() {
+        // FUN_0047ae20 sets +0x20 0x80 when a failure passes slot +0x24
+        // (5 for class 0x65a9b0's Assassination, FUN_00404c20); at the
+        // mission's Destroyed FUN_0047ae50 then lets every team member go,
+        // empties the gathering place +0x38 (0x47af26) and clears the bit.
+        // Decoys still go only for 0x50 (FUN_0047b8e0).
+        use crate::missions::MissionMember::Character as C;
+        use crate::missions::MissionOutcome::Failure;
+        let mut world = GameWorld::default();
+        let [a, b, decoy] = [0; 3].map(|_| add_character(&mut world, false, false, 0));
+        let staging = slotmap::SlotMap::<SystemKey, ()>::with_key().insert(());
+        let mut state = AIState::new(AiFaction::Empire);
+        state.mission_planners = vec![MissionPlanner {
+            id: 1,
+            kind: MissionKind::Assassination,
+            team: vec![C(a), C(b)],
+            decoys: vec![C(decoy)],
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: Some(staging),
+            standing: false,
+            claimed: None,
+            sector: None,
+            mission: Some(5),
+            report: None,
+            failures: 5,
+            pending: 0,
+            owner: 7,
+            subtype: 4,
+        }];
+        // The sixth failure and the end in the same step: the report comes
+        // first (0x1f0 at phase 10, 0x302 at the end phase).
+        state.note_mission_results(&[result(5, Failure)]);
+        assert_eq!(state.mission_planners[0].pending, PAST_FAILURE_LIMIT);
+        state.note_missions_ended(&[ended(5)], &world);
+        let p = &state.mission_planners[0];
+        assert!(p.team.is_empty());
+        assert_eq!(p.decoys, vec![C(decoy)]);
+        assert_eq!((p.staging, p.pending, p.failures), (None, 0, 0));
+    }
+
+    #[test]
+    fn a_research_mission_s_end_lets_a_captured_designer_go() {
+        // FUN_0042f700 searches the list that also holds the research
+        // planners (their Mission Report goes the same way, FUN_0042f7f0),
+        // and FUN_0047ae50 lets a prisoner go.
+        let mut world = GameWorld::default();
+        let [held, other] = [0; 2].map(|_| add_character(&mut world, false, false, 0));
+        world.characters[held].is_captive = true;
+        world.characters[other].is_captive = true;
+        let mut state = AIState::new(AiFaction::Empire);
+        let planner = |id, member, mission| ResearchPlanner {
+            id,
+            tech: TechType::Ship,
+            member: Some(member),
+            site: None,
+            target: None,
+            mission: Some(mission),
+            report: None,
+            failures: 0,
+        };
+        state.research_planners = vec![planner(1, held, 5), planner(2, other, 6)];
+        state.note_missions_ended(&[ended(5)], &world);
+        // Only the planner of the mission that ended lets its designer go.
+        let members: Vec<_> = state.research_planners.iter().map(|p| p.member).collect();
+        assert_eq!(members, vec![None, Some(other)]);
+    }
+
     #[test]
     fn a_sector_planner_s_report_marks_its_target_seen_and_counts_failures() {
         // FUN_0047f2c0, FUN_00480860: a success marks the target seen
@@ -9722,24 +9975,25 @@ mod tests {
         };
         let mut seen = HashMap::new();
         let mut p = planner(MissionKind::Espionage);
-        p.report = Some(Success);
+        p.note_report(Success);
         sector_report(&mut p, &galaxy, &mut seen, (&missions, 12));
         assert_eq!(seen.get(&rebels[0]), Some(&12));
         assert_eq!((p.failures, p.mission, p.report), (0, None, None));
         let fail = |kind, failures| {
             let mut p = planner(kind);
             p.failures = failures;
-            p.report = Some(Failure);
+            p.note_report(Failure);
             sector_report(&mut p, &galaxy, &mut HashMap::new(), (&missions, 12));
-            p.failures
+            (p.failures, p.pending)
         };
-        assert_eq!(fail(MissionKind::Sabotage, 9), 10);
-        assert_eq!(fail(MissionKind::Sabotage, 10), 0);
-        assert_eq!(fail(MissionKind::Assassination, 4), 5);
-        assert_eq!(fail(MissionKind::Assassination, 5), 0);
-        assert_eq!(fail(MissionKind::Reconnaissance, 4), 4);
+        // Past the count FUN_0047ae20 also sets +0x20 0x80.
+        assert_eq!(fail(MissionKind::Sabotage, 9), (10, 0));
+        assert_eq!(fail(MissionKind::Sabotage, 10), (0, 0x80));
+        assert_eq!(fail(MissionKind::Assassination, 4), (5, 0));
+        assert_eq!(fail(MissionKind::Assassination, 5), (0, 0x80));
+        assert_eq!(fail(MissionKind::Reconnaissance, 4), (4, 0));
         let mut p = planner(MissionKind::Sabotage);
-        p.report = Some(Success);
+        p.note_report(Success);
         sector_report(&mut p, &galaxy, &mut seen, (&missions, 13));
         assert_eq!(p.failures, 0);
         assert_eq!(seen.get(&rebels[0]), Some(&12));

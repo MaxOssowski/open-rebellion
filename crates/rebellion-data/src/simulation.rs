@@ -613,6 +613,12 @@ pub fn run_simulation_tick(
             }
         }
     }
+    // Destroyed 0x302 after the reports and their
+    // effects (FUN_0047ae50).
+    states.ai.note_missions_ended(&mission_advance.ended, world);
+    if let Some(ai2) = states.ai2.as_mut() {
+        ai2.note_missions_ended(&mission_advance.ended, world);
+    }
 
     // ── 5b. Character escapes ────────────────────────────────────────────
     // Each captive draws at most an attempt and its next delay.
