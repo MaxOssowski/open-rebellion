@@ -472,14 +472,6 @@ pub struct ReplayRecording {
     pub execution: ReplayExecutionResult,
 }
 
-/// Apply commands to a state and record a fingerprint after each command.
-///
-/// Command ticks and sequence numbers come from the runtime, not the caller.
-/// This makes the resulting artifact suitable for strict playback.
-///
-/// # Errors
-/// Returns an error if the initial environment, command execution, state
-/// fingerprinting, or recording validation fails.
 /// A day's driver for [`drive_days`]: the world, the states, the day's
 /// tick events and rolls, and the configuration.
 pub type DayDriver<'a> =
@@ -501,28 +493,25 @@ pub fn drive_days(
     days: u64,
     driver: &mut DayDriver<'_>,
 ) -> anyhow::Result<StateFingerprint> {
-    let mut runtime = ReplayRuntime::from_save_state(initial);
-    runtime.states.clock.set_speed(speed);
+    let mut runner = CampaignDayRunner::new(initial);
+    runner.apply(&ReplayCommand::SetSpeed { speed })?;
     if dual_ai {
-        runtime.apply_command(&ReplayCommand::ToggleDualAi)?;
+        runner.apply(&ReplayCommand::ToggleDualAi)?;
     }
     for _ in 0..days {
-        let tick = runtime.states.clock.tick + 1;
-        runtime.states.clock.tick = tick;
-        let rolls = (0..usize::from(REPLAY_ROLLS_PER_TICK))
-            .map(|_| runtime.sim_rng.gen::<f64>())
-            .collect::<Vec<_>>();
-        driver(
-            &mut runtime.world,
-            &mut runtime.states,
-            &[TickEvent { tick }],
-            &rolls,
-            &runtime.game_config,
-        );
+        runner.run_day_with(driver);
     }
-    compute_state_fingerprint(&runtime.snapshot())
+    runner.fingerprint()
 }
 
+/// Apply commands to a state and record a fingerprint after each command.
+///
+/// Command ticks and sequence numbers come from the runtime, not the caller.
+/// This makes the resulting artifact suitable for strict playback.
+///
+/// # Errors
+/// Returns an error if the initial environment, command execution, state
+/// fingerprinting, or recording validation fails.
 pub fn record_replay<I>(
     environment: ReplayEnvironment<'_>,
     initial_state: SaveState,
@@ -758,6 +747,146 @@ where
     Ok(())
 }
 
+/// How a day's AI passes run (`rebellion_core::ai_schedule`): all at once,
+/// as the headless runner and replays do, or one per sub-tick with the day's
+/// end after the last, as the interactive app does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiPassSchedule {
+    Burst,
+    Spread,
+}
+
+/// What one day of a [`CampaignDayRunner`] did.
+#[derive(Debug, Clone)]
+pub struct CampaignDay {
+    pub tick: u64,
+    /// Orders both AIs gave during the day.
+    pub ai_orders: u32,
+    /// The day's event records, in emission order.
+    pub events: Vec<rebellion_core::game_events::GameEventRecord>,
+}
+
+/// A replay runtime advanced one day at a time outside a replay artifact.
+///
+/// Each day draws the replay's fixed roll budget, so a day run here equals
+/// an `AdvanceTicks { count: 1 }` command when the schedule is
+/// [`AiPassSchedule::Burst`].
+pub struct CampaignDayRunner {
+    runtime: ReplayRuntime,
+}
+
+impl CampaignDayRunner {
+    #[must_use]
+    pub fn new(state: SaveState) -> Self {
+        Self {
+            runtime: ReplayRuntime::from_save_state(state),
+        }
+    }
+
+    /// Apply one replay command (advances run in bursts).
+    ///
+    /// # Errors
+    /// Returns an error if the command cannot apply, as a replay would.
+    pub fn apply(&mut self, command: &ReplayCommand) -> anyhow::Result<()> {
+        self.runtime.apply_command(command)
+    }
+
+    /// Run the next day through `driver`, with the day's tick and the rolls
+    /// the replay runner draws for it ([`drive_days`]).
+    pub fn run_day_with(&mut self, driver: &mut DayDriver<'_>) {
+        let (tick, rolls) = self.runtime.next_day();
+        let runtime = &mut self.runtime;
+        driver(
+            &mut runtime.world,
+            &mut runtime.states,
+            &[TickEvent { tick }],
+            &rolls,
+            &runtime.game_config,
+        );
+    }
+
+    /// Run the next day with its AI passes on `schedule`.
+    pub fn run_day(&mut self, schedule: AiPassSchedule) -> CampaignDay {
+        let (tick, rolls) = self.runtime.next_day();
+        let runtime = &mut self.runtime;
+        let tick_events = [TickEvent { tick }];
+        let events = match schedule {
+            AiPassSchedule::Burst => run_simulation_tick(
+                &mut runtime.world,
+                &mut runtime.states,
+                &tick_events,
+                &rolls,
+                tick,
+                &runtime.game_config,
+            ),
+            AiPassSchedule::Spread => {
+                let mut integrator = crate::integrator::PerceptionIntegrator::new(tick, tick);
+                crate::simulation::begin_simulation_day(
+                    &mut runtime.world,
+                    &mut runtime.states,
+                    &tick_events,
+                    &rolls,
+                    &runtime.game_config,
+                    &mut integrator,
+                );
+                let passes = runtime.states.ai_day.passes;
+                for upto in 1..=passes {
+                    crate::simulation::run_ai_passes(
+                        &mut runtime.world,
+                        &mut runtime.states,
+                        &runtime.game_config,
+                        &mut integrator,
+                        &mut crate::simulation::NoPresentation,
+                        upto,
+                    );
+                    debug_assert_eq!(runtime.states.ai_day.done, upto);
+                }
+                let cursor = runtime.states.ai_day.roll_cursor as usize;
+                crate::simulation::close_simulation_day(
+                    &mut runtime.world,
+                    &mut runtime.states,
+                    &mut crate::simulation::SliceRolls::at(&rolls, cursor),
+                    &mut integrator,
+                    &mut crate::simulation::NoPresentation,
+                );
+                integrator.finish()
+            }
+        };
+        let ai_orders = runtime.states.ai.orders_today
+            + runtime.states.ai2.as_ref().map_or(0, |ai| ai.orders_today);
+        CampaignDay {
+            tick,
+            ai_orders,
+            events,
+        }
+    }
+
+    /// The day's AI schedule (passes due and done).
+    #[must_use]
+    pub fn ai_day(&self) -> rebellion_core::ai_schedule::AiDay {
+        self.runtime.states.ai_day
+    }
+
+    #[must_use]
+    pub fn world(&self) -> &GameWorld {
+        &self.runtime.world
+    }
+
+    /// The galaxy, for fixtures that stage a situation before a day.
+    pub fn world_mut(&mut self) -> &mut GameWorld {
+        &mut self.runtime.world
+    }
+
+    /// The canonical save-state fingerprint of the current state.
+    ///
+    /// # Errors
+    /// Returns an error if the state cannot be encoded.
+    pub fn fingerprint(&self) -> anyhow::Result<StateFingerprint> {
+        compute_state_fingerprint(&self.runtime.snapshot())
+    }
+}
+
 struct ReplayRuntime {
     world: GameWorld,
     states: SimulationStates,
@@ -874,6 +1003,16 @@ impl ReplayRuntime {
             game_config,
             player_agent,
         }
+    }
+
+    /// Advance the clock one day and draw that day's fixed roll budget.
+    fn next_day(&mut self) -> (u64, Vec<f64>) {
+        let tick = self.states.clock.tick + 1;
+        self.states.clock.tick = tick;
+        let rolls = (0..usize::from(REPLAY_ROLLS_PER_TICK))
+            .map(|_| self.sim_rng.gen::<f64>())
+            .collect::<Vec<_>>();
+        (tick, rolls)
     }
 
     fn current_tick(&self) -> u64 {
@@ -1798,61 +1937,15 @@ mod tests {
         .contains("format-v1 limit"));
     }
 
-    /// Run `days` days of `runtime`, each day's AI passes in one burst (the
-    /// headless runner) or one per sub-tick with the day's end after the
-    /// last (the interactive game). Returns the AI orders counted.
-    fn run_days(runtime: &mut ReplayRuntime, days: u64, spread: bool) -> u32 {
+    /// Run `days` days of `runner`, each day's AI passes on `schedule`.
+    /// Returns the AI orders counted.
+    fn run_days(runner: &mut CampaignDayRunner, days: u64, schedule: AiPassSchedule) -> u32 {
         let mut orders = 0;
         for _ in 0..days {
-            let tick = runtime.states.clock.tick + 1;
-            runtime.states.clock.tick = tick;
-            let tick_events = [TickEvent { tick }];
-            let rolls = (0..usize::from(REPLAY_ROLLS_PER_TICK))
-                .map(|_| runtime.sim_rng.gen::<f64>())
-                .collect::<Vec<_>>();
-            if spread {
-                let mut integrator = crate::integrator::PerceptionIntegrator::new(tick, tick);
-                crate::simulation::begin_simulation_day(
-                    &mut runtime.world,
-                    &mut runtime.states,
-                    &tick_events,
-                    &rolls,
-                    &runtime.game_config,
-                    &mut integrator,
-                );
-                let passes = runtime.states.ai_day.passes;
-                for upto in 1..=passes {
-                    crate::simulation::run_ai_passes(
-                        &mut runtime.world,
-                        &mut runtime.states,
-                        &runtime.game_config,
-                        &mut integrator,
-                        &mut crate::simulation::NoPresentation,
-                        upto,
-                    );
-                    assert_eq!(runtime.states.ai_day.done, upto);
-                }
-                let cursor = runtime.states.ai_day.roll_cursor as usize;
-                crate::simulation::close_simulation_day(
-                    &mut runtime.world,
-                    &mut runtime.states,
-                    &mut crate::simulation::SliceRolls::at(&rolls, cursor),
-                    &mut integrator,
-                    &mut crate::simulation::NoPresentation,
-                );
-            } else {
-                run_simulation_tick(
-                    &mut runtime.world,
-                    &mut runtime.states,
-                    &tick_events,
-                    &rolls,
-                    tick,
-                    &runtime.game_config,
-                );
-            }
-            orders += runtime.states.ai.orders_today
-                + runtime.states.ai2.as_ref().map_or(0, |ai| ai.orders_today);
-            assert!(!runtime.states.ai_day.owes_close());
+            orders += runner.run_day(schedule).ai_orders;
+            let ai_day = runner.ai_day();
+            assert_eq!(ai_day.done, ai_day.passes);
+            assert!(!ai_day.owes_close());
         }
         orders
     }
@@ -1872,21 +1965,22 @@ mod tests {
         )
         .expect("load original campaign data");
         let initial = crate::replay_fixture::seed42_initial_state(world).unwrap();
-        let runtime = |state: SaveState| {
-            let mut runtime = ReplayRuntime::from_save_state(state);
-            runtime.states.clock.set_speed(GameSpeed::Medium);
-            runtime.apply_command(&ReplayCommand::ToggleDualAi).unwrap();
-            runtime
+        let runner = |state: SaveState| {
+            let mut runner = CampaignDayRunner::new(state);
+            runner
+                .apply(&ReplayCommand::SetSpeed {
+                    speed: GameSpeed::Medium,
+                })
+                .unwrap();
+            runner.apply(&ReplayCommand::ToggleDualAi).unwrap();
+            runner
         };
-        let mut burst = runtime(initial.clone());
-        let mut spread = runtime(initial);
-        let burst_orders = run_days(&mut burst, 30, false);
-        let spread_orders = run_days(&mut spread, 30, true);
+        let mut burst = runner(initial.clone());
+        let mut spread = runner(initial);
+        let burst_orders = run_days(&mut burst, 30, AiPassSchedule::Burst);
+        let spread_orders = run_days(&mut spread, 30, AiPassSchedule::Spread);
         assert!(burst_orders > 0, "the AIs gave orders");
         assert_eq!(spread_orders, burst_orders);
-        assert_eq!(
-            compute_state_fingerprint(&spread.snapshot()).unwrap(),
-            compute_state_fingerprint(&burst.snapshot()).unwrap()
-        );
+        assert_eq!(spread.fingerprint().unwrap(), burst.fingerprint().unwrap());
     }
 }

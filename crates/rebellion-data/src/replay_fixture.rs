@@ -106,9 +106,15 @@ impl ReplayGateReport {
 /// honours the chosen size means the largest setting.
 #[must_use]
 pub fn seed42_seed_options() -> SeedOptions {
+    campaign_seed_options(SEED42_SEED)
+}
+
+/// Seed options for a full 200-system replay campaign on `seed`.
+#[must_use]
+pub fn campaign_seed_options(seed: u64) -> SeedOptions {
     SeedOptions {
         galaxy_size: GalaxySize::Huge,
-        rng_seed: Some(SEED42_SEED),
+        rng_seed: Some(seed),
         ..SeedOptions::default()
     }
 }
@@ -143,9 +149,18 @@ pub fn seed42_commands() -> Vec<(ReplayActor, ReplayCommand)> {
 /// # Errors
 /// Returns an error if the seeded world lacks entities required by the fixture.
 pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
+    campaign_initial_state(world, SEED42_SEED)
+}
+
+/// Build a new full-galaxy campaign's state for `seed`, as the seed-42
+/// fixture does: `world` must be loaded with [`campaign_seed_options`].
+///
+/// # Errors
+/// Returns an error if the seeded world lacks entities a campaign requires.
+pub fn campaign_initial_state(world: GameWorld, seed: u64) -> anyhow::Result<SaveState> {
     if world.systems.len() != 200 {
         bail!(
-            "seed-42 fixture requires 200 systems, loaded {}",
+            "seed-{seed} campaign requires 200 systems, loaded {}",
             world.systems.len()
         );
     }
@@ -156,7 +171,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
             system.is_headquarters && system.control.is_controlled_by(Faction::Alliance)
         })
         .map(|(key, _)| key)
-        .context("seed-42 fixture is missing the Alliance headquarters")?;
+        .context("the campaign is missing the Alliance headquarters")?;
     let empire_hq = world
         .systems
         .iter()
@@ -164,7 +179,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
             system.is_headquarters && system.control.is_controlled_by(Faction::Empire)
         })
         .map(|(key, _)| key)
-        .context("seed-42 fixture is missing the Empire headquarters")?;
+        .context("the campaign is missing the Empire headquarters")?;
 
     let mut fog_alliance = FogState::new(Faction::Alliance);
     let mut fog_empire = FogState::new(Faction::Empire);
@@ -182,7 +197,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
     );
     let mut events = EventState::new();
     rebellion_core::story_events::define_story_events(&mut events, &world);
-    let options = seed42_seed_options();
+    let options = campaign_seed_options(seed);
     // Setup stage 0x17: each system's FUN_00508250, once.
     let uprising = UprisingState::new();
     let mut economy = EconomyState::default();
@@ -213,7 +228,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         research: ResearchState::new(),
         victory: VictoryState::new(alliance_hq, empire_hq),
         economy,
-        sim_rng: Xoshiro256PlusPlus::seed_from_u64(SEED42_SEED),
+        sim_rng: Xoshiro256PlusPlus::seed_from_u64(seed),
         ai2: None,
         repair: RepairState::default(),
         production: ProductionState::new(),
