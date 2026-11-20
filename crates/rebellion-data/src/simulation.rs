@@ -89,9 +89,13 @@ pub struct SimulationStates {
 /// Run one simulation tick across all 15 systems.
 ///
 /// Advances each system in the canonical order (economy → manufacturing → movement →
-/// combat → fog → missions → events → AI → blockade → uprising → betrayal →
-/// `death_star` → research → jedi → victory), applies effects to `world`, and
-/// returns a `Vec<GameEventRecord>` describing everything that happened.
+/// combat → fog → missions → events → blockade → the day's timers (uprising,
+/// informants, healing, Force discovery, repair, mines and refineries,
+/// autoscrap, the yards' research) → AI → running regiments → `death_star` →
+/// loyalty → views → victory), applies effects to `world`, and returns a
+/// `Vec<GameEventRecord>` describing everything that happened. Every timer
+/// due on a day fires before the day's first AI tick
+/// (`ghidra/notes/ai-scheduling.md`).
 ///
 /// `tick_events` comes from `GameClock::advance()`. `rolls` is a pre-generated
 /// slice of uniform `[0,1)` f64 values consumed sequentially by systems that
@@ -138,6 +142,55 @@ fn draw_from_roll(roll: f64, m: i32) -> i32 {
     )]
     let value = (roll * f64::from(m)).floor() as i32;
     value.clamp(0, m - 1)
+}
+
+/// `Event305_SystemBlockadeChanged_Handle` -> `FUN_00561280`: each ended
+/// blockade's loyalty shift for its assault and bombardment losses.
+fn settle_ended_blockades(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    integrator: &mut PerceptionIntegrator,
+) {
+    for (system, blockade) in states.blockade.take_ended() {
+        let shift = rebellion_core::loyalty::settle_blockade(world, system, blockade);
+        integrator.record_loyalty_shifts(shift.as_slice());
+    }
+}
+
+/// After an AI pass whose orders were applied: the state the original's
+/// event handlers keep current within the sub-tick, so the next pass reads
+/// it (`ghidra/notes/ai-scheduling.md`).
+///
+/// - The pass's bombardment and assault losses count toward their
+///   blockades (`System_vtd0`), then the blockade follows the fleets
+///   ([`BlockadeSystem::detect`]; `FUN_00511300` arms timer `0x386` on
+///   entering), and an ended blockade settles its loyalty.
+/// - The victory conditions word (`FUN_005180e0`) is stored with its
+///   `0x128` as the event that changes it is handled.
+///
+/// Returns whether the word now ends the game: its game-over bit holds
+/// the clock before the next sub-tick (`FUN_0041e390` -> `FUN_0051de80`),
+/// so the day's remaining AI passes do not run.
+fn settle_after_pass(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    integrator: &mut PerceptionIntegrator,
+    bombard: &mut rebellion_core::bombardment::BombardEnv,
+    tick: u64,
+) -> bool {
+    for (system, losses) in bombard.losses.drain(..) {
+        states.blockade.record_losses(system, losses);
+    }
+    let events = BlockadeSystem::detect(&mut states.blockade, world, tick);
+    integrator.apply_blockade_events(world, &mut states.troop_transport, &events);
+    settle_ended_blockades(world, states, integrator);
+    let conditions = states.campaign_config.victory_conditions;
+    if let Some((old, new)) =
+        rebellion_core::victory::advance_conditions_word(&mut states.victory, world, conditions)
+    {
+        integrator.record_victory_conditions(old, new, tick);
+    }
+    VictorySystem::outcome(&states.victory, world, conditions).is_some()
 }
 
 pub fn run_simulation_tick(
@@ -573,114 +626,13 @@ pub fn run_simulation_tick(
     let fired_events = EventSystem::advance(&mut states.events, world, tick_events, &event_rolls);
     integrator.apply_fired_events(world, &fired_events, current_tick, &states.movement);
 
-    // ── 7. AI ────────────────────────────────────────────────────────────
-    // Each day, as many passes as the speed has sub-ticks, one side then the
-    // other (FUN_0041cf20 -> FUN_004361a0); each pass's orders apply before
-    // the next. A new day clears each side's order count (FUN_00485de0).
-    let passes = rebellion_core::ai::passes_per_day(states.clock.speed);
-    // The orders' bombardments draw from a stream seeded by one roll.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "A roll in 0..1 scaled to 53 bits of seed."
-    )]
-    let bombard_seed = (take_rolls(1)[0] * 9_007_199_254_740_992.0) as u64;
-    let mut bombard = rebellion_core::bombardment::BombardEnv::new(
-        bombard_seed,
-        Some(states.victory.alliance_hq),
-    );
-    for event in tick_events {
-        states.ai.begin_day();
-        states.ai.set_game_type(states.campaign_config.victory_conditions);
-        if let Some(ref mut ai2) = states.ai2 {
-            ai2.begin_day();
-            ai2.set_game_type(states.campaign_config.victory_conditions);
-        }
-        // The AI follows its ships by id (GameWorld::number_ships).
-        world.number_ships();
-        for _ in 0..passes {
-            let ai_actions = AISystem::pass(
-                &mut states.ai,
-                world,
-                &states.manufacturing,
-                &states.deliveries,
-                &states.missions,
-                &states.movement,
-                &states.economy,
-                &states.troop_transport,
-                event.tick,
-                config,
-                &states.research,
-                &states.uprising,
-            );
-            integrator.apply_ai_actions(
-                &ai_actions,
-                &mut states.ai,
-                &mut states.missions,
-                &mut states.manufacturing,
-                &mut states.movement,
-                &mut states.troop_transport,
-                &mut states.production,
-                world,
-                event.tick,
-                false,
-                &mut bombard,
-            );
-            // ── 7b. AI (second faction, dual-AI mode) ────────────────────
-            if let Some(ref mut ai2) = states.ai2 {
-                let secondary_actions = AISystem::pass(
-                    ai2,
-                    world,
-                    &states.manufacturing,
-                    &states.deliveries,
-                    &states.missions,
-                    &states.movement,
-                    &states.economy,
-                    &states.troop_transport,
-                    event.tick,
-                    config,
-                    &states.research,
-                    &states.uprising,
-                );
-                integrator.apply_ai_actions(
-                    &secondary_actions,
-                    ai2,
-                    &mut states.missions,
-                    &mut states.manufacturing,
-                    &mut states.movement,
-                    &mut states.troop_transport,
-                    &mut states.production,
-                    world,
-                    event.tick,
-                    true,
-                    &mut bombard,
-                );
-            }
-        }
-    }
-
-    // ── 8. Blockade ──────────────────────────────────────────────────────
-    let mut blockade_events = BlockadeSystem::advance(&mut states.blockade, world, tick_events);
-    if let Some(last) = tick_events.last() {
-        running_regiments.extend(BlockadeSystem::running_regiments(
-            &mut states.blockade,
-            world,
-            &states.troop_transport,
-        ));
-        let running_rolls = take_rolls(running_regiments.len());
-        blockade_events.extend(BlockadeSystem::resolve_running(
-            &running_regiments,
-            &running_rolls,
-            last.tick,
-        ));
-    }
+    // ── 8. Blockade: the fleets the dawn brought, and timer 0x386 ────────
+    // Every timer due today runs before the day's first AI tick
+    // (FUN_0041dff0 phase 5 ahead of phase 8; ghidra/notes/ai-scheduling.md),
+    // and the blockade bit follows the arrivals at once.
+    let blockade_events = BlockadeSystem::advance(&mut states.blockade, world, tick_events);
     integrator.apply_blockade_events(world, &mut states.troop_transport, &blockade_events);
-    // Event305_SystemBlockadeChanged_Handle -> FUN_00561280: each ended
-    // blockade's loyalty shift for its assault and bombardment losses.
-    for (system, blockade) in states.blockade.take_ended() {
-        let shift = rebellion_core::loyalty::settle_blockade(world, system, blockade);
-        integrator.record_loyalty_shifts(shift.as_slice());
-    }
+    settle_ended_blockades(world, states, &mut integrator);
 
     // ── 9. Uprising ──────────────────────────────────────────────────────
     let uprising_rolls = take_rolls(UprisingSystem::roll_budget(
@@ -743,6 +695,168 @@ pub fn run_simulation_tick(
         &discovery_rolls,
     );
     integrator.apply_force_discoveries(world, &discovered);
+
+    // ── 12b. Ship repair ────────────────────────────────────────────────
+    let repair_events = RepairSystem::advance(&mut states.repair, world, tick_events);
+    integrator.apply_repair_events(world, &repair_events);
+
+    // ── 13b. Mines, refineries and the side stockpiles ───────────────────
+    // Timer 0x394, before the AI (ghidra/notes/ai-scheduling.md).
+    let production_rolls = take_rolls(world.production_facilities.len());
+    ProductionSystem::advance(
+        &mut states.production,
+        world,
+        &states.manufacturing,
+        &states.deliveries,
+        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
+        |system| rebellion_core::economy::production_modifier_at(&states.economy, system),
+        tick_events,
+        &production_rolls,
+    );
+
+    // ── 13c. Maintenance shortfall: each side's autoscrap timer 0x382 ───
+    let autoscrap_rolls = take_rolls(2);
+    let autoscraps = rebellion_core::autoscrap::AutoscrapSystem::advance(
+        &mut states.autoscrap,
+        world,
+        &states.troop_transport,
+        &states.manufacturing,
+        &states.deliveries,
+        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
+        tick_events,
+        &autoscrap_rolls,
+    );
+    integrator.apply_autoscraps(
+        world,
+        &mut states.production,
+        &mut states.troop_transport,
+        &autoscraps,
+    );
+
+    // ── 13d. The yards' own research: each side's timer 0x381 ───────────
+    let tally_rolls = take_rolls(2);
+    let tallies = rebellion_core::research::ResearchSystem::advance_tally(
+        &mut states.research,
+        world,
+        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
+        tick_events,
+        &tally_rolls,
+    );
+    integrator.record_research_tallies(&tallies);
+
+    // ── 7. AI ────────────────────────────────────────────────────────────
+    // Each day, as many passes as the speed has sub-ticks, one side then the
+    // other (FUN_0041cf20 -> FUN_004361a0); each pass's orders apply before
+    // the next, and the state their events keep up (blockade, the victory
+    // word) settles after a pass that applied any (`settle_after_pass`). A
+    // new day clears each side's order count (FUN_00485de0). The passes
+    // follow the day's timers above (ghidra/notes/ai-scheduling.md).
+    let passes = rebellion_core::ai::passes_per_day(states.clock.speed);
+    // The orders' bombardments draw from a stream seeded by one roll.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "A roll in 0..1 scaled to 53 bits of seed."
+    )]
+    let bombard_seed = (take_rolls(1)[0] * 9_007_199_254_740_992.0) as u64;
+    let mut bombard = rebellion_core::bombardment::BombardEnv::new(
+        bombard_seed,
+        Some(states.victory.alliance_hq),
+    );
+    let mut second = states.ai2.take();
+    'days: for event in tick_events {
+        states.ai.begin_day();
+        states.ai.set_game_type(states.campaign_config.victory_conditions);
+        if let Some(ref mut ai2) = second {
+            ai2.begin_day();
+            ai2.set_game_type(states.campaign_config.victory_conditions);
+        }
+        // The AI follows its ships by id (GameWorld::number_ships).
+        world.number_ships();
+        for _ in 0..passes {
+            let ai_actions = AISystem::pass(
+                &mut states.ai,
+                world,
+                &states.manufacturing,
+                &states.deliveries,
+                &states.missions,
+                &states.movement,
+                &states.economy,
+                &states.troop_transport,
+                event.tick,
+                config,
+                &states.research,
+                &states.uprising,
+            );
+            integrator.apply_ai_actions(
+                &ai_actions,
+                &mut states.ai,
+                &mut states.missions,
+                &mut states.manufacturing,
+                &mut states.movement,
+                &mut states.troop_transport,
+                &mut states.production,
+                world,
+                event.tick,
+                false,
+                &mut bombard,
+            );
+            if !ai_actions.is_empty()
+                && settle_after_pass(world, states, &mut integrator, &mut bombard, event.tick)
+            {
+                break 'days;
+            }
+            // ── 7b. AI (second faction, dual-AI mode) ────────────────────
+            if let Some(ref mut ai2) = second {
+                let secondary_actions = AISystem::pass(
+                    ai2,
+                    world,
+                    &states.manufacturing,
+                    &states.deliveries,
+                    &states.missions,
+                    &states.movement,
+                    &states.economy,
+                    &states.troop_transport,
+                    event.tick,
+                    config,
+                    &states.research,
+                    &states.uprising,
+                );
+                integrator.apply_ai_actions(
+                    &secondary_actions,
+                    ai2,
+                    &mut states.missions,
+                    &mut states.manufacturing,
+                    &mut states.movement,
+                    &mut states.troop_transport,
+                    &mut states.production,
+                    world,
+                    event.tick,
+                    true,
+                    &mut bombard,
+                );
+                if !secondary_actions.is_empty()
+                    && settle_after_pass(world, states, &mut integrator, &mut bombard, event.tick)
+                {
+                    break 'days;
+                }
+            }
+        }
+    }
+    states.ai2 = second;
+
+    // ── 8b. Regiments running a blockade ─────────────────────────────────
+    if let Some(last) = tick_events.last() {
+        running_regiments.extend(BlockadeSystem::running_regiments(
+            &mut states.blockade,
+            world,
+            &states.troop_transport,
+        ));
+        let running_rolls = take_rolls(running_regiments.len());
+        let running =
+            BlockadeSystem::resolve_running(&running_regiments, &running_rolls, last.tick);
+        integrator.apply_blockade_events(world, &mut states.troop_transport, &running);
+    }
 
     // ── 10. (The port's 50-day defection is gone: the original's only
     // betrayal is the mission phase; ghidra/notes/betrayal-and-loyalty.md.)
@@ -808,57 +922,9 @@ pub fn run_simulation_tick(
     // ── 12. Research ─────────────────────────────────────────────────────
     // Research missions add their points when they resolve (step 5).
 
-    // ── 12b. Ship repair ────────────────────────────────────────────────
-    let repair_events = RepairSystem::advance(&mut states.repair, world, tick_events);
-    integrator.apply_repair_events(world, &repair_events);
-
     // ── 13. (The port's Jedi tiers are gone: the Force grows through the
     // missions, Dagobah, escapes and the encounter; ghidra/notes/
     // jedi-rs-replacement.md.)
-
-    // ── 13b. Mines, refineries and the side stockpiles ───────────────────
-    // After the other consumers so their rolls keep their positions.
-    let production_rolls = take_rolls(world.production_facilities.len());
-    ProductionSystem::advance(
-        &mut states.production,
-        world,
-        &states.manufacturing,
-        &states.deliveries,
-        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
-        |system| rebellion_core::economy::production_modifier_at(&states.economy, system),
-        tick_events,
-        &production_rolls,
-    );
-
-    // ── 13c. Maintenance shortfall: each side's autoscrap timer 0x382 ───
-    let autoscrap_rolls = take_rolls(2);
-    let autoscraps = rebellion_core::autoscrap::AutoscrapSystem::advance(
-        &mut states.autoscrap,
-        world,
-        &states.troop_transport,
-        &states.manufacturing,
-        &states.deliveries,
-        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
-        tick_events,
-        &autoscrap_rolls,
-    );
-    integrator.apply_autoscraps(
-        world,
-        &mut states.production,
-        &mut states.troop_transport,
-        &autoscraps,
-    );
-
-    // ── 13d. The yards' own research: each side's timer 0x381 ───────────
-    let tally_rolls = take_rolls(2);
-    let tallies = rebellion_core::research::ResearchSystem::advance_tally(
-        &mut states.research,
-        world,
-        |system| states.blockade.is_blockaded(system) || states.uprising.is_uprising(system),
-        tick_events,
-        &tally_rolls,
-    );
-    integrator.record_research_tallies(&tallies);
 
     // port: a fleet that gained its side's flagship class this tick, by a
     // build or a join on arrival, takes its signature name (fleet_name_bank).
@@ -1106,6 +1172,149 @@ mod tests {
             10,
             &rebellion_core::tuning::GameConfig::default(),
         );
+    }
+
+    #[test]
+    fn a_ship_autoscrapped_at_dawn_is_gone_from_the_ai_s_first_pass() {
+        // Every timer due on a day fires in FUN_0041dff0 phase 5 of the
+        // day's first sub-tick, before that sub-tick's AI tick (phase 8);
+        // timer 0x382 (FUN_00530350) scraps a maintained object while the
+        // side is over its limit (ghidra/notes/ai-scheduling.md). The AI's
+        // refresh (FUN_00418500) then has no record for the gone ship, and
+        // a hold on it lapses. The Alliance has no AI here, so only the
+        // timer can scrap its ship; the Empire's AI watches every fleet.
+        let held_after_a_day = |scrap: bool| {
+            let (mut world, mut states, fleet, troop) = world_with_loading_fleet();
+            world.troops.remove(troop);
+            let system = world.systems.keys().next().unwrap();
+            world.systems[system].ground_units.clear();
+            let class = world.fleets[fleet].capital_ships[0].class;
+            world.capital_ship_classes[class].maintenance_cost = 1;
+            world.number_ships();
+            let ship = world.fleets[fleet].capital_ships[0].id;
+            assert_eq!(states.ai.faction, Some(AiFaction::Empire));
+            states.ai.ship_holds.insert(
+                ship,
+                rebellion_core::ai_records::ShipHold {
+                    flags: 0,
+                    owner: 0,
+                    plan: 0,
+                },
+            );
+            // Over its limit, the Alliance's timer is due today, or not yet.
+            states.autoscrap.alliance = Some(if scrap { 1 } else { 2 });
+            run_one_tick(&mut world, &mut states);
+            let alive = world
+                .fleets
+                .get(fleet)
+                .is_some_and(|f| f.capital_ships.iter().any(|s| s.id == ship && s.alive));
+            assert_eq!(alive, !scrap);
+            states.ai.ship_holds.contains_key(&ship)
+        };
+        assert!(held_after_a_day(false));
+        assert!(!held_after_a_day(true));
+    }
+
+    #[test]
+    fn after_an_ai_pass_s_orders_the_blockade_follows_the_fleets_without_its_timer() {
+        // The blockade bit follows the fleets within the sub-tick, and
+        // FUN_00511300 arms timer 0x386 as it starts; FUN_0050cb20 fires
+        // only on its day. The pass's bombardment losses count first
+        // (System_vtd0) (ghidra/notes/ai-scheduling.md).
+        let (mut world, mut states) = make_test_states();
+        let system = world.systems.keys().next().unwrap();
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        let fleet = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[system].fleets.push(fleet);
+        let mut integrator = PerceptionIntegrator::new(4, 0);
+        let mut bombard = rebellion_core::bombardment::BombardEnv::new(0, None);
+        assert!(!settle_after_pass(
+            &mut world,
+            &mut states,
+            &mut integrator,
+            &mut bombard,
+            4
+        ));
+        assert!(states.blockade.is_blockaded(system));
+        assert_eq!(states.blockade.support_timer(system), Some(5));
+        // A later pass's bombardment losses count toward the blockade and
+        // are spent; on the timer's day a pass shifts no support.
+        let losses = rebellion_core::loyalty::SideLosses {
+            alliance: 3,
+            empire: 0,
+        };
+        bombard.losses.push((system, losses));
+        assert!(!settle_after_pass(
+            &mut world,
+            &mut states,
+            &mut integrator,
+            &mut bombard,
+            5
+        ));
+        assert!(bombard.losses.is_empty());
+        assert_eq!(
+            states.blockade.blockade_losses(system).map(|b| b.losses),
+            Some(losses)
+        );
+        assert_eq!(states.blockade.support_timer(system), Some(5));
+        // The fleet leaves: the blockade ends, and its losses settle.
+        world.systems[system].fleets.clear();
+        world.fleets.remove(fleet);
+        settle_after_pass(&mut world, &mut states, &mut integrator, &mut bombard, 5);
+        assert!(!states.blockade.is_blockaded(system));
+        assert_eq!(states.blockade.blockade_losses(system), None);
+    }
+
+    #[test]
+    fn a_pass_that_wins_the_game_holds_the_day_s_remaining_passes() {
+        // FUN_005180e0 stores the word as the event that changes it is
+        // handled, and its game-over bit holds the clock before the next
+        // sub-tick (FUN_0041e390 -> FUN_0051de80).
+        let (mut world, mut states) = make_test_states();
+        states.campaign_config.victory_conditions =
+            rebellion_core::world::VictoryConditions::HeadquartersOnly;
+        let (alliance_hq, coruscant) = (states.victory.alliance_hq, states.victory.empire_hq);
+        world.systems[alliance_hq].is_headquarters = true;
+        world.systems[coruscant].dat_id = DatId::new(0x109);
+        for index in [0x242, 0x240, 0x281, 0x280] {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: DatId::new(index),
+                ..rebellion_core::world::Character::default()
+            });
+        }
+        let mut integrator = PerceptionIntegrator::new(4, 0);
+        let mut bombard = rebellion_core::bombardment::BombardEnv::new(0, None);
+        assert!(!settle_after_pass(
+            &mut world,
+            &mut states,
+            &mut integrator,
+            &mut bombard,
+            4
+        ));
+        world.systems[coruscant].control = ControlKind::Controlled(Faction::Alliance);
+        assert!(settle_after_pass(
+            &mut world,
+            &mut states,
+            &mut integrator,
+            &mut bombard,
+            4
+        ));
+        assert_ne!(
+            states.victory.conditions_word & rebellion_core::victory::WORD_GAME_OVER,
+            0
+        );
+        assert!(integrator
+            .finish()
+            .iter()
+            .any(|e| e.event_type == rebellion_core::game_events::EVT_VICTORY_CONDITIONS));
     }
 
     #[test]

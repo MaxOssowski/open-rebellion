@@ -387,8 +387,35 @@ impl BlockadeSystem {
         let Some(last_tick_event) = tick_events.last() else {
             return Vec::new();
         };
-
         let tick = last_tick_event.tick;
+        let mut events = Self::detect(state, world, tick);
+        let period = Self::support_period(world);
+
+        // Timer 0x386 (FUN_0050cb20), in system order.
+        for (sys_key, sys) in &world.systems {
+            let Some(due) = state.support_timers.get_mut(&sys_key) else {
+                continue;
+            };
+            if *due > tick {
+                continue;
+            }
+            *due += period;
+            if let Some(event) = Self::support_shift(world, sys_key, sys, tick) {
+                events.push(event);
+            }
+        }
+        events
+    }
+
+    /// The blockades the fleets make now, without the support timer: the
+    /// start and end transitions since the last look.
+    ///
+    /// The original keeps the blockade bit current as fleets come and go,
+    /// within the sub-tick (`FUN_00511300` arms timer `0x386` on entering),
+    /// while the timer fires only on its day. So the day's AI passes call
+    /// this after their orders (`ghidra/notes/ai-scheduling.md`), and
+    /// [`Self::advance`] adds the timer at dawn.
+    pub fn detect(state: &mut BlockadeState, world: &GameWorld, tick: u64) -> Vec<BlockadeEvent> {
         let mut events = Vec::new();
 
         // Compute current blockade set from world fleet disposition
@@ -412,17 +439,7 @@ impl BlockadeSystem {
             .collect();
         newly_blockaded.sort_unstable();
 
-        // port: the record's spread is never set (FUN_0050e200 sets only the
-        // minimum), so the delay is the minimum. port: FUN_005109f0 resets
-        // the minimum to GNPRTB 7694 or 7696 (both 30) when the support
-        // changes; the port keeps 7694.
-        let period = u64::try_from(
-            world
-                .gnprtb
-                .value(GNPRTB_BLOCKADE_SUPPORT_PERIOD, world.difficulty_index)
-                .max(1),
-        )
-        .unwrap_or(1);
+        let period = Self::support_period(world);
 
         // New blockades (entered this tick): FUN_00511300 arms timer 0x386.
         for sys_key in newly_blockaded {
@@ -464,21 +481,23 @@ impl BlockadeSystem {
         }
 
         state.blockaded = now_blockaded;
-
-        // Timer 0x386 (FUN_0050cb20), in system order.
-        for (sys_key, sys) in &world.systems {
-            let Some(due) = state.support_timers.get_mut(&sys_key) else {
-                continue;
-            };
-            if *due > tick {
-                continue;
-            }
-            *due += period;
-            if let Some(event) = Self::support_shift(world, sys_key, sys, tick) {
-                events.push(event);
-            }
-        }
         events
+    }
+
+    /// Timer `0x386`'s period.
+    ///
+    /// port: the record's spread is never set (`FUN_0050e200` sets only the
+    /// minimum), so the delay is the minimum. port: `FUN_005109f0` resets
+    /// the minimum to GNPRTB 7694 or 7696 (both 30) when the support
+    /// changes; the port keeps 7694.
+    fn support_period(world: &GameWorld) -> u64 {
+        u64::try_from(
+            world
+                .gnprtb
+                .value(GNPRTB_BLOCKADE_SUPPORT_PERIOD, world.difficulty_index)
+                .max(1),
+        )
+        .unwrap_or(1)
     }
 
     /// `FUN_00509890`: the blockading side, the side of the fleets at
@@ -1261,6 +1280,33 @@ mod tests {
                 "Alliance support {alliance}"
             );
         }
+    }
+
+    #[test]
+    fn a_look_between_passes_starts_a_blockade_but_leaves_its_support_timer_to_its_day() {
+        // FUN_00511300 arms timer 0x386 as the blockade starts, within the
+        // sub-tick; FUN_0050cb20 fires only on the timer's day
+        // (ghidra/notes/ai-scheduling.md).
+        let (world, sys) = blockaded_world(Faction::Alliance, 30.0);
+        let mut state = BlockadeState::new();
+        let started = BlockadeSystem::detect(&mut state, &world, 5);
+        assert_eq!(
+            started,
+            vec![BlockadeEvent::BlockadeStarted {
+                system: sys,
+                tick: 5
+            }]
+        );
+        assert!(state.is_blockaded(sys));
+        assert_eq!(state.support_timer(sys), Some(35));
+        // On the timer's day a look still shifts no support; the dawn
+        // advance does.
+        assert_eq!(BlockadeSystem::detect(&mut state, &world, 35), vec![]);
+        assert_eq!(state.support_timer(sys), Some(35));
+        assert_eq!(
+            support_shifts(&mut state, &world, 35..=35),
+            vec![(35, Faction::Empire, 1)]
+        );
     }
 
     #[test]

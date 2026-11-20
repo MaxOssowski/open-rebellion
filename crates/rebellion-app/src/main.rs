@@ -4247,150 +4247,12 @@ async fn main() {
                 }
             }
 
-            // ── AI: each day, as many passes as the speed has sub-ticks, one
-            // side then the other (FUN_0041cf20 -> FUN_004361a0); each
-            // pass's orders apply before the next, and a new day clears each
-            // side's order count (FUN_00485de0).
-            let ai_passes = rebellion_core::ai::passes_per_day(clock.speed);
-            let mut bombard =
-                BombardEnv::new(sim_rng.gen::<u64>(), Some(victory_state.alliance_hq));
-            for event in &tick_events {
-                ai_state.begin_day();
-                ai_state.set_game_type(campaign_config.victory_conditions);
-                if let Some(ref mut second_ai) = secondary_ai_state {
-                    second_ai.begin_day();
-                    second_ai.set_game_type(campaign_config.victory_conditions);
-                }
-                // The AI follows its ships by id (GameWorld::number_ships).
-                world.number_ships();
-                let ai_started = macroquad::time::get_time();
-                for _ in 0..ai_passes {
-                    let ai_actions = AISystem::pass(
-                        &mut ai_state,
-                        &world,
-                        &mfg_state,
-                        &delivery_state,
-                        &mission_state,
-                        &movement_state,
-                        &economy_state,
-                        &troop_transport_state,
-                        event.tick,
-                        &game_config,
-                        &research_state,
-                        &uprising_state,
-                    );
-                    apply_ai_actions(
-                        &ai_actions,
-                        &mut ai_state,
-                        &mut mission_state,
-                        &mut mfg_state,
-                        &mut movement_state,
-                        &mut troop_transport_state,
-                        &mut production_state,
-                        &mut world,
-                        &mut msg_log,
-                        event.tick,
-                        &mut bombard,
-                        #[cfg(not(target_arch = "wasm32"))]
-                        &mut audio_engine,
-                        #[cfg(not(target_arch = "wasm32"))]
-                        &audio_vol,
-                    );
-                    // ── Dual AI (second faction)
-                    if let Some(ref mut second_ai) = secondary_ai_state {
-                        let second_actions = AISystem::pass(
-                            second_ai,
-                            &world,
-                            &mfg_state,
-                            &delivery_state,
-                            &mission_state,
-                            &movement_state,
-                            &economy_state,
-                            &troop_transport_state,
-                            event.tick,
-                            &game_config,
-                            &research_state,
-                            &uprising_state,
-                        );
-                        apply_ai_actions(
-                            &second_actions,
-                            second_ai,
-                            &mut mission_state,
-                            &mut mfg_state,
-                            &mut movement_state,
-                            &mut troop_transport_state,
-                            &mut production_state,
-                            &mut world,
-                            &mut msg_log,
-                            event.tick,
-                            &mut bombard,
-                            #[cfg(not(target_arch = "wasm32"))]
-                            &mut audio_engine,
-                            #[cfg(not(target_arch = "wasm32"))]
-                            &audio_vol,
-                        );
-                    }
-                }
-                macroquad::logging::info!(
-                    "[ai] day={} speed={:?} passes={} orders={} second_orders={} ms={:.1}",
-                    event.tick,
-                    clock.speed,
-                    ai_passes,
-                    ai_state.orders_today,
-                    secondary_ai_state.as_ref().map_or(0, |ai| ai.orders_today),
-                    (macroquad::time::get_time() - ai_started) * 1000.0
-                );
-            }
-
-            // System_vtd0: the day's bombardment and assault losses count
-            // toward each blockade's (DestroyedReason 0xf, 0xe).
-            for (system, losses) in &bombard.losses {
-                blockade_state.record_losses(*system, *losses);
-            }
-            present_assault_reports(
-                std::mem::take(&mut bombard.reports),
-                &world,
-                player_faction,
-                &message_texts,
-                &mut assault_summary_state,
-                &mut msg_log,
-                current_tick,
-            );
-
-            // A Destroy System order's Death Star destroyed these (FUN_0058d990).
-            for system in bombard.destroyed_systems() {
-                destroy_planet(
-                    &mut world,
-                    system,
-                    &bombard.killed_at(system),
-                    &mut mfg_state,
-                    &mut blockade_state,
-                    &mut msg_log,
-                    current_tick,
-                    &message_texts,
-                );
-            }
-
-            // ── The player's agent (FUN_00439a10): once a day, its running
-            // modules issue Destination and build orders. Not in dual-AI
-            // mode, where an AI plays the player's side.
-            if secondary_ai_state.is_none() {
-                for _ in &tick_events {
-                    let orders = player_agent.advance(
-                        &world,
-                        &mfg_state,
-                        &economy_state,
-                        player_faction == MissionFaction::Alliance,
-                    );
-                    for order in &orders {
-                        macroquad::logging::info!("[agent] order={:?}", order);
-                    }
-                    rebellion_core::agent_automation::apply_orders(&orders, &mut mfg_state);
-                }
-            }
-
-            // ── Blockade ─────────────────────────────────────────────────────
-            let mut blockade_events =
+            // ── Blockade: the fleets the dawn brought, and timer 0x386 ──────
+            // Every timer due today runs before the day's first AI tick
+            // (FUN_0041dff0 phase 5 ahead of phase 8;
+            // ghidra/notes/ai-scheduling.md), and the blockade bit follows
+            // the arrivals at once.
+            let blockade_events =
                 BlockadeSystem::advance(&mut blockade_state, &world, &tick_events);
             // Event305_SystemBlockadeChanged_Handle -> FUN_00561280: each
             // ended blockade's loyalty shift for its assault and bombardment
@@ -4398,120 +4260,16 @@ async fn main() {
             for (system, blockade) in blockade_state.take_ended() {
                 rebellion_core::loyalty::settle_blockade(&mut world, system, blockade);
             }
-            if let Some(last) = tick_events.last() {
-                running_regiments.extend(BlockadeSystem::running_regiments(
-                    &mut blockade_state,
-                    &world,
-                    &troop_transport_state,
-                ));
-                let running_rolls: Vec<f64> = (0..running_regiments.len())
-                    .map(|_| sim_rng.gen::<f64>())
-                    .collect();
-                blockade_events.extend(BlockadeSystem::resolve_running(
-                    &running_regiments,
-                    &running_rolls,
-                    last.tick,
-                ));
-            }
-            for evt in &blockade_events {
-                match evt {
-                    rebellion_core::blockade::BlockadeEvent::BlockadeStarted { system, tick } => {
-                        if let Some(message) = blockade_started_message(
-                            &world,
-                            *system,
-                            battled_systems.contains(system),
-                            player_faction == MissionFaction::Alliance,
-                            *tick,
-                            &message_texts,
-                        ) {
-                            msg_log.push(message);
-                        }
-                    }
-                    rebellion_core::blockade::BlockadeEvent::BlockadeEnded { system, tick } => {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 0x14e with the bit cleared: the
-                        // Blockade class (FUN_004960f0) posts nothing. port:
-                        // the line stays in the log, off the Message Index.
-                        msg_log.push(GameMessage::at_system(
-                            *tick,
-                            format!("Blockade lifted at {name}"),
-                            MessageCategory::Combat,
-                            *system,
-                        ));
-                    }
-                    rebellion_core::blockade::BlockadeEvent::SupportShifted {
-                        system,
-                        side,
-                        support_delta,
-                        ..
-                    } => {
-                        // Timer 0x386 only sets the support (FUN_0050c9f0).
-                        rebellion_core::uprising::shift_support(
-                            &mut world,
-                            *system,
-                            *side,
-                            *support_delta,
-                        );
-                    }
-                    rebellion_core::blockade::BlockadeEvent::TroopDestroyed {
-                        system,
-                        troop,
-                        tick,
-                    } => {
-                        // Event 0x340, Evacuation Losses (FUN_00495e90), to
-                        // the regiment's side; named before it goes.
-                        let regiment = world.troops.get(*troop).map(|unit| {
-                            let (name, _) = rebellion_render::manufacturing_window::product(
-                                &world,
-                                rebellion_core::manufacturing::BuildableKind::Troop(
-                                    unit.class_dat_id,
-                                ),
-                            );
-                            (name, unit.is_alliance)
-                        });
-                        // The regiment left the system on its own.
-                        troop_transport_state.destroy_travelling(&mut world, *troop);
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        let original = regiment.as_ref().and_then(|(regiment, _)| {
-                            rebellion_render::story_messages::evacuation_losses_texts(
-                                regiment,
-                                &name,
-                                &message_texts,
-                            )
-                        });
-                        let audience = regiment
-                            .as_ref()
-                            .map_or(RailAudience::Both, |&(_, alliance)| {
-                                RailAudience::side(alliance)
-                            });
-                        let (title, text) = original.map_or_else(
-                            || (None, format!("Troops destroyed by blockade at {name}")),
-                            |(title, body)| (Some(title), body),
-                        );
-                        let mut message =
-                            GameMessage::at_system(*tick, text, MessageCategory::Combat, *system)
-                                .with_picture_if(Some(pictures::evacuation_losses(
-                                    cockpit_state.faction,
-                                )))
-                                .with_sounds(MessageSounds::evacuation_losses(
-                                    cockpit_state.faction == CockpitFaction::Alliance,
-                                ))
-                                // FUN_00495e90 writes 0x10, which no side's
-                                // advisor answers.
-                                .with_advisor_event(0x10);
-                        if let Some(title) = title {
-                            message = message.with_title(title);
-                        }
-                        msg_log.push(filed(message, MessageRail::Conflict, Some(audience)));
-                    }
-                }
-            }
+            present_blockade_events(
+                &mut world,
+                &mut msg_log,
+                &blockade_events,
+                &battled_systems,
+                player_faction == MissionFaction::Alliance,
+                &message_texts,
+                &mut troop_transport_state,
+                cockpit_state.faction,
+            );
             // Bit 0x4000 holds for one pass (FUN_0050a9e0): the battles
             // recorded since the last blockade pass are spent.
             if !tick_events.is_empty() {
@@ -4966,6 +4724,217 @@ async fn main() {
                         }
                     }
                 }
+            }
+
+            // ── AI: each day, as many passes as the speed has sub-ticks, one
+            // side then the other (FUN_0041cf20 -> FUN_004361a0); each
+            // pass's orders apply before the next, the state their events
+            // keep up (blockade, the victory word) settles after a pass that
+            // applied any (`settle_after_ai_pass`), and a new day clears each
+            // side's order count (FUN_00485de0). The passes follow the
+            // day's timers above (ghidra/notes/ai-scheduling.md).
+            let ai_passes = rebellion_core::ai::passes_per_day(clock.speed);
+            let mut bombard =
+                BombardEnv::new(sim_rng.gen::<u64>(), Some(victory_state.alliance_hq));
+            'days: for event in &tick_events {
+                ai_state.begin_day();
+                ai_state.set_game_type(campaign_config.victory_conditions);
+                if let Some(ref mut second_ai) = secondary_ai_state {
+                    second_ai.begin_day();
+                    second_ai.set_game_type(campaign_config.victory_conditions);
+                }
+                // The AI follows its ships by id (GameWorld::number_ships).
+                world.number_ships();
+                let ai_started = macroquad::time::get_time();
+                for _ in 0..ai_passes {
+                    let ai_actions = AISystem::pass(
+                        &mut ai_state,
+                        &world,
+                        &mfg_state,
+                        &delivery_state,
+                        &mission_state,
+                        &movement_state,
+                        &economy_state,
+                        &troop_transport_state,
+                        event.tick,
+                        &game_config,
+                        &research_state,
+                        &uprising_state,
+                    );
+                    apply_ai_actions(
+                        &ai_actions,
+                        &mut ai_state,
+                        &mut mission_state,
+                        &mut mfg_state,
+                        &mut movement_state,
+                        &mut troop_transport_state,
+                        &mut production_state,
+                        &mut world,
+                        &mut msg_log,
+                        event.tick,
+                        &mut bombard,
+                        #[cfg(not(target_arch = "wasm32"))]
+                        &mut audio_engine,
+                        #[cfg(not(target_arch = "wasm32"))]
+                        &audio_vol,
+                    );
+                    if !ai_actions.is_empty()
+                        && settle_after_ai_pass(
+                            &mut world,
+                            &mut blockade_state,
+                            &mut bombard,
+                            &mut msg_log,
+                            &mut battled_systems,
+                            &message_texts,
+                            &mut troop_transport_state,
+                            cockpit_state.faction,
+                            &mut victory_state,
+                            campaign_config.victory_conditions,
+                            advisor_schedule.as_mut(),
+                            advisor_now(&clock),
+                            &mut pending_ending,
+                            player_faction == MissionFaction::Alliance,
+                            event.tick,
+                        )
+                    {
+                        break 'days;
+                    }
+                    // ── Dual AI (second faction)
+                    if let Some(ref mut second_ai) = secondary_ai_state {
+                        let second_actions = AISystem::pass(
+                            second_ai,
+                            &world,
+                            &mfg_state,
+                            &delivery_state,
+                            &mission_state,
+                            &movement_state,
+                            &economy_state,
+                            &troop_transport_state,
+                            event.tick,
+                            &game_config,
+                            &research_state,
+                            &uprising_state,
+                        );
+                        apply_ai_actions(
+                            &second_actions,
+                            second_ai,
+                            &mut mission_state,
+                            &mut mfg_state,
+                            &mut movement_state,
+                            &mut troop_transport_state,
+                            &mut production_state,
+                            &mut world,
+                            &mut msg_log,
+                            event.tick,
+                            &mut bombard,
+                            #[cfg(not(target_arch = "wasm32"))]
+                            &mut audio_engine,
+                            #[cfg(not(target_arch = "wasm32"))]
+                            &audio_vol,
+                        );
+                        if !second_actions.is_empty()
+                            && settle_after_ai_pass(
+                                &mut world,
+                                &mut blockade_state,
+                                &mut bombard,
+                                &mut msg_log,
+                                &mut battled_systems,
+                                &message_texts,
+                                &mut troop_transport_state,
+                                cockpit_state.faction,
+                                &mut victory_state,
+                                campaign_config.victory_conditions,
+                                advisor_schedule.as_mut(),
+                                advisor_now(&clock),
+                                &mut pending_ending,
+                                player_faction == MissionFaction::Alliance,
+                                event.tick,
+                            )
+                        {
+                            break 'days;
+                        }
+                    }
+                }
+                macroquad::logging::info!(
+                    "[ai] day={} speed={:?} passes={} orders={} second_orders={} ms={:.1}",
+                    event.tick,
+                    clock.speed,
+                    ai_passes,
+                    ai_state.orders_today,
+                    secondary_ai_state.as_ref().map_or(0, |ai| ai.orders_today),
+                    (macroquad::time::get_time() - ai_started) * 1000.0
+                );
+            }
+
+            // System_vtd0: the day's bombardment and assault losses count
+            // toward each blockade's (DestroyedReason 0xf, 0xe).
+            for (system, losses) in &bombard.losses {
+                blockade_state.record_losses(*system, *losses);
+            }
+            present_assault_reports(
+                std::mem::take(&mut bombard.reports),
+                &world,
+                player_faction,
+                &message_texts,
+                &mut assault_summary_state,
+                &mut msg_log,
+                current_tick,
+            );
+
+            // A Destroy System order's Death Star destroyed these (FUN_0058d990).
+            for system in bombard.destroyed_systems() {
+                destroy_planet(
+                    &mut world,
+                    system,
+                    &bombard.killed_at(system),
+                    &mut mfg_state,
+                    &mut blockade_state,
+                    &mut msg_log,
+                    current_tick,
+                    &message_texts,
+                );
+            }
+
+            // ── The player's agent (FUN_00439a10): once a day, its running
+            // modules issue Destination and build orders. Not in dual-AI
+            // mode, where an AI plays the player's side.
+            if secondary_ai_state.is_none() {
+                for _ in &tick_events {
+                    let orders = player_agent.advance(
+                        &world,
+                        &mfg_state,
+                        &economy_state,
+                        player_faction == MissionFaction::Alliance,
+                    );
+                    for order in &orders {
+                        macroquad::logging::info!("[agent] order={:?}", order);
+                    }
+                    rebellion_core::agent_automation::apply_orders(&orders, &mut mfg_state);
+                }
+            }
+
+            // ── Regiments running a blockade ────────────────────────────────
+            if let Some(last) = tick_events.last() {
+                running_regiments.extend(BlockadeSystem::running_regiments(
+                    &mut blockade_state,
+                    &world,
+                    &troop_transport_state,
+                ));
+                let running_rolls: Vec<f64> = (0..running_regiments.len())
+                    .map(|_| sim_rng.gen::<f64>())
+                    .collect();
+                let running =
+                    BlockadeSystem::resolve_running(&running_regiments, &running_rolls, last.tick);
+                present_blockade_events(
+                    &mut world,
+                    &mut msg_log,
+                    &running,
+                    &battled_systems,
+                    player_faction == MissionFaction::Alliance,
+                    &message_texts,
+                    &mut troop_transport_state,
+                    cockpit_state.faction,
+                );
             }
 
             // ── (The port's Jedi tiers are gone: the Force grows through the
@@ -16271,6 +16240,179 @@ fn character_audience(world: &GameWorld, character: CharacterKey) -> Option<Rail
     } else {
         None
     }
+}
+
+/// The day's blockade events: their messages, the support timer's shift
+/// and the regiments lost running a blockade.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a blockade event reaches the world, the log and the regiments in transit"
+)]
+fn present_blockade_events(
+    world: &mut GameWorld,
+    msg_log: &mut MessageLog,
+    events: &[rebellion_core::blockade::BlockadeEvent],
+    battled: &std::collections::HashSet<rebellion_core::ids::SystemKey>,
+    player_is_alliance: bool,
+    message_texts: &std::collections::HashMap<u16, String>,
+    troop_transport_state: &mut TroopTransportState,
+    cockpit_faction: CockpitFaction,
+) {
+    for evt in events {
+        match evt {
+            rebellion_core::blockade::BlockadeEvent::BlockadeStarted { system, tick } => {
+                if let Some(message) = blockade_started_message(
+                    world,
+                    *system,
+                    battled.contains(system),
+                    player_is_alliance,
+                    *tick,
+                    message_texts,
+                ) {
+                    msg_log.push(message);
+                }
+            }
+            rebellion_core::blockade::BlockadeEvent::BlockadeEnded { system, tick } => {
+                let name = world
+                    .systems
+                    .get(*system)
+                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                // Notification 0x14e with the bit cleared: the
+                // Blockade class (FUN_004960f0) posts nothing. port:
+                // the line stays in the log, off the Message Index.
+                msg_log.push(GameMessage::at_system(
+                    *tick,
+                    format!("Blockade lifted at {name}"),
+                    MessageCategory::Combat,
+                    *system,
+                ));
+            }
+            rebellion_core::blockade::BlockadeEvent::SupportShifted {
+                system,
+                side,
+                support_delta,
+                ..
+            } => {
+                // Timer 0x386 only sets the support (FUN_0050c9f0).
+                rebellion_core::uprising::shift_support(world, *system, *side, *support_delta);
+            }
+            rebellion_core::blockade::BlockadeEvent::TroopDestroyed {
+                system,
+                troop,
+                tick,
+            } => {
+                // Event 0x340, Evacuation Losses (FUN_00495e90), to
+                // the regiment's side; named before it goes.
+                let regiment = world.troops.get(*troop).map(|unit| {
+                    let (name, _) = rebellion_render::manufacturing_window::product(
+                        world,
+                        rebellion_core::manufacturing::BuildableKind::Troop(unit.class_dat_id),
+                    );
+                    (name, unit.is_alliance)
+                });
+                // The regiment left the system on its own.
+                troop_transport_state.destroy_travelling(world, *troop);
+                let name = world
+                    .systems
+                    .get(*system)
+                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                let original = regiment.as_ref().and_then(|(regiment, _)| {
+                    rebellion_render::story_messages::evacuation_losses_texts(
+                        regiment,
+                        &name,
+                        message_texts,
+                    )
+                });
+                let audience = regiment
+                    .as_ref()
+                    .map_or(RailAudience::Both, |&(_, alliance)| {
+                        RailAudience::side(alliance)
+                    });
+                let (title, text) = original.map_or_else(
+                    || (None, format!("Troops destroyed by blockade at {name}")),
+                    |(title, body)| (Some(title), body),
+                );
+                let mut message =
+                    GameMessage::at_system(*tick, text, MessageCategory::Combat, *system)
+                        .with_picture_if(Some(pictures::evacuation_losses(cockpit_faction)))
+                        .with_sounds(MessageSounds::evacuation_losses(
+                            cockpit_faction == CockpitFaction::Alliance,
+                        ))
+                        // FUN_00495e90 writes 0x10, which no side's
+                        // advisor answers.
+                        .with_advisor_event(0x10);
+                if let Some(title) = title {
+                    message = message.with_title(title);
+                }
+                msg_log.push(filed(message, MessageRail::Conflict, Some(audience)));
+            }
+        }
+    }
+}
+
+/// After an AI pass whose orders were applied: the state the original's
+/// event handlers keep current within the sub-tick, so the next pass reads
+/// it (`ghidra/notes/ai-scheduling.md`). The pass's bombardment and
+/// assault losses count toward their blockades (`System_vtd0`), the
+/// blockade follows the fleets (`BlockadeSystem::detect`), an ended one
+/// settles its loyalty, and the victory word settles
+/// (`settle_victory_word_between_days`). Returns whether the game is over:
+/// the word's game-over bit holds the clock before the next sub-tick
+/// (`FUN_0041e390` -> `FUN_0051de80`), so the day's remaining passes do not
+/// run.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the pass's events reach the blockades, the log, the advisor and the ending"
+)]
+fn settle_after_ai_pass(
+    world: &mut GameWorld,
+    blockade_state: &mut BlockadeState,
+    bombard: &mut BombardEnv,
+    msg_log: &mut MessageLog,
+    battled: &mut std::collections::HashSet<rebellion_core::ids::SystemKey>,
+    message_texts: &std::collections::HashMap<u16, String>,
+    troop_transport_state: &mut TroopTransportState,
+    cockpit_faction: CockpitFaction,
+    victory_state: &mut VictoryState,
+    victory_conditions: VictoryConditions,
+    advisor_schedule: Option<&mut rebellion_render::advisor_schedule::AdvisorSchedule>,
+    advisor_now: u32,
+    pending_ending: &mut Option<u32>,
+    player_is_alliance: bool,
+    tick: u64,
+) -> bool {
+    for (system, losses) in bombard.losses.drain(..) {
+        blockade_state.record_losses(system, losses);
+    }
+    let events = BlockadeSystem::detect(blockade_state, world, tick);
+    for (system, blockade) in blockade_state.take_ended() {
+        rebellion_core::loyalty::settle_blockade(world, system, blockade);
+    }
+    present_blockade_events(
+        world,
+        msg_log,
+        &events,
+        battled,
+        player_is_alliance,
+        message_texts,
+        troop_transport_state,
+        cockpit_faction,
+    );
+    // Bit 0x4000 holds for one pass (FUN_0050a9e0).
+    battled.clear();
+    settle_victory_word_between_days(
+        victory_state,
+        world,
+        victory_conditions,
+        message_texts,
+        msg_log,
+        advisor_schedule,
+        advisor_now,
+        pending_ending,
+        player_is_alliance,
+        tick,
+    );
+    victory_state.resolved
 }
 
 /// The victory conditions word's check and the game's end.

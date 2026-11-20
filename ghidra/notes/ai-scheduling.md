@@ -20,8 +20,9 @@ passes sit in the day and **when** they run in real time.
 One call per frame runs the phase `this+8`. A phase that returns "not
 done" runs again on the next frame. So the game clock waits for the
 phase to finish. Phase 0 lets the loop go on only once 0.25 s have
-passed and the game is not paused (`FUN_0041e390`; `FUN_0051de80` is the
-pause bit). A full pass of phases 0 to 13 is **one sub-tick**. The
+passed and the clock is not held (`FUN_0041e390`; `FUN_0051de80` reads
+bit `0x10000000` of `+0xc0`'s `+0x74`, which `victory.rs` reads as the
+game-over hold). A full pass of phases 0 to 13 is **one sub-tick**. The
 player manager is `DAT_006b14e4` (`thunk_FUN_00435a40`). Its `+0x10`
 holds the side 1 (Alliance) player and `+0x14` the side 2 player
 (`FUN_004365d0`).
@@ -277,6 +278,15 @@ state they keep is the `seen` dates of record `+0x44`.
 
 Each stage is gated and committed on its own. A new or changed rule
 carries its source (the `FUN_` addresses above).
+
+Status 2026-11-20: stages 1, 2 and 6 are done in both day paths
+(`rebellion-data/src/simulation.rs` and the app), without the F-012
+unification. Stage 1 also moves the blockade's dawn look (arrivals and
+timer `0x386`) ahead of the passes; the regiments running a blockade
+stay after them. Stage 2 recomputes the blockade (`BlockadeSystem::detect`,
+the losses of the pass first) and the victory word after each pass that
+applied orders, and a win stops the day's remaining passes
+(`settle_after_pass`, `settle_after_ai_pass`).
 
 1. **Day-start timers before the AI (order only).** In
    `run_simulation_tick` and the app loop, move the timer systems ahead

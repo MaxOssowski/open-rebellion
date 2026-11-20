@@ -93,17 +93,22 @@ run_simulation_tick():
   5. results         = MissionSystem::advance()         → integrator.apply_mission_result()
   5b. escapes        = MissionSystem::advance_escapes() → integrator.apply_escape_effects()
   6. fired_events    = EventSystem::advance()           → integrator.apply_fired_events()
-  7. ai_actions      = AISystem::advance()              → integrator.apply_ai_actions()
   8. blockade        = BlockadeSystem::advance()        → integrator.apply_blockade_events()
-  9. uprising        = UprisingSystem::advance()        → integrator.apply_uprising_events()
+  9. uprising, informants, healing, Force discovery, repair, mines and
+     refineries, autoscrap, the yards' research tally (the day's timers)
+  7. ai_actions      = AISystem::pass() × passes_per_day → integrator.apply_ai_actions()
+     after a pass that applied orders: settle_after_pass (BlockadeSystem::detect,
+     the victory word; a win holds the day's remaining passes)
+  8b. regiments running a blockade (BlockadeSystem::resolve_running)
   11. ds_events      = DeathStarSystem::advance()       → integrator.apply_death_star_events()
   12. research       = (none: research missions add points in step 5, apply_mission_result)
+  13e. loyalty, 13f. per-side views
   14. victory        = VictorySystem::check()           → integrator.apply_victory()
   15. snapshot       (every 250 ticks)                  → integrator.emit_campaign_snapshot()
   return integrator.finish()
 ```
 
-Order matters: economy runs before manufacturing (production modifiers); combat needs fleet positions from movement; AI reads mission and manufacturing state that earlier systems may have modified.
+Order matters: economy runs before manufacturing (production modifiers); combat needs fleet positions from movement; every timer due on a day fires before the day's first AI tick, as in the original's frame loop (`FUN_0041dff0` phase 5 before phase 8; `ghidra/notes/ai-scheduling.md`); the AI reads mission and manufacturing state that earlier systems may have modified. The app's day path (`rebellion-app/src/main.rs`) keeps the same split with `settle_after_ai_pass` (F-012 still duplicates it).
 
 ## Shared Simulation Tick (v0.8.0) + PerceptionIntegrator (v0.19.0)
 

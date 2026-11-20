@@ -1122,8 +1122,8 @@ impl AISystem {
     /// the research planners' holds, `FUN_0047b610`), phase 5 readies every
     /// module (slot `+0x10`, `FUN_004cc990`), and phase 3 runs module steps
     /// ([`Self::next_module`], [`Self::step_module`]) until a step issues an
-    /// order, which ends the tick, or no module is ready. Nothing runs once
-    /// the day's [`ORDERS_PER_DAY`] are spent. So a pass issues at most one
+    /// order, which ends the tick, or no module is ready. Once the day's
+    /// [`ORDERS_PER_DAY`] are spent only the refresh runs. So a pass issues at most one
     /// order. The caller applies it before the next pass, and calls
     /// [`AIState::begin_day`] before a day's first.
     ///
@@ -1152,9 +1152,6 @@ impl AISystem {
         let Some(faction) = state.faction else {
             return Vec::new();
         };
-        if state.orders_today >= ORDERS_PER_DAY {
-            return Vec::new();
-        }
         let mut planner = Self::side_planner(state, world, mission_state, faction, tick);
         // FUN_004198a0, FUN_00419870, FUN_004197b0: the controller's bit for
         // each tree the side has finished.
@@ -1211,6 +1208,12 @@ impl AISystem {
             if r.state & 2 != 0 && r.kind & 6 != 0 {
                 state.seen.insert(r.system, tick);
             }
+        }
+        // FUN_00485b40: with the day's orders spent, state 3 ends the tick
+        // before any step, but states 4 and 5 (the refresh above) still
+        // run every tick.
+        if state.orders_today >= ORDERS_PER_DAY {
+            return Vec::new();
         }
         let ctx = ModuleInputs {
             world,
@@ -12623,6 +12626,33 @@ mod tests {
         assert_eq!(state.orders_today, 0);
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(2)]);
         assert!(state.module_pending[TROOPS].is_empty());
+    }
+
+    #[test]
+    fn a_spent_budget_still_dates_a_seen_blockade() {
+        // FUN_00485b40: with +0x420 at the budget +0x428, state 3 ends the
+        // tick at once, but states 4 (FUN_00418500) and 5 run every tick,
+        // so a blockaded system not the side's is still seen that day
+        // (FUN_00433e40, record +0x44). No module steps.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let blockaded = add_system(&mut world, sector, 0.1, 0.9);
+        world.systems[blockaded].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        let fleet = world.fleets.insert(Fleet {
+            location: blockaded,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[blockaded].fleets.push(fleet);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.orders_today = ORDERS_PER_DAY;
+        assert!(cadence_pass(&mut state, &world).is_empty());
+        assert_eq!(state.seen, HashMap::from([(blockaded, 7)]));
+        assert_eq!(state.strategy.posture, 0);
     }
 
     #[test]
