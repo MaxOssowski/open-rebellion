@@ -1886,7 +1886,7 @@ impl AISystem {
             0xd => {
                 Self::research_strategy(
                     state,
-                    world,
+                    (world, galaxy),
                     mission_state,
                     research_state,
                     uprisings,
@@ -2196,7 +2196,10 @@ impl AISystem {
     ///
     /// port: slot `+0x34` reads the target record's bit: `0x40`
     /// (Diplomacy, `FUN_00481eb0`), `0x100` (Incite, `FUN_004806d0`), `0x20`
-    /// (Subdue, `FUN_0047d320`).
+    /// (Subdue, `FUN_0047d320`). Each also copies the target `+0x34` into
+    /// the gathering place `+0x38` while the target's record is the side's
+    /// with no enemy fleet (`+0x30` bit 1, not `0x200`), whatever it
+    /// answers.
     ///
     /// The other classes read their reports in their own slots `+0x30`:
     ///
@@ -2271,10 +2274,14 @@ impl AISystem {
                 continue;
             };
             if p.pending & CHECK != 0 {
-                let admitted = p
-                    .target_system
-                    .and_then(|t| galaxy.system(t))
-                    .is_some_and(|r| r.summary & bit != 0);
+                let record = p.target_system.and_then(|t| galaxy.system(t));
+                let admitted = record.is_some_and(|r| r.summary & bit != 0);
+                // The slot also makes a target of the side with no enemy
+                // fleet (record +0x30 bit 1, not 0x200) the gathering
+                // place: +0x38 = +0x34 (0x481ede, 0x480700, 0x47d34e).
+                if record.is_some_and(|r| r.kind & 1 != 0 && r.kind & 0x200 == 0) {
+                    p.staging = p.target_system;
+                }
                 if !admitted {
                     p.pending = (p.pending & !CHECK) | ABORT;
                 }
@@ -2679,14 +2686,16 @@ impl AISystem {
     /// Report (`FUN_0047c890`, `FUN_0047b250`): a success clears its
     /// failures, a failure counts one, past slot `+0x24` (1000) the planner
     /// aborts its mission, and either result aborts the mission when the
-    /// remembered site lost its site bit (`FUN_0047c110` and siblings). The
+    /// remembered site lost its site bit (`FUN_0047c110` and siblings). That
+    /// slot also makes a site of the side with no enemy fleet (record
+    /// `+0x30` bit 1, not `0x200`) the gathering place `+0x38`. The
     /// mission module runs the planners ([`Self::mission_step`]).
     ///
     /// port: the reports' aborts are the planners' orders (`FUN_0047b250`)
     /// in the original.
     fn research_strategy(
         state: &mut AIState,
-        world: &GameWorld,
+        (world, galaxy): (&GameWorld, &crate::ai_records::Galaxy),
         mission_state: &MissionState,
         research_state: &ResearchState,
         uprisings: &crate::uprising::UprisingState,
@@ -2731,6 +2740,16 @@ impl AISystem {
                     p.failures = 0;
                 }
                 if let Some(mission) = running(p.mission) {
+                    // Without the abort, slot +0x34 checks the site; it also
+                    // makes a site of the side with no enemy fleet the
+                    // gathering place +0x38 (0x47c13e).
+                    let own = p
+                        .site
+                        .and_then(|s| galaxy.system(s))
+                        .is_some_and(|r| r.kind & 1 != 0 && r.kind & 0x200 == 0);
+                    if !give_up && own {
+                        p.target = p.site;
+                    }
                     if give_up || !p.site.is_some_and(site) {
                         actions.push(AIAction::AbortMission {
                             mission_id: mission.id,
@@ -5460,7 +5479,7 @@ mod tests {
     ) {
         AISystem::research_strategy(
             state,
-            ctx.world,
+            (ctx.world, &crate::ai_records::Galaxy::default()),
             ctx.mission_state,
             ctx.research_state,
             ctx.uprisings,
@@ -6068,6 +6087,75 @@ mod tests {
         assert_eq!(reports(&mut state, &world), vec![id]);
         // No report, no check.
         assert!(reports(&mut state, &world).is_empty());
+    }
+
+    #[test]
+    fn a_checked_target_of_the_side_becomes_the_diplomacy_gathering_place() {
+        // FUN_00481eb0 (0x481ed2..0x481ee2): besides its answer (record
+        // +0x2c 0x40), the abort test copies +0x34 into +0x38 while the
+        // target's record is the side's (+0x30 bit 1) with no enemy fleet
+        // (+0x30 0x200). FUN_004806d0 and FUN_0047d320 do the same.
+        let (mut world, home, neutral, keys) = diplomacy_world(50.0, &[90]);
+        let mut state = AIState::new(AiFaction::Empire);
+        strategy_pass(&mut state, &world, 1);
+        let mut missions = MissionState::new();
+        let id = missions.dispatch(crate::missions::MissionRequest {
+            kind: MissionKind::Diplomacy,
+            faction: MissionFaction::Empire,
+            team: vec![MissionMember::Character(keys[0])],
+            decoys: Vec::new(),
+            target_system: neutral,
+            target_character: None,
+            target_object: None,
+            tick: 1,
+        });
+        state.bind_mission(
+            MissionKind::Diplomacy,
+            MissionMember::Character(keys[0]),
+            id,
+        );
+        let at = state
+            .mission_planners
+            .iter()
+            .position(|p| p.kind == MissionKind::Diplomacy)
+            .unwrap();
+        let check = |state: &mut AIState, world: &GameWorld| {
+            state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Success)]);
+            let galaxy = galaxy_of(state, world);
+            let mut actions = Vec::new();
+            AISystem::mission_planner_reports(state, &galaxy, (&missions, 1), &mut actions);
+            aborted(&actions)
+        };
+
+        // A neutral target: the place stays.
+        state.mission_planners[at].target_system = Some(neutral);
+        state.mission_planners[at].staging = None;
+        assert!(check(&mut state, &world).is_empty());
+        assert_eq!(state.mission_planners[at].staging, None);
+
+        // An own target below 70 support is still a candidate (0x40) and
+        // becomes the place.
+        state.mission_planners[at].target_system = Some(home);
+        assert!(check(&mut state, &world).is_empty());
+        assert_eq!(state.mission_planners[at].staging, Some(home));
+
+        // An own target at 90 support is no candidate: the mission aborts,
+        // and the target is still the place.
+        state.mission_planners[at].staging = None;
+        world.systems[home].popularity_empire = 0.9;
+        assert_eq!(check(&mut state, &world), vec![id]);
+        assert_eq!(state.mission_planners[at].staging, Some(home));
+
+        // The sixth failure aborts without the check (FUN_0047b250 asks
+        // slot +0x34 only for 0x40000000): the place stays.
+        state.mission_planners[at].staging = None;
+        state.mission_planners[at].failures = 5;
+        state.note_mission_results(&[result(id, crate::missions::MissionOutcome::Failure)]);
+        let galaxy = galaxy_of(&state, &world);
+        let mut actions = Vec::new();
+        AISystem::mission_planner_reports(&mut state, &galaxy, (&missions, 1), &mut actions);
+        assert_eq!(aborted(&actions), vec![id]);
+        assert_eq!(state.mission_planners[at].staging, None);
     }
 
     #[test]
@@ -10951,6 +11039,67 @@ mod tests {
         let actions = research_pass(&mut state, &world, &missions, &ResearchState::new(), 21);
         assert_eq!(aborted(&actions), vec![id]);
         assert!(state.research_planners[0].report.is_none());
+    }
+
+    #[test]
+    fn a_checked_research_site_of_the_side_becomes_the_gathering_place() {
+        // FUN_0047c110 (0x47c132..0x47c142): the site check also copies
+        // +0x34 into +0x38 while the site's record is the side's with no
+        // enemy fleet. After the abort (0x20000000) slot +0x34 is not
+        // asked (FUN_0047b250).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let shipyard = yard_system(&mut world, sector, 0x28);
+        let ship = designer(&mut world, TechType::Ship, 50);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let mut missions = MissionState::new();
+        research_pass(&mut state, &world, &missions, &ResearchState::new(), 7);
+        let id = apply_order(
+            &mut state,
+            &mut world,
+            &mut missions,
+            MissionKind::ShipDesignResearch,
+            ship,
+            shipyard,
+        );
+        let read = |state: &mut AIState, world: &GameWorld, outcome| {
+            state.note_mission_results(&[result(id, outcome)]);
+            let galaxy = galaxy_of(state, world);
+            let mut actions = Vec::new();
+            AISystem::research_strategy(
+                state,
+                (world, &galaxy),
+                &missions,
+                &ResearchState::new(),
+                &crate::uprising::UprisingState::default(),
+                AiFaction::Alliance,
+                &mut actions,
+            );
+            aborted(&actions)
+        };
+        assert_eq!(state.research_planners[0].site, Some(shipyard));
+
+        state.research_planners[0].target = None;
+        assert!(read(&mut state, &world, crate::missions::MissionOutcome::Success).is_empty());
+        assert_eq!(state.research_planners[0].target, Some(shipyard));
+
+        // The 1001st failure aborts without the check: the place stays.
+        state.research_planners[0].target = None;
+        state.research_planners[0].failures = 1000;
+        assert_eq!(
+            read(&mut state, &world, crate::missions::MissionOutcome::Failure),
+            vec![id]
+        );
+        assert_eq!(state.research_planners[0].target, None);
+
+        // A site the side no longer holds (record +0x30 without bit 1)
+        // fails the check and is not the place.
+        world.systems[shipyard].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        assert_eq!(
+            read(&mut state, &world, crate::missions::MissionOutcome::Success),
+            vec![id]
+        );
+        assert_eq!(state.research_planners[0].target, None);
     }
 
     #[test]

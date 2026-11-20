@@ -900,9 +900,9 @@ The Diplomacy planner class has vtable `0x0065a900`:
 |---|---|---|
 | `+0x18` | `FUN_00481500` | the cancel key: the team's records' `+0x40` summed (diplomacy), 0 with `+0x20` bit `0x20` |
 | `+0x30` | `FUN_0047c890` | the Mission Report, shared with the research planners |
-| `+0x34` | `FUN_00481eb0` | the abort test: the target record still has `+0x2c` bit `0x40` |
+| `+0x34` | `FUN_00481eb0` | the abort test: the target record still has `+0x2c` bit `0x40`; it also makes an own target with no enemy fleet the gathering place `+0x38` |
 | `+0x38` | `FUN_00481fe0` | release: clear the claim `0x20000000` on the record of `+0x30` |
-| `+0x3c` | `FUN_00481ef0` | a better free diplomat exists (not read further) |
+| `+0x3c` | `FUN_00481ef0` | a better free diplomat exists ("Diplomacy's slot +0x3c" below) |
 | `+0x40` | `FUN_004814f0` | 0xb: the count `S+0x320 + 4*0xb` = `S+0x34c` |
 | `+0x48` | `FUN_004815a0` | the team selector (diplomacy 69..10000) |
 | `+0x4c` | `FUN_0047f500` | the decoy selector |
@@ -966,8 +966,11 @@ port:
   request a call" below);
 - the strategy's other rows are not yet ported, so row 5 is not ordered
   behind rows 1 to 4 (ordered since 2026-11-20);
-- slots `+0x30`, `+0x34` and `+0x3c` (Mission Reports, the abort and a
-  better diplomat) are not ported for Diplomacy.
+- slots `+0x30`, `+0x34` and `+0x3c` were not ported in this first
+  pass. All three are ported since: `+0x30` and `+0x34` on 2026-10-18
+  ("Mission Reports of the standing planners", save v83), `+0x3c` on
+  2026-10-19 ("Diplomacy's slot +0x3c"), and the side effect of `+0x34`
+  on 2026-11-20 ("The abort tests' gathering place").
 
 Campaigns: 24 seeds of 1500 days, against the F-005 commit.
 - Diplomacy orders: 1,381 before, 789 after.
@@ -2063,6 +2066,42 @@ port:
   after a 1001st failure is not ported (it needs a save layout change).
 - `FUN_0042f700` returns the first planner of the one list; the port
   looks through the mission planners, then the research planners.
+
+## The abort tests' gathering place (ported 2026-11-20)
+
+The Diplomacy slots were listed as unported in the Diplomacy section's
+first pass. Checked against the code on 2026-11-20:
+- `+0x30` (`FUN_0047c890`) is `MissionPlanner::note_report`, with the
+  report's reading in `AISystem::mission_planner_reports`;
+- `+0x3c` (`FUN_00481ef0`) is `Planner::outranked`;
+- `+0x34` (`FUN_00481eb0`) answered right, but one effect was missing.
+
+The disassembly of `FUN_00481eb0` (`0x481eb0..0x481eec`):
+- it reads the record of `+0x34` (`FUN_0047aa90`) and answers its
+  `+0x2c` bit `0x40`;
+- whatever the answer, while that record has `+0x30` bit 1 (the side's)
+  and not `0x200` (an enemy fleet), it copies `+0x34` into `+0x38`
+  (`lea ecx,[esi+0x38]; push edi(=esi+0x34); call FUN_004f26d0` at
+  `0x481ede`). The decompile drops the `this` of that copy.
+
+Incite's `FUN_004806d0` (bit `0x100`, copy at `0x480700`), Subdue's
+`FUN_0047d320` (bit `0x20`, copy at `0x47d34e`) and the research
+planners' `FUN_0047c110` (ships, bit 4, copy at `0x47c13e`),
+`FUN_0047c6f0` (troops, bit 8, `0x47c71e`) and `FUN_0047cd40`
+(facilities, bit `0x10`, `0x47cd6e`) are the same function with another
+bit. So the target check (`0x40000000`, state 1
+`FUN_0047b250`) makes an own target with no enemy fleet the gathering
+place. The abort `0x20000000` does not ask the slot.
+
+Ported:
+- `mission_planner_reports`: the check of Diplomacy, Incite and Subdue
+  sets `staging` to the target when its record has `kind & 1` and not
+  `0x200`;
+- `research_strategy`: without the abort, the same for the site into the
+  research planner's `target` (its `+0x38`). It now takes the records.
+
+port: the research planners' site check reads `ai_research_site`, not the
+record's site bits (as before).
 
 ## The port's 60-day limit (checked 2026-11-20)
 
