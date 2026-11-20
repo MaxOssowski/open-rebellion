@@ -17,6 +17,8 @@ WEB = ROOT / "web"
 ARTIFACT = ROOT / "crates/rebellion-data/tests/fixtures/replay_seed42_v1.json"
 DEFAULT_PORT = 18082
 EXPECTED_REQUEST_SUFFIXES = ("/", "/gl.js", "/open-rebellion.wasm", "/data/runtime.orpk")
+# Ordinary startup then fetches the intro movies it plays before the menu.
+INTRO_MOVIE_PATHS = ("/data/video/000.webm", "/data/video/001.webm")
 EQUIVALENCE_FIELDS = (
     "schema_version",
     "fixture_id",
@@ -119,7 +121,7 @@ def browser_report(
             "open",
             f"http://127.0.0.1:{port}/{query}",
         )
-        attempts = 200 if expect_report else 30
+        attempts = 200 if expect_report else 150
         for _ in range(attempts):
             # Some agent-browser Chrome builds instantiate WASM but suppress
             # requestAnimationFrame in headless sessions. Drive the exported
@@ -141,6 +143,7 @@ def browser_report(
                 "menuActive: document.getElementById('main-menu-semantics')?.dataset.active || null,"
                 "canvasWidth: document.getElementById('glcanvas')?.width || 0,"
                 "canvasHeight: document.getElementById('glcanvas')?.height || 0,"
+                "video: Boolean(document.querySelector('video')),"
                 "framePumped"
                 "});"
                 "})()",
@@ -148,6 +151,13 @@ def browser_report(
             page_state = json.loads(evaluated.get("result", "{}"))
             if expect_report and page_state.get("report") is not None:
                 break
+            if not expect_report and page_state.get("menuActive") == "true":
+                break
+            if not expect_report and page_state.get("video"):
+                # Ordinary startup plays the intro movies first (MDATA.000,
+                # 001; FUN_004138a0); Escape skips each one, as the
+                # interface-parity gates do (skipToMainMenu).
+                agent("press", "Escape")
             time.sleep(0.1)
         if expect_report and page_state.get("report") is None:
             raise RuntimeError(
@@ -260,8 +270,16 @@ def verify(
     if normal_state.get("canvasWidth", 0) <= 0 or normal_state.get("canvasHeight", 0) <= 0:
         failures.append("normal startup canvas is blank-sized")
     normal_paths = request_paths(normal_startup, port)
-    if tuple(normal_paths) != EXPECTED_REQUEST_SUFFIXES:
-        failures.append(f"expected four normal-startup requests, saw {normal_paths}")
+    if (
+        tuple(normal_paths[: len(EXPECTED_REQUEST_SUFFIXES)]) != EXPECTED_REQUEST_SUFFIXES
+        or any(
+            path not in INTRO_MOVIE_PATHS
+            for path in normal_paths[len(EXPECTED_REQUEST_SUFFIXES) :]
+        )
+    ):
+        failures.append(
+            f"expected four normal-startup requests and the intro movies, saw {normal_paths}"
+        )
     if normal_startup.get("errors"):
         failures.append(f"normal startup emitted browser errors: {normal_startup['errors']}")
 
@@ -289,6 +307,12 @@ def main() -> int:
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--site",
+        type=Path,
+        default=WEB,
+        help="directory to serve (default web/); with --skip-build, a staged copy",
+    )
     args = parser.parse_args()
 
     if not args.skip_build:
@@ -299,7 +323,7 @@ def main() -> int:
 
     server = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(args.port), "--bind", "127.0.0.1"],
-        cwd=WEB,
+        cwd=args.site,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
