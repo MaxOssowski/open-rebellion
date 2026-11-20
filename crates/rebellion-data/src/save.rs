@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 131;
+pub const SAVE_VERSION: u32 = 132;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -141,7 +141,11 @@ pub const V129: u32 = 129;
 /// (`SaveState::system_copy_uprisings`), its last field.
 pub const V130: u32 = 130;
 
-/// Whether a save of `version` loads (the current one, or v116 to v130
+/// v131: the save without the AI's day (`SaveState::ai_day`), its last
+/// field.
+pub const V131: u32 = 131;
+
+/// Whether a save of `version` loads (the current one, or v116 to v131
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -274,6 +278,11 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         body.extend(bincode::serialize(
             &rebellion_core::object_views::SystemCopyUprisings::default(),
         )?);
+    }
+    if version <= V131 {
+        // An older save was made between days, after every AI pass of
+        // its day had run.
+        body.extend(bincode::serialize(&rebellion_core::ai_schedule::AiDay::default())?);
     }
     Ok(body)
 }
@@ -471,6 +480,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V131 {
+            fields.remove("ai_day");
+        }
         if version <= V130 {
             fields.remove("system_copy_uprisings");
         }
@@ -670,6 +682,13 @@ pub struct SaveState {
     /// copies are seeded from each system's own state. The loaders put it
     /// back into the world's views, whose own encoding skips it.
     pub system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings,
+    // ── v132: the AI's day ───────────────────────────────────────────────
+    /// The current day's AI passes (`rebellion_core::ai_schedule::AiDay`):
+    /// the interactive game runs one a sub-tick, so a save made within a
+    /// day resumes at its next pass (`ghidra/notes/ai-scheduling.md`). It
+    /// stays the last field: an older body, saved between days, is read
+    /// by appending a finished day ([`migrate_body`]).
+    pub ai_day: rebellion_core::ai_schedule::AiDay,
 }
 
 /// [`SaveState::ai_command_planners`]: module `0xc` of `ai` and of `ai2`.
@@ -1223,6 +1242,7 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V131,
             V130,
             V129,
             V128,
@@ -1362,6 +1382,8 @@ pub mod wasm_impl {
             versioned_meta_key(V129, slot),
             versioned_slot_key(V130, slot),
             versioned_meta_key(V130, slot),
+            versioned_slot_key(V131, slot),
+            versioned_meta_key(V131, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1391,6 +1413,7 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V131,
             V130,
             V129,
             V128,
@@ -1556,6 +1579,7 @@ mod tests {
             system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings::default(),
             ai_command_planners: AiCommandPlanners::default(),
             ai_sector_links: AiSectorLinks::default(),
+            ai_day: rebellion_core::ai_schedule::AiDay::default(),
         }
     }
 
@@ -2010,11 +2034,27 @@ mod tests {
         bincode::serialize(&AiSectorLinks::default()).unwrap().len() + uprisings_tail()
     }
 
-    /// The length of the empty copy uprising bits v131 added.
+    /// The length of the empty copy uprising bits v131 added, and what
+    /// came after.
     fn uprisings_tail() -> usize {
         bincode::serialize(&rebellion_core::object_views::SystemCopyUprisings::default())
             .unwrap()
             .len()
+            + day_tail()
+    }
+
+    /// The length of the finished AI day v132 added.
+    fn day_tail() -> usize {
+        bincode::serialize(&rebellion_core::ai_schedule::AiDay::default())
+            .unwrap()
+            .len()
+    }
+
+    /// `state` written as a v131 file: no AI day. `state` holds a
+    /// finished one.
+    fn write_v131(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.ai_day, rebellion_core::ai_schedule::AiDay::default());
+        write_old(saves_dir, state, V131, day_tail())
     }
 
     /// `state` written as a v130 file: no copy uprising bits. `state`
@@ -2458,6 +2498,51 @@ mod tests {
             fingerprint_as(&state, V130).unwrap(),
             fingerprint_as(&loaded, V130).unwrap()
         );
+    }
+
+    #[test]
+    fn a_v131_save_loads_between_days() {
+        // v132 keeps the AI's day (ai_schedule::AiDay); a v131 save was
+        // made after each day's passes had all run.
+        let saves_dir = tmp_dir("v131_migration");
+        let state = minimal_save_state();
+        write_v131(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v131 save migrates");
+        assert!(loaded.ai_day.passes_done());
+        assert!(!loaded.ai_day.owes_close());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V131).unwrap(),
+            fingerprint_as(&loaded, V131).unwrap()
+        );
+    }
+
+    #[test]
+    fn loading_a_mid_day_save_resumes_at_its_pass() {
+        // SaveState::ai_day (v132): the interactive game runs one AI pass
+        // a sub-tick (FUN_0041dff0 phase 8), so a save can fall within a
+        // day; it keeps the passes run and the end of the day owed.
+        let saves_dir = tmp_dir("mid_day");
+        let mut state = minimal_save_state();
+        let mut day = rebellion_core::ai_schedule::AiDay::begin(
+            9,
+            61,
+            0x1234,
+            rebellion_core::loyalty::LoyaltyWatch::default(),
+            1,
+        );
+        day.done = 17;
+        state.ai_day = day;
+        save_slot(&saves_dir, 0, "Mid-day", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.ai_day, day);
+        assert_eq!(loaded.ai_day.done, 17);
+        assert!(!loaded.ai_day.passes_done());
     }
 
     #[test]

@@ -768,6 +768,7 @@ impl ReplayRuntime {
             ai_command_planners,
             ai_sector_links,
             system_copy_uprisings,
+            ai_day,
         } = state;
         let (mut ai, mut ai2) = (ai, ai2);
         ai.module_c = ai_command_planners.0;
@@ -821,6 +822,7 @@ impl ReplayRuntime {
                 deliveries,
                 combat_cooldowns,
                 campaign_config,
+                ai_day,
             },
             inactive_fog,
             player_is_alliance,
@@ -945,6 +947,7 @@ impl ReplayRuntime {
             ),
             system_copy_bits: self.world.object_views.system_bits.clone(),
             system_copy_uprisings: self.world.object_views.system_uprisings.clone(),
+            ai_day: self.states.ai_day,
             ai_command_planners: crate::save::command_planners(
                 &self.states.ai,
                 self.states.ai2.as_ref(),
@@ -1292,6 +1295,7 @@ mod tests {
             squadron_damage: Vec::new(),
             system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
             system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings::default(),
+            ai_day: rebellion_core::ai_schedule::AiDay::default(),
             ai_command_planners: crate::save::AiCommandPlanners::default(),
             ai_sector_links: crate::save::AiSectorLinks::default(),
         }
@@ -1746,5 +1750,94 @@ mod tests {
         .unwrap_err()
         .to_string()
         .contains("format-v1 limit"));
+    }
+
+    /// Run `days` days of `runtime`, each day's AI passes in one burst (the
+    /// headless runner) or one per sub-tick with the day's end after the
+    /// last (the interactive game). Returns the AI orders counted.
+    fn run_days(runtime: &mut ReplayRuntime, days: u64, spread: bool) -> u32 {
+        let mut orders = 0;
+        for _ in 0..days {
+            let tick = runtime.states.clock.tick + 1;
+            runtime.states.clock.tick = tick;
+            let tick_events = [TickEvent { tick }];
+            let rolls = (0..usize::from(REPLAY_ROLLS_PER_TICK))
+                .map(|_| runtime.sim_rng.gen::<f64>())
+                .collect::<Vec<_>>();
+            if spread {
+                let mut integrator = crate::integrator::PerceptionIntegrator::new(tick, tick);
+                crate::simulation::begin_simulation_day(
+                    &mut runtime.world,
+                    &mut runtime.states,
+                    &tick_events,
+                    &rolls,
+                    &runtime.game_config,
+                    &mut integrator,
+                );
+                let passes = runtime.states.ai_day.passes;
+                for upto in 1..=passes {
+                    crate::simulation::run_ai_passes(
+                        &mut runtime.world,
+                        &mut runtime.states,
+                        &runtime.game_config,
+                        &mut integrator,
+                        upto,
+                    );
+                    assert_eq!(runtime.states.ai_day.done, upto);
+                }
+                crate::simulation::close_simulation_day(
+                    &mut runtime.world,
+                    &mut runtime.states,
+                    &rolls,
+                    &mut integrator,
+                );
+            } else {
+                run_simulation_tick(
+                    &mut runtime.world,
+                    &mut runtime.states,
+                    &tick_events,
+                    &rolls,
+                    tick,
+                    &runtime.game_config,
+                );
+            }
+            orders += runtime.states.ai.orders_today
+                + runtime.states.ai2.as_ref().map_or(0, |ai| ai.orders_today);
+            assert!(!runtime.states.ai_day.owes_close());
+        }
+        orders
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn spreading_a_day_s_ai_passes_over_its_sub_ticks_matches_the_burst() {
+        // FUN_0041dff0 runs one AI tick a sub-tick (phase 8), rate + 1 a
+        // day (FUN_0051dea0); with no input between sub-ticks, the order
+        // the headless runner's burst gives must be the same
+        // (ghidra/notes/ai-scheduling.md, stage 3).
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/base");
+        let world = crate::load_game_data_with_options(
+            &data,
+            &crate::replay_fixture::seed42_seed_options(),
+        )
+        .expect("load original campaign data");
+        let initial = crate::replay_fixture::seed42_initial_state(world).unwrap();
+        let runtime = |state: SaveState| {
+            let mut runtime = ReplayRuntime::from_save_state(state);
+            runtime.states.clock.set_speed(GameSpeed::Medium);
+            runtime.apply_command(&ReplayCommand::ToggleDualAi).unwrap();
+            runtime
+        };
+        let mut burst = runtime(initial.clone());
+        let mut spread = runtime(initial);
+        let burst_orders = run_days(&mut burst, 30, false);
+        let spread_orders = run_days(&mut spread, 30, true);
+        assert!(burst_orders > 0, "the AIs gave orders");
+        assert_eq!(spread_orders, burst_orders);
+        assert_eq!(
+            compute_state_fingerprint(&spread.snapshot()).unwrap(),
+            compute_state_fingerprint(&burst.snapshot()).unwrap()
+        );
     }
 }

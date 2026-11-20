@@ -349,6 +349,7 @@ fn main() -> anyhow::Result<()> {
 
     // Initialize simulation states
     let mut states = SimulationStates {
+        ai_day: rebellion_core::ai_schedule::AiDay::default(),
         clock: GameClock::new(),
         manufacturing: rebellion_core::manufacturing::ManufacturingState::new(),
         missions: rebellion_core::missions::MissionState::new(),

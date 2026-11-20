@@ -112,6 +112,7 @@ fn telemetry_coverage_all_sys_constants_emit() {
     };
 
     let mut states = SimulationStates {
+        ai_day: rebellion_core::ai_schedule::AiDay::default(),
         clock: GameClock::new(),
         manufacturing: rebellion_core::manufacturing::ManufacturingState::new(),
         missions: rebellion_core::missions::MissionState::new(),

@@ -7,7 +7,8 @@
 use std::collections::HashMap;
 
 use crate::integrator::{resolve_system_space_combat, PerceptionIntegrator};
-use rebellion_core::ai::{AIState, AISystem};
+use rebellion_core::ai::{AIState, AISystem, AiFaction};
+use rebellion_core::ai_schedule::{AiDay, AiPassHost, AiSlot};
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyState, EconomySystem};
@@ -84,52 +85,21 @@ pub struct SimulationStates {
     pub combat_cooldowns: HashMap<SystemKey, u64>,
     /// Original new-game choices that continue to govern this campaign.
     pub campaign_config: CampaignConfig,
+    /// The current day's AI passes (`rebellion_core::ai_schedule`, v132).
+    pub ai_day: AiDay,
 }
 
-/// Run one simulation tick across all 15 systems.
-///
-/// Advances each system in the canonical order (economy → manufacturing → movement →
-/// combat → fog → missions → events → blockade → the day's timers (uprising,
-/// informants, healing, Force discovery, repair, mines and refineries,
-/// autoscrap, the yards' research) → AI → running regiments → `death_star` →
-/// loyalty → views → victory), applies effects to `world`, and returns a
-/// `Vec<GameEventRecord>` describing everything that happened. Every timer
-/// due on a day fires before the day's first AI tick
-/// (`ghidra/notes/ai-scheduling.md`).
-///
-/// `tick_events` comes from `GameClock::advance()`. `rolls` is a pre-generated
-/// slice of uniform `[0,1)` f64 values consumed sequentially by systems that
-/// need randomness. Pass at least 1024 rolls to cover a typical tick.
-///
-/// `wall_ms` is the wall-clock milliseconds since session start, used for
-/// the `wall_ms` field on each event record.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
-)]
 /// The systems a Destroy System order's Death Star destroyed this tick
 /// (`FUN_0058d990`), as the Death Star's `PlanetDestroyed` events, which
 /// step 11 carries out.
 fn planets_destroyed(
     bombard: &rebellion_core::bombardment::BombardEnv,
-    tick_events: &[TickEvent],
+    tick: u64,
 ) -> Vec<rebellion_core::death_star::DeathStarEvent> {
-    let Some(last) = tick_events.last() else {
-        return Vec::new();
-    };
     bombard
         .destroyed_systems()
         .into_iter()
-        .map(
-            |system| rebellion_core::death_star::DeathStarEvent::PlanetDestroyed {
-                system,
-                tick: last.tick,
-            },
-        )
+        .map(|system| rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, tick })
         .collect()
 }
 
@@ -178,6 +148,58 @@ fn settle_after_pass(
     bombard: &mut rebellion_core::bombardment::BombardEnv,
     tick: u64,
 ) -> bool {
+    // ── 11. The pass's bombardments and assaults, and the planets a
+    // Death Star destroyed (FUN_0058d990), are handled as they happen.
+    for (req, outcome) in &bombard.outcomes {
+        integrator.emit_bombardment(world, req, outcome);
+    }
+    for (req, outcome) in &bombard.assaults {
+        integrator.emit_assault(world, req, outcome);
+    }
+    let ds_events = planets_destroyed(bombard, tick);
+    integrator.apply_death_star_events(world, &ds_events);
+    // Knesset Shamash-Bet #R11: `cleanup_destroyed_system` drains an
+    // out-parameter `Vec<GameEffect>`; each `GameEffect::CharacterKilled`
+    // becomes an `EVT_CHARACTER_KILLED` telemetry record.
+    for evt in &ds_events {
+        let rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, .. } = evt;
+        let mut cleanup_effects: Vec<rebellion_core::effects::GameEffect> = Vec::new();
+        rebellion_core::death_star::cleanup_destroyed_system(
+            world,
+            *system,
+            &bombard.killed_at(*system),
+            &mut states.manufacturing,
+            &mut states.blockade,
+            &mut cleanup_effects,
+        );
+        let dest_sys_name = world
+            .systems
+            .get(*system)
+            .map_or_else(|| String::from("<unknown>"), |s| s.name.clone());
+        for effect in cleanup_effects.drain(..) {
+            if let rebellion_core::effects::GameEffect::CharacterKilled { character } = effect {
+                let (name, dat_id) = world.characters.get(character).map_or_else(
+                    || (String::from("<unknown>"), 0),
+                    |c| (c.name.clone(), c.dat_id.raw()),
+                );
+                integrator.emit(
+                    rebellion_core::game_events::SYS_MISSIONS,
+                    rebellion_core::game_events::EVT_CHARACTER_KILLED,
+                    serde_json::json!({
+                        "name": name,
+                        "dat_id": dat_id,
+                        "cause": "death_star",
+                        "system": dest_sys_name,
+                    }),
+                );
+            }
+        }
+    }
+    bombard.outcomes.clear();
+    bombard.assaults.clear();
+    bombard.reports.clear();
+    // System_vtd0: the losses count toward each blockade's (DestroyedReason
+    // 0xf, 0xe).
     for (system, losses) in bombard.losses.drain(..) {
         states.blockade.record_losses(system, losses);
     }
@@ -206,6 +228,26 @@ pub fn start_views(world: &mut GameWorld, states: &SimulationStates) {
     );
 }
 
+/// Run one simulation tick across all 15 systems.
+///
+/// Advances each system in the canonical order (economy → manufacturing → movement →
+/// combat → fog → missions → events → blockade → the day's timers (uprising,
+/// informants, healing, Force discovery, repair, mines and refineries,
+/// autoscrap, the yards' research) → running regiments → the day's AI
+/// passes in one burst → running regiments → loyalty → views → victory),
+/// applies effects to `world`, and returns a `Vec<GameEventRecord>`
+/// describing everything that happened. Every timer due on a day fires
+/// before the day's first AI tick (`ghidra/notes/ai-scheduling.md`). The
+/// three parts are [`begin_simulation_day`], [`run_ai_passes`] and
+/// [`close_simulation_day`]; the interactive app spreads the passes over
+/// the day's sub-ticks.
+///
+/// `tick_events` comes from `GameClock::advance()`. `rolls` is a pre-generated
+/// slice of uniform `[0,1)` f64 values consumed sequentially by systems that
+/// need randomness. Pass at least 1024 rolls to cover a typical tick.
+///
+/// `wall_ms` is the wall-clock milliseconds since session start, used for
+/// the `wall_ms` field on each event record.
 pub fn run_simulation_tick(
     world: &mut GameWorld,
     states: &mut SimulationStates,
@@ -217,8 +259,158 @@ pub fn run_simulation_tick(
     let Some(last_tick_event) = tick_events.last() else {
         return Vec::new();
     };
-
     let mut integrator = PerceptionIntegrator::new(last_tick_event.tick, wall_ms);
+    begin_simulation_day(world, states, tick_events, rolls, config, &mut integrator);
+    // The headless runner has no input between sub-ticks: the day's passes
+    // run in one burst (rebellion_core::ai_schedule).
+    run_ai_passes(world, states, config, &mut integrator, u32::MAX);
+    close_simulation_day(world, states, rolls, &mut integrator);
+    integrator.finish()
+}
+
+/// The headless host of the AI's passes ([`AiPassHost`]): the integrator
+/// applies their orders, and [`settle_after_pass`] follows each pass that
+/// applied any.
+struct HeadlessPasses<'a> {
+    world: &'a mut GameWorld,
+    states: &'a mut SimulationStates,
+    integrator: &'a mut PerceptionIntegrator,
+    config: &'a rebellion_core::tuning::GameConfig,
+    bombard: rebellion_core::bombardment::BombardEnv,
+}
+
+impl AiPassHost for HeadlessPasses<'_> {
+    fn faction(&self, slot: AiSlot) -> Option<AiFaction> {
+        let ai = match slot {
+            AiSlot::Primary => Some(&self.states.ai),
+            AiSlot::Secondary => self.states.ai2.as_ref(),
+        };
+        ai.map(|ai| ai.faction.unwrap_or(AiFaction::Empire))
+    }
+
+    fn think(&mut self, slot: AiSlot, day: u64) -> Vec<rebellion_core::ai::AIAction> {
+        let states = &mut *self.states;
+        let ai = match slot {
+            AiSlot::Primary => &mut states.ai,
+            AiSlot::Secondary => match states.ai2.as_mut() {
+                Some(ai) => ai,
+                None => return Vec::new(),
+            },
+        };
+        AISystem::pass(
+            ai,
+            self.world,
+            &states.manufacturing,
+            &states.deliveries,
+            &states.missions,
+            &states.movement,
+            &states.economy,
+            &states.troop_transport,
+            day,
+            self.config,
+            &states.research,
+            &states.uprising,
+        )
+    }
+
+    fn apply(&mut self, slot: AiSlot, actions: &[rebellion_core::ai::AIAction], day: u64) {
+        let states = &mut *self.states;
+        let ai = match slot {
+            AiSlot::Primary => &mut states.ai,
+            AiSlot::Secondary => match states.ai2.as_mut() {
+                Some(ai) => ai,
+                None => return,
+            },
+        };
+        self.integrator.apply_ai_actions(
+            actions,
+            ai,
+            &mut states.missions,
+            &mut states.manufacturing,
+            &mut states.movement,
+            &mut states.troop_transport,
+            &mut states.production,
+            self.world,
+            day,
+            slot == AiSlot::Secondary,
+            &mut self.bombard,
+        );
+    }
+
+    fn settle(&mut self, day: u64) -> bool {
+        settle_after_pass(
+            self.world,
+            self.states,
+            self.integrator,
+            &mut self.bombard,
+            day,
+        )
+    }
+}
+
+/// A new AI day for each side: the order count clears (`FUN_00485de0`),
+/// the game type is set, and new capital ships get the ids the AI follows
+/// them by (`GameWorld::number_ships`).
+fn begin_ai_day(world: &mut GameWorld, states: &mut SimulationStates) {
+    let conditions = states.campaign_config.victory_conditions;
+    for ai in std::iter::once(&mut states.ai).chain(states.ai2.as_mut()) {
+        ai.begin_day();
+        ai.set_game_type(conditions);
+    }
+    world.number_ships();
+}
+
+/// Run the current day's AI passes until `upto` have run
+/// ([`AiDay::run_until`]); the headless runner passes `u32::MAX` for the
+/// whole day. Returns whether a pass ended the game.
+pub fn run_ai_passes(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    config: &rebellion_core::tuning::GameConfig,
+    integrator: &mut PerceptionIntegrator,
+    upto: u32,
+) -> bool {
+    let mut day = states.ai_day;
+    let bombard = rebellion_core::bombardment::BombardEnv::new(
+        day.bombard_state,
+        Some(states.victory.alliance_hq),
+    );
+    let mut host = HeadlessPasses {
+        world,
+        states,
+        integrator,
+        config,
+        bombard,
+    };
+    let ended = day.run_until(&mut host, upto);
+    day.bombard_state = host.bombard.rng_state();
+    host.states.ai_day = day;
+    ended
+}
+
+/// The start of a day: every system up to and including the day's timers,
+/// then its AI day begins ([`AiDay::begin`]). With more than one day in
+/// `tick_events`, the earlier days' passes run here; the last day's are
+/// left to [`run_ai_passes`], and its end to [`close_simulation_day`].
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
+)]
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
+)]
+pub fn begin_simulation_day(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    tick_events: &[TickEvent],
+    rolls: &[f64],
+    config: &rebellion_core::tuning::GameConfig,
+    integrator: &mut PerceptionIntegrator,
+) {
+    let Some(last_tick_event) = tick_events.last() else {
+        return;
+    };
     let mut roll_cursor = 0usize;
     let current_tick = last_tick_event.tick;
 
@@ -437,7 +629,7 @@ pub fn run_simulation_tick(
     // Roll the regiments that set out on their own since the last tick
     // (FUN_00504990) before anything else moves them; their rolls happen at
     // the blockade step.
-    let mut running_regiments = if tick_events.is_empty() {
+    let running_regiments = if tick_events.is_empty() {
         Vec::new()
     } else {
         BlockadeSystem::running_regiments(&mut states.blockade, world, &states.troop_transport)
@@ -651,7 +843,7 @@ pub fn run_simulation_tick(
     // and the blockade bit follows the arrivals at once.
     let blockade_events = BlockadeSystem::advance(&mut states.blockade, world, tick_events);
     integrator.apply_blockade_events(world, &mut states.troop_transport, &blockade_events);
-    settle_ended_blockades(world, states, &mut integrator);
+    settle_ended_blockades(world, states, integrator);
 
     // ── 9. Uprising ──────────────────────────────────────────────────────
     let uprising_rolls = take_rolls(UprisingSystem::roll_budget(
@@ -763,180 +955,91 @@ pub fn run_simulation_tick(
     );
     integrator.record_research_tallies(&tallies);
 
+    // ── 8b. The regiments that set out since the last day run a blockade
+    // (FUN_00504990). port: their rolls come before the day's AI passes, so
+    // the passes, which a host may spread over the day's sub-ticks, leave no
+    // roll owed across them.
+    let running_rolls = take_rolls(running_regiments.len());
+    let running = BlockadeSystem::resolve_running(
+        &running_regiments,
+        &running_rolls,
+        last_tick_event.tick,
+    );
+    integrator.apply_blockade_events(world, &mut states.troop_transport, &running);
+
     // ── 7. AI ────────────────────────────────────────────────────────────
-    // Each day, as many passes as the speed has sub-ticks, one side then the
-    // other (FUN_0041cf20 -> FUN_004361a0); each pass's orders apply before
-    // the next, and the state their events keep up (blockade, the victory
-    // word) settles after a pass that applied any (`settle_after_pass`). A
-    // new day clears each side's order count (FUN_00485de0). The passes
-    // follow the day's timers above (ghidra/notes/ai-scheduling.md).
-    let passes = rebellion_core::ai::passes_per_day(states.clock.speed);
-    // The orders' bombardments draw from a stream seeded by one roll.
+    // Each day has as many passes as the speed has sub-ticks, one side then
+    // the other (rebellion_core::ai_schedule); every timer above fired in the
+    // day's first sub-tick, ahead of its first pass
+    // (ghidra/notes/ai-scheduling.md). The orders' bombardments draw from a
+    // stream seeded by one roll a call.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "A roll in 0..1 scaled to 53 bits of seed."
     )]
     let bombard_seed = (take_rolls(1)[0] * 9_007_199_254_740_992.0) as u64;
-    let mut bombard = rebellion_core::bombardment::BombardEnv::new(
-        bombard_seed,
-        Some(states.victory.alliance_hq),
-    );
-    let mut second = states.ai2.take();
-    'days: for event in tick_events {
-        states.ai.begin_day();
-        states.ai.set_game_type(states.campaign_config.victory_conditions);
-        if let Some(ref mut ai2) = second {
-            ai2.begin_day();
-            ai2.set_game_type(states.campaign_config.victory_conditions);
+    let days = u32::try_from(tick_events.len()).unwrap_or(u32::MAX);
+    let passes = rebellion_core::ai::passes_per_day(states.clock.speed);
+    let mut bombard_state = bombard_seed;
+    let mut ended = false;
+    for (index, event) in tick_events.iter().enumerate() {
+        states.ai_day = AiDay::begin(event.tick, passes, bombard_state, loyalty_before, days);
+        if ended {
+            // A win held the clock: no later day's pass runs.
+            states.ai_day.done = passes;
+            continue;
         }
-        // The AI follows its ships by id (GameWorld::number_ships).
-        world.number_ships();
-        for _ in 0..passes {
-            let ai_actions = AISystem::pass(
-                &mut states.ai,
-                world,
-                &states.manufacturing,
-                &states.deliveries,
-                &states.missions,
-                &states.movement,
-                &states.economy,
-                &states.troop_transport,
-                event.tick,
-                config,
-                &states.research,
-                &states.uprising,
-            );
-            integrator.apply_ai_actions(
-                &ai_actions,
-                &mut states.ai,
-                &mut states.missions,
-                &mut states.manufacturing,
-                &mut states.movement,
-                &mut states.troop_transport,
-                &mut states.production,
-                world,
-                event.tick,
-                false,
-                &mut bombard,
-            );
-            if !ai_actions.is_empty()
-                && settle_after_pass(world, states, &mut integrator, &mut bombard, event.tick)
-            {
-                break 'days;
-            }
-            // ── 7b. AI (second faction, dual-AI mode) ────────────────────
-            if let Some(ref mut ai2) = second {
-                let secondary_actions = AISystem::pass(
-                    ai2,
-                    world,
-                    &states.manufacturing,
-                    &states.deliveries,
-                    &states.missions,
-                    &states.movement,
-                    &states.economy,
-                    &states.troop_transport,
-                    event.tick,
-                    config,
-                    &states.research,
-                    &states.uprising,
-                );
-                integrator.apply_ai_actions(
-                    &secondary_actions,
-                    ai2,
-                    &mut states.missions,
-                    &mut states.manufacturing,
-                    &mut states.movement,
-                    &mut states.troop_transport,
-                    &mut states.production,
-                    world,
-                    event.tick,
-                    true,
-                    &mut bombard,
-                );
-                if !secondary_actions.is_empty()
-                    && settle_after_pass(world, states, &mut integrator, &mut bombard, event.tick)
-                {
-                    break 'days;
-                }
-            }
+        begin_ai_day(world, states);
+        if index + 1 < tick_events.len() {
+            ended = run_ai_passes(world, states, config, integrator, u32::MAX);
+            bombard_state = states.ai_day.bombard_state;
         }
     }
-    states.ai2 = second;
+    states.ai_day.roll_cursor = u32::try_from(roll_cursor).unwrap_or(u32::MAX);
+}
 
-    // ── 8b. Regiments running a blockade ─────────────────────────────────
-    if let Some(last) = tick_events.last() {
-        running_regiments.extend(BlockadeSystem::running_regiments(
-            &mut states.blockade,
-            world,
-            &states.troop_transport,
-        ));
-        let running_rolls = take_rolls(running_regiments.len());
-        let running =
-            BlockadeSystem::resolve_running(&running_regiments, &running_rolls, last.tick);
-        integrator.apply_blockade_events(world, &mut states.troop_transport, &running);
-    }
+/// The end of a day whose AI passes have all run: the regiments the
+/// passes sent through a blockade, the flagships' names, loyalty, the
+/// products, each side's views, and the victory check. Does nothing while
+/// passes are still to run or once the day is closed. `rolls` is the slice
+/// [`begin_simulation_day`] took its rolls from; this goes on after them.
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the end of the day's ordered systems together."
+)]
+pub fn close_simulation_day(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    rolls: &[f64],
+    integrator: &mut PerceptionIntegrator,
+) {
+    let Some((loyalty_before, _days)) = states.ai_day.close() else {
+        return;
+    };
+    let current_tick = states.ai_day.day;
+    let tick_events = [TickEvent { tick: current_tick }];
+    let mut roll_cursor = (states.ai_day.roll_cursor as usize).min(rolls.len());
+    let mut take_rolls = |n: usize| -> Vec<f64> {
+        let end = (roll_cursor + n).min(rolls.len());
+        let mut v: Vec<f64> = rolls[roll_cursor..end].to_vec();
+        roll_cursor = end;
+        v.resize(n, 1.0);
+        v
+    };
+
+    // ── 8b. Regiments the day's orders sent running a blockade ───────────
+    let running_regiments =
+        BlockadeSystem::running_regiments(&mut states.blockade, world, &states.troop_transport);
+    let running_rolls = take_rolls(running_regiments.len());
+    let running = BlockadeSystem::resolve_running(&running_regiments, &running_rolls, current_tick);
+    integrator.apply_blockade_events(world, &mut states.troop_transport, &running);
 
     // ── 10. (The port's 50-day defection is gone: the original's only
     // betrayal is the mission phase; ghidra/notes/betrayal-and-loyalty.md.)
 
-    // ── 11. Death Star ───────────────────────────────────────────────────
-    for (req, outcome) in &bombard.outcomes {
-        integrator.emit_bombardment(world, req, outcome);
-    }
-    // System_vtd0: the day's bombardment and assault losses count toward
-    // each blockade's (DestroyedReason 0xf, 0xe).
-    for (system, losses) in &bombard.losses {
-        states.blockade.record_losses(*system, *losses);
-    }
-    for (req, outcome) in &bombard.assaults {
-        integrator.emit_assault(world, req, outcome);
-    }
-    let ds_events = planets_destroyed(&bombard, tick_events);
-    integrator.apply_death_star_events(world, &ds_events);
-    // Update victory state and clean up destroyed systems.
-    //
-    // Knesset Shamash-Bet #R11: `cleanup_destroyed_system` now drains an
-    // out-parameter `Vec<GameEffect>` — we turn each `GameEffect::CharacterKilled`
-    // into an `EVT_CHARACTER_KILLED` telemetry record (DI-H2 payload uses
-    // `name` / `dat_id` rather than `CharacterKey`). Character-death story
-    // events are strictly next-tick reactive.
-    for evt in &ds_events {
-        let rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, .. } = evt;
-        {
-            let mut cleanup_effects: Vec<rebellion_core::effects::GameEffect> = Vec::new();
-            rebellion_core::death_star::cleanup_destroyed_system(
-                world,
-                *system,
-                &bombard.killed_at(*system),
-                &mut states.manufacturing,
-                &mut states.blockade,
-                &mut cleanup_effects,
-            );
-            let dest_sys_name = world
-                .systems
-                .get(*system)
-                .map_or_else(|| String::from("<unknown>"), |s| s.name.clone());
-            for effect in cleanup_effects.drain(..) {
-                if let rebellion_core::effects::GameEffect::CharacterKilled { character } = effect {
-                    let (name, dat_id) = world.characters.get(character).map_or_else(
-                        || (String::from("<unknown>"), 0),
-                        |c| (c.name.clone(), c.dat_id.raw()),
-                    );
-                    integrator.emit(
-                        rebellion_core::game_events::SYS_MISSIONS,
-                        rebellion_core::game_events::EVT_CHARACTER_KILLED,
-                        serde_json::json!({
-                            "name": name,
-                            "dat_id": dat_id,
-                            "cause": "death_star",
-                            "system": dest_sys_name,
-                        }),
-                    );
-                }
-            }
-        }
-    }
+    // ── 11. Death Star: each pass's bombardments, assaults and destroyed
+    // planets settle after it (settle_after_pass).
 
     // ── 12. Research ─────────────────────────────────────────────────────
     // Research missions add their points when they resolve (step 5).
@@ -994,7 +1097,7 @@ pub fn run_simulation_tick(
     if let Some(outcome) = VictorySystem::check(
         &states.victory,
         world,
-        tick_events,
+        &tick_events,
         states.campaign_config.victory_conditions,
     ) {
         integrator.apply_victory(&outcome, &mut states.victory, world);
@@ -1005,7 +1108,7 @@ pub fn run_simulation_tick(
         integrator.emit_campaign_snapshot(world, states.movement.len(), &states.economy);
     }
 
-    integrator.finish()
+    states.ai_day.roll_cursor = u32::try_from(roll_cursor).unwrap_or(u32::MAX);
 }
 
 #[cfg(test)]
@@ -1044,14 +1147,13 @@ mod tests {
                 },
             ));
         }
-        let events = planets_destroyed(&env, &[TickEvent { tick: 4 }, TickEvent { tick: 5 }]);
+        let events = planets_destroyed(&env, 5);
         assert_eq!(events.len(), 1);
         assert!(matches!(
             events[0],
             rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, tick: 5 }
                 if system == a
         ));
-        assert!(planets_destroyed(&env, &[]).is_empty());
     }
     use rebellion_core::ai::AiFaction;
     use rebellion_core::dat::Faction;
@@ -1123,6 +1225,7 @@ mod tests {
         });
 
         let states = SimulationStates {
+            ai_day: rebellion_core::ai_schedule::AiDay::default(),
             clock: GameClock::new(),
             manufacturing: ManufacturingState::new(),
             missions: MissionState::new(),
@@ -1378,6 +1481,101 @@ mod tests {
             .finish()
             .iter()
             .any(|e| e.event_type == rebellion_core::game_events::EVT_VICTORY_CONDITIONS));
+    }
+
+    #[test]
+    fn the_headless_host_applies_each_side_s_orders_and_tags_the_second_side_s() {
+        // FUN_004361a0 ticks both players and their stored orders run in a
+        // later sub-tick (FUN_0048aa90; ghidra/notes/ai-scheduling.md); the
+        // second AI's telemetry carries its dual-AI mark.
+        let (mut world, mut states) = make_test_states();
+        states.ai2 = Some(AIState::new(AiFaction::Alliance));
+        let system = world.systems.keys().next().unwrap();
+        let class = world.capital_ship_classes.insert(Default::default());
+        let fleet = |world: &mut GameWorld, is_alliance: bool| {
+            let key = world.fleets.insert(Fleet {
+                location: system,
+                capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            });
+            world.systems[system].fleets.push(key);
+            key
+        };
+        let (empire_a, empire_b) = (fleet(&mut world, false), fleet(&mut world, false));
+        let (alliance_a, alliance_b) = (fleet(&mut world, true), fleet(&mut world, true));
+        let config = rebellion_core::tuning::GameConfig::default();
+        let mut integrator = PerceptionIntegrator::new(4, 0);
+        let mut host = HeadlessPasses {
+            world: &mut world,
+            states: &mut states,
+            integrator: &mut integrator,
+            config: &config,
+            bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
+        };
+        assert_eq!(host.faction(AiSlot::Primary), Some(AiFaction::Empire));
+        assert_eq!(host.faction(AiSlot::Secondary), Some(AiFaction::Alliance));
+        host.apply(
+            AiSlot::Primary,
+            &[rebellion_core::ai::AIAction::JoinFleet {
+                fleet: empire_a,
+                into: empire_b,
+            }],
+            4,
+        );
+        host.apply(
+            AiSlot::Secondary,
+            &[rebellion_core::ai::AIAction::JoinFleet {
+                fleet: alliance_a,
+                into: alliance_b,
+            }],
+            4,
+        );
+        assert!(!world.fleets.contains_key(empire_a));
+        assert!(!world.fleets.contains_key(alliance_a));
+        let dual: Vec<bool> = integrator
+            .finish()
+            .iter()
+            .filter(|e| e.event_type == rebellion_core::game_events::EVT_AI_ACTION)
+            .map(|e| e.details.get("dual_ai").is_some())
+            .collect();
+        assert_eq!(dual, [false, true]);
+    }
+
+    #[test]
+    fn the_headless_host_s_settle_reports_a_won_game() {
+        // FUN_005180e0's game-over bit holds the clock before the next
+        // sub-tick (FUN_0041e390 -> FUN_0051de80).
+        let (mut world, mut states) = make_test_states();
+        states.campaign_config.victory_conditions =
+            rebellion_core::world::VictoryConditions::HeadquartersOnly;
+        let (alliance_hq, coruscant) = (states.victory.alliance_hq, states.victory.empire_hq);
+        world.systems[alliance_hq].is_headquarters = true;
+        world.systems[coruscant].dat_id = DatId::new(0x109);
+        for index in [0x242, 0x240, 0x281, 0x280] {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: DatId::new(index),
+                ..rebellion_core::world::Character::default()
+            });
+        }
+        let config = rebellion_core::tuning::GameConfig::default();
+        let mut integrator = PerceptionIntegrator::new(4, 0);
+        let mut settled = |world: &mut GameWorld, states: &mut SimulationStates| {
+            HeadlessPasses {
+                world,
+                states,
+                integrator: &mut integrator,
+                config: &config,
+                bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
+            }
+            .settle(4)
+        };
+        assert!(!settled(&mut world, &mut states));
+        world.systems[coruscant].control = ControlKind::Controlled(Faction::Alliance);
+        assert!(settled(&mut world, &mut states));
     }
 
     #[test]
@@ -1788,6 +1986,7 @@ mod tests {
             });
             world.systems[target].ground_units.push(troop);
             let mut states = SimulationStates {
+                ai_day: rebellion_core::ai_schedule::AiDay::default(),
                 clock: GameClock::new(),
                 manufacturing: ManufacturingState::new(),
                 missions: MissionState::new(),
@@ -1924,6 +2123,7 @@ mod tests {
             .extend([alliance_troop, empire_troop]);
 
         let mut states = SimulationStates {
+            ai_day: rebellion_core::ai_schedule::AiDay::default(),
             clock: GameClock::new(),
             manufacturing: ManufacturingState::new(),
             missions: MissionState::new(),
@@ -2114,6 +2314,7 @@ mod tests {
             .extend([alliance_fleet, empire_fleet]);
 
         let mut states = SimulationStates {
+            ai_day: rebellion_core::ai_schedule::AiDay::default(),
             clock: GameClock::new(),
             manufacturing: ManufacturingState::new(),
             missions: MissionState::new(),
@@ -2264,6 +2465,7 @@ mod tests {
         world.systems[origin].ground_units.push(troop);
 
         let mut states = SimulationStates {
+            ai_day: rebellion_core::ai_schedule::AiDay::default(),
             clock: GameClock::new(),
             manufacturing: ManufacturingState::new(),
             missions: MissionState::new(),
@@ -2429,6 +2631,7 @@ mod tests {
         });
 
         let mut states = SimulationStates {
+            ai_day: rebellion_core::ai_schedule::AiDay::default(),
             clock: GameClock::new(),
             manufacturing: ManufacturingState::new(),
             missions: MissionState::new(),
