@@ -60,14 +60,14 @@ use rebellion_core::movement::{
     validate_fleets_dispatch, MovementState, MovementSystem,
 };
 use rebellion_core::production_cycle::{
-    advance_yards, scrap_yardless_queues, suspended_systems, ProductionState, ProductionSystem,
+    advance_yards, scrap_yardless_queues, suspended_systems, ProductionState,
 };
-use rebellion_core::repair::{RepairEvent, RepairState, RepairSystem};
+use rebellion_core::repair::{RepairEvent, RepairState};
 use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, GameSpeed};
 use rebellion_core::squadrons::SquadronPlace;
 use rebellion_core::troop_transport::{RegimentLeg, RegimentTarget, TroopTransportState};
-use rebellion_core::uprising::{UprisingState, UprisingSystem};
+use rebellion_core::uprising::UprisingState;
 use rebellion_core::victory::{VictoryState, VictorySystem};
 use rebellion_core::world::{
     CampaignConfig, GameWorld, SeedDifficulty, SeedOptions, VictoryConditions,
@@ -3211,7 +3211,7 @@ async fn main() {
                     let mut sim = sim_pack!();
                     let mut presentation = AppDayPresentation {
                         log: &mut msg_log,
-                        battled: &battled_systems,
+                        battled: &mut battled_systems,
                         message_texts: &message_texts,
                         cockpit_faction: cockpit_state.faction,
                         advisor_schedule: advisor_schedule.as_mut(),
@@ -3219,6 +3219,8 @@ async fn main() {
                         pending_ending: &mut pending_ending,
                         player_faction,
                         player_agent: &mut player_agent,
+                        advisor: &mut advisor_state,
+                        stash: DayStash::default(),
                     };
                     let mut integrator =
                         rebellion_data::integrator::PerceptionIntegrator::new(sim.ai_day.day, 0);
@@ -4433,503 +4435,40 @@ async fn main() {
                 }
             }
 
-            // ── Blockade: the fleets the dawn brought, and timer 0x386 ──────
-            // Every timer due today runs before the day's first AI tick
-            // (FUN_0041dff0 phase 5 ahead of phase 8;
-            // ghidra/notes/ai-scheduling.md), and the blockade bit follows
-            // the arrivals at once.
-            let blockade_events =
-                BlockadeSystem::advance(&mut blockade_state, &world, &tick_events);
-            // Event305_SystemBlockadeChanged_Handle -> FUN_00561280: each
-            // ended blockade's loyalty shift for its assault and bombardment
-            // losses.
-            for (system, blockade) in blockade_state.take_ended() {
-                rebellion_core::loyalty::settle_blockade(&mut world, system, blockade);
-            }
-            present_blockade_events(
-                &mut world,
-                &mut msg_log,
-                &blockade_events,
-                &battled_systems,
-                player_faction == MissionFaction::Alliance,
-                &message_texts,
-                &mut troop_transport_state,
-                cockpit_state.faction,
-            );
-            // Bit 0x4000 holds for one pass (FUN_0050a9e0): the battles
-            // recorded since the last blockade pass are spent.
-            if !tick_events.is_empty() {
-                battled_systems.clear();
-            }
-
-            // ── Mines, refineries and the side stockpiles ───────────────────
-            let production_rolls: Vec<f64> = (0..world.production_facilities.len())
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            ProductionSystem::advance(
-                &mut production_state,
-                &world,
-                &mfg_state,
-                &delivery_state,
-                |system| blockade_state.is_blockaded(system) || uprising_state.is_uprising(system),
-                |system| rebellion_core::economy::production_modifier_at(&economy_state, system),
-                &tick_events,
-                &production_rolls,
-            );
-
-            // ── The yards' own research: each side's timer 0x381 ────────────
-            let tally_rolls = [sim_rng.gen::<f64>(), sim_rng.gen::<f64>()];
-            // Each tree's Done flag before the tally (FUN_0052f440 posts
-            // 0x129..0x12b when it turns on).
-            let done_before: Vec<(bool, rebellion_core::research::TechType, bool)> = [true, false]
-                .into_iter()
-                .flat_map(|alliance| {
-                    [
-                        rebellion_core::research::TechType::Ship,
-                        rebellion_core::research::TechType::Troop,
-                        rebellion_core::research::TechType::Facility,
-                    ]
-                    .into_iter()
-                    .map(move |tech| (alliance, tech))
-                })
-                .map(|(alliance, tech)| (alliance, tech, research_state.progress(alliance, tech).done))
-                .collect();
-            let tallies = rebellion_core::research::ResearchSystem::advance_tally(
-                &mut research_state,
-                &world,
-                |system| blockade_state.is_blockaded(system) || uprising_state.is_uprising(system),
-                &tick_events,
-                &tally_rolls,
-            );
-            for tally in &tallies {
-                let tick = tick_events.last().map_or(0, |event| event.tick);
-                for level in &tally.reached {
-                    if let Some(message) = research_complete_message(
-                        &world,
-                        tally.faction_is_alliance,
-                        tally.tech,
-                        *level,
-                        tick,
-                        &message_texts,
-                    ) {
-                        msg_log.push(message);
-                    }
-                }
-            }
-            // Notifications 0x129..0x12b, Research Exhausted (FUN_0048abc0).
-            for (alliance, tech, was_done) in done_before {
-                if was_done || !research_state.progress(alliance, tech).done {
-                    continue;
-                }
-                if let Some((title, text)) =
-                    rebellion_render::story_messages::research_exhausted_texts(tech, &message_texts)
-                {
-                    msg_log.push(filed(
-                        GameMessage::new(
-                            tick_events.last().map_or(0, |event| event.tick),
-                            text,
-                            MessageCategory::Event,
-                        )
-                        .with_title(title)
-                        .with_picture_if(Some(pictures::research()))
-                        .with_sounds(MessageSounds::research())
-                        // FUN_0048abc0 (kind 8) writes code 4.
-                        .with_advisor_event(4)
-                        .plain(),
-                        MessageRail::Manufacturing,
-                        Some(RailAudience::side(alliance)),
-                    ));
-                }
-            }
-
-            // ── Maintenance shortfall: each side's autoscrap timer 0x382 ────
-            let autoscrap_rolls = [sim_rng.gen::<f64>(), sim_rng.gen::<f64>()];
-            let autoscraps = rebellion_core::autoscrap::AutoscrapSystem::advance(
-                &mut autoscrap_state,
-                &world,
-                &troop_transport_state,
-                &mfg_state,
-                &delivery_state,
-                |system| blockade_state.is_blockaded(system) || uprising_state.is_uprising(system),
-                &tick_events,
-                &autoscrap_rolls,
-            );
-            for scrap in &autoscraps {
-                // A fleet in hyperspace stands at no system its units can
-                // be found at (FUN_00498970 walks up the containers).
-                let in_transit = match scrap.target {
-                    rebellion_core::autoscrap::AutoscrapTarget::Ship { fleet, .. }
-                    | rebellion_core::autoscrap::AutoscrapTarget::FleetFighter { fleet, .. } => {
-                        movement_state.is_in_transit(fleet)
-                    }
-                    _ => false,
+            // ── The day's timers, then the regiments that set out since the
+            // last day running a blockade: shared with the headless runner
+            // (rebellion_data::simulation::run_day_timers), every timer due
+            // today before the day's first AI tick (FUN_0041dff0 phase 5
+            // ahead of phase 8; ghidra/notes/ai-scheduling.md).
+            {
+                let now = advisor_now(&clock);
+                let mut sim = sim_pack!();
+                let mut presentation = AppDayPresentation {
+                    log: &mut msg_log,
+                    battled: &mut battled_systems,
+                    message_texts: &message_texts,
+                    cockpit_faction: cockpit_state.faction,
+                    advisor_schedule: advisor_schedule.as_mut(),
+                    advisor_now: now,
+                    pending_ending: &mut pending_ending,
+                    player_faction,
+                    player_agent: &mut player_agent,
+                    advisor: &mut advisor_state,
+                    stash: DayStash::default(),
                 };
-                rebellion_core::autoscrap::apply(
+                let mut integrator =
+                    rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
+                rebellion_data::simulation::run_day_timers(
                     &mut world,
-                    &mut production_state,
-                    &mut troop_transport_state,
-                    scrap,
+                    &mut sim,
+                    &tick_events,
+                    &running_regiments,
+                    &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
+                    &mut integrator,
+                    &mut presentation,
                 );
-                if let Some(message) = maintenance_message(
-                    &world,
-                    scrap.system.filter(|_| !in_transit),
-                    &scrap.unit,
-                    scrap.side == Faction::Alliance,
-                    scrap.tick,
-                    &message_texts,
-                ) {
-                    msg_log.push(message);
-                }
+                sim_unpack!(sim);
             }
-
-            // ── Repair ──────────────────────────────────────────────────────
-            let repair_events = RepairSystem::advance(&mut repair_state, &world, &tick_events);
-            let repair_tick = tick_events.last().map_or(0, |event| event.tick);
-            let ships_damaged: Vec<Option<bool>> = repair_events
-                .iter()
-                .map(|evt| match evt {
-                    RepairEvent::ShipRepaired { fleet, ship_index, .. } => {
-                        ship_damaged(&world, *fleet, *ship_index)
-                    }
-                    _ => None,
-                })
-                .collect();
-            rebellion_data::integrator::PerceptionIntegrator::new(repair_tick, 0)
-                .apply_repair_events(&mut world, &repair_events);
-            for (evt, was_damaged) in repair_events.iter().zip(ships_damaged) {
-                match evt {
-                    // The damage flag clearing posts 0x106: Capital Ship
-                    // Repaired (FUN_00499de0).
-                    RepairEvent::ShipRepaired { fleet, ship_index, .. } => {
-                        if was_damaged == Some(true)
-                            && ship_damaged(&world, *fleet, *ship_index) == Some(false)
-                        {
-                            if let Some(message) = ship_repaired_message(
-                                &world,
-                                *fleet,
-                                *ship_index,
-                                repair_tick,
-                                &message_texts,
-                            ) {
-                                msg_log.push(message);
-                            }
-                        }
-                    }
-                    // A squadron's losses reaching 0 clear its damage flag
-                    // (FUN_00503340): Squadron at Full Strength (FUN_00499de0).
-                    RepairEvent::SquadronRepaired {
-                        place,
-                        index,
-                        lost_before,
-                        damage: None,
-                    } if *lost_before > 0 => {
-                        if let Some(message) = squadron_full_strength_message(
-                            &world,
-                            *place,
-                            *index,
-                            repair_tick,
-                            &message_texts,
-                        ) {
-                            msg_log.push(message);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            // ── Uprising and disaster (FUN_0050b800, events 0x38d and 0x38f) ──
-            let uprising_tick = tick_events.last().map_or(0, |event| event.tick);
-            let uprising_budget =
-                UprisingSystem::roll_budget(&uprising_state, &world, uprising_tick);
-            let uprising_rolls: Vec<f64> = (0..uprising_budget)
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            let uprising_events = UprisingSystem::advance(
-                &mut uprising_state,
-                &world,
-                &economy_state,
-                &mission_state,
-                &tick_events,
-                &uprising_rolls,
-            );
-            // The disaster's unfinished facilities leave their queues
-            // (FUN_00511930 walks mode 3; rebellion_core::products::destroy).
-            for event in &uprising_events {
-                if let rebellion_core::uprising::UprisingEvent::Disaster { lost_products, .. } = event {
-                    for &id in lost_products {
-                        rebellion_core::products::destroy(&mut world, &mut mfg_state, id);
-                    }
-                }
-            }
-            // ── Injury recovery: each healing character's timer 0x388 ───────
-            for heal in &rebellion_core::healing::HealingSystem::advance(
-                &mut healing_state,
-                &world,
-                &tick_events,
-            ) {
-                rebellion_core::healing::apply(&mut world, heal);
-                if heal.injury == 0 {
-                    push_character_health(&mut msg_log, &world, heal.character, heal.tick, &message_texts);
-                }
-            }
-            // A capture's hook (slot +0x34c, FUN_004f1a80) clears the
-            // captive's command (FUN_004eeed0).
-            rebellion_core::character_command::release_unfit(&mut world);
-
-            // ── Force discovery: each discovering trainer's timer 0x389 ────
-            let discovery_rolls: Vec<f64> = (0
-                ..rebellion_core::force_discovery::ForceDiscoverySystem::roll_budget(&world))
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            let discovered = rebellion_core::force_discovery::ForceDiscoverySystem::advance(
-                &mut force_discovery_state,
-                &world,
-                &tick_events,
-                &discovery_rolls,
-            );
-            for found in &discovered {
-                rebellion_core::force_discovery::apply(&mut world, found);
-            }
-            push_force_discoveries(&mut msg_log, &world, &discovered, &message_texts);
-
-            // ── Informants: each held system's timer 0x38e ──────────────────
-            let informant_rolls: Vec<f64> =
-                (0..rebellion_core::informant::InformantSystem::roll_budget(&world))
-                    .map(|_| sim_rng.gen::<f64>())
-                    .collect();
-            for report in &rebellion_core::informant::InformantSystem::advance(
-                &mut informant_state,
-                &world,
-                &tick_events,
-                &informant_rolls,
-            ) {
-                let recipient_is_alliance = report.recipient == Faction::Alliance;
-                // FUN_0050d510: the incident's side gets its push
-                // (Event319_Handle).
-                world
-                    .object_views
-                    .queue_push(report.recipient, report.system);
-                // Notification 0x153 (FUN_00491060).
-                if let Some(message) = informants_message(
-                    &world,
-                    report.system,
-                    recipient_is_alliance,
-                    report.tick,
-                    &message_texts,
-                ) {
-                    msg_log.push(message);
-                }
-            }
-            for evt in &uprising_events {
-                use rebellion_core::uprising::UprisingEvent;
-                // Timer 0x384 only sets the support (FUN_0050c9f0); it
-                // posts no message of its own.
-                if let UprisingEvent::SupportEroded { .. } = evt {
-                    rebellion_core::uprising::apply_uprising_event(&mut world, evt);
-                    continue;
-                }
-                // Notification 0x155, New Resources or Resources Depleted
-                // (FUN_0048e940, TEXTSTRA 0x7194-0x719a).
-                if let UprisingEvent::ResourceChanged {
-                    system, tick, code, ..
-                } = evt
-                {
-                    let name = world
-                        .systems
-                        .get(*system)
-                        .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                    if let Some((title, text)) =
-                        rebellion_render::story_messages::resource_texts(&name, *code, &message_texts)
-                    {
-                        msg_log.push(filed(
-                            GameMessage::at_system(*tick, text, MessageCategory::Event, *system)
-                                .with_title(title)
-                                .with_picture_if(Some(pictures::system_incident(false)))
-                                .with_sounds(MessageSounds::resources())
-                                // FUN_0048e940 writes 0x1c.
-                                .with_advisor_event(0x1c),
-                            MessageRail::Resource,
-                            system_audience(&world, *system),
-                        ));
-                    }
-                    rebellion_core::uprising::apply_uprising_event(&mut world, evt);
-                    continue;
-                }
-                let (system, tick) = match evt {
-                    UprisingEvent::ResourceChanged { system, tick, .. }
-                    | UprisingEvent::SupportEroded { system, tick, .. }
-                    | UprisingEvent::UprisingBegan { system, tick }
-                    | UprisingEvent::UprisingEnded { system, tick }
-                    | UprisingEvent::UprisingIncident { system, tick, .. }
-                    | UprisingEvent::Disaster { system, tick, .. } => (*system, *tick),
-                };
-                let name = world
-                    .systems
-                    .get(system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                let holder = world.systems.get(system).and_then(|s| s.control.faction());
-                let (mut text, category) = match evt {
-                    UprisingEvent::UprisingBegan { .. } => {
-                        // A revolt helps the player when the enemy holds the system.
-                        let player_gains = world
-                            .systems
-                            .get(system)
-                            .and_then(|s| s.control.faction())
-                            .is_some_and(|holder| {
-                                (holder == Faction::Alliance)
-                                    != (player_faction == MissionFaction::Alliance)
-                            });
-                        advisor_uprising(&mut advisor_state, &name, player_gains);
-                        (format!("Uprising at {name}!"), MessageCategory::Diplomacy)
-                    }
-                    UprisingEvent::UprisingEnded { .. } => (
-                        format!("The uprising at {name} has ended"),
-                        MessageCategory::Diplomacy,
-                    ),
-                    UprisingEvent::UprisingIncident { .. } => (
-                        format!("Uprising incident at {name}"),
-                        MessageCategory::Diplomacy,
-                    ),
-                    UprisingEvent::Disaster { .. } => (
-                        format!("Natural disaster strikes {name}"),
-                        MessageCategory::Event,
-                    ),
-                    UprisingEvent::SupportEroded { .. } | UprisingEvent::ResourceChanged { .. } => {
-                        continue
-                    }
-                };
-                // FUN_00499460 and FUN_0048e940; an incident has no class.
-                let picture = match evt {
-                    UprisingEvent::UprisingBegan { .. } => Some(pictures::uprising_begins()),
-                    UprisingEvent::UprisingEnded { .. } => {
-                        pictures::uprising_ends(pictures::system_side(&world, system))
-                    }
-                    UprisingEvent::UprisingIncident { .. }
-                    | UprisingEvent::SupportEroded { .. }
-                    | UprisingEvent::ResourceChanged { .. } => None,
-                    UprisingEvent::Disaster { .. } => Some(pictures::system_incident(true)),
-                };
-                // The original texts: Uprising Begins / Ends (0x14b,
-                // FUN_00499460) for both sides, Natural Disaster (0x154,
-                // FUN_0048e940) for the holder. port: a disaster on a neutral
-                // system keeps the port's line, off the Message Index.
-                let mut title = None;
-                let mut audience = system_audience(&world, system);
-                let original = match evt {
-                    UprisingEvent::UprisingBegan { .. } | UprisingEvent::UprisingEnded { .. } => {
-                        audience = holder
-                            .filter(|side| *side != Faction::Neutral)
-                            .map(|_| RailAudience::Both);
-                        rebellion_render::story_messages::uprising_texts(
-                            &name,
-                            holder,
-                            matches!(evt, UprisingEvent::UprisingBegan { .. }),
-                            &message_texts,
-                        )
-                    }
-                    UprisingEvent::Disaster {
-                        total_energy,
-                        raw_materials,
-                        destroyed,
-                        ..
-                    } if audience.is_some() => {
-                        let units: Vec<String> = destroyed
-                            .iter()
-                            .filter_map(|&facility| world.facility(facility))
-                            .filter_map(|(class, _)| {
-                                world.buildable_classes.get(&class).map(|c| c.name.clone())
-                            })
-                            .collect();
-                        let resources = world.systems.get(system).is_some_and(|s| {
-                            *total_energy < s.total_energy || *raw_materials < s.raw_materials
-                        });
-                        let texts = rebellion_render::story_messages::disaster_texts(
-                            &name,
-                            resources,
-                            &units,
-                            &message_texts,
-                        );
-                        if texts.is_none() && !message_texts.is_empty() {
-                            // Nothing lost: the class stays silent.
-                            rebellion_core::uprising::apply_uprising_event(&mut world, evt);
-                            continue;
-                        }
-                        texts
-                    }
-                    // Notification 0x152 (SystemUprisingIncidentNotif,
-                    // FUN_00512580) maps to no message type (FUN_00488de0):
-                    // port: the incident keeps its line in the log, off the
-                    // Message Index.
-                    UprisingEvent::UprisingIncident { .. } => {
-                        audience = None;
-                        None
-                    }
-                    _ => None,
-                };
-                if let Some((original_title, body)) = original {
-                    title = Some(original_title);
-                    text = body;
-                }
-                // FUN_00499460's code by reader; FUN_0048e940 writes 0x1c.
-                let events = match evt {
-                    UprisingEvent::UprisingBegan { .. } | UprisingEvent::UprisingEnded { .. } => {
-                        let begins = matches!(evt, UprisingEvent::UprisingBegan { .. });
-                        [
-                            uprising_event(holder, Faction::Alliance, begins),
-                            uprising_event(holder, Faction::Empire, begins),
-                        ]
-                    }
-                    UprisingEvent::Disaster { .. } => [0x1c; 2],
-                    _ => [0; 2],
-                };
-                // Notification 3, Uprising Message.
-                // FUN_00499460: 0x454 / 0x455; FUN_0048e940: 0x44e.
-                let sounds = match evt {
-                    UprisingEvent::UprisingBegan { .. } => MessageSounds::uprising(true),
-                    UprisingEvent::UprisingEnded { .. } => MessageSounds::uprising(false),
-                    UprisingEvent::Disaster { .. } => MessageSounds::disaster(),
-                    _ => MessageSounds::NONE,
-                };
-                let mut message = GameMessage::at_system(tick, text, category, system)
-                    .with_picture_if(picture)
-                    .with_sounds(sounds)
-                    .with_advisor_events(events[0], events[1]);
-                if let Some(title) = title {
-                    message = message.with_title(title);
-                }
-                msg_log.push(filed(message, uprising_message_rail(evt), audience));
-                rebellion_core::uprising::apply_uprising_event(&mut world, evt);
-                if let UprisingEvent::UprisingIncident { losses, .. } = evt {
-                    for loss in losses {
-                        if let rebellion_core::uprising::IncidentLoss::CharacterInjured {
-                            character,
-                            ..
-                        } = loss
-                        {
-                            push_character_health(&mut msg_log, &world, *character, tick, &message_texts);
-                        }
-                    }
-                }
-            }
-
-            // ── The regiments that set out since the last day run a blockade
-            // (FUN_00504990). port: their rolls come before the day's AI
-            // passes, as in the headless runner (begin_simulation_day).
-            let running_rolls: Vec<f64> = (0..running_regiments.len())
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            let running =
-                BlockadeSystem::resolve_running(&running_regiments, &running_rolls, current_tick);
-            present_blockade_events(
-                &mut world,
-                &mut msg_log,
-                &running,
-                &battled_systems,
-                player_faction == MissionFaction::Alliance,
-                &message_texts,
-                &mut troop_transport_state,
-                cockpit_state.faction,
-            );
 
             // ── AI: each day has as many passes as the speed has sub-ticks,
             // one a sub-tick, the Alliance's then the Empire's, both sides'
@@ -16436,7 +15975,7 @@ fn blockade_messages(
 /// and the player's agent.
 struct AppDayPresentation<'a> {
     log: &'a mut MessageLog,
-    battled: &'a std::collections::HashSet<rebellion_core::ids::SystemKey>,
+    battled: &'a mut std::collections::HashSet<rebellion_core::ids::SystemKey>,
     message_texts: &'a std::collections::HashMap<u16, String>,
     cockpit_faction: CockpitFaction,
     advisor_schedule: Option<&'a mut rebellion_render::advisor_schedule::AdvisorSchedule>,
@@ -16444,9 +15983,433 @@ struct AppDayPresentation<'a> {
     pending_ending: &'a mut Option<u32>,
     player_faction: MissionFaction,
     player_agent: &'a mut PlayerAgent,
+    advisor: &'a mut AdvisorState,
+    stash: DayStash,
+}
+
+/// What a step's messages need from before it was applied.
+#[derive(Default)]
+struct DayStash {
+    /// Each repaired ship's damage flag before the repair.
+    ships_damaged: Vec<Option<bool>>,
+    /// Each side's and tree's Done flag before the tally (FUN_0052f440
+    /// posts 0x129..0x12b when it turns on).
+    research_done: Vec<(bool, rebellion_core::research::TechType, bool)>,
+}
+
+impl AppDayPresentation<'_> {
+    /// An uprising event's message, from the world before it is applied:
+    /// Uprising Begins / Ends (0x14b, FUN_00499460), Natural Disaster
+    /// (0x154, FUN_0048e940), New Resources or Resources Depleted (0x155,
+    /// FUN_0048e940) and the incident's line.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "each uprising event has its own text, picture, sound and rail"
+    )]
+    fn uprising_message(&mut self, world: &GameWorld, evt: &rebellion_core::uprising::UprisingEvent) {
+        use rebellion_core::uprising::UprisingEvent;
+        let message_texts = self.message_texts;
+        // Timer 0x384 only sets the support (FUN_0050c9f0); it posts no
+        // message of its own.
+        if let UprisingEvent::SupportEroded { .. } = evt {
+            return;
+        }
+        // Notification 0x155, New Resources or Resources Depleted
+        // (FUN_0048e940, TEXTSTRA 0x7194-0x719a).
+        if let UprisingEvent::ResourceChanged {
+            system, tick, code, ..
+        } = evt
+        {
+            let name = world
+                .systems
+                .get(*system)
+                .map_or_else(|| "unknown".into(), |s| s.name.clone());
+            if let Some((title, text)) =
+                rebellion_render::story_messages::resource_texts(&name, *code, message_texts)
+            {
+                self.log.push(filed(
+                    GameMessage::at_system(*tick, text, MessageCategory::Event, *system)
+                        .with_title(title)
+                        .with_picture_if(Some(pictures::system_incident(false)))
+                        .with_sounds(MessageSounds::resources())
+                        // FUN_0048e940 writes 0x1c.
+                        .with_advisor_event(0x1c),
+                    MessageRail::Resource,
+                    system_audience(world, *system),
+                ));
+            }
+            return;
+        }
+        let (system, tick) = match evt {
+            UprisingEvent::ResourceChanged { system, tick, .. }
+            | UprisingEvent::SupportEroded { system, tick, .. }
+            | UprisingEvent::UprisingBegan { system, tick }
+            | UprisingEvent::UprisingEnded { system, tick }
+            | UprisingEvent::UprisingIncident { system, tick, .. }
+            | UprisingEvent::Disaster { system, tick, .. } => (*system, *tick),
+        };
+        let name = world
+            .systems
+            .get(system)
+            .map_or_else(|| "unknown".into(), |s| s.name.clone());
+        let holder = world.systems.get(system).and_then(|s| s.control.faction());
+        let (mut text, category) = match evt {
+            UprisingEvent::UprisingBegan { .. } => {
+                // A revolt helps the player when the enemy holds the system.
+                let player_gains = holder.is_some_and(|holder| {
+                    (holder == Faction::Alliance)
+                        != (self.player_faction == MissionFaction::Alliance)
+                });
+                advisor_uprising(self.advisor, &name, player_gains);
+                (format!("Uprising at {name}!"), MessageCategory::Diplomacy)
+            }
+            UprisingEvent::UprisingEnded { .. } => (
+                format!("The uprising at {name} has ended"),
+                MessageCategory::Diplomacy,
+            ),
+            UprisingEvent::UprisingIncident { .. } => (
+                format!("Uprising incident at {name}"),
+                MessageCategory::Diplomacy,
+            ),
+            UprisingEvent::Disaster { .. } => (
+                format!("Natural disaster strikes {name}"),
+                MessageCategory::Event,
+            ),
+            UprisingEvent::SupportEroded { .. } | UprisingEvent::ResourceChanged { .. } => return,
+        };
+        // FUN_00499460 and FUN_0048e940; an incident has no class.
+        let picture = match evt {
+            UprisingEvent::UprisingBegan { .. } => Some(pictures::uprising_begins()),
+            UprisingEvent::UprisingEnded { .. } => {
+                pictures::uprising_ends(pictures::system_side(world, system))
+            }
+            UprisingEvent::UprisingIncident { .. }
+            | UprisingEvent::SupportEroded { .. }
+            | UprisingEvent::ResourceChanged { .. } => None,
+            UprisingEvent::Disaster { .. } => Some(pictures::system_incident(true)),
+        };
+        // The original texts: Uprising Begins / Ends (0x14b, FUN_00499460)
+        // for both sides, Natural Disaster (0x154, FUN_0048e940) for the
+        // holder. port: a disaster on a neutral system keeps the port's
+        // line, off the Message Index.
+        let mut title = None;
+        let mut audience = system_audience(world, system);
+        let original = match evt {
+            UprisingEvent::UprisingBegan { .. } | UprisingEvent::UprisingEnded { .. } => {
+                audience = holder
+                    .filter(|side| *side != Faction::Neutral)
+                    .map(|_| RailAudience::Both);
+                rebellion_render::story_messages::uprising_texts(
+                    &name,
+                    holder,
+                    matches!(evt, UprisingEvent::UprisingBegan { .. }),
+                    message_texts,
+                )
+            }
+            UprisingEvent::Disaster {
+                total_energy,
+                raw_materials,
+                destroyed,
+                ..
+            } if audience.is_some() => {
+                let units: Vec<String> = destroyed
+                    .iter()
+                    .filter_map(|&facility| world.facility(facility))
+                    .filter_map(|(class, _)| {
+                        world.buildable_classes.get(&class).map(|c| c.name.clone())
+                    })
+                    .collect();
+                let resources = world.systems.get(system).is_some_and(|s| {
+                    *total_energy < s.total_energy || *raw_materials < s.raw_materials
+                });
+                let texts = rebellion_render::story_messages::disaster_texts(
+                    &name,
+                    resources,
+                    &units,
+                    message_texts,
+                );
+                if texts.is_none() && !message_texts.is_empty() {
+                    // Nothing lost: the class stays silent.
+                    return;
+                }
+                texts
+            }
+            // Notification 0x152 (SystemUprisingIncidentNotif, FUN_00512580)
+            // maps to no message type (FUN_00488de0): port: the incident
+            // keeps its line in the log, off the Message Index.
+            UprisingEvent::UprisingIncident { .. } => {
+                audience = None;
+                None
+            }
+            _ => None,
+        };
+        if let Some((original_title, body)) = original {
+            title = Some(original_title);
+            text = body;
+        }
+        // FUN_00499460's code by reader; FUN_0048e940 writes 0x1c.
+        let events = match evt {
+            UprisingEvent::UprisingBegan { .. } | UprisingEvent::UprisingEnded { .. } => {
+                let begins = matches!(evt, UprisingEvent::UprisingBegan { .. });
+                [
+                    uprising_event(holder, Faction::Alliance, begins),
+                    uprising_event(holder, Faction::Empire, begins),
+                ]
+            }
+            UprisingEvent::Disaster { .. } => [0x1c; 2],
+            _ => [0; 2],
+        };
+        // Notification 3, Uprising Message. FUN_00499460: 0x454 / 0x455;
+        // FUN_0048e940: 0x44e.
+        let sounds = match evt {
+            UprisingEvent::UprisingBegan { .. } => MessageSounds::uprising(true),
+            UprisingEvent::UprisingEnded { .. } => MessageSounds::uprising(false),
+            UprisingEvent::Disaster { .. } => MessageSounds::disaster(),
+            _ => MessageSounds::NONE,
+        };
+        let mut message = GameMessage::at_system(tick, text, category, system)
+            .with_picture_if(picture)
+            .with_sounds(sounds)
+            .with_advisor_events(events[0], events[1]);
+        if let Some(title) = title {
+            message = message.with_title(title);
+        }
+        self.log.push(filed(message, uprising_message_rail(evt), audience));
+    }
 }
 
 impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "each of the day's timers posts its own messages"
+    )]
+    fn step(
+        &mut self,
+        world: &GameWorld,
+        states: &rebellion_data::simulation::SimulationStates,
+        step: &rebellion_data::simulation::DayStep<'_>,
+        phase: rebellion_data::simulation::StepPhase,
+    ) {
+        use rebellion_core::uprising::UprisingEvent;
+        use rebellion_data::simulation::{DayStep, StepPhase};
+        let player_is_alliance = self.player_faction == MissionFaction::Alliance;
+        let message_texts = self.message_texts;
+        match (step, phase) {
+            (DayStep::DawnBlockade(events) | DayStep::RunningRegiments(events), StepPhase::Before) => {
+                blockade_messages(
+                    world,
+                    self.log,
+                    events,
+                    self.battled,
+                    player_is_alliance,
+                    message_texts,
+                    self.cockpit_faction,
+                );
+            }
+            // Bit 0x4000 holds for one pass (FUN_0050a9e0): the battles
+            // recorded since the last blockade pass are spent.
+            (DayStep::DawnBlockade(_), StepPhase::After) => self.battled.clear(),
+            (DayStep::ResearchTally(_), StepPhase::Before) => {
+                self.stash.research_done = [true, false]
+                    .into_iter()
+                    .flat_map(|alliance| {
+                        [
+                            rebellion_core::research::TechType::Ship,
+                            rebellion_core::research::TechType::Troop,
+                            rebellion_core::research::TechType::Facility,
+                        ]
+                        .into_iter()
+                        .map(move |tech| (alliance, tech))
+                    })
+                    .map(|(alliance, tech)| {
+                        (alliance, tech, states.research.progress(alliance, tech).done)
+                    })
+                    .collect();
+            }
+            (DayStep::ResearchTally(tallies), StepPhase::After) => {
+                let tick = states.clock.tick;
+                for tally in *tallies {
+                    for level in &tally.reached {
+                        if let Some(message) = research_complete_message(
+                            world,
+                            tally.faction_is_alliance,
+                            tally.tech,
+                            *level,
+                            tick,
+                            message_texts,
+                        ) {
+                            self.log.push(message);
+                        }
+                    }
+                }
+                // Notifications 0x129..0x12b, Research Exhausted (FUN_0048abc0).
+                for (alliance, tech, was_done) in std::mem::take(&mut self.stash.research_done) {
+                    if was_done || !states.research.progress(alliance, tech).done {
+                        continue;
+                    }
+                    if let Some((title, text)) =
+                        rebellion_render::story_messages::research_exhausted_texts(
+                            tech,
+                            message_texts,
+                        )
+                    {
+                        self.log.push(filed(
+                            GameMessage::new(tick, text, MessageCategory::Event)
+                                .with_title(title)
+                                .with_picture_if(Some(pictures::research()))
+                                .with_sounds(MessageSounds::research())
+                                // FUN_0048abc0 (kind 8) writes code 4.
+                                .with_advisor_event(4)
+                                .plain(),
+                            MessageRail::Manufacturing,
+                            Some(RailAudience::side(alliance)),
+                        ));
+                    }
+                }
+            }
+            (DayStep::Autoscraps(scraps), StepPhase::After) => {
+                for scrap in *scraps {
+                    // A fleet in hyperspace stands at no system its units
+                    // can be found at (FUN_00498970 walks up the containers).
+                    let in_transit = match scrap.target {
+                        rebellion_core::autoscrap::AutoscrapTarget::Ship { fleet, .. }
+                        | rebellion_core::autoscrap::AutoscrapTarget::FleetFighter {
+                            fleet, ..
+                        } => states.movement.is_in_transit(fleet),
+                        _ => false,
+                    };
+                    if let Some(message) = maintenance_message(
+                        world,
+                        scrap.system.filter(|_| !in_transit),
+                        &scrap.unit,
+                        scrap.side == Faction::Alliance,
+                        scrap.tick,
+                        message_texts,
+                    ) {
+                        self.log.push(message);
+                    }
+                }
+            }
+            (DayStep::Repairs(events), StepPhase::Before) => {
+                self.stash.ships_damaged = events
+                    .iter()
+                    .map(|evt| match evt {
+                        RepairEvent::ShipRepaired { fleet, ship_index, .. } => {
+                            ship_damaged(world, *fleet, *ship_index)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+            }
+            (DayStep::Repairs(events), StepPhase::After) => {
+                let repair_tick = states.clock.tick;
+                let damaged = std::mem::take(&mut self.stash.ships_damaged);
+                for (evt, was_damaged) in events.iter().zip(damaged) {
+                    match evt {
+                        // The damage flag clearing posts 0x106: Capital
+                        // Ship Repaired (FUN_00499de0).
+                        RepairEvent::ShipRepaired { fleet, ship_index, .. } => {
+                            if was_damaged == Some(true)
+                                && ship_damaged(world, *fleet, *ship_index) == Some(false)
+                            {
+                                if let Some(message) = ship_repaired_message(
+                                    world,
+                                    *fleet,
+                                    *ship_index,
+                                    repair_tick,
+                                    message_texts,
+                                ) {
+                                    self.log.push(message);
+                                }
+                            }
+                        }
+                        // A squadron's losses reaching 0 clear its damage
+                        // flag (FUN_00503340): Squadron at Full Strength
+                        // (FUN_00499de0).
+                        RepairEvent::SquadronRepaired {
+                            place,
+                            index,
+                            lost_before,
+                            damage: None,
+                        } if *lost_before > 0 => {
+                            if let Some(message) = squadron_full_strength_message(
+                                world,
+                                *place,
+                                *index,
+                                repair_tick,
+                                message_texts,
+                            ) {
+                                self.log.push(message);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            (DayStep::Healed(healed), StepPhase::After) => {
+                for heal in *healed {
+                    if heal.injury == 0 {
+                        push_character_health(
+                            self.log,
+                            world,
+                            heal.character,
+                            heal.tick,
+                            message_texts,
+                        );
+                    }
+                }
+            }
+            (DayStep::ForceDiscovered(discovered), StepPhase::After) => {
+                push_force_discoveries(self.log, world, discovered, message_texts);
+            }
+            (DayStep::Informants(reports), StepPhase::Before) => {
+                for report in *reports {
+                    // Notification 0x153 (FUN_00491060).
+                    if let Some(message) = informants_message(
+                        world,
+                        report.system,
+                        report.recipient == Faction::Alliance,
+                        report.tick,
+                        message_texts,
+                    ) {
+                        self.log.push(message);
+                    }
+                }
+            }
+            (DayStep::Uprisings(events), StepPhase::Before) => {
+                for evt in *events {
+                    self.uprising_message(world, evt);
+                }
+            }
+            (DayStep::Uprisings(events), StepPhase::After) => {
+                for evt in *events {
+                    if let UprisingEvent::UprisingIncident { losses, tick, .. } = evt {
+                        for loss in losses {
+                            if let rebellion_core::uprising::IncidentLoss::CharacterInjured {
+                                character,
+                                ..
+                            } = loss
+                            {
+                                push_character_health(
+                                    self.log,
+                                    world,
+                                    *character,
+                                    *tick,
+                                    message_texts,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn ai_day_begun(&mut self, day: u64, speed: GameSpeed, passes: u32) {
+        macroquad::logging::info!("[ai] day={} speed={:?} passes={}", day, speed, passes);
+    }
+
     fn player_agent(
         &mut self,
         world: &GameWorld,

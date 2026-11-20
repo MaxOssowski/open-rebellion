@@ -395,10 +395,10 @@ pub fn run_ai_passes(
     ended
 }
 
-/// The start of a day: every system up to and including the day's timers,
-/// then its AI day begins ([`AiDay::begin`]). With more than one day in
-/// `tick_events`, the earlier days' passes run here; the last day's are
-/// left to [`run_ai_passes`], and its end to [`close_simulation_day`].
+/// The start of a day up to the day's timers: economy, yards, deliveries,
+/// movement, combat, occupation, fog, missions, the story systems, escapes
+/// and events. Returns the galaxy the day's loyalty shifts compare against
+/// and the regiments that set out since the last day.
 #[expect(
     clippy::too_many_lines,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
@@ -407,34 +407,23 @@ pub fn run_ai_passes(
     clippy::cast_possible_truncation,
     reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
 )]
-pub fn begin_simulation_day(
+fn day_head(
     world: &mut GameWorld,
     states: &mut SimulationStates,
     tick_events: &[TickEvent],
-    rolls: &[f64],
-    config: &rebellion_core::tuning::GameConfig,
+    rolls: &mut dyn RollSource,
     integrator: &mut PerceptionIntegrator,
-) {
-    let Some(last_tick_event) = tick_events.last() else {
-        return;
-    };
-    let mut roll_cursor = 0usize;
+) -> Option<(
+    rebellion_core::loyalty::LoyaltyWatch,
+    Vec<rebellion_core::blockade::RunningRegiment>,
+)> {
+    let last_tick_event = tick_events.last()?;
     let current_tick = last_tick_event.tick;
 
     // `MovementState` is authoritative while a fleet is in hyperspace. Repair
     // stale save/index state before economy and manufacturing inspect orbits.
     reconcile_fleet_orbits(&states.movement, world);
 
-    // Helper: consume N rolls from the slice, padding with 1.0 if exhausted.
-    let mut take_rolls = |n: usize| -> Vec<f64> {
-        let end = (roll_cursor + n).min(rolls.len());
-        let slice = &rolls[roll_cursor..end];
-        roll_cursor = end;
-        let mut v: Vec<f64> = slice.to_vec();
-        // Pad with 1.0 (safe default: never fires probability checks)
-        v.resize(n, 1.0);
-        v
-    };
 
     // The galaxy the day's loyalty shifts compare against (step 13e).
     let loyalty_before =
@@ -539,7 +528,7 @@ pub fn begin_simulation_day(
         .collect();
 
     for sys_key in combat_triggers {
-        let combat_rolls = take_rolls(256);
+        let combat_rolls = rolls.take(256);
         let sorties = squadrons::scramble(world, sys_key);
         let battle_before = rebellion_core::loyalty::battle_watch(world, sys_key);
         // FUN_004362b0: each side answers the battle choice. An AI side's
@@ -647,7 +636,7 @@ pub fn begin_simulation_day(
     integrator.emit_fog_reveals(&reveals, world);
 
     // ── 5. Missions ──────────────────────────────────────────────────────
-    let mission_rolls = take_rolls(
+    let mission_rolls = rolls.take(
         states.missions.len() * tick_events.len() * rebellion_core::missions::ROLLS_PER_MISSION,
     );
     let mission_advance = MissionSystem::advance(
@@ -671,7 +660,7 @@ pub fn begin_simulation_day(
     );
 
     // ── 5b. Dagobah: timer 0x392 and the check FUN_00544030 ──────────────
-    let dagobah_rolls = take_rolls(rebellion_core::dagobah::DagobahSystem::roll_budget());
+    let dagobah_rolls = rolls.take(rebellion_core::dagobah::DagobahSystem::roll_budget());
     if let Some(pulse) = rebellion_core::dagobah::DagobahSystem::advance(
         &mut states.dagobah,
         world,
@@ -685,7 +674,7 @@ pub fn begin_simulation_day(
 
     // ── 5c. The Final Battle: FUN_00544da0 .. FUN_00544fc0 ───────────────
     let final_battle_rolls =
-        take_rolls(rebellion_core::final_battle::FinalBattleSystem::roll_budget());
+        rolls.take(rebellion_core::final_battle::FinalBattleSystem::roll_budget());
     for step in rebellion_core::final_battle::FinalBattleSystem::advance(
         &mut states.final_battle,
         world,
@@ -698,7 +687,7 @@ pub fn begin_simulation_day(
     }
 
     // ── 5d. The bounty hunters: timer 0x393 (FUN_00546fa0) ───────────────
-    let jabba_rolls = take_rolls(rebellion_core::jabba::JabbaSystem::roll_budget());
+    let jabba_rolls = rolls.take(rebellion_core::jabba::JabbaSystem::roll_budget());
     for step in rebellion_core::jabba::JabbaSystem::advance(
         &mut states.jabba,
         world,
@@ -834,26 +823,96 @@ pub fn begin_simulation_day(
 
     // ── 5b. Character escapes ────────────────────────────────────────────
     // Each captive draws at most an attempt and its next delay.
-    let escape_rolls = take_rolls(2 * world.characters.len());
+    let escape_rolls = rolls.take(2 * world.characters.len());
     let escape_effects =
         MissionSystem::advance_escapes(&mut states.missions, world, current_tick, &escape_rolls);
     integrator.apply_escape_effects(world, &escape_effects);
 
     // ── 6. Events ────────────────────────────────────────────────────────
-    let event_rolls: Vec<f32> = take_rolls(16).iter().map(|&r| r as f32).collect();
+    let event_rolls: Vec<f32> = rolls.take(16).iter().map(|&r| r as f32).collect();
     let fired_events = EventSystem::advance(&mut states.events, world, tick_events, &event_rolls);
     integrator.apply_fired_events(world, &fired_events, current_tick, &states.movement);
 
+    Some((loyalty_before, running_regiments))
+}
+
+/// The start of a day: every system up to and including the day's timers,
+/// then its AI day begins ([`AiDay::begin`]). With more than one day in
+/// `tick_events`, the earlier days' passes run here; the last day's are
+/// left to [`run_ai_passes`], and its end to [`close_simulation_day`].
+pub fn begin_simulation_day(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    tick_events: &[TickEvent],
+    rolls: &[f64],
+    config: &rebellion_core::tuning::GameConfig,
+    integrator: &mut PerceptionIntegrator,
+) {
+    let mut day_rolls = SliceRolls::at(rolls, 0);
+    let Some((loyalty_before, running)) =
+        day_head(world, states, tick_events, &mut day_rolls, integrator)
+    else {
+        return;
+    };
+    run_day_timers(
+        world,
+        states,
+        tick_events,
+        &running,
+        &mut day_rolls,
+        integrator,
+        &mut NoPresentation,
+    );
+    start_ai_day(
+        world,
+        states,
+        tick_events,
+        loyalty_before,
+        &mut day_rolls,
+        config,
+        integrator,
+        &mut NoPresentation,
+    );
+    states.ai_day.roll_cursor = u32::try_from(day_rolls.cursor()).unwrap_or(u32::MAX);
+}
+
+/// The day's timers, which fire in its first sub-tick ahead of its first
+/// AI pass (`FUN_0041dff0` phase 5 before phase 8;
+/// `ghidra/notes/ai-scheduling.md`): the dawn's blockades, uprisings and
+/// disasters, informants, healing, Force discovery, repair, mines and
+/// refineries, autoscrap and the yards' research; then `running`, the
+/// regiments that set out since the last day, run their blockades. Both
+/// the headless runner and the interactive app run it; `presentation`
+/// sees each step's events before and after they are applied.
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the day's ordered timers together."
+)]
+pub fn run_day_timers(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    tick_events: &[TickEvent],
+    running: &[rebellion_core::blockade::RunningRegiment],
+    rolls: &mut dyn RollSource,
+    integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
+) {
+    let Some(current_tick) = tick_events.last().map(|event| event.tick) else {
+        return;
+    };
     // ── 8. Blockade: the fleets the dawn brought, and timer 0x386 ────────
     // Every timer due today runs before the day's first AI tick
     // (FUN_0041dff0 phase 5 ahead of phase 8; ghidra/notes/ai-scheduling.md),
     // and the blockade bit follows the arrivals at once.
     let blockade_events = BlockadeSystem::advance(&mut states.blockade, world, tick_events);
+    let step = DayStep::DawnBlockade(&blockade_events);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_blockade_events(world, &mut states.troop_transport, &blockade_events);
     settle_ended_blockades(world, states, integrator);
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 9. Uprising ──────────────────────────────────────────────────────
-    let uprising_rolls = take_rolls(UprisingSystem::roll_budget(
+    let uprising_rolls = rolls.take(UprisingSystem::roll_budget(
         &states.uprising,
         world,
         tick_events.last().map_or(0, |event| event.tick),
@@ -866,6 +925,8 @@ pub fn begin_simulation_day(
         tick_events,
         &uprising_rolls,
     );
+    let step = DayStep::Uprisings(&uprising_events);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_uprising_events(world, &uprising_events);
     // The disaster's unfinished facilities leave their queues
     // (FUN_00511930 walks mode 3; rebellion_core::products::destroy).
@@ -876,9 +937,10 @@ pub fn begin_simulation_day(
             }
         }
     }
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 9b. Informants: each held system's timer 0x38e ──────────────────
-    let informant_rolls = take_rolls(rebellion_core::informant::InformantSystem::roll_budget(
+    let informant_rolls = rolls.take(rebellion_core::informant::InformantSystem::roll_budget(
         world,
     ));
     let informant_reports = rebellion_core::informant::InformantSystem::advance(
@@ -887,6 +949,8 @@ pub fn begin_simulation_day(
         tick_events,
         &informant_rolls,
     );
+    let step = DayStep::Informants(&informant_reports);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_informant_reports(world, &mut states.fog, &informant_reports);
     // FUN_0050d510: the incident's side gets its push (Event319_Handle).
     for report in &informant_reports {
@@ -894,33 +958,43 @@ pub fn begin_simulation_day(
             .object_views
             .queue_push(report.recipient, report.system);
     }
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 9c. Injury recovery: each healing character's timer 0x388 ────────
     let healed =
         rebellion_core::healing::HealingSystem::advance(&mut states.healing, world, tick_events);
+    let step = DayStep::Healed(&healed);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_healing(world, &healed);
+    present(presentation, world, states, &step, StepPhase::After);
     // A capture's hook (slot +0x34c, FUN_004f1a80) clears the captive's
     // command (FUN_004eeed0).
     rebellion_core::character_command::release_unfit(world);
 
     // ── 9d. Force discovery: each discovering trainer's timer 0x389 ──────
     let discovery_rolls =
-        take_rolls(rebellion_core::force_discovery::ForceDiscoverySystem::roll_budget(world));
+        rolls.take(rebellion_core::force_discovery::ForceDiscoverySystem::roll_budget(world));
     let discovered = rebellion_core::force_discovery::ForceDiscoverySystem::advance(
         &mut states.force_discovery,
         world,
         tick_events,
         &discovery_rolls,
     );
+    let step = DayStep::ForceDiscovered(&discovered);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_force_discoveries(world, &discovered);
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 12b. Ship repair ────────────────────────────────────────────────
     let repair_events = RepairSystem::advance(&mut states.repair, world, tick_events);
+    let step = DayStep::Repairs(&repair_events);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_repair_events(world, &repair_events);
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 13b. Mines, refineries and the side stockpiles ───────────────────
     // Timer 0x394, before the AI (ghidra/notes/ai-scheduling.md).
-    let production_rolls = take_rolls(world.production_facilities.len());
+    let production_rolls = rolls.take(world.production_facilities.len());
     ProductionSystem::advance(
         &mut states.production,
         world,
@@ -933,7 +1007,7 @@ pub fn begin_simulation_day(
     );
 
     // ── 13c. Maintenance shortfall: each side's autoscrap timer 0x382 ───
-    let autoscrap_rolls = take_rolls(2);
+    let autoscrap_rolls = rolls.take(2);
     let autoscraps = rebellion_core::autoscrap::AutoscrapSystem::advance(
         &mut states.autoscrap,
         world,
@@ -944,15 +1018,19 @@ pub fn begin_simulation_day(
         tick_events,
         &autoscrap_rolls,
     );
+    let step = DayStep::Autoscraps(&autoscraps);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_autoscraps(
         world,
         &mut states.production,
         &mut states.troop_transport,
         &autoscraps,
     );
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 13d. The yards' own research: each side's timer 0x381 ───────────
-    let tally_rolls = take_rolls(2);
+    let tally_rolls = rolls.take(2);
+    present(presentation, world, states, &DayStep::ResearchTally(&[]), StepPhase::Before);
     let tallies = rebellion_core::research::ResearchSystem::advance_tally(
         &mut states.research,
         world,
@@ -961,19 +1039,38 @@ pub fn begin_simulation_day(
         &tally_rolls,
     );
     integrator.record_research_tallies(&tallies);
+    present(presentation, world, states, &DayStep::ResearchTally(&tallies), StepPhase::After);
 
     // ── 8b. The regiments that set out since the last day run a blockade
     // (FUN_00504990). port: their rolls come before the day's AI passes, so
     // the passes, which a host may spread over the day's sub-ticks, leave no
     // roll owed across them.
-    let running_rolls = take_rolls(running_regiments.len());
-    let running = BlockadeSystem::resolve_running(
-        &running_regiments,
-        &running_rolls,
-        last_tick_event.tick,
-    );
+    let running_rolls = rolls.take(running.len());
+    let running = BlockadeSystem::resolve_running(running, &running_rolls, current_tick);
+    present(presentation, world, states, &DayStep::RunningRegiments(&running), StepPhase::Before);
     integrator.apply_blockade_events(world, &mut states.troop_transport, &running);
 
+}
+
+/// The day's AI begins (`ai_schedule::AiDay::begin`) for each of
+/// `tick_events`: each side's order count clears (`FUN_00485de0`) and new
+/// capital ships take their ids. With more than one day, the earlier
+/// days' passes run here; the last day's are left to [`run_ai_passes`],
+/// and its end to [`close_simulation_day`].
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the day's AI reads the world, its states, its rolls and its runner"
+)]
+pub fn start_ai_day(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    tick_events: &[TickEvent],
+    loyalty_before: rebellion_core::loyalty::LoyaltyWatch,
+    rolls: &mut dyn RollSource,
+    config: &rebellion_core::tuning::GameConfig,
+    integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
+) {
     // ── 7. AI ────────────────────────────────────────────────────────────
     // Each day has as many passes as the speed has sub-ticks, one side then
     // the other (rebellion_core::ai_schedule); every timer above fired in the
@@ -985,13 +1082,14 @@ pub fn begin_simulation_day(
         clippy::cast_sign_loss,
         reason = "A roll in 0..1 scaled to 53 bits of seed."
     )]
-    let bombard_seed = (take_rolls(1)[0] * 9_007_199_254_740_992.0) as u64;
+    let bombard_seed = (rolls.take(1)[0] * 9_007_199_254_740_992.0) as u64;
     let days = u32::try_from(tick_events.len()).unwrap_or(u32::MAX);
     let passes = rebellion_core::ai::passes_per_day(states.clock.speed);
     let mut bombard_state = bombard_seed;
     let mut ended = false;
     for (index, event) in tick_events.iter().enumerate() {
         states.ai_day = AiDay::begin(event.tick, passes, bombard_state, loyalty_before, days);
+        presentation.ai_day_begun(event.tick, states.clock.speed, passes);
         if ended {
             // A win held the clock: no later day's pass runs.
             states.ai_day.done = passes;
@@ -1003,8 +1101,8 @@ pub fn begin_simulation_day(
             bombard_state = states.ai_day.bombard_state;
         }
     }
-    states.ai_day.roll_cursor = u32::try_from(roll_cursor).unwrap_or(u32::MAX);
 }
+
 
 /// Where a day's rolls come from: uniform values in `0..1`, taken in the
 /// order the day's systems ask for them.
@@ -1066,6 +1164,20 @@ pub trait DayPresentation {
     /// days, after the day's AI passes. The headless runner has no player.
     fn player_agent(&mut self, _world: &GameWorld, _states: &mut SimulationStates, _days: u32) {}
 
+    /// A step of the day's start: `Before` with its events not yet applied
+    /// (the world as they found it), `After` once they are.
+    fn step(
+        &mut self,
+        _world: &GameWorld,
+        _states: &SimulationStates,
+        _step: &DayStep<'_>,
+        _phase: StepPhase,
+    ) {
+    }
+
+    /// The AI's day `day` begins with `passes` passes at `speed`.
+    fn ai_day_begun(&mut self, _day: u64, _speed: rebellion_core::tick::GameSpeed, _passes: u32) {}
+
     /// Blockade events about to be applied.
     fn blockade(&mut self, _world: &GameWorld, _events: &[rebellion_core::blockade::BlockadeEvent]) {
     }
@@ -1082,6 +1194,50 @@ pub trait DayPresentation {
         _day: u64,
     ) {
     }
+}
+
+/// When [`DayPresentation::step`] is called.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepPhase {
+    /// Before the step's events are applied.
+    Before,
+    /// After they are.
+    After,
+}
+
+/// A step of the day's start, with its events.
+#[derive(Debug, Clone, Copy)]
+pub enum DayStep<'a> {
+    /// The fleets the dawn brought and timer `0x386`.
+    DawnBlockade(&'a [rebellion_core::blockade::BlockadeEvent]),
+    /// Uprisings, disasters, incidents and resource changes
+    /// (`0x38d`, `0x38f`, `0x390`, `0x384`).
+    Uprisings(&'a [rebellion_core::uprising::UprisingEvent]),
+    /// Informant reports (`0x38e`).
+    Informants(&'a [rebellion_core::informant::InformantReport]),
+    /// Healed characters (`0x388`).
+    Healed(&'a [rebellion_core::healing::Healed]),
+    /// Characters made Force aware (`0x389`).
+    ForceDiscovered(&'a [rebellion_core::force_discovery::ForceDiscovered]),
+    /// Repairs (`0x380`).
+    Repairs(&'a [rebellion_core::repair::RepairEvent]),
+    /// The maintenance shortfall's scrapped units (`0x382`).
+    Autoscraps(&'a [rebellion_core::autoscrap::Autoscrap]),
+    /// The yards' research tally (`0x381`): `Before` comes ahead of the
+    /// tally itself, with no tallies.
+    ResearchTally(&'a [rebellion_core::research::ResearchTally]),
+    /// The regiments that set out since the last day, running a blockade.
+    RunningRegiments(&'a [rebellion_core::blockade::BlockadeEvent]),
+}
+
+fn present(
+    presentation: &mut dyn DayPresentation,
+    world: &GameWorld,
+    states: &SimulationStates,
+    step: &DayStep<'_>,
+    phase: StepPhase,
+) {
+    presentation.step(world, states, step, phase);
 }
 
 /// A runner that shows nothing: the headless playtest and replays.
@@ -1562,6 +1718,75 @@ mod tests {
             .finish()
             .iter()
             .any(|e| e.event_type == rebellion_core::game_events::EVT_VICTORY_CONDITIONS));
+    }
+
+    /// A presentation that records the steps it is shown.
+    #[derive(Default)]
+    struct StepLog(Vec<String>);
+
+    impl DayPresentation for StepLog {
+        fn step(
+            &mut self,
+            _world: &GameWorld,
+            _states: &SimulationStates,
+            step: &DayStep<'_>,
+            phase: StepPhase,
+        ) {
+            let name = format!("{step:?}");
+            let name = name.split('(').next().unwrap_or_default().to_string();
+            self.0.push(format!("{name} {phase:?}"));
+        }
+    }
+
+    #[test]
+    fn the_day_s_timers_show_each_step_before_and_after_it_is_applied() {
+        // The timers' order: every timer due on a day fires in FUN_0041dff0
+        // phase 5 of its first sub-tick (ghidra/notes/ai-scheduling.md).
+        let (mut world, mut states) = make_test_states();
+        let mut log = StepLog::default();
+        run_day_timers(
+            &mut world,
+            &mut states,
+            &[TickEvent { tick: 1 }],
+            &[],
+            &mut SliceRolls::at(&[], 0),
+            &mut PerceptionIntegrator::new(1, 0),
+            &mut log,
+        );
+        assert_eq!(
+            log.0,
+            [
+                "DawnBlockade Before",
+                "DawnBlockade After",
+                "Uprisings Before",
+                "Uprisings After",
+                "Informants Before",
+                "Informants After",
+                "Healed Before",
+                "Healed After",
+                "ForceDiscovered Before",
+                "ForceDiscovered After",
+                "Repairs Before",
+                "Repairs After",
+                "Autoscraps Before",
+                "Autoscraps After",
+                "ResearchTally Before",
+                "ResearchTally After",
+                "RunningRegiments Before",
+            ]
+        );
+        // No day, no timers.
+        let mut none = StepLog::default();
+        run_day_timers(
+            &mut world,
+            &mut states,
+            &[],
+            &[],
+            &mut SliceRolls::at(&[], 0),
+            &mut PerceptionIntegrator::new(1, 0),
+            &mut none,
+        );
+        assert!(none.0.is_empty());
     }
 
     #[test]
