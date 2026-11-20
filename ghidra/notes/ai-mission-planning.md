@@ -2061,11 +2061,29 @@ Ported 2026-11-20:
   killed, a special force) without `0x50`.
 
 port:
-- a research planner keeps no `+0x20`; at its mission's end it lets only
-  a captured, injured or killed designer go. Its whole-team release
-  after a 1001st failure is not ported (it needs a save layout change).
 - `FUN_0042f700` returns the first planner of the one list; the port
   looks through the mission planners, then the research planners.
+
+The research planners' release (ported 2026-11-20, save v134):
+- `ResearchPlanner::pending` is their `+0x20`. `note_report` is
+  `FUN_0047c890` at the notification: a success clears `+0x6c` and sets
+  the check `0x40000000`; a failure counts against slot `+0x24`
+  (`FUN_00480df0`, 1000), and the 1001st sets `0x80` and the abort
+  `0x20000000` and clears the count, else the check.
+- `research_strategy` is state 1 (`FUN_0047b250`) for them: only while
+  the mission runs, the check asks the site (slot `+0x34`) and turns into
+  the abort without it; the abort orders `0x250`; both bits then clear.
+  Before, the port counted the failures when the AI read the report, so
+  a mission that ended in the same step lost its count's `0x80`.
+- `ResearchPlanner::mission_destroyed` is `FUN_0047ae50`: with `0x80` the
+  designer goes and the gathering place `+0x38` (the port's `target`)
+  empties.
+- A research planner keeps its mission id until the mission leaves the
+  list, so the Destroyed hook still finds it after an abort.
+- Save v134 keeps the bits as `SaveState::research_planner_bits`, after
+  the AI's own encoding; the seed-42 golden moved only through the save
+  version and that field (the fingerprints as v133 wrote them are
+  unchanged).
 
 ## The abort tests' gathering place (ported 2026-11-20)
 

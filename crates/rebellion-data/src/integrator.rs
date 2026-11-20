@@ -4795,6 +4795,7 @@ mod tests {
                 mission: None,
                 report: None,
                 failures: 0,
+                pending: 0,
             });
         let mut missions = MissionState::new();
         let mut integrator = PerceptionIntegrator::new(5, 0);

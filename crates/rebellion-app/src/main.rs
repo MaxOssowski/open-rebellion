@@ -880,6 +880,7 @@ impl LiveCampaign<'_> {
             ai_sector_links: rebellion_data::save::sector_links(self.ai, self.ai2.as_ref()),
             ai_day: *self.ai_day,
             day_rolls: self.day_rolls.clone(),
+            research_planner_bits: rebellion_data::save::research_bits(self.ai, self.ai2.as_ref()),
         }
     }
 
@@ -913,6 +914,11 @@ impl LiveCampaign<'_> {
             self.ai,
             self.ai2.as_mut(),
             &state.ai_sector_links,
+        );
+        rebellion_data::save::restore_research_bits(
+            self.ai,
+            self.ai2.as_mut(),
+            &state.research_planner_bits,
         );
         *self.repair = state.repair;
         *self.production = state.production;

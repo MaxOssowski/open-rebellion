@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 133;
+pub const SAVE_VERSION: u32 = 134;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -149,7 +149,11 @@ pub const V131: u32 = 131;
 /// last field.
 pub const V132: u32 = 132;
 
-/// Whether a save of `version` loads (the current one, or v116 to v132
+/// v133: the save without the research planners' `+0x20` bits
+/// (`SaveState::research_planner_bits`), its last field.
+pub const V133: u32 = 133;
+
+/// Whether a save of `version` loads (the current one, or v116 to v133
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -292,6 +296,11 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         // An older save keeps no day's rolls: a day it was saved within
         // ends with padded rolls (simulation::SliceRolls).
         body.extend(bincode::serialize(&Vec::<f64>::new())?);
+    }
+    if version <= V133 {
+        // An older save's research planners kept no +0x20 bits: none has
+        // passed its failure limit or holds an unread check or abort.
+        body.extend(bincode::serialize(&AiResearchBits::default())?);
     }
     Ok(body)
 }
@@ -489,6 +498,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V133 {
+            fields.remove("research_planner_bits");
+        }
         if version <= V132 {
             fields.remove("day_rolls");
         }
@@ -709,6 +721,40 @@ pub struct SaveState {
     /// between days in a headless runner's save. It stays the last field:
     /// an older body is read by appending an empty one ([`migrate_body`]).
     pub day_rolls: Vec<f64>,
+    // ── v134: the research planners' `+0x20` bits ───────────────────────
+    /// Each research planner's `+0x20` bits (`ResearchPlanner::pending`:
+    /// `0x80` past its failure limit, the report's check and abort), of
+    /// `ai`, then `ai2`, in the planners' order. It stays the last field:
+    /// an older body is read by appending empty ones ([`migrate_body`]).
+    /// The loaders put it back into the AI states, whose own encoding skips
+    /// it ([`restore_research_bits`]).
+    pub research_planner_bits: AiResearchBits,
+}
+
+/// [`SaveState::research_planner_bits`]: the research planners' `+0x20`
+/// bits of `ai` and of `ai2`.
+pub type AiResearchBits = (Vec<u32>, Option<Vec<u32>>);
+
+/// The research planners' bits of `ai` and `ai2` for
+/// [`SaveState::research_planner_bits`].
+#[must_use]
+pub fn research_bits(ai: &AIState, ai2: Option<&AIState>) -> AiResearchBits {
+    let bits = |a: &AIState| a.research_planners.iter().map(|p| p.pending).collect();
+    (bits(ai), ai2.map(bits))
+}
+
+/// Put `bits` back into the research planners of `ai` and `ai2`, in their
+/// order; a planner without an entry keeps none.
+pub fn restore_research_bits(ai: &mut AIState, ai2: Option<&mut AIState>, bits: &AiResearchBits) {
+    let restore = |a: &mut AIState, bits: &[u32]| {
+        for (at, p) in a.research_planners.iter_mut().enumerate() {
+            p.pending = bits.get(at).copied().unwrap_or(0);
+        }
+    };
+    restore(ai, &bits.0);
+    if let Some(ai2) = ai2 {
+        restore(ai2, bits.1.as_deref().unwrap_or(&[]));
+    }
 }
 
 /// [`SaveState::ai_command_planners`]: module `0xc` of `ai` and of `ai2`.
@@ -747,7 +793,8 @@ pub fn restore_sector_links(ai: &mut AIState, ai2: Option<&mut AIState>, links: 
 }
 
 impl SaveState {
-    /// Put [`Self::ai_command_planners`] back into the AI states.
+    /// Put [`Self::ai_command_planners`], then the sector links and the
+    /// research planners' bits, back into the AI states.
     pub fn restore_command_planners(&mut self) {
         let (first, second) = self.ai_command_planners.clone();
         self.ai.module_c = first;
@@ -755,6 +802,7 @@ impl SaveState {
             ai2.module_c = second;
         }
         restore_sector_links(&mut self.ai, self.ai2.as_mut(), &self.ai_sector_links);
+        restore_research_bits(&mut self.ai, self.ai2.as_mut(), &self.research_planner_bits);
     }
 }
 
@@ -1388,6 +1436,7 @@ pub(crate) mod tests {
             ai_sector_links: AiSectorLinks::default(),
             ai_day: rebellion_core::ai_schedule::AiDay::default(),
             day_rolls: Vec::new(),
+            research_planner_bits: AiResearchBits::default(),
         }
     }
 
@@ -1861,7 +1910,19 @@ pub(crate) mod tests {
 
     /// The length of the empty day's rolls v133 added.
     fn rolls_tail() -> usize {
-        bincode::serialize(&Vec::<f64>::new()).unwrap().len()
+        bincode::serialize(&Vec::<f64>::new()).unwrap().len() + research_tail()
+    }
+
+    /// The length of the empty research planner bits v134 added.
+    fn research_tail() -> usize {
+        bincode::serialize(&AiResearchBits::default()).unwrap().len()
+    }
+
+    /// `state` written as a v133 file: no research planner bits. `state`
+    /// holds none.
+    fn write_v133(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.research_planner_bits, AiResearchBits::default());
+        write_old(saves_dir, state, V133, research_tail())
     }
 
     /// `state` written as a v132 file: no day's rolls. `state` holds none.
@@ -2357,6 +2418,90 @@ pub(crate) mod tests {
         assert_eq!(
             fingerprint_as(&state, V132).unwrap(),
             fingerprint_as(&loaded, V132).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v133_save_loads_without_the_research_planners_bits() {
+        // v134 keeps the research planners' +0x20 bits
+        // (SaveState::research_planner_bits); a v133 save had none, and
+        // its planners load with none.
+        use rebellion_core::ai::ResearchPlanner;
+        use rebellion_core::research::TechType;
+        let saves_dir = tmp_dir("v133_migration");
+        let mut state = minimal_save_state();
+        state.ai.research_planners.push(ResearchPlanner {
+            id: 1,
+            tech: TechType::Ship,
+            member: None,
+            site: None,
+            target: None,
+            mission: None,
+            report: None,
+            failures: 3,
+            pending: 0,
+        });
+        write_v133(&saves_dir, &state);
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v133 save migrates");
+        assert_eq!(loaded.research_planner_bits, AiResearchBits::default());
+        assert_eq!(loaded.ai.research_planners, state.ai.research_planners);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V133).unwrap(),
+            fingerprint_as(&loaded, V133).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_the_research_planners_bits_of_both_sides() {
+        // ResearchPlanner::pending (+0x20) is skipped by the AI's own
+        // encoding; the save carries it after the other fields and the
+        // loader puts it back by the planners' order.
+        use rebellion_core::ai::{AIState, AiFaction, ResearchPlanner};
+        use rebellion_core::research::TechType;
+        let saves_dir = tmp_dir("research_bits");
+        let mut state = minimal_save_state();
+        let planner = |id, pending| ResearchPlanner {
+            id,
+            tech: TechType::Troop,
+            member: None,
+            site: None,
+            target: None,
+            mission: Some(id),
+            report: None,
+            failures: 0,
+            pending,
+        };
+        state.ai.research_planners = vec![planner(1, 0x80), planner(2, 0x4000_0000)];
+        let mut ai2 = AIState::new(AiFaction::Alliance);
+        ai2.research_planners = vec![planner(3, 0x2000_0080)];
+        state.ai2 = Some(ai2);
+        state.research_planner_bits = research_bits(&state.ai, state.ai2.as_ref());
+        assert_eq!(
+            state.research_planner_bits,
+            (vec![0x80, 0x4000_0000], Some(vec![0x2000_0080]))
+        );
+        save_slot(&saves_dir, 0, "Bits", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.ai.research_planners, state.ai.research_planners);
+        assert_eq!(
+            loaded.ai2.as_ref().unwrap().research_planners,
+            state.ai2.as_ref().unwrap().research_planners
+        );
+        // The bits count in the current fingerprint.
+        let mut cleared = state.clone();
+        cleared.research_planner_bits = AiResearchBits::default();
+        assert_ne!(
+            compute_state_fingerprint(&cleared).unwrap(),
+            compute_state_fingerprint(&state).unwrap()
+        );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&state).unwrap()
         );
     }
 
@@ -3355,13 +3500,17 @@ pub(crate) mod tests {
             mission: Some(9),
             report: Some(rebellion_core::missions::MissionOutcome::Failure),
             failures: 12,
+            // v134: the +0x20 bits, past the failure limit with the abort.
+            pending: 0x2000_0080,
         });
         state.ai = ai;
+        state.research_planner_bits = research_bits(&state.ai, None);
         save_slot(&saves_dir, 0, "V37 Save", &state, &[]).unwrap();
 
         let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
 
         assert_eq!(loaded.ai.research_planners, state.ai.research_planners);
+        assert_eq!(loaded.ai.research_planners[0].pending, 0x2000_0080);
         assert_eq!(loaded.ai.next_planner_id, 4);
     }
 

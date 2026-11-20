@@ -660,6 +660,62 @@ pub struct ResearchPlanner {
     /// Failed results counted against slot `+0x24` (`FUN_0047ae20`,
     /// planner `+0x6c`).
     pub failures: u32,
+    /// `+0x20` bits: [`PAST_FAILURE_LIMIT`], and the report's check
+    /// (`0x40000000`) and abort (`0x20000000`) that state 1 reads
+    /// (`FUN_0047c890`, `FUN_0047b250`). The save keeps them after its
+    /// own encoding of the AI (v134).
+    #[serde(skip)]
+    pub pending: u32,
+}
+
+impl ResearchPlanner {
+    /// The Mission Report (slot `+0x30`, `FUN_0047c890`) as the
+    /// notification `0x1f0` arrives: a success clears the count `+0x6c`
+    /// and sets the check; a failure counts against slot `+0x24`
+    /// ([`RESEARCH_PLANNER_FAILURES`], `FUN_0047ae20`), past which the
+    /// count clears and `+0x20` gains [`PAST_FAILURE_LIMIT`] and the
+    /// abort, else the check.
+    fn note_report(&mut self, outcome: crate::missions::MissionOutcome) {
+        use crate::missions::MissionOutcome;
+        self.report = Some(outcome);
+        let passed = match outcome {
+            MissionOutcome::Success => {
+                self.failures = 0;
+                false
+            }
+            MissionOutcome::Failure => {
+                self.failures = self.failures.saturating_add(1);
+                self.failures > RESEARCH_PLANNER_FAILURES
+            }
+        };
+        if passed {
+            self.failures = 0;
+            self.pending |= PAST_FAILURE_LIMIT | REPORT_ABORT;
+        } else {
+            self.pending |= REPORT_CHECK;
+        }
+    }
+
+    /// The Destroyed hook (`FUN_0047ae50`) when its mission ends: `+0x20`
+    /// loses `0xe0000000`; the designer goes when its record is gone, a
+    /// prisoner or injured, or when `+0x20` has [`PAST_FAILURE_LIMIT`]
+    /// (`FUN_0047b870`); with that bit the gathering place `+0x38`
+    /// empties (`FUN_004ece80`) and the bit clears.
+    fn mission_destroyed(&mut self, world: &GameWorld) {
+        self.pending &= 0x1fff_ffff;
+        let past = self.pending & PAST_FAILURE_LIMIT != 0;
+        self.member = self.member.filter(|&c| {
+            !past
+                && crate::mission_planning::fit_to_keep(
+                    world,
+                    crate::missions::MissionMember::Character(c),
+                )
+        });
+        if past {
+            self.target = None;
+        }
+        self.pending &= !PAST_FAILURE_LIMIT;
+    }
 }
 
 /// A mission planner (`FUN_0042f830`, run by `FUN_004bced0`): the members
@@ -968,7 +1024,7 @@ impl AIState {
         for result in results {
             for p in &mut self.research_planners {
                 if p.mission == Some(result.mission_id) {
-                    p.report = Some(result.outcome);
+                    p.note_report(result.outcome);
                 }
             }
             for p in &mut self.mission_planners {
@@ -986,11 +1042,8 @@ impl AIState {
     /// `FUN_0047ae50` on it ([`MissionPlanner::mission_destroyed`]). The
     /// port hears each mission that reached its end phase (`0xb`).
     ///
-    /// A research planner's designer goes the same way when captured,
-    /// injured or killed. port: a research planner keeps no `+0x20` bit
-    /// `0x80` (its slot `+0x30` is `FUN_0047c890`, slot `+0x24` 1000), so
-    /// its whole-team release after a 1001st failure is not ported; the
-    /// bit would need a save layout change.
+    /// A research planner goes the same way
+    /// ([`ResearchPlanner::mission_destroyed`]).
     pub fn note_missions_ended(
         &mut self,
         ended: &[crate::missions::MissionEnded],
@@ -1001,13 +1054,7 @@ impl AIState {
             if let Some(p) = self.mission_planners.iter_mut().find(|p| p.mission == id) {
                 p.mission_destroyed(world);
             } else if let Some(p) = self.research_planners.iter_mut().find(|p| p.mission == id) {
-                let fit = |c| {
-                    crate::mission_planning::fit_to_keep(
-                        world,
-                        crate::missions::MissionMember::Character(c),
-                    )
-                };
-                p.member = p.member.filter(|&c| fit(c));
+                p.mission_destroyed(world);
             }
         }
     }
@@ -2646,6 +2693,7 @@ impl AISystem {
                 mission: None,
                 report: None,
                 failures: 0,
+                pending: 0,
             }),
             StrategyRow::Standing(kind, _) => state.mission_planners.push(MissionPlanner {
                 id,
@@ -2682,14 +2730,16 @@ impl AISystem {
     /// The research planners' Mission Reports, read in module `0xd` before
     /// the strategy's rows ([`Self::mission_strategy`]).
     ///
-    /// Per tree (ships, troops, facilities) each planner reads its Mission
-    /// Report (`FUN_0047c890`, `FUN_0047b250`): a success clears its
-    /// failures, a failure counts one, past slot `+0x24` (1000) the planner
-    /// aborts its mission, and either result aborts the mission when the
-    /// remembered site lost its site bit (`FUN_0047c110` and siblings). That
-    /// slot also makes a site of the side with no enemy fleet (record
-    /// `+0x30` bit 1, not `0x200`) the gathering place `+0x38`. The
-    /// mission module runs the planners ([`Self::mission_step`]).
+    /// Per tree (ships, troops, facilities) each planner's state 1
+    /// (`FUN_0047b250`) reads the bits its Mission Report set
+    /// ([`ResearchPlanner::note_report`], `FUN_0047c890`), only while its
+    /// mission runs: the check asks slot `+0x34` (`FUN_0047c110` and
+    /// siblings) whether the remembered site keeps its site bit, and turns
+    /// into the abort when it does not; the abort (also set past slot
+    /// `+0x24`, 1000 failures) orders `0x250` on the mission. Slot `+0x34`
+    /// also makes a site of the side with no enemy fleet (record `+0x30`
+    /// bit 1, not `0x200`) the gathering place `+0x38`. The mission module
+    /// runs the planners ([`Self::mission_step`]).
     ///
     /// port: the reports' aborts are the planners' orders (`FUN_0047b250`)
     /// in the original.
@@ -2707,9 +2757,14 @@ impl AISystem {
             id.and_then(|id| mission_state.missions().iter().find(|m| m.id == id))
                 .filter(|m| m.end_code == 0)
         };
-        // A planner whose mission has ended no longer tracks it.
+        // A planner whose mission is gone no longer tracks it. One that has
+        // ended but not yet gone keeps it for the Destroyed hook
+        // (note_missions_ended).
         for p in &mut state.research_planners {
-            if running(p.mission).is_none() {
+            let listed = p
+                .mission
+                .is_some_and(|id| mission_state.missions().iter().any(|m| m.id == id));
+            if !listed {
                 p.mission = None;
                 p.report = None;
             }
@@ -2723,39 +2778,35 @@ impl AISystem {
                 .iter_mut()
                 .filter(|p| p.tech == tech)
             {
-                let Some(outcome) = p.report.take() else {
+                // The count and the bits were set with the report
+                // (ResearchPlanner::note_report).
+                p.report = None;
+                // FUN_0047b250 acts only while the mission runs; the bits
+                // wait otherwise.
+                let Some(mission) = running(p.mission) else {
                     continue;
                 };
-                let give_up = match outcome {
-                    crate::missions::MissionOutcome::Success => {
-                        p.failures = 0;
-                        false
-                    }
-                    crate::missions::MissionOutcome::Failure => {
-                        p.failures += 1;
-                        p.failures > RESEARCH_PLANNER_FAILURES
-                    }
-                };
-                if give_up {
-                    p.failures = 0;
-                }
-                if let Some(mission) = running(p.mission) {
-                    // Without the abort, slot +0x34 checks the site; it also
-                    // makes a site of the side with no enemy fleet the
-                    // gathering place +0x38 (0x47c13e).
+                if p.pending & REPORT_CHECK != 0 {
+                    // Slot +0x34 checks the site; it also makes a site of
+                    // the side with no enemy fleet the gathering place
+                    // +0x38 (0x47c13e).
                     let own = p
                         .site
                         .and_then(|s| galaxy.system(s))
                         .is_some_and(|r| r.kind & 1 != 0 && r.kind & 0x200 == 0);
-                    if !give_up && own {
+                    if own {
                         p.target = p.site;
                     }
-                    if give_up || !p.site.is_some_and(site) {
-                        actions.push(AIAction::AbortMission {
-                            mission_id: mission.id,
-                        });
+                    if !p.site.is_some_and(site) {
+                        p.pending = (p.pending & !REPORT_CHECK) | REPORT_ABORT;
                     }
                 }
+                if p.pending & REPORT_ABORT != 0 {
+                    actions.push(AIAction::AbortMission {
+                        mission_id: mission.id,
+                    });
+                }
+                p.pending &= !(REPORT_CHECK | REPORT_ABORT);
             }
         }
     }
@@ -10158,12 +10209,54 @@ mod tests {
             mission: Some(mission),
             report: None,
             failures: 0,
+            pending: 0,
         };
         state.research_planners = vec![planner(1, held, 5), planner(2, other, 6)];
         state.note_missions_ended(&[ended(5)], &world);
         // Only the planner of the mission that ended lets its designer go.
         let members: Vec<_> = state.research_planners.iter().map(|p| p.member).collect();
         assert_eq!(members, vec![None, Some(other)]);
+    }
+
+    #[test]
+    fn a_research_planner_past_its_failure_limit_lets_its_designer_go_at_the_mission_s_end() {
+        // FUN_0047c890 -> FUN_0047ae20: the 1001st failure (slot +0x24,
+        // FUN_00480df0) sets +0x20 0x80 with the abort. At the mission's
+        // Destroyed (FUN_0042f7d0 -> FUN_0047ae50) +0x20 loses 0xe0000000,
+        // the 0x80 lets the designer go (FUN_0047b870) and empties the
+        // gathering place +0x38 (FUN_004ece80), and the bit clears.
+        use crate::missions::MissionOutcome::{Failure, Success};
+        let mut world = GameWorld::default();
+        let [a, b] = [0; 2].map(|_| add_character(&mut world, false, false, 0));
+        let staging = SystemKey::default();
+        let mut state = AIState::new(AiFaction::Empire);
+        let planner = |id, member, mission| ResearchPlanner {
+            id,
+            tech: TechType::Ship,
+            member: Some(member),
+            site: Some(staging),
+            target: Some(staging),
+            mission: Some(mission),
+            report: None,
+            failures: 1000,
+            pending: 0,
+        };
+        state.research_planners = vec![planner(1, a, 5), planner(2, b, 6)];
+        state.note_mission_results(&[result(5, Failure), result(6, Success)]);
+        assert_eq!(
+            state.research_planners[0].pending,
+            PAST_FAILURE_LIMIT | 0x2000_0000
+        );
+        assert_eq!(state.research_planners[0].failures, 0);
+        assert_eq!(state.research_planners[1].pending, 0x4000_0000);
+
+        state.note_missions_ended(&[ended(5), ended(6)], &world);
+        let p = &state.research_planners[0];
+        assert_eq!((p.member, p.target, p.pending), (None, None, 0));
+        // Within the limit the designer and the place stay; only the
+        // report's bits go with the mission.
+        let p = &state.research_planners[1];
+        assert_eq!((p.member, p.target, p.pending), (Some(b), Some(staging), 0));
     }
 
     #[test]
@@ -10719,6 +10812,7 @@ mod tests {
             mission: None,
             report: None,
             failures: 0,
+            pending: 0,
         }
     }
 
@@ -11093,13 +11187,21 @@ mod tests {
         assert_eq!(state.research_planners[0].target, None);
 
         // A site the side no longer holds (record +0x30 without bit 1)
-        // fails the check and is not the place.
+        // fails the check and is not the place. An abort still waiting
+        // with the check aborts once; both bits clear and 0x80 stays.
         world.systems[shipyard].control = ControlKind::Controlled(crate::dat::Faction::Empire);
+        state.research_planners[0].pending = PAST_FAILURE_LIMIT | 0x2000_0000;
         assert_eq!(
             read(&mut state, &world, crate::missions::MissionOutcome::Success),
             vec![id]
         );
         assert_eq!(state.research_planners[0].target, None);
+        assert_eq!(state.research_planners[0].pending, PAST_FAILURE_LIMIT);
+        assert_eq!(
+            read(&mut state, &world, crate::missions::MissionOutcome::Success),
+            vec![id]
+        );
+        assert_eq!(state.research_planners[0].pending, PAST_FAILURE_LIMIT);
     }
 
     #[test]
