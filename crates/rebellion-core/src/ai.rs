@@ -26,12 +26,11 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{CapitalShipKey, CharacterKey, DatId, FighterKey, FleetKey, SystemKey, TroopKey};
-use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, ProductionArea};
+use crate::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
+use crate::manufacturing::{BuildableKind, ManufacturingState, ProductionArea};
 use crate::mission_planning::Planner;
 use crate::missions::{MissionFaction, MissionKind, MissionState};
-use crate::research::{ResearchState, ResearchSystem, TechType};
-use crate::tuning::GameConfig;
+use crate::research::{ResearchState, TechType};
 use crate::world::{Character, GameWorld};
 
 // ---------------------------------------------------------------------------
@@ -373,29 +372,6 @@ fn accepts(
                     .is_some_and(|f| f.is_alliance == is_alliance)
         }
         _ => true,
-    }
-}
-
-/// The module whose step issues the production heuristic's order for
-/// `kind`: `0xa` a manufacturing facility; none for the rest.
-///
-/// port: a first read of the modules' orders and marks (`0x210` with marks
-/// `0x1000000` and `0x2000000`, `0x212` with `0x400000`, `0x211` with
-/// `0x200000`; `ghidra/notes/ai-mission-planning.md`). Module 2, now
-/// ported, builds only construction yards, mines and refineries
-/// (`FUN_004e2400`, `FUN_004e25c0`), so the heuristic's facilities, mostly
-/// shipyards and training facilities, stand in for module `0xa`'s
-/// shipyard placement. Module 3, ported, builds the defenses
-/// (`FUN_004d8460`), so the heuristic's defenses stand in for no module.
-/// Modules 5 and 6, ported, train special forces (`FUN_004d0590`) and
-/// regiments (`FUN_004df9a0`), so the heuristic's regiments stand in for
-/// no module. Modules 7 and `0xb`, ported, build squadrons
-/// (`FUN_004d46e0`) and capital ships (`FUN_004ca910`), so the heuristic's
-/// fighters and ships stand in for no module.
-fn production_module(kind: &BuildableKind) -> Option<u8> {
-    match kind {
-        BuildableKind::ManufacturingFacility(_) => Some(0xa),
-        _ => None,
     }
 }
 
@@ -1373,11 +1349,9 @@ pub enum FleetMoveReason {
 #[derive(Clone, Copy)]
 struct ModuleInputs<'a> {
     world: &'a GameWorld,
-    mfg_state: &'a ManufacturingState,
     mission_state: &'a MissionState,
     transport: &'a crate::troop_transport::TroopTransportState,
     tick: u64,
-    config: &'a GameConfig,
     research_state: &'a ResearchState,
     uprisings: &'a crate::uprising::UprisingState,
     faction: AiFaction,
@@ -1470,7 +1444,6 @@ impl AISystem {
         economy: &crate::economy::EconomyState,
         troop_transport: &crate::troop_transport::TroopTransportState,
         tick: u64,
-        config: &GameConfig,
         research_state: &ResearchState,
         uprisings: &crate::uprising::UprisingState,
     ) -> Vec<AIAction> {
@@ -1546,11 +1519,9 @@ impl AISystem {
         }
         let ctx = ModuleInputs {
             world,
-            mfg_state,
             mission_state,
             transport: troop_transport,
             tick,
-            config,
             research_state,
             uprisings,
             faction,
@@ -1920,11 +1891,12 @@ impl AISystem {
     ///   [`Self::step_module`] ([`crate::ai_strategy`]), then the research
     ///   strategy ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
-    /// - `0xa`: the production heuristic's manufacturing facilities.
     ///
-    /// port: the assignment of the port's heuristics to modules is a first
-    /// read (the modules' roles in the note above); modules 9 and `0xe`
-    /// have no port counterpart and order nothing. Modules 1, 2, 3, 5, 6, 7,
+    /// port: modules 9, `0xa` and `0xe` have no port counterpart and order
+    /// nothing. Module `0xa`'s stand-in, the production heuristic's
+    /// manufacturing facilities, is gone: its orders are a shipyard class's
+    /// Build at a shipyard site and yard builds under the yard token
+    /// (`ghidra/notes/ai-production-modules.md`). Modules 1, 2, 3, 5, 6, 7,
     /// 8, `0xb` and `0xc` are ported ([`crate::ai_module1`],
     /// [`crate::ai_module2`], [`crate::ai_module3`], [`crate::ai_module5`],
     /// [`crate::ai_module6`], [`crate::ai_module7`], [`crate::ai_module8`],
@@ -1940,22 +1912,12 @@ impl AISystem {
     ) {
         let ModuleInputs {
             world,
-            mfg_state,
             mission_state,
-            config,
             research_state,
             uprisings,
             faction,
             ..
         } = *ctx;
-        let production = |actions: &mut Vec<AIAction>| {
-            let mut all = Vec::new();
-            Self::evaluate_production(world, mfg_state, research_state, faction, config, &mut all);
-            actions.extend(all.into_iter().filter(|a| match a {
-                AIAction::EnqueueProduction { kind, .. } => production_module(kind) == Some(id),
-                _ => false,
-            }));
-        };
         match id {
             0xd => {
                 Self::research_strategy(
@@ -1970,7 +1932,6 @@ impl AISystem {
                 Self::mission_strategy(state, planner, world, research_state, galaxy);
             }
             4 => Self::mission_step(state, planner, ctx, galaxy, actions),
-            0xa => production(actions),
             _ => {}
         }
     }
@@ -2945,359 +2906,6 @@ impl AISystem {
                 target_object: None,
             });
         }
-    }
-
-    // -----------------------------------------------------------------------
-    // Production heuristics
-    // -----------------------------------------------------------------------
-
-    /// For systems with idle manufacturing capacity, enqueue appropriate units.
-    ///
-    /// - Systems with no active queue → enqueue best available fighter class
-    /// - Systems with few construction yards → enqueue a manufacturing facility
-    #[expect(
-        clippy::too_many_lines,
-        reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-    )]
-    fn evaluate_production(
-        world: &GameWorld,
-        mfg_state: &ManufacturingState,
-        research_state: &ResearchState,
-        faction: AiFaction,
-        config: &GameConfig,
-        actions: &mut Vec<AIAction>,
-    ) {
-        let best_fighter = Self::best_fighter_class(world, research_state, faction);
-        let best_capship = Self::best_capital_ship_class(world, research_state, faction);
-
-        // Count existing fleet assets to decide what to build next.
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        let our_capship_count: usize = world
-            .fleets
-            .values()
-            .filter(|f| f.is_alliance == is_alliance)
-            .map(|f| f.ship_count() as usize)
-            .sum();
-        let our_fighter_count: usize = world
-            .fleets
-            .values()
-            .filter(|f| f.is_alliance == is_alliance)
-            .flat_map(|f| &f.fighters)
-            .map(|e| e.count as usize)
-            .sum::<usize>()
-            + world
-                .systems
-                .keys()
-                .map(|system| crate::squadrons::on_planet(world, system, is_alliance) as usize)
-                .sum::<usize>();
-
-        let our_faction = if is_alliance {
-            crate::dat::Faction::Alliance
-        } else {
-            crate::dat::Faction::Empire
-        };
-
-        for (sys_key, system) in &world.systems {
-            // A faction cannot use an isolated facility after losing control of
-            // its system. Without this ownership gate, seeded facilities on
-            // neutral worlds produced one-ship fleets across the galaxy.
-            if !system.control.is_controlled_by(our_faction) {
-                continue;
-            }
-
-            // Only act on systems where this faction has manufacturing facilities.
-            let has_mfg = system.manufacturing_facilities.iter().any(|mfk| {
-                world
-                    .manufacturing_facilities
-                    .get(*mfk)
-                    .is_some_and(|f| match faction {
-                        AiFaction::Alliance => f.side == crate::dat::Faction::Alliance,
-                        AiFaction::Empire => f.side == crate::dat::Faction::Empire,
-                    })
-            });
-
-            if !has_mfg {
-                continue;
-            }
-
-            // A Build order needs a yard of its own area: FUN_00527d00
-            // refuses one whose manager has none, and FUN_00529dd0 scraps a
-            // queue left without one.
-            let has_yard = |area: ProductionArea| {
-                system.manufacturing_facilities.iter().any(|mfk| {
-                    world.manufacturing_facilities.get(*mfk).is_some_and(|f| {
-                        f.side == crate::dat::Faction::of_alliance(is_alliance)
-                            && f.class_dat_id.family() == crate::build_selection::area_family(area)
-                    })
-                })
-            };
-            let ships = has_yard(ProductionArea::Shipyard);
-            let training = has_yard(ProductionArea::TrainingFacility);
-            let construction = has_yard(ProductionArea::ConstructionYard);
-
-            // A unit needs its class refined cost in build points
-            // (FUN_0052a8f0).
-            let class_cost = |kind: BuildableKind| {
-                crate::build_selection::unit_costs(world, kind).map_or(0, |(refined, _)| refined)
-            };
-
-            let queue_len = mfg_state.queued_at(sys_key);
-
-            // Allow up to 3 items in queue (don't just wait for empty).
-            if queue_len >= 3 {
-                continue;
-            }
-
-            // Production priority: capital ships first (they create fleets),
-            // then fighters (fill carrier slots), then construction yards.
-            // Capital ships are the bottleneck — without them, no fleets.
-            if ships && our_capship_count < config.production.capship_threshold {
-                if let Some((capship_key, capship_class)) = best_capship {
-                    let cost = capship_class.refined_material_cost;
-                    actions.push(AIAction::EnqueueProduction {
-                        system: sys_key,
-                        kind: BuildableKind::CapitalShip(capship_key),
-                        cost,
-                    });
-                    continue;
-                }
-            }
-
-            // Build fighters: either to fill carrier capacity, or as primary
-            // combat units when no capital ship class is available.
-            let needs_fighters = if best_capship.is_some() {
-                our_fighter_count < our_capship_count * config.production.fighter_ratio
-            } else {
-                true // no capships available, fighters are our only option
-            };
-            if ships && needs_fighters {
-                if let Some((fighter_key, fighter_class)) = best_fighter {
-                    let cost = fighter_class.refined_material_cost;
-                    actions.push(AIAction::EnqueueProduction {
-                        system: sys_key,
-                        kind: BuildableKind::Fighter(fighter_key),
-                        cost,
-                    });
-                    continue;
-                }
-            }
-
-            // Build troops: controlled systems with < 2 friendly regiments get ground forces.
-            let friendly_troops = system
-                .ground_units
-                .iter()
-                .filter(|tk| {
-                    world
-                        .troops
-                        .get(**tk)
-                        .is_some_and(|t| t.is_alliance == is_alliance)
-                })
-                .count();
-            if training && friendly_troops < 2 {
-                if let Some(troop_key) = Self::find_troop_class(world, research_state, faction) {
-                    actions.push(AIAction::EnqueueProduction {
-                        system: sys_key,
-                        kind: BuildableKind::Troop(troop_key),
-                        cost: class_cost(BuildableKind::Troop(troop_key)),
-                    });
-                    continue;
-                }
-            }
-
-            // Build defense facilities: controlled systems with < 2 defenses.
-            let friendly_defenses = system
-                .defense_facilities
-                .iter()
-                .filter(|dk| {
-                    world
-                        .defense_facilities
-                        .get(**dk)
-                        .is_some_and(|d| d.side == crate::dat::Faction::of_alliance(is_alliance))
-                })
-                .count();
-            if construction && friendly_defenses < 2 {
-                if let Some(def_key) =
-                    Self::find_defense_facility_class(world, research_state, faction)
-                {
-                    actions.push(AIAction::EnqueueProduction {
-                        system: sys_key,
-                        kind: BuildableKind::DefenseFacility(def_key),
-                        cost: class_cost(BuildableKind::DefenseFacility(def_key)),
-                    });
-                    continue;
-                }
-            }
-
-            // Build more construction yards if below cap.
-            let yard_count = system.manufacturing_facilities.len();
-            if construction && yard_count < config.ai.max_construction_yards {
-                if let Some(mfg_key) =
-                    Self::find_manufacturing_facility_class(world, research_state, faction)
-                {
-                    actions.push(AIAction::EnqueueProduction {
-                        system: sys_key,
-                        kind: BuildableKind::ManufacturingFacility(mfg_key),
-                        cost: class_cost(BuildableKind::ManufacturingFacility(mfg_key)),
-                    });
-                    continue;
-                }
-            }
-
-            // Default: build more capital ships.
-            if !ships {
-                continue;
-            }
-            if let Some((capship_key, capship_class)) = best_capship {
-                let cost = capship_class.refined_material_cost;
-                actions.push(AIAction::EnqueueProduction {
-                    system: sys_key,
-                    kind: BuildableKind::CapitalShip(capship_key),
-                    cost,
-                });
-            }
-        }
-    }
-
-    /// Select the most advanced fighter class this faction has researched.
-    fn best_fighter_class<'w>(
-        world: &'w GameWorld,
-        research_state: &ResearchState,
-        faction: AiFaction,
-    ) -> Option<(FighterKey, &'w crate::world::FighterClass)> {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        world
-            .fighter_classes
-            .iter()
-            .filter(|(key, _)| {
-                ResearchSystem::fighter_class_is_available(world, research_state, is_alliance, *key)
-            })
-            .max_by_key(|(_, fc)| fc.refined_material_cost)
-    }
-
-    /// Select the most advanced capital ship class this faction has researched.
-    /// Prefers higher hull (stronger ships) as the tiebreaker.
-    fn best_capital_ship_class<'w>(
-        world: &'w GameWorld,
-        research_state: &ResearchState,
-        faction: AiFaction,
-    ) -> Option<(CapitalShipKey, &'w crate::world::CapitalShipClass)> {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        world
-            .capital_ship_classes
-            .iter()
-            .filter(|(key, _)| {
-                ResearchSystem::ship_class_is_available(world, research_state, is_alliance, *key)
-            })
-            .max_by_key(|(_, cs)| cs.hull)
-    }
-
-    /// Whether a side has researched catalog class `class` on tree `tech`:
-    /// the same test Build Selection applies to a player's list
-    /// (`build_selection::listed_classes`), so the AI cannot order a regiment
-    /// or facility class the player could not.
-    ///
-    /// hyp: the research-order gate itself rests on the DAT `research_order`
-    /// field and the `rebellion2` prototype; recovered by the function that
-    /// fills the manager lists `FUN_0052e580` reads (F-018).
-    /// ASSUMPTION: a class the catalog does not hold has no order to wait on.
-    fn catalog_class_is_researched(
-        world: &GameWorld,
-        research_state: &ResearchState,
-        is_alliance: bool,
-        class: DatId,
-        tech: TechType,
-    ) -> bool {
-        world
-            .buildable_classes
-            .get(&class)
-            .is_none_or(|c| research_state.is_unlocked(is_alliance, c.research_order, tech))
-    }
-
-    /// Find a manufacturing facility key to use as a class reference for facility construction.
-    ///
-    /// In Living Galaxy scope we just pick any existing faction-owned facility
-    /// of a researched class as the template for "build another like this".
-    fn find_manufacturing_facility_class(
-        world: &GameWorld,
-        research_state: &ResearchState,
-        faction: AiFaction,
-    ) -> Option<FacilityBuild> {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        world
-            .manufacturing_facilities
-            .iter()
-            .filter(|(_, f)| {
-                Self::catalog_class_is_researched(
-                    world,
-                    research_state,
-                    is_alliance,
-                    f.class_dat_id,
-                    TechType::Facility,
-                )
-            })
-            .find(|(_, f)| match faction {
-                AiFaction::Alliance => f.side == crate::dat::Faction::Alliance,
-                AiFaction::Empire => f.side == crate::dat::Faction::Empire,
-            })
-            .map(|(_, f)| FacilityBuild {
-                class: f.class_dat_id,
-                is_alliance: f.side == crate::dat::Faction::Alliance,
-            })
-    }
-
-    /// Find a troop unit key to use as a class reference for troop production.
-    fn find_troop_class(
-        world: &GameWorld,
-        research_state: &ResearchState,
-        faction: AiFaction,
-    ) -> Option<DatId> {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        world
-            .troops
-            .iter()
-            .filter(|(_, t)| {
-                Self::catalog_class_is_researched(
-                    world,
-                    research_state,
-                    is_alliance,
-                    t.class_dat_id,
-                    TechType::Troop,
-                )
-            })
-            .find(|(_, t)| match faction {
-                AiFaction::Alliance => t.is_alliance,
-                AiFaction::Empire => !t.is_alliance,
-            })
-            .map(|(_, t)| t.class_dat_id)
-    }
-
-    /// Find a defense facility key to use as a class reference for defense construction.
-    fn find_defense_facility_class(
-        world: &GameWorld,
-        research_state: &ResearchState,
-        faction: AiFaction,
-    ) -> Option<FacilityBuild> {
-        let is_alliance = matches!(faction, AiFaction::Alliance);
-        world
-            .defense_facilities
-            .iter()
-            .filter(|(_, d)| {
-                Self::catalog_class_is_researched(
-                    world,
-                    research_state,
-                    is_alliance,
-                    d.class_dat_id,
-                    TechType::Facility,
-                )
-            })
-            .find(|(_, d)| match faction {
-                AiFaction::Alliance => d.side == crate::dat::Faction::Alliance,
-                AiFaction::Empire => d.side == crate::dat::Faction::Empire,
-            })
-            .map(|(_, d)| FacilityBuild {
-                class: d.class_dat_id,
-                is_alliance: d.side == crate::dat::Faction::Alliance,
-            })
     }
 }
 
@@ -5088,11 +4696,10 @@ fn recruitment_target(
 mod tests {
     use super::*;
     use crate::dat::SectorGroup;
-    use crate::ids::{DatId, SectorKey};
-    use crate::manufacturing::ManufacturingState;
+    use crate::ids::{DatId, FighterKey, SectorKey};
+    use crate::manufacturing::{FacilityBuild, ManufacturingState};
     use crate::missions::MissionState;
     use crate::tick::TickEvent;
-    use crate::tuning::GameConfig;
     use crate::world::{
         CapitalShipClass, Character, ControlKind, FighterClass, Fleet, GameWorld, Sector,
         ShipInstance, SkillPair, System,
@@ -5205,151 +4812,11 @@ mod tests {
         })
     }
 
-    /// port: with no ship class to build, the AI orders regiments, then
-    /// defenses, then construction yards, naming the class of one it owns.
-    #[test]
-    fn the_ai_orders_ground_and_facility_classes_it_already_fields() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let yard =
-            world
-                .manufacturing_facilities
-                .insert(crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(0x2a00_0003),
-                    side: crate::dat::Faction::Empire,
-                    is_shipyard: false,
-                });
-        // Regiments are a training facility's product (FUN_00527d00 refuses
-        // a Build with no yard of its area).
-        let training =
-            world
-                .manufacturing_facilities
-                .insert(crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(0x2900_0002),
-                    side: crate::dat::Faction::Empire,
-                    is_shipyard: false,
-                });
-        let sys_key = world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(0),
-            name: "Coruscant".into(),
-            sector,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.9,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![yard, training],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        });
-        let trooper = |class| crate::world::TroopUnit {
-            class_dat_id: DatId(class),
-            is_alliance: false,
-            regiment_strength: 100,
-        };
-        // An Alliance regiment first, so the Empire's must be found by side.
-        world.troops.insert(crate::world::TroopUnit {
-            is_alliance: true,
-            ..trooper(0x1000_0001)
-        });
-        world.troops.insert(trooper(0x1000_0006));
-        world
-            .defense_facilities
-            .insert(crate::world::DefenseFacilityInstance {
-                class_dat_id: DatId(0x2200_0001),
-                side: crate::dat::Faction::Empire,
-            });
-        let ordered = |world: &GameWorld| {
-            evaluate(
-                &mut AIState::new(AiFaction::Empire),
-                world,
-                &ManufacturingState::new(),
-                &MissionState::new(),
-                &ticks(7),
-                &GameConfig::default(),
-                &crate::research::ResearchState::new(),
-                &crate::uprising::UprisingState::default(),
-            )
-            .into_iter()
-            .find_map(|action| match action {
-                AIAction::EnqueueProduction { system, kind, .. } if system == sys_key => Some(kind),
-                _ => None,
-            })
-        };
-        let empire = |class| FacilityBuild {
-            class: DatId(class),
-            is_alliance: false,
-        };
-
-        assert_eq!(
-            ordered(&world),
-            Some(BuildableKind::Troop(DatId(0x1000_0006)))
-        );
-        for _ in 0..2 {
-            let key = world.troops.insert(trooper(0x1000_0006));
-            world.systems[sys_key].ground_units.push(key);
-        }
-        assert_eq!(
-            ordered(&world),
-            Some(BuildableKind::DefenseFacility(empire(0x2200_0001)))
-        );
-        for _ in 0..2 {
-            let key = world
-                .defense_facilities
-                .insert(crate::world::DefenseFacilityInstance {
-                    class_dat_id: DatId(0x2200_0001),
-                    side: crate::dat::Faction::Empire,
-                });
-            world.systems[sys_key].defense_facilities.push(key);
-        }
-        assert_eq!(
-            ordered(&world),
-            Some(BuildableKind::ManufacturingFacility(empire(0x2a00_0003)))
-        );
-    }
-
-    /// What a side's AI orders at its one system, which has a construction
-    /// yard and a training facility (both research order 1 on the Facility
-    /// tree), a regiment of a Troop-order-2 class and a defense of a
-    /// Facility-order-3 class, at the given research levels. The other side
-    /// has researched everything.
-    fn ground_order_at_levels(
-        is_alliance: bool,
-        troop: u32,
-        facility: u32,
-    ) -> Option<BuildableKind> {
-        let (world, sys_key, research, faction) = ground_world(is_alliance, troop, facility);
-        evaluate(
-            &mut AIState::new(faction),
-            &world,
-            &ManufacturingState::new(),
-            &MissionState::new(),
-            &ticks(7),
-            &GameConfig::default(),
-            &research,
-            &crate::uprising::UprisingState::default(),
-        )
-        .into_iter()
-        .find_map(|action| match action {
-            AIAction::EnqueueProduction { system, kind, .. } if system == sys_key => Some(kind),
-            _ => None,
-        })
-    }
-
-    /// The world of [`ground_order_at_levels`], its system, research and
-    /// side.
+    /// A side's one system, with a construction yard and a training
+    /// facility (both research order 1 on the Facility tree), a regiment of
+    /// a Troop-order-2 class and a defense of a Facility-order-3 class, at
+    /// the given research levels; its system, research and side. The other
+    /// side has researched everything.
     fn ground_world(
         is_alliance: bool,
         troop: u32,
@@ -5442,20 +4909,21 @@ mod tests {
     }
 
     #[test]
-    fn module_a_issues_the_heuristic_s_manufacturing_facilities() {
-        // port: the production heuristic's facilities stand in for module
-        // 0xa's shipyard placement (FUN_004cc9c0); its other modules' kinds
-        // are not 0xa's.
-        let (world, sys_key, research, faction) = ground_world(true, 0, 2);
-        let (missions, mfg, config, uprisings) = (
+    fn module_a_orders_nothing_while_unported() {
+        // Module 0xa (step FUN_004cc9c0) orders a Destination 0x214 and a
+        // Build 0x211 of a shipyard class at a shipyard site (FUN_004ce350,
+        // FUN_004ce490), and builds at a construction yard only while it
+        // holds the yard token 0x10 (FUN_004ccb50 state 3). The production
+        // heuristic, which ordered construction yards here, was none of
+        // these; the port has no counterpart yet.
+        let (world, _, research, faction) = ground_world(true, 0, 2);
+        let (missions, uprisings) = (
             MissionState::new(),
-            ManufacturingState::new(),
-            GameConfig::default(),
             crate::uprising::UprisingState::default(),
         );
         let ctx = ModuleInputs {
             faction,
-            ..inputs(&world, &missions, &research, &mfg, &config, &uprisings)
+            ..inputs(&world, &missions, &research, &uprisings)
         };
         let busy = HashSet::new();
         let mut planner = Planner::new(&world, &missions, &busy, true, 7);
@@ -5468,64 +4936,20 @@ mod tests {
             &mut crate::ai_records::Galaxy::default(),
             &mut actions,
         );
-        assert!(matches!(
-            actions.as_slice(),
-            [AIAction::EnqueueProduction {
-                system,
-                kind: BuildableKind::ManufacturingFacility(_),
-                ..
-            }] if *system == sys_key
-        ));
-    }
-
-    /// hyp: the AI waits on the same DAT `research_order` gate Build Selection
-    /// applies to the player's lists (F-018), each class on its own tree.
-    #[test]
-    fn the_ai_orders_no_regiment_or_facility_class_its_side_has_not_researched() {
-        for is_alliance in [true, false] {
-            let build = |class| FacilityBuild {
-                class: DatId(class),
-                is_alliance,
-            };
-            // Nothing researched: the other side's levels do not count.
-            assert_eq!(ground_order_at_levels(is_alliance, 0, 0), None);
-            // The regiment class waits on the Troop tree alone.
-            assert_eq!(ground_order_at_levels(is_alliance, 1, 0), None);
-            assert_eq!(
-                ground_order_at_levels(is_alliance, 2, 0),
-                Some(BuildableKind::Troop(DatId(0x1000_0002)))
-            );
-            // The defense class waits on the Facility tree alone; below its
-            // order the yard class, already researched, is ordered instead.
-            assert_eq!(
-                ground_order_at_levels(is_alliance, 0, 3),
-                Some(BuildableKind::DefenseFacility(build(0x2200_0001)))
-            );
-            assert_eq!(
-                ground_order_at_levels(is_alliance, 0, 2),
-                Some(BuildableKind::ManufacturingFacility(build(0x2a00_0003)))
-            );
-            assert_eq!(
-                ground_order_at_levels(is_alliance, 0, 1),
-                Some(BuildableKind::ManufacturingFacility(build(0x2a00_0003)))
-            );
-        }
+        assert_eq!(actions, Vec::new());
     }
 
     fn ticks(n: u64) -> Vec<TickEvent> {
         (1..=n).map(|t| TickEvent { tick: t }).collect()
     }
 
-    /// Every module once and every research planner, with no order budget:
-    /// the heuristics as one evaluation on the last of `tick_events`.
-    #[expect(clippy::too_many_arguments, reason = "The inputs of a pass.")]
+    /// Every research planner, then modules 8 and `0xc`, with no order
+    /// budget, as one evaluation on the last of `tick_events`.
     fn evaluate(
         state: &mut AIState,
         world: &GameWorld,
-        mfg_state: &ManufacturingState,
         mission_state: &MissionState,
         tick_events: &[TickEvent],
-        config: &GameConfig,
         research_state: &ResearchState,
         uprisings: &crate::uprising::UprisingState,
     ) -> Vec<AIAction> {
@@ -5542,25 +4966,15 @@ mod tests {
         );
         let ctx = ModuleInputs {
             world,
-            mfg_state,
             mission_state,
             transport: Box::leak(Box::default()),
             tick: last.tick,
-            config,
             research_state,
             uprisings,
             faction,
         };
         let mut actions = Vec::new();
         research_all(state, &mut planner, &ctx, &mut actions);
-        AISystem::evaluate_production(
-            world,
-            mfg_state,
-            research_state,
-            faction,
-            config,
-            &mut actions,
-        );
         AISystem::run_module(
             8,
             state,
@@ -5654,17 +5068,13 @@ mod tests {
         world: &'a GameWorld,
         missions: &'a MissionState,
         research: &'a ResearchState,
-        mfg: &'a ManufacturingState,
-        config: &'a GameConfig,
         uprisings: &'a crate::uprising::UprisingState,
     ) -> ModuleInputs<'a> {
         ModuleInputs {
             world,
-            mfg_state: mfg,
             mission_state: missions,
             transport: Box::leak(Box::default()),
             tick: 7,
-            config,
             research_state: research,
             uprisings,
             faction: AiFaction::Alliance,
@@ -6818,16 +6228,13 @@ mod tests {
         let _ = add_character(&mut world, false, false, 30);
 
         let mut state = AIState::new(AiFaction::Empire);
-        let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
         let actions = evaluate(
             &mut state,
             &world,
-            &mfg,
             &missions,
             &ticks(7),
-            &GameConfig::default(),
             &crate::research::ResearchState::new(),
             &crate::uprising::UprisingState::default(),
         );
@@ -6849,16 +6256,13 @@ mod tests {
         let mut state = AIState::new(AiFaction::Empire);
         state.mark_busy(diplomat);
 
-        let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
         let actions = evaluate(
             &mut state,
             &world,
-            &mfg,
             &missions,
             &ticks(7),
-            &GameConfig::default(),
             &crate::research::ResearchState::new(),
             &crate::uprising::UprisingState::default(),
         );
@@ -6867,395 +6271,6 @@ mod tests {
             .filter(|a| matches!(a, AIAction::DispatchMission { .. }))
             .count();
         assert_eq!(mission_count, 0);
-    }
-
-    // -----------------------------------------------------------------------
-    // Production heuristics
-    // -----------------------------------------------------------------------
-
-    /// An Empire system with a shipyard and a TIE Fighter class.
-    fn fighter_world() -> (GameWorld, SystemKey) {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-
-        // Add an empire manufacturing facility
-        let mfg_key =
-            world
-                .manufacturing_facilities
-                .insert(crate::world::ManufacturingFacilityInstance {
-                    // A shipyard: fighters are a shipyard's product, and
-                    // FUN_00527d00 refuses a Build with no yard of its area.
-                    class_dat_id: DatId(0x2800_0001),
-                    side: crate::dat::Faction::Empire, // empire
-                    is_shipyard: true,
-                });
-
-        let sys_key = world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(0),
-            name: "Coruscant".into(),
-            sector,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.9,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![mfg_key],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        });
-
-        // Add a TIE fighter class
-        let _ = world.fighter_classes.insert(FighterClass {
-            dat_id: DatId(10),
-            name: "TIE Fighter".into(),
-            is_alliance: false,
-            is_empire: true,
-            refined_material_cost: 20,
-            maintenance_cost: 2,
-            squadron_size: 6,
-            torpedoes: 0,
-            overall_attack_strength: 10,
-            bombardment_defense: 0,
-            ..FighterClass::default()
-        });
-
-        (world, sys_key)
-    }
-
-    #[test]
-    fn the_production_heuristic_counts_the_squadrons_on_its_planets() {
-        // Our own heuristic (module 0xb's stand-in): fighters until the side
-        // holds fighter_ratio per capital ship, squadrons on planets
-        // included now that a built squadron stays there.
-        let (mut world, sys_key) = fighter_world();
-        let destroyer = world.capital_ship_classes.insert(CapitalShipClass {
-            name: "Star Destroyer".into(),
-            is_empire: true,
-            hull: 100,
-            refined_material_cost: 100,
-            ..CapitalShipClass::default()
-        });
-        let config = GameConfig::default();
-        let ships = config.production.capship_threshold;
-        let fleet = world.fleets.insert(Fleet {
-            location: sys_key,
-            capital_ships: ShipInstance::make(destroyer, 100, false, u32::try_from(ships).unwrap()),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
-        });
-        world.systems[sys_key].fleets.push(fleet);
-        let tie = world.fighter_classes.keys().next().unwrap();
-        let wanted = u32::try_from(ships * config.production.fighter_ratio).unwrap();
-        let fighters = |world: &GameWorld| {
-            let mut actions = Vec::new();
-            AISystem::evaluate_production(
-                world,
-                &ManufacturingState::new(),
-                &crate::research::ResearchState::new(),
-                AiFaction::Empire,
-                &config,
-                &mut actions,
-            );
-            actions.iter().any(|a| {
-                matches!(
-                    a,
-                    AIAction::EnqueueProduction {
-                        kind: BuildableKind::Fighter(_),
-                        ..
-                    }
-                )
-            })
-        };
-        crate::squadrons::add(&mut world.systems[sys_key].fighters, tie, wanted - 1);
-        assert!(fighters(&world));
-        crate::squadrons::add(&mut world.systems[sys_key].fighters, tie, 1);
-        assert!(!fighters(&world));
-    }
-
-    #[test]
-    fn idle_system_with_mfg_gets_fighter_production() {
-        let (world, sys_key) = fighter_world();
-        let mut state = AIState::new(AiFaction::Empire);
-        let mfg = ManufacturingState::new(); // empty queue
-        let missions = MissionState::new();
-
-        let actions = evaluate(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &ticks(7),
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-
-        let has_fighter_enqueue = actions.iter().any(|a| {
-            matches!(
-                a,
-                AIAction::EnqueueProduction { system, kind: BuildableKind::Fighter(_), .. }
-                if *system == sys_key
-            )
-        });
-        assert!(
-            has_fighter_enqueue,
-            "expected fighter production at empire system"
-        );
-    }
-
-    #[test]
-    fn a_system_without_a_shipyard_is_given_no_ship_or_fighter_order() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-
-        // Add an empire manufacturing facility
-        let mfg_key =
-            world
-                .manufacturing_facilities
-                .insert(crate::world::ManufacturingFacilityInstance {
-                    // A construction yard only: FUN_00527d00 refuses a Build
-                    // whose manager has no yard of its area.
-                    class_dat_id: DatId(0x2a00_0003),
-                    side: crate::dat::Faction::Empire, // empire
-                    is_shipyard: false,
-                });
-
-        let sys_key = world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(0),
-            name: "Coruscant".into(),
-            sector,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.9,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![mfg_key],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        });
-
-        // Add a TIE fighter class
-        let _ = world.fighter_classes.insert(FighterClass {
-            dat_id: DatId(10),
-            name: "TIE Fighter".into(),
-            is_alliance: false,
-            is_empire: true,
-            refined_material_cost: 20,
-            maintenance_cost: 2,
-            squadron_size: 6,
-            torpedoes: 0,
-            overall_attack_strength: 10,
-            bombardment_defense: 0,
-            ..FighterClass::default()
-        });
-
-        let mut state = AIState::new(AiFaction::Empire);
-        let mfg = ManufacturingState::new(); // empty queue
-        let missions = MissionState::new();
-
-        let actions = evaluate(
-            &mut state,
-            &world,
-            &mfg,
-            &missions,
-            &ticks(7),
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-
-        let ship_orders = actions
-            .iter()
-            .filter(|a| {
-                matches!(
-                    a,
-                    AIAction::EnqueueProduction {
-                        system,
-                        kind: BuildableKind::Fighter(_) | BuildableKind::CapitalShip(_),
-                        ..
-                    } if *system == sys_key
-                )
-            })
-            .count();
-        assert_eq!(ship_orders, 0);
-    }
-
-    /// Fighter the Empire AI enqueues at an idle shipyard system holding a
-    /// researched TIE Fighter (order 0) and a TIE Defender (FIGHTSD.DAT
-    /// research_order 8) at the given Ship research level.
-    fn empire_fighter_choice_at_ship_level(ship_level: u32) -> DatId {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let mfg_key =
-            world
-                .manufacturing_facilities
-                .insert(crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(0x2800_0001),
-                    side: crate::dat::Faction::Empire,
-                    is_shipyard: true,
-                });
-        world.systems.insert(System {
-            last_arrival: None,
-            dat_id: DatId(0),
-            name: "Coruscant".into(),
-            sector,
-            x: 0,
-            y: 0,
-            exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.1,
-            popularity_empire: 0.9,
-            is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![mfg_key],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Controlled(crate::dat::Faction::Empire),
-        });
-        for (id, name, cost, order) in [(5, "TIE Fighter", 20, 0), (8, "TIE Defender", 60, 8)] {
-            world.fighter_classes.insert(FighterClass {
-                dat_id: DatId(id),
-                name: name.into(),
-                is_empire: true,
-                refined_material_cost: cost,
-                squadron_size: 6,
-                research_order: order,
-                ..FighterClass::default()
-            });
-        }
-        let mut research = crate::research::ResearchState::new();
-        research.empire.ship = ship_level;
-
-        let actions = evaluate(
-            &mut AIState::new(AiFaction::Empire),
-            &world,
-            &ManufacturingState::new(),
-            &MissionState::new(),
-            &ticks(7),
-            &GameConfig::default(),
-            &research,
-            &crate::uprising::UprisingState::default(),
-        );
-        actions
-            .iter()
-            .find_map(|a| match a {
-                AIAction::EnqueueProduction {
-                    kind: BuildableKind::Fighter(key),
-                    ..
-                } => Some(world.fighter_classes[*key].dat_id),
-                _ => None,
-            })
-            .expect("fighter production")
-    }
-
-    #[test]
-    fn ai_picks_its_strongest_researched_capital_ship() {
-        let mut world = empty_world();
-        // CAPSHPSD.DAT: order-0 classes start buildable; 9 is late-game.
-        for (id, hull, order) in [(131, 100, 0), (128, 900, 9)] {
-            world
-                .capital_ship_classes
-                .insert(crate::world::CapitalShipClass {
-                    dat_id: DatId(id),
-                    is_empire: true,
-                    hull,
-                    research_order: order,
-                    ..Default::default()
-                });
-        }
-        let mut research = crate::research::ResearchState::new();
-        let pick = |research: &crate::research::ResearchState| {
-            AISystem::best_capital_ship_class(&world, research, AiFaction::Empire)
-                .map(|(_, c)| c.dat_id)
-        };
-
-        assert_eq!(pick(&research), Some(DatId(131)));
-        research.empire.ship = 9;
-        assert_eq!(pick(&research), Some(DatId(128)));
-    }
-
-    #[test]
-    fn ai_builds_only_fighters_its_ship_research_has_reached() {
-        assert_eq!(empire_fighter_choice_at_ship_level(7), DatId(5));
-        assert_eq!(empire_fighter_choice_at_ship_level(8), DatId(8));
-    }
-
-    #[test]
-    fn uncontrolled_system_facility_cannot_produce_for_ai() {
-        let mut world = empty_world();
-        let sector = add_sector(&mut world);
-        let mfg_key =
-            world
-                .manufacturing_facilities
-                .insert(crate::world::ManufacturingFacilityInstance {
-                    class_dat_id: DatId(1),
-                    side: crate::dat::Faction::Empire,
-                    is_shipyard: false,
-                });
-        let sys_key = add_system(&mut world, sector, 0.5, 0.5);
-        world.systems[sys_key]
-            .manufacturing_facilities
-            .push(mfg_key);
-        world.systems[sys_key].control = ControlKind::Uncontrolled;
-        world.fighter_classes.insert(FighterClass {
-            dat_id: DatId(10),
-            name: "TIE Fighter".into(),
-            is_empire: true,
-            refined_material_cost: 20,
-            overall_attack_strength: 10,
-            ..FighterClass::default()
-        });
-
-        let mut state = AIState::new(AiFaction::Empire);
-        let actions = evaluate(
-            &mut state,
-            &world,
-            &ManufacturingState::new(),
-            &MissionState::new(),
-            &ticks(7),
-            &GameConfig::default(),
-            &crate::research::ResearchState::new(),
-            &crate::uprising::UprisingState::default(),
-        );
-
-        assert!(!actions.iter().any(|action| matches!(
-            action,
-            AIAction::EnqueueProduction { system, .. } if *system == sys_key
-        )));
     }
 
     // -----------------------------------------------------------------------
@@ -7294,10 +6309,8 @@ mod tests {
         let actions = evaluate(
             &mut state,
             &world,
-            &ManufacturingState::new(),
             &MissionState::new(),
             &ticks(7),
-            &GameConfig::default(),
             &ResearchState::new(),
             &crate::uprising::UprisingState::default(),
         );
@@ -7339,10 +6352,8 @@ mod tests {
         let actions = evaluate(
             &mut state,
             &world,
-            &ManufacturingState::new(),
             &MissionState::new(),
             &ticks(7),
-            &GameConfig::default(),
             &ResearchState::new(),
             &crate::uprising::UprisingState::default(),
         );
@@ -7394,10 +6405,8 @@ mod tests {
         let actions = evaluate(
             &mut state,
             &world,
-            &ManufacturingState::new(),
             &MissionState::new(),
             &ticks(7),
-            &GameConfig::default(),
             &ResearchState::new(),
             &crate::uprising::UprisingState::default(),
         );
@@ -7564,16 +6573,13 @@ mod tests {
         let _ = add_spy(&mut world, false, false, 20, 20);
 
         let mut state = AIState::new(AiFaction::Empire);
-        let mfg = ManufacturingState::new();
         let missions = MissionState::new();
 
         let actions = evaluate(
             &mut state,
             &world,
-            &mfg,
             &missions,
             &ticks(7),
-            &GameConfig::default(),
             &crate::research::ResearchState::new(),
             &crate::uprising::UprisingState::default(),
         );
@@ -10818,14 +9824,10 @@ mod tests {
     ) -> Vec<AIAction> {
         let mut planner = Planner::new(world, missions, &state.busy_characters.clone(), true, tick);
         let mut actions = Vec::new();
-        let (mfg, config, uprisings) = (
-            ManufacturingState::new(),
-            GameConfig::default(),
-            crate::uprising::UprisingState::default(),
-        );
+        let uprisings = crate::uprising::UprisingState::default();
         let ctx = ModuleInputs {
             tick,
-            ..inputs(world, missions, research, &mfg, &config, &uprisings)
+            ..inputs(world, missions, research, &uprisings)
         };
         research_all(state, &mut planner, &ctx, &mut actions);
         actions
@@ -11706,7 +10708,6 @@ mod tests {
             &crate::economy::EconomyState::default(),
             &crate::troop_transport::TroopTransportState::new(),
             7,
-            &GameConfig::default(),
             &ResearchState::new(),
             &crate::uprising::UprisingState::default(),
         )
@@ -11832,99 +10833,6 @@ mod tests {
     /// queue theirs on module 9).
     fn queued(id: u64) -> AIAction {
         AIAction::AbortMission { mission_id: id }
-    }
-
-    #[test]
-    fn each_production_order_belongs_to_one_module() {
-        let facility = FacilityBuild {
-            class: DatId::new(0x2200_0001),
-            is_alliance: true,
-        };
-        // Module 2 builds only 0x2a, 0x2c and 0x2d (FUN_004e2400,
-        // FUN_004e25c0); the heuristic's facilities stand in for 0xa.
-        assert_eq!(
-            production_module(&BuildableKind::ManufacturingFacility(facility)),
-            Some(0xa)
-        );
-        // Module 3 builds the defenses itself (FUN_004d8460).
-        assert_eq!(
-            production_module(&BuildableKind::DefenseFacility(facility)),
-            None
-        );
-        // Module 6 trains the regiments itself (FUN_004df9a0).
-        assert_eq!(
-            production_module(&BuildableKind::Troop(DatId::new(0x1000_0001))),
-            None
-        );
-        // Modules 7 and 0xb build the squadrons and capital ships
-        // themselves (FUN_004d46e0, FUN_004ca910).
-        assert_eq!(
-            production_module(&BuildableKind::CapitalShip(CapitalShipKey::default())),
-            None
-        );
-        assert_eq!(
-            production_module(&BuildableKind::Fighter(FighterKey::default())),
-            None
-        );
-        assert_eq!(
-            production_module(&BuildableKind::SpecialForce(DatId::new(0x3c00_0001))),
-            None
-        );
-    }
-
-    #[test]
-    fn a_production_module_issues_only_its_own_kind() {
-        // The world of idle_system_with_mfg_gets_fighter_production: the
-        // heuristic decides fighters there, which no module issues now that
-        // modules 7 and 0xb build squadrons and ships (FUN_004d46e0,
-        // FUN_004ca910); modules 2, 3, 5, 6, 0xa and 0xb issue nothing.
-        let (world, _) = fighter_world();
-        let (missions, research, mfg, config, uprisings) = (
-            MissionState::new(),
-            ResearchState::new(),
-            ManufacturingState::new(),
-            GameConfig::default(),
-            crate::uprising::UprisingState::default(),
-        );
-        let ctx = ModuleInputs {
-            faction: AiFaction::Empire,
-            ..inputs(&world, &missions, &research, &mfg, &config, &uprisings)
-        };
-        let busy = HashSet::new();
-        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
-        let mut state = AIState::new(AiFaction::Empire);
-        let mut run = |id| {
-            let mut actions = Vec::new();
-            AISystem::run_module(
-                id,
-                &mut state,
-                &mut planner,
-                &ctx,
-                &mut crate::ai_records::Galaxy::default(),
-                &mut actions,
-            );
-            actions
-        };
-
-        let mut decided = Vec::new();
-        AISystem::evaluate_production(
-            &world,
-            &mfg,
-            &research,
-            AiFaction::Empire,
-            &config,
-            &mut decided,
-        );
-        assert!(decided.iter().any(|a| matches!(
-            a,
-            AIAction::EnqueueProduction {
-                kind: BuildableKind::Fighter(_),
-                ..
-            }
-        )));
-        for id in [2, 3, 5, 6, 0xa, 0xb] {
-            assert!(run(id).is_empty(), "module {id}");
-        }
     }
 
     #[test]
@@ -12194,14 +11102,13 @@ mod tests {
                     ..Default::default()
                 },
             );
-            let key =
-                world
-                    .manufacturing_facilities
-                    .insert(crate::world::ManufacturingFacilityInstance {
-                        class_dat_id: class,
-                        side: crate::dat::Faction::Alliance,
-                        is_shipyard: false,
-                    });
+            let key = world.manufacturing_facilities.insert(
+                crate::world::ManufacturingFacilityInstance {
+                    class_dat_id: class,
+                    side: crate::dat::Faction::Alliance,
+                    is_shipyard: false,
+                },
+            );
             world.systems[site].manufacturing_facilities.push(key);
         }
         let research = ResearchState::new();
@@ -13671,10 +12578,8 @@ mod tests {
         let second = designer(&mut world, TechType::Ship, 40);
         let mut state = AIState::new(AiFaction::Alliance);
         let mut missions = MissionState::new();
-        let (research, mfg, config, uprisings) = (
+        let (research, uprisings) = (
             ResearchState::new(),
-            ManufacturingState::new(),
-            GameConfig::default(),
             crate::uprising::UprisingState::default(),
         );
         {
@@ -13712,7 +12617,7 @@ mod tests {
             tick: 1,
         });
         state.mission_planners[0].mission = Some(running);
-        let ctx = inputs(&world, &missions, &research, &mfg, &config, &uprisings);
+        let ctx = inputs(&world, &missions, &research, &uprisings);
         let busy = state.busy_characters.clone();
         let mut planner = Planner::new(&world, &missions, &busy, true, 7);
         let mut step = |state: &mut AIState| {

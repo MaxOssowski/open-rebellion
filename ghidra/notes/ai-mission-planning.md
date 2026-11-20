@@ -409,7 +409,7 @@ reads.
 | 7 | `004d2ef0`, `0x65c7b8` | `004d3100` | `0x200`, `0x201`, ships `0x211`, `0x210`, `0x214` | marks `0x200000` | ship balance |
 | 8 | `004cf410`, `0x65c738` | `004cf600` -> `FUN_004cf630` | through its planners (`0x201`) | side `+0x204`; one planner per sector (`FUN_004762b0`, vtable `0x65a3b0`) | sector fleet planners (states read and ported 2026-10-15, plan objects 2026-10-16, `ai-sector-plans.md`) |
 | 9 | `004cf0a0`, `0x65c718` | `004cf290` -> `FUN_004cf2c0` | through its planners | fleets `0x08..0x0f` | fleet planners |
-| `0xa` | `004cc6b0`, `0x65c6f8` | `004cc9c0` | `0x200`, `0x211`, `0x210`, `0x214` | sector bit `0x20`; marks `0x200000`; managers `0xa0..0xaf` | shipyard placement |
+| `0xa` | `004cc6b0`, `0x65c6f8` | `004cc9c0` | `0x200`, `0x211`, `0x210`, `0x214` | sector bit `0x20`; marks `0x200000`; managers `0xa0..0xaf` | ships at shipyard sites, yards under token `0x10` (first read 2026-11-20, `ai-production-modules.md`; not ported) |
 | `0xb` | `004c8820`, `0x65c6d8` | `004c8b30` | `0x200`, `0x201`, `0x270`, `0x211`, `0x210`, `0x214` | marks `0x200000` (`FUN_004c8d20`, `FUN_004cacc0`) | capital ships: repair, the Death Star's return, production (read 2026-10-15, `ai-production-modules.md`) |
 | `0xc` | `004c8260`, `0x65c6b8` | `004c84a0` -> `FUN_004c84d0` | through its planners (`0x201`) | requests `+0x354`/`+0x358`; planner types 1, 3, 4, 5, 6 (`FUN_0042efe0`: `0047a430`, `0047a3c0`, `0047a000`, `00479f70`, `00479a60`) | movement planners: they post the side's officers and give them their commands (`0x201`, `0x260..0x263`; read and ported 2026-11-20, `ai-command-planners.md`) |
 | `0xe` | `004d2810`, `0x65c798` | `004d29b0` | Rename `0x203` | capital ships `0x14..0x1b` with `+0x24` bit `0x4000`, up to 10 | ship names |
@@ -592,7 +592,7 @@ flips. The port takes the first of equal entries.
   step (`step_module`, `module_pending`), and the mission module one entry
   a step (`mission_next`). The port's heuristics stand in: research
   strategy for `0xd`; the research planners and the mission heuristics for
-  4 (the mission heuristics all gone by 2026-10-19); production split by kind for `0xa`, `0xb`; fleets for 8; troop
+  4 (the mission heuristics all gone by 2026-10-19); production split by kind for `0xa`, `0xb` (`0xa`'s stand-in gone 2026-11-20, `ai-production-modules.md`); fleets for 8; troop
   moves for `0xc` (retired 2026-11-20: module `0xc` posts officers,
   `ai-command-planners.md`). Modules 7, 9 and `0xe` order nothing. Modules 1, 2, 3,
   5 and 6 are ported (`ai-production-modules.md`).

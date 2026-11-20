@@ -827,7 +827,6 @@ impl CampaignDayRunner {
                     &mut runtime.states,
                     &tick_events,
                     &rolls,
-                    &runtime.game_config,
                     &mut integrator,
                 );
                 let passes = runtime.states.ai_day.passes;
@@ -835,7 +834,6 @@ impl CampaignDayRunner {
                     crate::simulation::run_ai_passes(
                         &mut runtime.world,
                         &mut runtime.states,
-                        &runtime.game_config,
                         &mut integrator,
                         &mut crate::simulation::NoPresentation,
                         upto,

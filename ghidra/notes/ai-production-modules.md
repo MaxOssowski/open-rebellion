@@ -1400,3 +1400,50 @@ two victories (1: Death Star, day 3669; 4: headquarters, day 1516) and
 two seeds where the Alliance never grew (4: max 3 fleets, day 1; 9: max 4,
 day 1). After: no victory in 5000 days, and each side's fleets peak at 12
 to 36. The seed-42 golden and the sweep gate are unchanged.
+
+### Module `0xa`, a first read, and its stand-in removed (2026-11-20)
+
+Read from the decompile (`FUN_004cc6b0`, `FUN_004cc9c0`, `FUN_004cca20`,
+`FUN_004ccb50`, `FUN_004cccc0`, `FUN_004cd040`, `FUN_004cd230`,
+`FUN_004ce350`, `FUN_004ce490`); not checked in assembly, not ported.
+
+- The constructor sets `+0x24 = 8`. The step runs the ship cycle
+  (`+0x38 = 0x3f2`, `FUN_004cca20`) and the yard cycle (`0x3ec`,
+  `FUN_004ccb50`) in turn, as module `0xb`'s.
+- Ship cycle: state 3 keeps a site (`FUN_004cccc0`, module `0xb`'s
+  `FUN_004ca300` with a fallback on controller `+0x1c` and `+0x24`: an own
+  system marked `0x200000` with shipyards `v[4]` (`+0x58`) above 0, idle `0x200` and
+  calm). State 2 (`FUN_004cd040`) takes a count `+0x68` from a request
+  list (`+0x44`, entries' `+0x9c`), else from a fleet query
+  (`FUN_0041a4c0(0x100005, 0xc02, 0x17)`). State 4 (`FUN_004cd230`), with
+  the budget `FUN_004cec20` above 0, chooses a shipyard-built class with
+  flag `0x200000` (`FUN_0041b230(&+0x64, 0x28, 0x200000, key, 1)`, key
+  `0x8000` or `0x400` by `FUN_0041cd80(10) > 5`) and caps the count by the
+  budget and the site; below 0 it goes to state 5. States 9 and 10 give
+  Destination `0x214` and Build `0x211` (class `+0x64`, count `+0x68`) on
+  the site's shipyard manager (`0xa2..0xa3`, `FUN_004ce350`,
+  `FUN_004ce490`).
+- Yard cycle: state 3 clears controller `+8` bit `0x10` and goes on only
+  while controller `+0xc == 0x10` (`FUN_004199b0`), as modules 7 and
+  `0xb`'s with their tokens.
+
+So module `0xa` never queues a construction yard at a system that has
+one, which is what the port's stand-in, the production heuristic's
+manufacturing facilities, did up to three at a time, with no budget and
+no yard token. The Empire's stand-in ordered the construction yard class
+`0x2a000003` (661 orders in seed 8's 5000 days, 20 systems holding 259
+manufacturing facilities with upkeep 2675 of capacity 3100: the Empire
+was over its limit from day 2500 on, its capital ships at 16 or fewer
+from day 1500);
+the Alliance's ordered the headquarters until the validation above
+refused it. The stand-in is removed: module `0xa` orders nothing in the
+port, like modules 9 and `0xe`. With it gone, `GameConfig` (the
+`--config` tuning) has no reader left in the simulation; the
+`run_simulation_tick` parameter stays for its callers.
+
+Seeds 1-10 (dual AI, 5000 days) with the stand-in removed: each side's
+fleets peak at 17 to 61; the Empire wins seeds 2 (day 3949) and 3 (day
+3373) by taking the Alliance headquarters; no side stays at its starting
+fleets. The sweep gate and the seed-42 golden pass unchanged;
+`a_sweep_run_counts_what_its_days_report` now runs 330 days, as seed 1's
+first ground battle moved from inside 210 days to day 323.

@@ -3238,7 +3238,6 @@ async fn main() {
                     ended = rebellion_data::simulation::run_ai_passes(
                         &mut world,
                         &mut sim,
-                        &game_config,
                         &mut integrator,
                         &mut presentation,
                         $upto,
@@ -3312,7 +3311,6 @@ async fn main() {
                     &mut sim,
                     &tick_events,
                     &day_rolls,
-                    &game_config,
                     &mut integrator,
                     &mut presentation,
                 );
@@ -20547,7 +20545,7 @@ mod shared_day_tests {
             GameSpeed::Medium,
             true,
             days,
-            &mut |world, sim, ticks, rolls, config| {
+            &mut |world, sim, ticks, rolls, _config| {
                 let mut presentation = AppDayPresentation {
                     log: &mut log,
                     battled: &mut battled,
@@ -20574,12 +20572,11 @@ mod shared_day_tests {
                     sim,
                     ticks,
                     rolls,
-                    config,
                     &mut integrator,
                     &mut presentation,
                 );
                 for upto in 1..=sim.ai_day.passes {
-                    run_ai_passes(world, sim, config, &mut integrator, &mut presentation, upto);
+                    run_ai_passes(world, sim, &mut integrator, &mut presentation, upto);
                 }
                 let cursor = sim.ai_day.roll_cursor as usize;
                 close_simulation_day(

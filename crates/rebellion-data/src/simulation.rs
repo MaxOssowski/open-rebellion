@@ -262,25 +262,27 @@ pub fn start_views(world: &mut GameWorld, states: &SimulationStates) {
 ///
 /// `wall_ms` is the wall-clock milliseconds since session start, used for
 /// the `wall_ms` field on each event record.
+///
+/// port: no day system reads `_config` since the production heuristic,
+/// module `0xa`'s stand-in and the tuning's last reader, went.
 pub fn run_simulation_tick(
     world: &mut GameWorld,
     states: &mut SimulationStates,
     tick_events: &[TickEvent],
     rolls: &[f64],
     wall_ms: u64,
-    config: &rebellion_core::tuning::GameConfig,
+    _config: &rebellion_core::tuning::GameConfig,
 ) -> Vec<GameEventRecord> {
     let Some(last_tick_event) = tick_events.last() else {
         return Vec::new();
     };
     let mut integrator = PerceptionIntegrator::new(last_tick_event.tick, wall_ms);
-    begin_simulation_day(world, states, tick_events, rolls, config, &mut integrator);
+    begin_simulation_day(world, states, tick_events, rolls, &mut integrator);
     // The headless runner has no input between sub-ticks: the day's passes
     // run in one burst (rebellion_core::ai_schedule).
     run_ai_passes(
         world,
         states,
-        config,
         &mut integrator,
         &mut NoPresentation,
         u32::MAX,
@@ -303,7 +305,6 @@ struct HeadlessPasses<'a> {
     world: &'a mut GameWorld,
     states: &'a mut SimulationStates,
     integrator: &'a mut PerceptionIntegrator,
-    config: &'a rebellion_core::tuning::GameConfig,
     bombard: rebellion_core::bombardment::BombardEnv,
     presentation: &'a mut dyn DayPresentation,
 }
@@ -336,7 +337,6 @@ impl AiPassHost for HeadlessPasses<'_> {
             &states.economy,
             &states.troop_transport,
             day,
-            self.config,
             &states.research,
             &states.uprising,
         )
@@ -409,7 +409,6 @@ fn begin_ai_day(world: &mut GameWorld, states: &mut SimulationStates) {
 pub fn run_ai_passes(
     world: &mut GameWorld,
     states: &mut SimulationStates,
-    config: &rebellion_core::tuning::GameConfig,
     integrator: &mut PerceptionIntegrator,
     presentation: &mut dyn DayPresentation,
     upto: u32,
@@ -423,7 +422,6 @@ pub fn run_ai_passes(
         world,
         states,
         integrator,
-        config,
         bombard,
         presentation,
     };
@@ -991,7 +989,6 @@ pub fn begin_simulation_day(
     states: &mut SimulationStates,
     tick_events: &[TickEvent],
     rolls: &[f64],
-    config: &rebellion_core::tuning::GameConfig,
     integrator: &mut PerceptionIntegrator,
 ) {
     begin_simulation_day_with(
@@ -999,7 +996,6 @@ pub fn begin_simulation_day(
         states,
         tick_events,
         rolls,
-        config,
         integrator,
         &mut NoPresentation,
     );
@@ -1015,7 +1011,6 @@ pub fn begin_simulation_day_with(
     states: &mut SimulationStates,
     tick_events: &[TickEvent],
     rolls: &[f64],
-    config: &rebellion_core::tuning::GameConfig,
     integrator: &mut PerceptionIntegrator,
     presentation: &mut dyn DayPresentation,
 ) {
@@ -1036,7 +1031,6 @@ pub fn begin_simulation_day_with(
         tick_events,
         loyalty_before,
         &mut day_rolls,
-        config,
         integrator,
         presentation,
     );
@@ -1251,17 +1245,12 @@ pub fn run_day_timers(
 /// capital ships take their ids. With more than one day, the earlier
 /// days' passes run here; the last day's are left to [`run_ai_passes`],
 /// and its end to [`close_simulation_day`].
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the day's AI reads the world, its states, its rolls and its runner"
-)]
 pub fn start_ai_day(
     world: &mut GameWorld,
     states: &mut SimulationStates,
     tick_events: &[TickEvent],
     loyalty_before: rebellion_core::loyalty::LoyaltyWatch,
     rolls: &mut dyn RollSource,
-    config: &rebellion_core::tuning::GameConfig,
     integrator: &mut PerceptionIntegrator,
     presentation: &mut dyn DayPresentation,
 ) {
@@ -1291,7 +1280,7 @@ pub fn start_ai_day(
         }
         begin_ai_day(world, states);
         if index + 1 < tick_events.len() {
-            ended = run_ai_passes(world, states, config, integrator, presentation, u32::MAX);
+            ended = run_ai_passes(world, states, integrator, presentation, u32::MAX);
             bombard_state = states.ai_day.bombard_state;
         }
     }
@@ -2224,14 +2213,12 @@ mod tests {
             key
         };
         let (a, b) = (fleet(), fleet());
-        let config = rebellion_core::tuning::GameConfig::default();
         let mut integrator = PerceptionIntegrator::new(4, 0);
         let mut log = PassLog::default();
         let mut host = HeadlessPasses {
             world: &mut world,
             states: &mut states,
             integrator: &mut integrator,
-            config: &config,
             bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
             presentation: &mut log,
         };
@@ -2374,13 +2361,11 @@ mod tests {
         };
         let (empire_a, empire_b) = (fleet(&mut world, false), fleet(&mut world, false));
         let (alliance_a, alliance_b) = (fleet(&mut world, true), fleet(&mut world, true));
-        let config = rebellion_core::tuning::GameConfig::default();
         let mut integrator = PerceptionIntegrator::new(4, 0);
         let mut host = HeadlessPasses {
             world: &mut world,
             states: &mut states,
             integrator: &mut integrator,
-            config: &config,
             bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
             presentation: &mut NoPresentation,
         };
@@ -2429,14 +2414,12 @@ mod tests {
                 ..rebellion_core::world::Character::default()
             });
         }
-        let config = rebellion_core::tuning::GameConfig::default();
         let mut integrator = PerceptionIntegrator::new(4, 0);
         let mut settled = |world: &mut GameWorld, states: &mut SimulationStates| {
             HeadlessPasses {
                 world,
                 states,
                 integrator: &mut integrator,
-                config: &config,
                 bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
                 presentation: &mut NoPresentation,
             }
