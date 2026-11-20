@@ -9914,6 +9914,8 @@ struct FleetLoadObservation {
     last_departure_message: Option<String>,
     last_arrival_message: Option<String>,
     target_ships: usize,
+    /// The player's fleets holding capital ships at the loading target.
+    target_fleets: usize,
     /// The player's last Facility Idle title (`0x160`, `FUN_0048be60`).
     last_idle_title: Option<String>,
     /// The incident variant: the primary system in revolt, the player's
@@ -10255,6 +10257,15 @@ fn fleet_load_observation(
                 .filter(|value| value.is_alliance == (request.faction == CockpitFaction::Alliance))
                 .map(|value| value.capital_ships.len())
                 .sum()
+        }),
+        target_fleets: loading_target(world, primary).map_or(0, |target| {
+            world.systems[target]
+                .fleets
+                .iter()
+                .filter_map(|&key| world.fleets.get(key))
+                .filter(|value| value.is_alliance == (request.faction == CockpitFaction::Alliance))
+                .filter(|value| !value.capital_ships.is_empty())
+                .count()
         }),
         last_idle_title: messages
             .iter()

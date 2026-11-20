@@ -78,8 +78,8 @@ pub enum PanelAction {
         ships: Vec<usize>,
         roster: u64,
     },
-    /// Capital ships' Move (`0x201`) released on a system
-    /// (`fleet_join::move_ships_to_system`).
+    /// Capital ships' Move (`0x201`) released on a system: into the
+    /// side's bit-1 spare there (`fleet_join::move_ships_into_spare`).
     MoveShips {
         fleet: FleetKey,
         ships: Vec<usize>,

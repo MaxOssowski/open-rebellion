@@ -13268,7 +13268,9 @@ fn apply_panel_action(
             roster,
             system,
         } => {
-            let result = rebellion_core::fleet_join::move_ships_to_system(
+            // The ships' own Move: into the side's bit-1 spare at the
+            // system (FUN_00552300 -> FUN_005097d0), on arrival elsewhere.
+            let result = rebellion_core::fleet_join::move_ships_into_spare(
                 world,
                 movement_state,
                 troop_transport_state,

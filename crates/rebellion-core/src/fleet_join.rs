@@ -643,7 +643,8 @@ pub fn move_ships_to_system(
 }
 
 /// The ships' own Move (`0x201`) to a system, whose objects are the ships
-/// rather than their fleet (module `0xb`'s damaged ships, `FUN_004c8e90`):
+/// rather than their fleet (module `0xb`'s damaged ships, `FUN_004c8e90`;
+/// the player's ships released on a system):
 /// the leg puts each in the side's bit-1 spare at the destination
 /// (`FUN_00552300` -> `FUN_005097d0`), which every ship moved there joins.
 /// In their own system that is [`move_ships_to_system`]'s; elsewhere they

@@ -3202,6 +3202,50 @@ const cases = [
     },
   },
   {
+    name: "ship-move-elsewhere",
+    code: FLEET_JOIN,
+    // Ships moved on their own to another system land in the side's bit-1
+    // spare there (FUN_00552300 -> FUN_005097d0), which keeps taking the
+    // ships moved to it (FUN_0050bc60): a ship of each fleet, sent by
+    // pop-up Move to the target planet one after the other, arrive as one
+    // fleet of two ships.
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      // The Defenses window covers the sector window's target planet: its
+      // close button, placed as the Fleet window's (235 by 304).
+      const [cx, cy] = setup.defenses_window;
+      await click(page, { x: cx - 235 / 2 + 218 + 7, y: cy - 304 / 2 + 3 + 7 });
+      await page.waitForTimeout(300);
+      // The Fleet window covers the target's sector window: its title strip
+      // takes it over the other column.
+      const [x, y] = selected.origin;
+      await dragItem(page, { x: x + 100, y: y + 10 }, { x: x + 100 - 245, y: y + 10 });
+      const moved = await until(page, "the Fleet window moves aside", (o, a) => o.origin[0] < a, x - 200);
+      await page.waitForTimeout(300);
+      const firstMenu = await openMenu(page, point(moved.first_item), directory, "first-ship");
+      await choose(page, firstMenu, firstMenu.move_row, "Move");
+      await click(page, point(setup.target_planet));
+      const left = await until(page, "the first ship leaves",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1,1]");
+      await page.waitForTimeout(300);
+      await click(page, point(left.fleets[1].entry));
+      const other = await until(page, "the second fleet is selected",
+        (o) => o.selected === "fleet" && o.items.length === 1 && o.first_item);
+      await page.waitForTimeout(300);
+      const secondMenu = await openMenu(page, point(other.first_item), directory, "second-ship");
+      await choose(page, secondMenu, secondMenu.move_row, "Move");
+      await click(page, point(setup.target_planet));
+      const gone = await until(page, "the second fleet's ship leaves",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[1]");
+      const speed = await runFast(page, setup);
+      const arrived = await until(page, "both ships arrive at the target",
+        (o) => o.target_ships === 2, null, 120_000);
+      assert.equal(arrived.target_fleets, 1, `one fleet holds both: ${JSON.stringify(arrived)}`);
+      await shot(page, directory, "ship-move-elsewhere-arrived");
+      return { selected, left, gone, speed, arrived: { ships: arrived.target_ships, fleets: arrived.target_fleets } };
+    },
+  },
+  {
     name: "ship-spare",
     code: FLEET_JOIN,
     // A ship dropped on the left list's empty space moves to its own system
@@ -4349,7 +4393,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "fleet-window",
-    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, a squadron's Move from the planet onto a fleet and its drag back onto its planet, a battle the other side's planet squadrons start with the player's fleet, and a Battle Alert whose Retreat an enemy gravity-well ship disables, on both sides",
+    scope: "test-only Fleet window (type 4) through its original entry, the sector window's fleet icon: chrome against STRATEGY.DLL, a regiment's Move onto a fleet, the hold, the fleet's move and the landing, a full fleet's refusal, a regiment dragged out of the Troops tab (a wheel mid-drag does not zoom the map) onto its own system's window and onto another side's populated system's window (refused), a regiment travelling on its own, and joining and splitting fleets (a ship dragged or moved onto another fleet or its own system, ships moved one by one to another system arriving as one fleet, a ship refused by its own fleet, Create Fleet, a fleet's Move and Confirmed Move onto another fleet, and a Confirmed Move onto itself refused before it asks), Rename (0x203: an emptied name keeps the edit open, Enter submits the typed one), the facility icon's Destination (0x214) released on a planet, a squadron's Move from the planet onto a fleet and its drag back onto its planet, a battle the other side's planet squadrons start with the player's fleet, and a Battle Alert whose Retreat an enemy gravity-well ship disables, on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

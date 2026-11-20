@@ -177,8 +177,10 @@ Fleet 2, etc."); untraced.
   side's spare there or, with none, becomes it (`apply_fleet_arrival`).
   The fleet moves (`FUN_004b0f90` and `FUN_004b06b0` list the fleet
   `+0x28`, `FUN_004c94c0` its `+0x54`) go into the system itself
-  (`FUN_00556390`) and stay apart. Still open: the player's ship drag to
-  another system (`move_ships_to_system`) keeps its own fleet.
+  (`FUN_00556390`) and stay apart. The player's ships released on a
+  system (`PanelAction::MoveShips`: a drag, or the pop-up Move) take the
+  same way (2026-11-20); the player's fleet moves (`DispatchFleet`) stay
+  apart.
 - Fleets are runtime objects in the saved `GameWorld` slotmap; no DAT
   identity or id allocator is involved.
 - The port's `apply_fleet_arrival` merged same-side fleets without
