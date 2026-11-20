@@ -451,12 +451,12 @@ impl SectorPlanner {
     /// system of the side's, sets them down there (Move `0x201`): the
     /// people aboard its ships that are not en route and carry people
     /// (`0x600000`), when one of them is the side's (record `+0x30` 2) and
-    /// no movement planner holds it (`+0x28`, `FUN_00476e50`). The second
-    /// value ends the plan's step.
+    /// none of this sector planner's movement planners (list `+0xd4`)
+    /// holds it (record `+0x28`, `FUN_00476e50`); a person of the side's
+    /// so held stays aboard. The second value ends the plan's step.
     ///
-    /// port: no movement planner holds anyone, and the port names no
-    /// flagship; a fleet's people are its characters, which its first
-    /// ship's record carries.
+    /// port: a fleet's people are its characters, which its first ship's
+    /// record carries.
     fn disembark(&mut self, io: &PlannerIo<'_>) -> (Option<AIAction>, bool) {
         let Some(fleet) = self.plan_fleet else {
             return (None, false);
@@ -510,7 +510,16 @@ impl SectorPlanner {
                 let Some(&flags) = io.people.get(&character) else {
                     continue;
                 };
-                own |= flags & 2 != 0;
+                if flags & 2 != 0 {
+                    let held = io
+                        .officers
+                        .iter()
+                        .any(|o| o.owner == self.id && o.member == Some(character));
+                    if held {
+                        continue;
+                    }
+                    own = true;
+                }
                 people.push(character);
             }
         }
@@ -1689,6 +1698,7 @@ mod tests {
                 swept: &mut fx.swept,
                 balance: 0,
                 random: &mut random,
+                officers: &mut fx.officers,
             };
             crate::ai_module8::reset(p, &mut io);
         };
@@ -1699,6 +1709,21 @@ mod tests {
         p.base = Some(SystemKey::default());
         reset(&mut fx, &mut p);
         assert_eq!(p.base, Some(SystemKey::default()));
+
+        // FUN_00477190 -> FUN_0042ef90 over its movement planners: each is
+        // taken off it (FUN_00476de0: +0x54 cleared) and marked
+        // 0x80000000; another sector planner's are left alone.
+        let post = |id, owner| crate::ai_module_c::CommandPlanner {
+            id,
+            kind: 4,
+            owner,
+            ..Default::default()
+        };
+        fx.officers = vec![post(1, p.id), post(2, p.id + 1)];
+        reset(&mut fx, &mut p);
+        let flags = |o: &crate::ai_module_c::CommandPlanner| (o.owner, o.flags);
+        assert_eq!(flags(&fx.officers[0]), (0, crate::ai_module_c::CANCELLED));
+        assert_eq!(flags(&fx.officers[1]), (p.id + 1, 0));
     }
 
     /// A regiment of the Alliance aboard `fleet`, whose ships carry two.
@@ -2006,6 +2031,41 @@ mod tests {
             p.plan_state = 6;
             assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
         }
+    }
+
+    #[test]
+    fn an_officer_held_by_the_planner_s_movement_planner_stays_aboard() {
+        // FUN_004b06b0: a person of the side's whose record +0x28 names a
+        // planner in the sector planner's list +0xd4 (FUN_00476e50) stays;
+        // one held by another sector planner's movement planner goes down
+        // with the rest.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        let general = aboard(&mut fx, f, OWN);
+        let other = aboard(&mut fx, f, OWN);
+        let post = |id, owner, member| crate::ai_module_c::CommandPlanner {
+            id,
+            kind: 4,
+            owner,
+            member: Some(member),
+            ..Default::default()
+        };
+        fx.officers = vec![post(1, p.id, general), post(2, p.id + 1, other)];
+        p.plan_fleet = Some(f);
+        p.plan_state = 6;
+        assert_eq!(
+            step(&mut fx, &mut p),
+            PlanStep::Order(Some(AIAction::MoveCharacters {
+                characters: vec![other],
+                to: fx.systems[0],
+            }))
+        );
+        // Alone aboard, the held General keeps the fleet's people where
+        // they are.
+        fx.officers = vec![post(1, p.id, general), post(2, p.id, other)];
+        p.plan_state = 6;
+        assert_eq!(step(&mut fx, &mut p), PlanStep::Order(None));
     }
 
     #[test]

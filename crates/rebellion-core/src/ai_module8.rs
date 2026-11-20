@@ -176,6 +176,8 @@ pub struct Inputs8<'a> {
     pub balance: i32,
     /// `FUN_0041cd80(n)`: a draw below `n`.
     pub random: &'a mut dyn FnMut(i32) -> i32,
+    /// [`PlannerIo::officers`].
+    pub officers: &'a mut Vec<crate::ai_module_c::CommandPlanner>,
 }
 
 impl Inputs8<'_> {
@@ -195,6 +197,7 @@ impl Inputs8<'_> {
             seen: self.seen,
             swept: &mut *self.swept,
             random: &mut *self.random,
+            officers: &mut *self.officers,
         }
     }
 }
@@ -443,9 +446,20 @@ fn bind(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) -> bool {
 /// Its base, when the system has a record, loses its marks `0x70000` and
 /// the planner its base.
 ///
-/// port: the planner holds no mission or movement planners
-/// (`FUN_0042f690`, `FUN_0042ef90`).
+/// Its movement planners are cancelled (`FUN_0042ef90`), which takes each
+/// off it ([`crate::ai_module_c::cancel`]).
+///
+/// port: the planner holds no mission planners (`FUN_0042f690`).
 pub fn reset(planner: &mut SectorPlanner, io: &mut Inputs8<'_>) {
+    let owned: Vec<u32> = io
+        .officers
+        .iter()
+        .filter(|p| p.owner == planner.id && planner.id != 0)
+        .map(|p| p.id)
+        .collect();
+    for id in owned {
+        crate::ai_module_c::cancel(io.officers, id);
+    }
     let mut pio = io.planner();
     planner.release_all(&mut pio);
     if let Some(base) = planner.base.filter(|&b| pio.galaxy.system(b).is_some()) {
@@ -533,6 +547,7 @@ mod tests {
         let people = std::collections::HashMap::new();
         let seen = std::collections::HashMap::new();
         let mut swept = Vec::new();
+        let mut officers = Vec::new();
         let mut io = Inputs8 {
             world: &world,
             galaxy: g,
@@ -548,6 +563,7 @@ mod tests {
             swept: &mut swept,
             balance,
             random: &mut random,
+            officers: &mut officers,
         };
         f(m, &mut io)
     }

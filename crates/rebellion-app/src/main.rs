@@ -844,6 +844,7 @@ impl LiveCampaign<'_> {
             ),
             system_copy_bits: self.world.object_views.system_bits.clone(),
             ai_command_planners: rebellion_data::save::command_planners(self.ai, self.ai2.as_ref()),
+            ai_sector_links: rebellion_data::save::sector_links(self.ai, self.ai2.as_ref()),
         }
     }
 
@@ -873,6 +874,11 @@ impl LiveCampaign<'_> {
         if let (Some(ai2), Some(second)) = (self.ai2.as_mut(), state.ai_command_planners.1) {
             ai2.module_c = second;
         }
+        rebellion_data::save::restore_sector_links(
+            self.ai,
+            self.ai2.as_mut(),
+            &state.ai_sector_links,
+        );
         *self.repair = state.repair;
         *self.production = state.production;
         *self.autoscrap = state.autoscrap;
@@ -15904,6 +15910,38 @@ fn apply_ai_actions(
                         Some(*to),
                     );
                 }
+            }
+            // A movement planner's Move to a flagship: the player's Move to
+            // a fleet (PanelAction::MoveCharacter).
+            AIAction::BoardFleet { character, fleet } => {
+                let ai_faction = ai_state.faction.unwrap_or(AiFaction::Empire);
+                let faction = ai_faction.as_mission_faction();
+                let Some(to) = world.fleets.get(*fleet).map(|f| f.location) else {
+                    continue;
+                };
+                if !rebellion_core::missions::move_place_allowed(world, faction, to, Some(*fleet)) {
+                    continue;
+                }
+                let Ok(id) = mission_state.dispatch_guarded(
+                    rebellion_core::missions::MissionRequest::single(
+                        MissionKind::Move,
+                        faction,
+                        *character,
+                        to,
+                        None,
+                        tick,
+                    ),
+                    world,
+                ) else {
+                    continue;
+                };
+                mission_state.set_target_fleet(id, *fleet);
+                ai_state.mark_busy(*character);
+                ai_state.bind_mission(
+                    MissionKind::Move,
+                    rebellion_core::missions::MissionMember::Character(*character),
+                    id,
+                );
             }
             // FUN_00561bb0, re-checked by FUN_004ed750.
             AIAction::Command { character, kind } => {

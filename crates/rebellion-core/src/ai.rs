@@ -340,6 +340,18 @@ fn accepts(
                 .get(*target_system)
                 .is_some_and(|s| !s.is_destroyed)
         }
+        // The player's Move to a fleet (move_place_allowed): the side's
+        // character and the side's fleet.
+        AIAction::BoardFleet { character, fleet } => {
+            world
+                .characters
+                .get(*character)
+                .is_some_and(|c| c.is_alliance == is_alliance)
+                && world
+                    .fleets
+                    .get(*fleet)
+                    .is_some_and(|f| f.is_alliance == is_alliance)
+        }
         _ => true,
     }
 }
@@ -1240,6 +1252,16 @@ pub enum AIAction {
         character: CharacterKey,
         kind: crate::character_command::CommandKind,
     },
+
+    /// Move one of the side's characters aboard one of its fleets: a
+    /// movement planner's Move `0x201` to a sector planner's flagship
+    /// (module `0xc`, `FUN_004bca20` -> `FUN_004bc040`), carried out as the
+    /// player's Move to a fleet (a Move mission to the fleet's system with
+    /// the fleet for its target, [`crate::missions::MissionState::set_target_fleet`]).
+    BoardFleet {
+        character: CharacterKey,
+        fleet: FleetKey,
+    },
 }
 
 /// Why the AI is moving a fleet.
@@ -1695,6 +1717,7 @@ impl AISystem {
                 kinds: &mut state.record_kinds,
                 planner,
                 is_alliance,
+                sector_planners: &mut state.module8.planners,
             };
             state.module_c.guard(&mut io);
         }
@@ -1708,6 +1731,7 @@ impl AISystem {
                 kinds: &mut state.record_kinds,
                 planner,
                 is_alliance: matches!(ctx.faction, AiFaction::Alliance),
+                sector_planners: &mut state.module8.planners,
             };
             return state.module_c.step(&mut io);
         }
@@ -1772,6 +1796,7 @@ impl AISystem {
                 swept: &mut state.swept,
                 balance: tallies.planner_balance,
                 random: &mut random,
+                officers: &mut state.module_c.planners,
             };
             state.module8.step(&mut io)
         };
@@ -11934,6 +11959,53 @@ mod tests {
         assert_eq!((state.module_b.phase, state.module_b.state), (0, 0));
         assert_eq!(state.module_priority[11], 0);
         assert_eq!(state.orders_today, 0);
+    }
+
+    #[test]
+    fn a_move_to_a_flagship_is_accepted_only_for_the_side_s_character_and_fleet() {
+        // The player's Move to a fleet (missions::move_place_allowed) for
+        // module 0xc's Move 0x201 to a flagship (FUN_004bca20 ->
+        // FUN_004bc040): the side's character and the side's fleet.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let here = add_system(&mut world, sector, 0.5, 0.5);
+        let fleet = |world: &mut GameWorld, is_alliance| {
+            world.fleets.insert(Fleet {
+                location: here,
+                capital_ships: vec![],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            })
+        };
+        let own = fleet(&mut world, true);
+        let theirs = fleet(&mut world, false);
+        let character = |world: &mut GameWorld, is_alliance| {
+            world.characters.insert(Character {
+                is_alliance,
+                is_empire: !is_alliance,
+                ..Character::default()
+            })
+        };
+        let rebel = character(&mut world, true);
+        let imperial = character(&mut world, false);
+        let transport = crate::troop_transport::TroopTransportState::new();
+        let ok = |character, fleet| {
+            accepts(
+                &AIAction::BoardFleet { character, fleet },
+                &world,
+                &ResearchState::new(),
+                AiFaction::Alliance,
+                &transport,
+                &crate::movement::MovementState::new(),
+            )
+        };
+        assert!(ok(rebel, own));
+        assert!(!ok(imperial, own));
+        assert!(!ok(rebel, theirs));
+        assert!(!ok(imperial, theirs));
     }
 
     #[test]

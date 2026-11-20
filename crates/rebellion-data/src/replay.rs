@@ -766,12 +766,14 @@ impl ReplayRuntime {
             squadron_damage,
             system_copy_bits,
             ai_command_planners,
+            ai_sector_links,
         } = state;
         let (mut ai, mut ai2) = (ai, ai2);
         ai.module_c = ai_command_planners.0;
         if let (Some(ai2), Some(second)) = (ai2.as_mut(), ai_command_planners.1) {
             ai2.module_c = second;
         }
+        crate::save::restore_sector_links(&mut ai, ai2.as_mut(), &ai_sector_links);
         let mut world = world;
         world.object_views = object_views;
         world.object_views.system_bits = system_copy_bits;
@@ -944,6 +946,7 @@ impl ReplayRuntime {
                 &self.states.ai,
                 self.states.ai2.as_ref(),
             ),
+            ai_sector_links: crate::save::sector_links(&self.states.ai, self.states.ai2.as_ref()),
         }
     }
 }
@@ -1286,6 +1289,7 @@ mod tests {
             squadron_damage: Vec::new(),
             system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
             ai_command_planners: crate::save::AiCommandPlanners::default(),
+            ai_sector_links: crate::save::AiSectorLinks::default(),
         }
     }
 

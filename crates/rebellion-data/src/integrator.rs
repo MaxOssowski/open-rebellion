@@ -228,6 +228,11 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
             "character": member_name(world, MissionMember::Character(*character)),
             "kind": format!("{kind:?}"),
         }),
+        AIAction::BoardFleet { character, fleet } => serde_json::json!({
+            "type": "BoardFleet",
+            "character": member_name(world, MissionMember::Character(*character)),
+            "system": world.fleets.get(*fleet).map(|f| sys_name(world, f.location)),
+        }),
         AIAction::Assault { fleets, system } => serde_json::json!({
             "type": "Assault",
             "fleets": fleets.len(),
@@ -2699,6 +2704,45 @@ fn apply_ai_actions_inner(
                 )
                 .is_ok()
             }),
+            // The player's Move to a fleet: a Move mission to the fleet's
+            // system with the fleet for its target.
+            AIAction::BoardFleet { character, fleet } => {
+                let to = world.fleets.get(*fleet).map(|f| f.location);
+                let dispatched = to
+                    .filter(|&to| {
+                        rebellion_core::missions::move_place_allowed(
+                            world,
+                            mission_faction,
+                            to,
+                            Some(*fleet),
+                        )
+                    })
+                    .and_then(|to| {
+                        mission_state
+                            .dispatch_guarded(
+                                MissionRequest::single(
+                                    MissionKind::Move,
+                                    mission_faction,
+                                    *character,
+                                    to,
+                                    None,
+                                    tick,
+                                ),
+                                world,
+                            )
+                            .ok()
+                    });
+                if let Some(id) = dispatched {
+                    mission_state.set_target_fleet(id, *fleet);
+                    ai_state.mark_busy(*character);
+                    ai_state.bind_mission(
+                        MissionKind::Move,
+                        MissionMember::Character(*character),
+                        id,
+                    );
+                }
+                dispatched.is_some()
+            }
             AIAction::SetDestination {
                 system,
                 area,
@@ -4647,6 +4691,52 @@ mod tests {
             current_system: Some(system),
             ..Default::default()
         }))
+    }
+
+    #[test]
+    fn an_officer_sent_to_a_flagship_moves_to_its_fleet() {
+        // FUN_004bca20 -> FUN_004bc040: a Move 0x201 whose target is the
+        // flagship, carried out as the player's Move to a fleet (a Move
+        // mission with the fleet for its target).
+        let mut world = GameWorld::default();
+        let target = add_system(&mut world, "Kuat");
+        let general = imperial_at(&mut world, target, "General");
+        let MissionMember::Character(key) = general else {
+            unreachable!()
+        };
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: target,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[target].fleets.push(fleet);
+        let mut ai = AIState::new(AiFaction::Empire);
+        let mut missions = MissionState::new();
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        integrator.apply_ai_actions(
+            &[AIAction::BoardFleet {
+                character: key,
+                fleet,
+            }],
+            &mut ai,
+            &mut missions,
+            &mut ManufacturingState::new(),
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            false,
+            &mut BombardEnv::new(0, None),
+        );
+        let mission = &missions.missions()[0];
+        assert_eq!(mission.kind, MissionKind::Move);
+        assert_eq!(mission.target_fleet, Some(fleet));
+        assert_eq!(mission.target_system, target);
     }
 
     #[test]

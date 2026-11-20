@@ -57,6 +57,9 @@ pub struct PlannerIo<'a> {
     pub swept: &'a mut Vec<SectorKey>,
     /// `FUN_0041cd80(n)`: a draw below `n`.
     pub random: &'a mut dyn FnMut(i32) -> i32,
+    /// Module `0xc`'s movement planners ([`crate::ai_module_c::ModuleC::planners`]):
+    /// those naming a sector planner (`+0x54`) are its list `+0xd4`.
+    pub officers: &'a mut Vec<crate::ai_module_c::CommandPlanner>,
 }
 
 impl PlannerIo<'_> {
@@ -344,8 +347,7 @@ impl SectorPlanner {
             }
             6 => {
                 self.flagship(io);
-                // FUN_004799d0 without movement planners (0x2000000).
-                self.station = None;
+                self.station(io);
                 self.report(io);
                 self.state = 1;
                 self.resync = true;
@@ -949,44 +951,197 @@ impl SectorPlanner {
         self.requests |= self.mission_bits;
     }
 
-    /// `FUN_00478140`: the plan's movement request (slot `+0x1c`) into
-    /// `+0xe0`, `+0x64` bit `0x200` with one.
+    /// `FUN_00478140`: `+0xe0`, `+0xe4` and `+0x60` `0x7000000` cleared;
+    /// each movement planner it holds (module `0xc`, list `+0xd4`) sets
+    /// `+0x60` `0x2000000` and `+0x64` `0x40000000`, and by its `+0x20`:
+    /// `0x10` gives `+0x60` `0x4000000`; 8 without 4 `0x1000000`; 8 and 4,
+    /// for a General planner (slot `+0x18` 4), `0x200000`, which kind 6's
+    /// report reads; bit 1 clear gives `+0x64` `0x400`, set `0x80000000`.
+    /// Then the plan's slot `+0x1c` asks for a type into `+0xe0` (`+0x64`
+    /// `0x200` with one), and `+0xe4` takes the first held planner
+    /// `FUN_004add40` gives up.
     ///
-    /// port: the sector planners' movement planners (module `0xc`, list
-    /// `+0xd4`) are not ported, so it holds none. Kind 3's slot
-    /// (`FUN_004b1800`, the same code as kind 1's `FUN_004b9290`) asks for kind 3 while the planner holds a fleet,
-    /// else kind 5 while it holds regiments (`+0x98`) in a sector with
-    /// `+0x2c` `0x40008`.
+    /// Slot `+0x1c`, by the counts of the planners held of each type
+    /// ([`crate::ai_module_c::officers_of`]) and the sector record: kinds
+    /// 4 and 6 (`FUN_004b72d0`) first ask for type 4 with none held,
+    /// regiments (`+0x94`) and an opponent's system in the sector (`+0x2c`
+    /// 8); every kind (`FUN_004b9290`, `FUN_004b1800`, the same code) then
+    /// for type 3 with none held while it holds a fleet, else type 5 with
+    /// none held, troop ships (`+0x98`) and `+0x2c` `0x40008`.
     fn movement(&mut self, io: &PlannerIo<'_>) {
         self.movement = [0; 2];
         self.flags &= !0x700_0000;
         if !ported_kind(self.kind) {
             return;
         }
-        if let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) {
-            // Kinds 4 and 6 (FUN_004b72d0) first ask for kind 4 with regiments
-            // (+0x94) in a sector with +0x2c 8 and no movement planner of
-            // that kind (+0xcc).
-            if matches!(self.kind, 4 | 6) && self.held[0] > 0 && r.summary & 8 != 0 {
+        let held: Vec<(u32, u32, u32)> = io
+            .officers
+            .iter()
+            .filter(|p| p.owner == self.id && self.id != 0)
+            .map(|p| (p.id, p.kind, p.flags))
+            .collect();
+        for &(_, kind, flags) in &held {
+            self.flags |= 0x200_0000;
+            self.requests |= 0x4000_0000;
+            if flags & 0x10 != 0 {
+                self.flags |= 0x400_0000;
+            }
+            if flags & 8 != 0 {
+                if flags & 4 == 0 {
+                    self.flags |= 0x100_0000;
+                } else if kind == 4 {
+                    self.flags |= 0x20_0000;
+                }
+            }
+            self.requests |= if flags & 1 == 0 { 0x400 } else { 0x8000_0000 };
+        }
+        let count = |kind| crate::ai_module_c::officers_of(io.officers, self.id, kind);
+        let record = self.sector.and_then(|s| io.galaxy.sector(s));
+        if let Some(r) = record {
+            if matches!(self.kind, 4 | 6) && count(4) < 1 && self.held[0] > 0 && r.summary & 8 != 0
+            {
                 self.movement[0] = 4;
-            } else if !self.fleets.is_empty() {
+            } else if count(3) < 1 && !self.fleets.is_empty() {
                 self.movement[0] = 3;
-            } else if self.held[1] > 0 && r.summary & 0x4_0008 != 0 {
+            } else if count(5) < 1 && self.held[1] > 0 && r.summary & 0x4_0008 != 0 {
                 self.movement[0] = 5;
             }
         }
         if self.movement[0] != 0 {
             self.requests |= 0x200;
         }
+        let has_record = record.is_some();
+        self.movement[1] = held
+            .iter()
+            .find(|&&(_, kind, _)| match kind {
+                // FUN_004b1650: below two only while it holds a fleet or
+                // has none.
+                3 => count(3) >= 2 || (count(3) >= 1 && self.fleets.is_empty()),
+                // Slot +0x4c: kinds 4 and 6 FUN_004b8b30 (more than one),
+                // the others FUN_004b1690 (any), with the sector record.
+                4 => {
+                    let limit = if matches!(self.kind, 4 | 6) { 1 } else { 0 };
+                    has_record && count(4) > limit
+                }
+                // FUN_004b16d0: more than one, or any without troop ships.
+                5 => count(5) > 1 || (self.held[1] == 0 && count(5) > 0),
+                _ => true,
+            })
+            .map_or(0, |&(id, _, _)| id);
     }
 
-    /// `FUN_00479560` without movement planners (`+0x60` `0x2000000`
-    /// clear): the flagship, when this planner holds it, loses its mark.
+    /// `FUN_00479560`, the flagship (`+0x38`, ship record `+0x24`
+    /// [`SHIP_FLAGSHIP`]). Without movement planners (`+0x60` `0x2000000`
+    /// clear) the flagship, when this planner holds it, loses its mark and
+    /// the planner its flagship. With them:
+    /// - a flagship still held, its own and marked keeps the post unless
+    ///   passed over ([`SHIP_PASSED`], which takes the mark off); out of
+    ///   hyperspace (`0x800`), the best ship of its fleet (`FUN_0041ac80`:
+    ///   `0x4001`, forbidding `0x2803800`; key 3, order 1) takes the mark
+    ///   when its `+0x50` is higher or the flagship lacks bit 1; with none,
+    ///   the best with `0x4000` when its `+0x50` is higher;
+    /// - else the best ship (`0x4000`, forbidding `0x2803800`) of each
+    ///   fleet held, the first highest `+0x50` above 0, is marked;
+    /// - then every ship held loses [`SHIP_PASSED`].
     fn flagship(&mut self, io: &mut PlannerIo<'_>) {
-        if let Some(id) = self.flagship.take() {
-            if io.ship(id).is_some_and(|r| r.owner == self.id) {
-                io.edit_ship(id, |r| r.flags &= !SHIP_FLAGSHIP);
+        if self.flags & 0x200_0000 == 0 {
+            if let Some(id) = self.flagship.take() {
+                if io.ship(id).is_some_and(|r| r.owner == self.id) {
+                    io.edit_ship(id, |r| r.flags &= !SHIP_FLAGSHIP);
+                }
             }
+            return;
+        }
+        let mut kept = false;
+        let current = self
+            .flagship
+            .filter(|id| self.ships.contains(id))
+            .and_then(|id| io.ship(id).cloned())
+            .filter(|r| r.owner == self.id && r.flags & SHIP_FLAGSHIP != 0);
+        if let Some(r) = current {
+            if r.flags & SHIP_PASSED != 0 {
+                io.edit_ship(r.id, |r| r.flags &= !SHIP_FLAGSHIP);
+            } else {
+                kept = true;
+                if r.flags & 0x800 == 0 && io.galaxy.fleets.contains_key(&r.fleet) {
+                    let swap = match best_ship(io, r.fleet, 0x4001) {
+                        Some(s) => (r.values[3] < s.values[3] || r.flags & 1 == 0).then_some(s),
+                        None => {
+                            best_ship(io, r.fleet, 0x4000).filter(|s| r.values[3] < s.values[3])
+                        }
+                    };
+                    if let Some(s) = swap {
+                        io.edit_ship(s.id, |s| s.flags |= SHIP_FLAGSHIP);
+                        io.edit_ship(r.id, |r| r.flags &= !SHIP_FLAGSHIP);
+                        self.flagship = Some(s.id);
+                    }
+                }
+            }
+        }
+        if !kept {
+            self.flagship = None;
+            let mut top = 0;
+            for fleet in self.fleets.clone() {
+                if let Some(s) = best_ship(io, fleet, 0x4000) {
+                    if top < s.values[3] {
+                        self.flagship = Some(s.id);
+                        top = s.values[3];
+                    }
+                }
+            }
+            if let Some(id) = self.flagship {
+                io.edit_ship(id, |r| r.flags |= SHIP_FLAGSHIP);
+            }
+        }
+        for id in self.ships.clone() {
+            io.edit_ship(id, |r| r.flags &= !SHIP_PASSED);
+        }
+    }
+
+    /// `FUN_004799d0`: with movement planners (`+0x60` `0x2000000`), the
+    /// plan's slot `+0x10` (every kind's `FUN_004adde0`) keeps or chooses
+    /// the station `+0x3c`; without, it is cleared.
+    ///
+    /// `FUN_004adde0`: the base takes the post when it is the side's and
+    /// neither in uprising nor blockaded (`+0x30` 1, `+0x28` 3 clear); a
+    /// station other than the base that fails the same test is dropped.
+    /// Without one, a random system of the sector of the side's
+    /// (`FUN_0041a460`, order 1), neither in uprising nor blockaded: the
+    /// headquarters (`+0x28` `0x80000000`), else one with every yard mark
+    /// `0x3e00000`, else any; else one in the nearest other sector with
+    /// `+0x2c` 1 (`FUN_0041b2b0`, its masks as pushed at `0x4ae0f7`).
+    fn station(&mut self, io: &mut PlannerIo<'_>) {
+        if self.flags & 0x200_0000 == 0 {
+            self.station = None;
+            return;
+        }
+        let fit = |io: &PlannerIo<'_>, s: SystemKey| {
+            io.galaxy
+                .system(s)
+                .map(|r| r.kind & 1 != 0 && r.state & 3 == 0)
+        };
+        if let Some(base) = self.base {
+            if self.station != Some(base) && fit(io, base) == Some(true) {
+                self.station = Some(base);
+            }
+        }
+        if let Some(s) = self.station.filter(|&s| Some(s) != self.base) {
+            if fit(io, s) == Some(false) {
+                self.station = None;
+            }
+        }
+        let Some(sector) = self.sector else {
+            return;
+        };
+        for state in [0x8000_0000, 0x3e0_0000, 0] {
+            if self.station.is_none() {
+                self.station =
+                    random_system(io, sector, [Mask::new(state, 3), ANY, Mask::new(1, 0)]);
+            }
+        }
+        if self.station.is_none() {
+            self.station =
+                nearest_sector_system(io, sector, [Mask::new(0, 3), Mask::new(1, 0), ANY]);
         }
     }
 
@@ -1029,8 +1184,8 @@ impl SectorPlanner {
                     // fully shielded (0x400), and one without +0x30 0x2000
                     // (0x400000) or the planner's own 0x200000. FUN_00478140
                     // sets that from a held General movement planner (type
-                    // 4) whose officer stands at its place; port: the
-                    // planners hold no movement planners, so it stays 0.
+                    // 4) whose officer stands aboard the flagship with a
+                    // rank ([`Self::movement`]).
                     if summary & 0x408 == 0x408
                         && (summary & 0x40_0000 != 0 || self.flags & 0x20_0000 != 0)
                     {
@@ -1167,6 +1322,23 @@ pub(crate) fn random_system(
     })])
 }
 
+/// `FUN_0041ac80(fleet, need, 0x2803800, key 3, order 1)` picked
+/// (`FUN_004357b0`): of `fleet`'s ship records with every bit of `need`
+/// and none of `0x2803800` (passed over, damaged, inactive, en route), the
+/// highest `+0x50` (`values[3]`), equal keys ordered by coin flips.
+fn best_ship(io: &mut PlannerIo<'_>, fleet: FleetKey, need: u32) -> Option<ShipRecord> {
+    let record = io.galaxy.fleets.get(&fleet)?;
+    let items: Vec<(u64, i32)> = record
+        .ships
+        .iter()
+        .filter(|s| Mask::new(need, 0x280_3800).admits(s.flags))
+        .map(|s| (s.id, s.values[3]))
+        .collect();
+    let mut coin = || (io.random)(10) < 5;
+    let id = pick(&[ranked(items, Order::Ascending, &mut coin)])?;
+    io.ship(id).cloned()
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -1193,6 +1365,7 @@ pub(crate) mod tests {
         pub(crate) day: u64,
         pub(crate) seen: HashMap<SystemKey, u64>,
         pub(crate) swept: Vec<SectorKey>,
+        pub(crate) officers: Vec<crate::ai_module_c::CommandPlanner>,
     }
 
     pub(crate) fn fixture() -> Fx {
@@ -1255,6 +1428,7 @@ pub(crate) mod tests {
             day: 0,
             seen: HashMap::new(),
             swept: Vec::new(),
+            officers: Vec::new(),
         };
         rebuild(&mut fx);
         fx
@@ -1338,6 +1512,7 @@ pub(crate) mod tests {
             seen: &fx.seen,
             swept: &mut fx.swept,
             random: &mut random,
+            officers: &mut fx.officers,
         };
         f(&mut io)
     }
@@ -2853,5 +3028,368 @@ pub(crate) mod tests {
         assert_eq!(report(0x408, 0), 0);
         assert_eq!(report(0x40_0400, 0), 0);
         assert_eq!(report(0x40_0008, 0), 0);
+    }
+
+    /// A movement planner of `kind` serving the fixture's sector planner
+    /// (id 1), with `+0x20` `flags`.
+    fn officer(id: u32, kind: u32, flags: u32) -> crate::ai_module_c::CommandPlanner {
+        crate::ai_module_c::CommandPlanner {
+            id,
+            kind,
+            flags,
+            owner: 1,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_general_aboard_the_flagship_with_his_rank_keeps_kind_six_reporting() {
+        // FUN_00478140: each held movement planner sets +0x60 0x2000000 and
+        // +0x64 0x40000000; +0x20 8 and 4 give 0x200000 only for slot +0x18
+        // 4 (the General planner, FUN_004047d0); 8 alone 0x1000000; 0x10
+        // 0x4000000; bit 1 +0x64 0x80000000, else 0x400. FUN_004b4d90 then
+        // reports work left (0x20000) with +0x2c 0x408 and no 0x400000.
+        let mut fx = fixture();
+        fx.galaxy.sectors[0].summary |= 0x408;
+        let mut p = SectorPlanner {
+            kind: 6,
+            ..planner(&fx)
+        };
+        fx.officers = vec![officer(7, 4, 0xd)];
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.flags & 0x720_0000, 0x220_0000);
+        assert_eq!(p.requests & 0xc000_0400, 0xc000_0000);
+        with(&mut fx, |io| p.report(io));
+        assert_ne!(p.flags & 0x2_0000, 0);
+
+        // An Admiral (type 3) in the same state gives no 0x200000.
+        fx.officers = vec![officer(7, 3, 0xd)];
+        p.flags = 0;
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.flags & 0x720_0000, 0x200_0000);
+        with(&mut fx, |io| p.report(io));
+        assert_eq!(p.flags & 0x2_0000, 0);
+
+        // A General at the flagship without a rank: 0x1000000; one waiting
+        // at the station: 0x4000000; no member: +0x64 0x400.
+        for (flags, bits, request) in [
+            (9, 0x300_0000, 0x8000_0000),
+            (0x11, 0x600_0000, 0x8000_0000),
+            (0, 0x200_0000, 0x400),
+        ] {
+            fx.officers = vec![officer(7, 4, flags)];
+            p.flags = 0;
+            p.requests = 0;
+            with(&mut fx, |io| p.movement(io));
+            assert_eq!(p.flags & 0x720_0000, bits, "flags {flags:#x}");
+            assert_eq!(p.requests & 0x8000_0400, request, "flags {flags:#x}");
+        }
+
+        // Another sector planner's General sets nothing here.
+        fx.officers = vec![crate::ai_module_c::CommandPlanner {
+            owner: 2,
+            ..officer(7, 4, 0xd)
+        }];
+        p.flags = 0;
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.flags & 0x720_0000, 0);
+    }
+
+    #[test]
+    fn a_sector_planner_asks_for_one_officer_of_each_type_and_gives_up_the_spares() {
+        // FUN_004b72d0 (kinds 4, 6): type 4 while +0xcc < 1, then type 3
+        // while +0xc8 < 1 and a fleet is held, then type 5 while +0xd0 < 1.
+        // FUN_004add40: type 3 FUN_004b1650 (two or more, or one without a
+        // fleet), type 4 slot +0x4c (kinds 4, 6 FUN_004b8b30: more than
+        // one), type 5 FUN_004b16d0 (more than one, or any without troop
+        // ships +0x98).
+        let mut fx = fixture();
+        let f = fleet(&mut fx, 0, 1);
+        fx.galaxy.sectors[0].summary |= 0x8;
+        let mut p = SectorPlanner {
+            kind: 6,
+            held: [1, 1],
+            ..planner(&fx)
+        };
+        p.fleets.push(f);
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement, [4, 0]);
+        assert_ne!(p.requests & 0x200, 0);
+        fx.officers = vec![officer(7, 4, 1)];
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement, [3, 0]);
+        fx.officers.push(officer(8, 3, 1));
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement, [5, 0]);
+        fx.officers.push(officer(9, 5, 1));
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement, [0, 0]);
+
+        // A second General is a spare for kinds 4 and 6 only.
+        fx.officers.push(officer(10, 4, 1));
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement, [0, 7]);
+        // Kind 3's slot +0x4c (FUN_004b1690) gives up any General.
+        fx.officers.truncate(3);
+        p.kind = 3;
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement, [0, 7]);
+        // An Admiral without a fleet, a Commander without troop ships.
+        p.kind = 6;
+        p.fleets.clear();
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[1], 8);
+        p.fleets.push(f);
+        p.held[1] = 0;
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[1], 9);
+    }
+
+    #[test]
+    fn with_movement_planners_the_best_held_ship_becomes_the_flagship() {
+        // FUN_00479560 with +0x60 0x2000000: without a kept flagship, the
+        // best ship (0x4000, forbidding 0x2803800; key 3 = +0x50) of each
+        // held fleet, the highest above 0 marked 0x1000000. A kept one
+        // gives way to a better ship of its fleet (0x4001); every held ship
+        // then loses 0x2000000.
+        let mut fx = fixture();
+        let f = fleet(&mut fx, 0, 3);
+        let ids: Vec<u64> = (0..3).map(|i| ship_id(&fx, f, i)).collect();
+        let mut p = planner(&fx);
+        for &id in &ids {
+            with(&mut fx, |io| p.take_ship(io, id));
+        }
+        p.fleets.push(f);
+        for (i, v) in [(0, 2), (1, 5), (2, 9)] {
+            ship_mut(&mut fx, f, i).values[3] = v;
+        }
+        // The best is passed over (0x2000000).
+        ship_mut(&mut fx, f, 2).flags |= SHIP_PASSED;
+        p.flags = 0x200_0000;
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ids[1]));
+        assert_ne!(fx.galaxy.fleets[&f].ships[1].flags & SHIP_FLAGSHIP, 0);
+        assert_eq!(fx.galaxy.fleets[&f].ships[2].flags & SHIP_PASSED, 0);
+
+        // Kept, it gives way to a better ship with bit 1 (0x4001).
+        ship_mut(&mut fx, f, 2).flags |= 1;
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ids[2]));
+        assert_eq!(fx.galaxy.fleets[&f].ships[1].flags & SHIP_FLAGSHIP, 0);
+        assert_ne!(fx.galaxy.fleets[&f].ships[2].flags & SHIP_FLAGSHIP, 0);
+
+        // A flagship passed over loses its mark and the choice starts anew.
+        ship_mut(&mut fx, f, 2).flags |= SHIP_PASSED;
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ids[1]));
+        assert_eq!(fx.galaxy.fleets[&f].ships[2].flags & SHIP_FLAGSHIP, 0);
+    }
+
+    #[test]
+    fn with_movement_planners_the_station_is_the_base_else_the_sector_s_own_system() {
+        // FUN_004799d0 -> FUN_004adde0: the base when the side's and neither
+        // in uprising nor blockaded (+0x30 1, +0x28 3 clear); else a random
+        // such system of the sector, the headquarters (+0x28 0x80000000)
+        // first. Without movement planners the station is cleared.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        p.flags = 0x200_0000;
+        p.base = Some(fx.systems[1]);
+        with(&mut fx, |io| p.station(io));
+        assert_eq!(p.station, Some(fx.systems[1]));
+
+        // A blockaded base is passed over for the headquarters.
+        let systems = [fx.systems[0], fx.systems[1]];
+        for r in &mut fx.galaxy.sectors[0].systems {
+            if r.system == systems[1] {
+                r.state |= 2;
+            } else if r.system == systems[0] {
+                r.state |= 0x8000_0000;
+            }
+        }
+        p.station = None;
+        with(&mut fx, |io| p.station(io));
+        assert_eq!(p.station, Some(fx.systems[0]));
+
+        p.flags = 0;
+        with(&mut fx, |io| p.station(io));
+        assert_eq!(p.station, None);
+    }
+
+    #[test]
+    fn a_kept_flagship_looks_only_within_its_own_fleet_and_not_in_hyperspace() {
+        // FUN_00479560 with +0x60 0x2000000: a flagship kept (held, this
+        // planner's, marked 0x1000000) only gives way to a better ship of
+        // its own fleet, and not while it is en route (0x800); one not
+        // marked, or another planner's, is chosen anew over every held
+        // fleet.
+        let mut fx = fixture();
+        let a = fleet(&mut fx, 0, 1);
+        let b = fleet(&mut fx, 1, 1);
+        let (ship_a, ship_b) = (ship_id(&fx, a, 0), ship_id(&fx, b, 0));
+        let mut p = planner(&fx);
+        for id in [ship_a, ship_b] {
+            with(&mut fx, |io| p.take_ship(io, id));
+        }
+        p.fleets = vec![a, b];
+        ship_mut(&mut fx, a, 0).values[3] = 5;
+        ship_mut(&mut fx, b, 0).values[3] = 9;
+        ship_mut(&mut fx, a, 0).flags |= 1 | SHIP_FLAGSHIP;
+        p.flags = 0x200_0000;
+        p.flagship = Some(ship_a);
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ship_a));
+
+        // Unmarked, it is chosen anew: the best of every held fleet.
+        ship_mut(&mut fx, a, 0).flags &= !SHIP_FLAGSHIP;
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ship_b));
+
+        // Another planner's ship is chosen anew too.
+        ship_mut(&mut fx, b, 0).flags &= !SHIP_FLAGSHIP;
+        ship_mut(&mut fx, a, 0).flags |= SHIP_FLAGSHIP;
+        ship_mut(&mut fx, a, 0).owner = p.id + 1;
+        p.flagship = Some(ship_a);
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ship_b));
+
+        // En route, a kept flagship does not give way within its fleet.
+        let f = fleet(&mut fx, 0, 2);
+        let ids = [ship_id(&fx, f, 0), ship_id(&fx, f, 1)];
+        let mut p = planner(&fx);
+        for id in ids {
+            with(&mut fx, |io| p.take_ship(io, id));
+        }
+        p.fleets = vec![f];
+        ship_mut(&mut fx, f, 0).values[3] = 2;
+        ship_mut(&mut fx, f, 1).values[3] = 8;
+        ship_mut(&mut fx, f, 1).flags |= 1;
+        ship_mut(&mut fx, f, 0).flags |= SHIP_FLAGSHIP | 0x800;
+        p.flags = 0x200_0000;
+        p.flagship = Some(ids[0]);
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ids[0]));
+    }
+
+    #[test]
+    fn a_second_commander_is_given_up_even_with_troop_ships() {
+        // FUN_004b16d0: more than one type 5 held gives up the first, troop
+        // ships (+0x98) or not; one alone is kept while +0x98 > 0.
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        p.held = [0, 1];
+        fx.officers = vec![officer(7, 5, 1)];
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[1], 0);
+        fx.officers.push(officer(8, 5, 1));
+        with(&mut fx, |io| p.movement(io));
+        assert_eq!(p.movement[1], 7);
+    }
+
+    #[test]
+    fn a_kept_flagship_gives_way_to_a_stronger_ship_or_one_with_bit_one() {
+        // FUN_00479560 with +0x60 0x2000000, a kept flagship out of
+        // hyperspace: the best ship of its fleet with 0x4001 takes the mark
+        // when its +0x50 is higher or the flagship lacks bit 1; with none
+        // such, the best with 0x4000 only when its +0x50 is higher. The
+        // first highest +0x50 over the held fleets wins a new choice.
+        let run = |ships: &[(u32, i32)]| {
+            let mut fx = fixture();
+            let f = fleet(&mut fx, 0, u32::try_from(ships.len()).unwrap());
+            let mut p = planner(&fx);
+            let ids: Vec<u64> = (0..ships.len()).map(|i| ship_id(&fx, f, i)).collect();
+            for &id in &ids {
+                with(&mut fx, |io| p.take_ship(io, id));
+            }
+            p.fleets = vec![f];
+            for (i, &(bits, value)) in ships.iter().enumerate() {
+                ship_mut(&mut fx, f, i).flags |= bits;
+                ship_mut(&mut fx, f, i).values[3] = value;
+            }
+            ship_mut(&mut fx, f, 0).flags |= SHIP_FLAGSHIP;
+            p.flags = 0x200_0000;
+            p.flagship = Some(ids[0]);
+            with(&mut fx, |io| p.flagship(io));
+            let at = ids.iter().position(|&id| Some(id) == p.flagship);
+            let marked: Vec<bool> = (0..ships.len())
+                .map(|i| fx.galaxy.fleets[&f].ships[i].flags & SHIP_FLAGSHIP != 0)
+                .collect();
+            (at, marked)
+        };
+        // A stronger ship with bit 1.
+        assert_eq!(run(&[(1, 5), (1, 7)]), (Some(1), vec![false, true]));
+        // The flagship itself the best with bit 1: it keeps the mark.
+        assert_eq!(run(&[(1, 5), (0, 5)]), (Some(0), vec![true, false]));
+        // Without bit 1, a weaker ship with it takes the post.
+        assert_eq!(run(&[(0, 9), (1, 3)]), (Some(1), vec![false, true]));
+        // None with bit 1: a stronger one takes it, an equal one does not.
+        assert_eq!(run(&[(0, 5), (0, 9)]), (Some(1), vec![false, true]));
+        assert_eq!(run(&[(0, 5), (0, 5)]), (Some(0), vec![true, false]));
+
+        // A new choice over two fleets of equal best: the first fleet's.
+        let mut fx = fixture();
+        let a = fleet(&mut fx, 0, 1);
+        let b = fleet(&mut fx, 1, 1);
+        let mut p = planner(&fx);
+        for f in [a, b] {
+            let id = ship_id(&fx, f, 0);
+            with(&mut fx, |io| p.take_ship(io, id));
+            ship_mut(&mut fx, f, 0).values[3] = 4;
+        }
+        p.fleets = vec![a, b];
+        p.flags = 0x200_0000;
+        with(&mut fx, |io| p.flagship(io));
+        assert_eq!(p.flagship, Some(ship_id(&fx, a, 0)));
+    }
+
+    #[test]
+    fn equal_ships_for_the_flagship_go_by_the_coin() {
+        // FUN_0041ac80 keys the ships into a list where an equal key goes
+        // ahead on FUN_0041cd80(10) < 5 (FUN_0041c250); FUN_004357b0 takes
+        // the last.
+        for (draw, second) in [(4, false), (5, true)] {
+            let mut fx = fixture();
+            let f = fleet(&mut fx, 0, 2);
+            let ids = [ship_id(&fx, f, 0), ship_id(&fx, f, 1)];
+            let mut p = planner(&fx);
+            for id in ids {
+                with(&mut fx, |io| p.take_ship(io, id));
+            }
+            p.fleets = vec![f];
+            for i in 0..2 {
+                ship_mut(&mut fx, f, i).values[3] = 6;
+            }
+            p.flags = 0x200_0000;
+            fx.draws = vec![draw];
+            with(&mut fx, |io| p.flagship(io));
+            assert_eq!(p.flagship, Some(ids[usize::from(second)]), "draw {draw}");
+        }
+    }
+
+    #[test]
+    fn a_station_stays_while_the_side_s_and_quiet_and_goes_otherwise() {
+        // FUN_004adde0: a station other than the base is kept while its
+        // record is the side's (+0x30 1) and neither in uprising nor
+        // blockaded (+0x28 3); else it is dropped and chosen anew, the
+        // sector's headquarters (+0x28 0x80000000) first.
+        let edits: [fn(&mut crate::ai_records::SystemRecord); 3] =
+            [|_| {}, |r| r.kind &= !1, |r| r.state |= 1];
+        for (at, edit) in edits.into_iter().enumerate() {
+            let mut fx = fixture();
+            let (hq, station) = (fx.systems[0], fx.systems[1]);
+            for r in &mut fx.galaxy.sectors[0].systems {
+                if r.system == hq {
+                    r.state |= 0x8000_0000;
+                } else if r.system == station {
+                    edit(r);
+                }
+            }
+            let mut p = planner(&fx);
+            p.flags = 0x200_0000;
+            p.station = Some(station);
+            with(&mut fx, |io| p.station(io));
+            let kept = if at == 0 { station } else { hq };
+            assert_eq!(p.station, Some(kept), "edit {at}");
+        }
     }
 }

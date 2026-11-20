@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 129;
+pub const SAVE_VERSION: u32 = 130;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -133,7 +133,11 @@ pub const V127: u32 = 127;
 /// (`SaveState::ai_command_planners`), its last field.
 pub const V128: u32 = 128;
 
-/// Whether a save of `version` loads (the current one, or v116 to v128
+/// v129: the save without the movement planners' sector links
+/// (`SaveState::ai_sector_links`), its last field.
+pub const V129: u32 = 129;
+
+/// Whether a save of `version` loads (the current one, or v116 to v129
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -253,6 +257,12 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         // An older save's AI made no movement planners: module 0xc starts
         // its cycle afresh and the strategy asks for them again.
         body.extend(bincode::serialize(&AiCommandPlanners::default())?);
+    }
+    if version <= V129 {
+        // An older save's movement planners are the strategy's (types 1
+        // and 6): none serves a sector planner, and module 0xc's search
+        // for a sector planner's request starts from the first.
+        body.extend(bincode::serialize(&AiSectorLinks::default())?);
     }
     Ok(body)
 }
@@ -443,6 +453,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V129 {
+            fields.remove("ai_sector_links");
+        }
         if version <= V128 {
             fields.remove("ai_command_planners");
         }
@@ -619,6 +632,16 @@ pub struct SaveState {
     /// The loaders put it back into the AI states, whose own encoding
     /// skips it ([`SaveState::restore_command_planners`]).
     pub ai_command_planners: AiCommandPlanners,
+    // ── v130: the movement planners' sector links ───────────────────────
+    /// What module `0xc` of each AI player keeps beyond its own encoding
+    /// (`ai`, then `ai2`): the sector planner cursor `+0x44` and `+0x40`,
+    /// and the owner, flagship and station of each planner serving a
+    /// sector planner ([`rebellion_core::ai_module_c::SectorLinks`]). It
+    /// stays the last field: an older body is read by appending empty ones
+    /// ([`migrate_body`]). The loaders put it back after
+    /// [`SaveState::ai_command_planners`]
+    /// ([`SaveState::restore_command_planners`]).
+    pub ai_sector_links: AiSectorLinks,
 }
 
 /// [`SaveState::ai_command_planners`]: module `0xc` of `ai` and of `ai2`.
@@ -634,6 +657,28 @@ pub fn command_planners(ai: &AIState, ai2: Option<&AIState>) -> AiCommandPlanner
     (ai.module_c.clone(), ai2.map(|a| a.module_c.clone()))
 }
 
+/// [`SaveState::ai_sector_links`]: module `0xc`'s sector links of `ai`
+/// and of `ai2`.
+pub type AiSectorLinks = (
+    rebellion_core::ai_module_c::SectorLinks,
+    Option<rebellion_core::ai_module_c::SectorLinks>,
+);
+
+/// The sector links of `ai` and `ai2` for [`SaveState::ai_sector_links`].
+#[must_use]
+pub fn sector_links(ai: &AIState, ai2: Option<&AIState>) -> AiSectorLinks {
+    (ai.module_c.links(), ai2.map(|a| a.module_c.links()))
+}
+
+/// Put `links` back into the movement planners of `ai` and `ai2`, after
+/// their [`SaveState::ai_command_planners`].
+pub fn restore_sector_links(ai: &mut AIState, ai2: Option<&mut AIState>, links: &AiSectorLinks) {
+    ai.module_c.restore_links(&links.0);
+    if let (Some(ai2), Some(second)) = (ai2, links.1.as_ref()) {
+        ai2.module_c.restore_links(second);
+    }
+}
+
 impl SaveState {
     /// Put [`Self::ai_command_planners`] back into the AI states.
     pub fn restore_command_planners(&mut self) {
@@ -642,6 +687,7 @@ impl SaveState {
         if let (Some(ai2), Some(second)) = (self.ai2.as_mut(), second) {
             ai2.module_c = second;
         }
+        restore_sector_links(&mut self.ai, self.ai2.as_mut(), &self.ai_sector_links);
     }
 }
 
@@ -1468,6 +1514,7 @@ mod tests {
             squadron_damage: Vec::new(),
             system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
             ai_command_planners: AiCommandPlanners::default(),
+            ai_sector_links: AiSectorLinks::default(),
         }
     }
 
@@ -1907,11 +1954,25 @@ mod tests {
             + planners_tail()
     }
 
-    /// The length of the empty movement planners v129 added.
+    /// The length of the empty movement planners v129 added, and what
+    /// came after.
     fn planners_tail() -> usize {
         bincode::serialize(&AiCommandPlanners::default())
             .unwrap()
             .len()
+            + links_tail()
+    }
+
+    /// The length of the empty sector links v130 added.
+    fn links_tail() -> usize {
+        bincode::serialize(&AiSectorLinks::default()).unwrap().len()
+    }
+
+    /// `state` written as a v129 file: no sector links. `state` holds
+    /// none.
+    fn write_v129(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.ai_sector_links, AiSectorLinks::default());
+        write_old(saves_dir, state, V129, links_tail())
     }
 
     /// `state` written as a v128 file: no movement planners. `state` holds
@@ -2271,6 +2332,76 @@ mod tests {
         assert_eq!(
             fingerprint_as(&state, V128).unwrap(),
             fingerprint_as(&loaded, V128).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v129_save_loads_its_planners_with_no_sector_links() {
+        // v130 keeps the owner, flagship and station of the planners that
+        // serve a sector planner (FUN_00476d10, FUN_004bc5d0); a v129 save
+        // held only the strategy's types 1 and 6, which have none.
+        let saves_dir = tmp_dir("v129_migration");
+        let mut state = minimal_save_state();
+        let planner = rebellion_core::ai_module_c::CommandPlanner {
+            id: 2,
+            kind: 1,
+            ..Default::default()
+        };
+        state.ai.module_c.planners.push(planner);
+        state.ai_command_planners = command_planners(&state.ai, state.ai2.as_ref());
+        write_v129(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v129 save migrates");
+        assert_eq!(loaded.ai_sector_links, AiSectorLinks::default());
+        assert_eq!(loaded.ai.module_c, state.ai.module_c);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V129).unwrap(),
+            fingerprint_as(&loaded, V129).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_the_sector_links_of_the_officers_planners() {
+        // SaveState::ai_sector_links (v130): module 0xc's own encoding
+        // skips a planner's owner (+0x54), flagship (+0x28) and station
+        // (+0x48) and the sector cursor (+0x44, +0x40); the save carries
+        // them and the loader puts them back.
+        let saves_dir = tmp_dir("sector_links");
+        let mut state = minimal_save_state();
+        let station = state.world.systems.keys().next();
+        let planner = rebellion_core::ai_module_c::CommandPlanner {
+            id: 5,
+            kind: 4,
+            owner: 3,
+            flagship: Some(77),
+            station,
+            ..Default::default()
+        };
+        state.ai.module_c.planners.push(planner);
+        state.ai.module_c.sector_cursor = 3;
+        state.ai.module_c.sector_found = 2;
+        state.ai_command_planners = command_planners(&state.ai, state.ai2.as_ref());
+        state.ai_sector_links = sector_links(&state.ai, state.ai2.as_ref());
+        save_slot(&saves_dir, 0, "Links", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.ai.module_c, state.ai.module_c);
+        assert_eq!(loaded.ai.module_c.planners[0].owner, 3);
+        assert_eq!(loaded.ai.module_c.sector_cursor, 3);
+        // The links count in the current fingerprint.
+        let mut unlinked = state.clone();
+        unlinked.ai_sector_links = AiSectorLinks::default();
+        assert_ne!(
+            compute_state_fingerprint(&unlinked).unwrap(),
+            compute_state_fingerprint(&state).unwrap()
+        );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&state).unwrap()
         );
     }
 

@@ -11,9 +11,11 @@
 //! (`0x263`); type 6 (`FUN_00479a60`, vtable `0x65a3c0`) keeps the Emperor
 //! at Coruscant.
 //!
-//! port: the sector planners' types 3, 4 and 5 (`FUN_004bc290`, vtable
-//! `0x65c380`) are not ported, so module 8's planners ask for none here:
-//! states 2 and 3 of the module find no request.
+//! Types 3, 4 and 5 (`FUN_004bc290`, vtable `0x65c380`: `FUN_0047a3c0`
+//! Admiral, `FUN_0047a000` General, `FUN_00479f70` Commander) put an
+//! officer aboard a sector planner's flagship (its `+0x38`) and give him
+//! its command; states 2 and 3 of the module take the sector planner's
+//! requests (`FUN_004c8630`, `FUN_004c86b0`).
 
 use std::collections::HashMap;
 
@@ -21,6 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ai::AIAction;
 use crate::ai_module1::{Step, ANY};
+use crate::ai_module8::SectorPlanner;
 use crate::ai_records::{pick, sector_at, Galaxy, Mask, Order};
 use crate::character_command::CommandKind;
 use crate::ids::{CharacterKey, SectorKey, SystemKey};
@@ -37,6 +40,16 @@ pub const HELD: u32 = 1;
 /// Planner `+0x20` bit 2: it keeps its target (slot `+0x34`, `FUN_0047a480`,
 /// `FUN_00479ad0`).
 pub const KEPT: u32 = 2;
+
+/// Planner `+0x20` bit 4 (types 3 to 5): its member holds a command
+/// aboard the flagship (`FUN_004bc6d0`), or takes it now (`FUN_004bca20`).
+pub const RANKED: u32 = 4;
+/// Planner `+0x20` bit 8 (types 3 to 5): its member stands at its target,
+/// the flagship (`FUN_004bc6d0`), or is sent there (`FUN_004bca20`).
+pub const IN_PLACE: u32 = 8;
+/// Planner `+0x20` bit `0x10` (types 3 to 5): its member waits at the
+/// station (`FUN_004bca20`).
+pub const WAITING: u32 = 0x10;
 
 /// System record `+0x30` bit `0x10000000`: a system the side guards.
 ///
@@ -78,6 +91,39 @@ pub struct CommandPlanner {
     pub target: Option<SystemKey>,
     /// `+0x2c`: the character it holds.
     pub member: Option<CharacterKey>,
+    /// Types 3 to 5, `+0x54`: the sector planner it serves, 0 for none
+    /// (`FUN_00476d10`; `FUN_00476de0` clears it). The save keeps it apart
+    /// ([`OfficerPost`]).
+    #[serde(skip)]
+    pub owner: u32,
+    /// Types 3 to 5, `+0x28`: the owner's flagship, a capital ship's id
+    /// (`FUN_004bc5d0`).
+    #[serde(skip)]
+    pub flagship: Option<u64>,
+    /// Types 3 to 5, `+0x48`: the owner's station (`+0x3c`, `FUN_004bc5d0`).
+    #[serde(skip)]
+    pub station: Option<SystemKey>,
+}
+
+/// The fields of a type 3 to 5 planner that the save keeps apart from
+/// [`ModuleC`]'s own encoding (v130): [`CommandPlanner::owner`],
+/// [`CommandPlanner::flagship`], [`CommandPlanner::station`], by id.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OfficerPost {
+    pub id: u32,
+    pub owner: u32,
+    pub flagship: Option<u64>,
+    pub station: Option<SystemKey>,
+}
+
+/// What the save keeps of [`ModuleC`] beyond its own encoding (v130): the
+/// sector planner cursor `+0x44`, the sector planner found `+0x40`, and
+/// each planner's [`OfficerPost`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SectorLinks {
+    pub cursor: u32,
+    pub found: u32,
+    pub posts: Vec<OfficerPost>,
 }
 
 /// Module `0xc`'s fields (`FUN_004c8260`: `+0x3c..+0x4c`), its planner
@@ -104,6 +150,13 @@ pub struct ModuleC {
     /// Controller `+0x28`: the Alliance's guarded headquarters
     /// (`FUN_004e5870`).
     pub headquarters: Option<SystemKey>,
+    /// `+0x44`: the sector planner state 2 starts from (`FUN_004c8630`).
+    /// The save keeps it apart ([`SectorLinks`]).
+    #[serde(skip)]
+    pub sector_cursor: u32,
+    /// `+0x40`: the sector planner with a request that state 3 takes.
+    #[serde(skip)]
+    pub sector_found: u32,
 }
 
 impl Default for ModuleC {
@@ -119,6 +172,8 @@ impl Default for ModuleC {
             cancel: 0,
             made: [0; 2],
             headquarters: None,
+            sector_cursor: 0,
+            sector_found: 0,
         }
     }
 }
@@ -131,6 +186,8 @@ pub(crate) struct InputsC<'a, 'p> {
     pub(crate) kinds: &'a mut HashMap<SystemKey, u32>,
     pub(crate) planner: &'a mut Planner<'p>,
     pub(crate) is_alliance: bool,
+    /// Module 8's sector planners (controller `+0xd8`).
+    pub(crate) sector_planners: &'a mut [SectorPlanner],
 }
 
 impl InputsC<'_, '_> {
@@ -236,8 +293,9 @@ impl ModuleC {
     /// while more were; the Empire asks for a type 6 while it holds
     /// Coruscant, has no minor characters (side `+0xa4`) and made none,
     /// and cancels one when it has minors or has lost Coruscant and made
-    /// one. A cancellation names the first of the strategy's planners not
-    /// keeping its target (`+0x20` bit 2 clear), or none.
+    /// one. A cancellation names the first of the strategy's planners (slot
+    /// `+0xc` 2: types 1 and 6) not keeping its target (`+0x20` bit 2
+    /// clear), or none.
     pub fn strategy_requests(
         &mut self,
         guarded: i32,
@@ -267,7 +325,7 @@ impl ModuleC {
             self.cancel = self
                 .planners
                 .iter()
-                .find(|p| p.flags & KEPT == 0)
+                .find(|p| matches!(p.kind, 1 | 6) && p.flags & KEPT == 0)
                 .map_or(0, |p| p.id);
         }
     }
@@ -327,8 +385,10 @@ impl ModuleC {
     /// 1. `FUN_004c85b0`: cancel the planner the strategy names
     ///    (`FUN_0042ef90`) and make the type it asks for (`FUN_0042ef50`,
     ///    counted by `FUN_0041b5d0`);
-    /// 2. and 3. `FUN_004c8630`, `FUN_004c86b0`: a sector planner's
-    ///    request (port: none, as above);
+    /// 2. `FUN_004c8630`: from `+0x44`, the first sector planner asking
+    ///    (`FUN_00476cf0`: `+0xe0` or `+0xe4` set) into `+0x40`, the one
+    ///    after it into `+0x44`; none found goes to 4;
+    /// 3. `FUN_004c86b0`: that planner's requests ([`Self::sector_requests`]);
     /// 4. `FUN_004c8740`: from `+0x4c`, the first planner ready (slot
     ///    `+0x10`, `FUN_004bba90`: no member away on a mission or en
     ///    route) becomes `+0x48` and the one after it `+0x4c`; none ends
@@ -343,8 +403,12 @@ impl ModuleC {
                 self.state = 2;
                 Step::pending()
             }
-            // port: no sector planner asks (FUN_00476cf0 finds none).
             2 => {
+                self.state = if self.find_request(io) { 3 } else { 4 };
+                Step::pending()
+            }
+            3 => {
+                self.sector_requests(io);
                 self.state = 4;
                 Step::pending()
             }
@@ -400,14 +464,105 @@ impl ModuleC {
         }
         let kind = std::mem::take(&mut self.wanted);
         if matches!(kind, 1 | 6) {
-            let id = self.next_id;
-            self.next_id += 1;
-            self.planners.push(CommandPlanner {
-                id,
-                kind,
-                ..CommandPlanner::default()
-            });
+            self.make(kind);
             self.made[made_index(kind)] += 1;
+        }
+    }
+
+    /// `FUN_0042ef50` -> `FUN_0042efe0`: a new planner of `kind` at the
+    /// list's end; its id.
+    fn make(&mut self, kind: u32) -> u32 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.planners.push(CommandPlanner {
+            id,
+            kind,
+            ..CommandPlanner::default()
+        });
+        id
+    }
+
+    /// `FUN_004c8630`: from the sector planner `+0x44` names (else the
+    /// first), the first whose `+0xe0` or `+0xe4` is set (`FUN_00476cf0`)
+    /// into `+0x40` and the one after it into `+0x44`; with none both are
+    /// cleared, so the next search starts from the first.
+    fn find_request(&mut self, io: &InputsC<'_, '_>) -> bool {
+        let planners = &*io.sector_planners;
+        let start = planners
+            .iter()
+            .position(|p| p.id == self.sector_cursor)
+            .unwrap_or(0);
+        let found = planners
+            .iter()
+            .skip(start)
+            .position(|p| p.movement != [0, 0])
+            .map(|at| at + start);
+        let Some(at) = found else {
+            self.sector_found = 0;
+            self.sector_cursor = 0;
+            return false;
+        };
+        self.sector_found = planners[at].id;
+        self.sector_cursor = planners.get(at + 1).map_or(0, |p| p.id);
+        true
+    }
+
+    /// `FUN_004c86b0`: the sector planner `+0x40` names cancels the
+    /// planner its `+0xe4` names ([`cancel`]) and clears it; the type its
+    /// `+0xe0` names is made and, as a sector planner's (slot `+0xc` 1),
+    /// attached to it (`FUN_00476d10`: `+0xe0` cleared, the planner
+    /// counted by its type and given `+0x54`).
+    fn sector_requests(&mut self, io: &mut InputsC<'_, '_>) {
+        let found = self.sector_found;
+        let Some(sp) = io.sector_planners.iter_mut().find(|p| p.id == found) else {
+            return;
+        };
+        let [wanted, cancelled] = sp.movement;
+        if cancelled != 0 {
+            cancel(&mut self.planners, cancelled);
+            sp.movement[1] = 0;
+        }
+        if wanted != 0 {
+            let id = self.make(wanted);
+            if matches!(wanted, 3..=5) {
+                sp.movement[0] = 0;
+                if let Some(p) = self.planners.iter_mut().find(|p| p.id == id) {
+                    p.owner = found;
+                }
+            }
+        }
+    }
+
+    /// The fields the save keeps apart ([`SectorLinks`]).
+    #[must_use]
+    pub fn links(&self) -> SectorLinks {
+        SectorLinks {
+            cursor: self.sector_cursor,
+            found: self.sector_found,
+            posts: self
+                .planners
+                .iter()
+                .filter(|p| p.owner != 0 || p.flagship.is_some() || p.station.is_some())
+                .map(|p| OfficerPost {
+                    id: p.id,
+                    owner: p.owner,
+                    flagship: p.flagship,
+                    station: p.station,
+                })
+                .collect(),
+        }
+    }
+
+    /// Put back what [`Self::links`] gave.
+    pub fn restore_links(&mut self, links: &SectorLinks) {
+        self.sector_cursor = links.cursor;
+        self.sector_found = links.found;
+        for post in &links.posts {
+            if let Some(p) = self.planners.iter_mut().find(|p| p.id == post.id) {
+                p.owner = post.owner;
+                p.flagship = post.flagship;
+                p.station = post.station;
+            }
         }
     }
 
@@ -447,6 +602,9 @@ impl ModuleC {
     /// gives the order (`FUN_004bbc50`). Returns the order and whether the
     /// planner's cycle ended.
     fn step_planner(&mut self, at: usize, io: &mut InputsC<'_, '_>) -> (Option<AIAction>, bool) {
+        if matches!(self.planners[at].kind, 3..=5) {
+            return self.step_officer(at, io);
+        }
         let state = self.planners[at].state;
         let (order, done) = match state {
             1 => {
@@ -472,6 +630,49 @@ impl ModuleC {
                 }
             }
             4 => (order(&self.planners[at], io), true),
+            _ => {
+                self.planners[at].state = 1;
+                (None, false)
+            }
+        };
+        if done {
+            if let Some(p) = self.planners.get_mut(at).filter(|p| p.id == self.current) {
+                p.state = 0;
+            }
+        }
+        (order, done)
+    }
+
+    /// One state of a type 3 to 5 planner's step (`FUN_004bc480`): 1
+    /// releases a cancelled planner (`FUN_004bc520`), else 3 reads the
+    /// owner's flagship and station (`FUN_004bc5d0`), 2 the member (slot
+    /// `+0x28`), ending without one, and 4 gives the order (`FUN_004bca20`).
+    fn step_officer(&mut self, at: usize, io: &mut InputsC<'_, '_>) -> (Option<AIAction>, bool) {
+        let state = self.planners[at].state;
+        let (order, done) = match state {
+            1 => {
+                if self.planners[at].flags & CANCELLED != 0 {
+                    let p = self.planners.remove(at);
+                    (release(&p, io), true)
+                } else {
+                    self.planners[at].state = 3;
+                    (None, false)
+                }
+            }
+            3 => {
+                read_owner(&mut self.planners[at], io);
+                self.planners[at].state = 2;
+                (None, false)
+            }
+            2 => {
+                if officer(&mut self.planners[at], io) {
+                    self.planners[at].state = 4;
+                    (None, false)
+                } else {
+                    (None, true)
+                }
+            }
+            4 => (board(&mut self.planners[at], io), true),
             _ => {
                 self.planners[at].state = 1;
                 (None, false)
@@ -663,6 +864,253 @@ fn located(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
     })
 }
 
+/// `FUN_0042ef90` on planner `id`: a sector planner's planner (slot
+/// `+0xc` returns 1) with an owner is first taken off it (`FUN_00476de0`:
+/// the owner's count of its type drops, `+0x54` cleared); every one is
+/// marked [`CANCELLED`], so its next step releases it.
+///
+/// port: the owner's counts `+0xc8..+0xd0` are the planners naming it
+/// ([`officers_of`]), so clearing `+0x54` drops the count.
+pub(crate) fn cancel(planners: &mut [CommandPlanner], id: u32) {
+    if let Some(p) = planners.iter_mut().find(|p| p.id == id && id != 0) {
+        if matches!(p.kind, 3..=5) {
+            p.owner = 0;
+        }
+        p.flags |= CANCELLED;
+    }
+}
+
+/// The sector planner `owner`'s movement planners of `kind`, its count
+/// `+0xc8 + 4 * FUN_00479520(kind)` (type 3 index 0, 4 index 1, 5 index 2):
+/// `FUN_00476d10` raises it as it attaches one and `FUN_00476de0` lowers it
+/// as it takes one off.
+#[must_use]
+pub fn officers_of(planners: &[CommandPlanner], owner: u32, kind: u32) -> i32 {
+    let n = planners
+        .iter()
+        .filter(|p| owner != 0 && p.owner == owner && p.kind == kind)
+        .count();
+    i32::try_from(n).unwrap_or(i32::MAX)
+}
+
+/// The command a type 3 to 5 planner gives (slot `+0x1c`): type 3
+/// `FUN_0047a400` `0x262` Admiral, 4 `FUN_0047a040` `0x263` General, 5
+/// `FUN_00479fd0` `0x261` Commander.
+const fn command_of(kind: u32) -> CommandKind {
+    match kind {
+        3 => CommandKind::Admiral,
+        4 => CommandKind::General,
+        _ => CommandKind::Commander,
+    }
+}
+
+/// The capability a type 3 to 5 planner's member needs (`+0x50`, set by
+/// `FUN_0047a3c0`, `FUN_0047a000`, `FUN_00479f70`): record `+0x34`
+/// `0x1000000` Admiral, `0x4000000` General, `0x2000000` Commander
+/// (`FUN_00401d20`).
+const fn caps_of(kind: u32) -> u32 {
+    match kind {
+        3 => 0x100_0000,
+        4 => 0x400_0000,
+        _ => 0x200_0000,
+    }
+}
+
+/// The fleet carrying the capital ship `id`.
+fn ship_fleet(world: &GameWorld, id: u64) -> Option<crate::ids::FleetKey> {
+    world
+        .fleets
+        .iter()
+        .find(|(_, f)| f.capital_ships.iter().any(|s| s.id == id && s.alive))
+        .map(|(k, _)| k)
+}
+
+/// Whether character `c` stands at the flagship `flagship` (record `+0x38`
+/// equal to the planner's `+0x28`).
+///
+/// port: the port seats a fleet's characters on a ship of its own choice
+/// ([`crate::missions::seat_characters`]), and a Move takes a character to
+/// a fleet, not to one of its ships; a member aboard the flagship's fleet
+/// stands at the flagship.
+fn at_flagship(world: &GameWorld, c: CharacterKey, flagship: Option<u64>) -> bool {
+    let fleet = world.characters.get(c).and_then(|c| c.current_fleet);
+    fleet.is_some() && fleet == flagship.and_then(|id| ship_fleet(world, id))
+}
+
+/// `FUN_004bc5d0`: bit 2 cleared; from the owner (`+0x54`), the flagship
+/// (`+0x38`) into `+0x28` and the station (`+0x3c`) into `+0x48`; bit 2
+/// again when the first is a capital ship and the second a system.
+fn read_owner(p: &mut CommandPlanner, io: &InputsC<'_, '_>) {
+    p.flags &= !KEPT;
+    let owner = p.owner;
+    let Some(sp) = io
+        .sector_planners
+        .iter()
+        .find(|s| s.id == owner && owner != 0)
+    else {
+        return;
+    };
+    p.station = sp.station;
+    p.flagship = sp.flagship;
+    if p.flagship.is_some() && p.station.is_some() {
+        p.flags |= KEPT;
+    }
+}
+
+/// Slot `+0x28` of types 3 and 5 (`FUN_004bc6d0`) and 4 (`FUN_0047a050`):
+/// bits 1, 4, 8 and `0x10` cleared; a member neither injured nor a prisoner
+/// is kept (bit 1), with bit 8 when it stands at the flagship and 4 as well
+/// when it holds a command; else it is let go. Without one, and with an
+/// owner, the best free officer of the planner's capability and leadership
+/// 50 or more (`FUN_00403460(0x800002, +0x50, 0x4f4000f1, 0, 6, 50, 10000,
+/// 1)`; type 4 forbids `0x474000f1`, admitting a General reserved for
+/// research or diplomacy), merged with the nearest to the station or the
+/// sector's first system (`FUN_00403750`, `FUN_00432120(.., 0)`, order 2).
+/// Returns whether it holds a member.
+///
+/// port: the member's record `+0x2c` (the owner's plan id, slot `+0x20`)
+/// has no port counterpart.
+fn officer(p: &mut CommandPlanner, io: &mut InputsC<'_, '_>) -> bool {
+    p.flags &= !(HELD | RANKED | IN_PLACE | WAITING);
+    if let Some(c) = p.member {
+        match io.planner.flags(MissionMember::Character(c)) {
+            Some(flags) if flags & UNFIT == 0 => {
+                p.flags |= HELD;
+                if at_flagship(io.world, c, p.flagship) {
+                    p.flags |= IN_PLACE;
+                    if flags & COMMANDING != 0 {
+                        p.flags |= RANKED;
+                    }
+                }
+            }
+            _ => p.member = None,
+        }
+    }
+    if p.flags & HELD != 0 {
+        return true;
+    }
+    let owner = p.owner;
+    let Some(sp) = io
+        .sector_planners
+        .iter()
+        .find(|s| s.id == owner && owner != 0)
+    else {
+        return false;
+    };
+    let first = sp
+        .sector
+        .and_then(|s| io.galaxy.sector(s))
+        .and_then(|r| r.systems.first())
+        .map(|r| r.system);
+    let origin = p.station.or(first);
+    let forbid = if p.kind == 4 {
+        0x4740_00f1
+    } else {
+        0x4f40_00f1
+    };
+    let world = io.world;
+    let galaxy = &*io.galaxy;
+    let here = origin.and_then(|o| galaxy.system(o)).map(|r| r.position);
+    let near = move |m: MissionMember| -> Option<i32> {
+        let system = located(world, m)?;
+        let there = galaxy.system(system)?.position;
+        Some(crate::ai_records::squared_distance(there, here?))
+    };
+    let picked = io
+        .planner
+        .pick_officer((0x80_0002, caps_of(p.kind), forbid, 50), Some(&near));
+    if let Some(c) = picked {
+        p.member = Some(c);
+        p.flags |= HELD;
+    }
+    p.flags & HELD != 0
+}
+
+/// `FUN_004bca20`: a member free for orders (none of `0x74000f1`):
+/// - at the flagship and without a command, it takes slot `+0x1c`'s
+///   (bit 4);
+/// - with no flagship, it moves to the station unless there (bit `0x10`);
+/// - aboard another fleet, not en route: where the flagship is, not en
+///   route, it boards it (bit 8, a Move `0x201` to the ship); elsewhere it
+///   moves to the station;
+/// - on a planet: in the flagship's system, not en route, it boards it
+///   (bit 8); elsewhere it moves to the station unless there (bit `0x10`).
+fn board(p: &mut CommandPlanner, io: &InputsC<'_, '_>) -> Option<AIAction> {
+    let c = p.member?;
+    let member = MissionMember::Character(c);
+    let flags = io.planner.flags(member)?;
+    if flags & BUSY != 0 {
+        return None;
+    }
+    let move_to = |to: SystemKey| AIAction::DispatchMission {
+        kind: MissionKind::Move,
+        team: vec![member],
+        decoys: Vec::new(),
+        target_system: to,
+        target_character: None,
+        target_object: None,
+    };
+    let Some(flagship) = p.flagship else {
+        let station = p.station?;
+        if standing_system(io.world, member) == Some(station) {
+            p.flags |= WAITING;
+            return None;
+        }
+        return Some(move_to(station));
+    };
+    if at_flagship(io.world, c, Some(flagship)) {
+        if flags & COMMANDING != 0 {
+            return None;
+        }
+        p.flags |= RANKED;
+        return Some(AIAction::Command {
+            character: c,
+            kind: command_of(p.kind),
+        });
+    }
+    let target = ship_fleet(io.world, flagship)?;
+    let record = io.galaxy.fleets.get(&target)?;
+    let ship_moving = record
+        .ships
+        .iter()
+        .find(|s| s.id == flagship)
+        .is_none_or(|s| s.flags & 0x800 != 0);
+    let there = io.world.fleets.get(target)?.location;
+    let character = io.world.characters.get(c)?;
+    if let Some(fleet) = character.current_fleet {
+        let own = io.galaxy.fleets.get(&fleet)?;
+        let seat = own
+            .ships
+            .iter()
+            .find(|s| Some(s.id) == character.ship)
+            .or_else(|| own.ships.first())?;
+        if seat.flags & 0x800 != 0 {
+            return None;
+        }
+        if io.world.fleets.get(fleet)?.location != there {
+            return p.station.map(move_to);
+        }
+    } else {
+        let here = standing_system(io.world, member);
+        if here != Some(there) {
+            let station = p.station?;
+            if here == Some(station) {
+                p.flags |= WAITING;
+                return None;
+            }
+            return Some(move_to(station));
+        }
+    }
+    if ship_moving {
+        return None;
+    }
+    p.flags |= IN_PLACE;
+    Some(AIAction::BoardFleet {
+        character: c,
+        fleet: target,
+    })
+}
+
 /// `FUN_004bbc50`: a member free for orders (none of `0x74000f1`) standing
 /// at the target takes its command (slot `+0x1c`: `0x263` General; type 6,
 /// slot `+0x18` 6, takes none); elsewhere it moves there (`0x201`,
@@ -729,6 +1177,7 @@ mod tests {
             kinds: &mut fx.kinds,
             planner: &mut planner,
             is_alliance: true,
+            sector_planners: &mut [],
         };
         f(&mut io)
     }
@@ -952,6 +1401,7 @@ mod tests {
             flags: CANCELLED | KEPT | HELD,
             target: Some(fx.systems[1]),
             member: Some(c),
+            ..CommandPlanner::default()
         });
         m.current = 4;
         let (order, done) = with(&mut fx, |io| m.step_planner(0, io));
@@ -1240,6 +1690,7 @@ mod tests {
                 kinds: &mut fx.kinds,
                 planner: &mut planner,
                 is_alliance: true,
+                sector_planners: &mut [],
             };
             assert_eq!(capital(&mut io), Some(fx.systems[2]), "tick {tick}");
         }
@@ -1338,5 +1789,600 @@ mod tests {
         let last = last.expect("the cycle ends");
         assert_eq!((last.order, last.raise, m.state), (None, false, 0));
         assert_eq!(m.planners[0].state, 0);
+    }
+
+    /// Run `f` with module `0xc`'s inputs and `sector_planners`.
+    fn with_owners<R>(
+        fx: &mut Fx,
+        sector_planners: &mut [SectorPlanner],
+        f: impl FnOnce(&mut InputsC<'_, '_>) -> R,
+    ) -> R {
+        let missions = MissionState::new();
+        let busy = HashSet::new();
+        let mut planner = Planner::new(&fx.world, &missions, &busy, true, 7);
+        let mut io = InputsC {
+            world: &fx.world,
+            galaxy: &mut fx.galaxy,
+            kinds: &mut fx.kinds,
+            planner: &mut planner,
+            is_alliance: true,
+            sector_planners,
+        };
+        f(&mut io)
+    }
+
+    /// A sector planner `id` of the fixture's first sector.
+    fn owner(fx: &Fx, id: u32) -> SectorPlanner {
+        SectorPlanner {
+            id,
+            sector: Some(fx.sectors[0]),
+            kind: 6,
+            ..SectorPlanner::default()
+        }
+    }
+
+    #[test]
+    fn a_sector_planner_s_request_makes_an_officer_post_attached_to_it() {
+        // FUN_004c8630: from +0x44, the first sector planner with +0xe0 or
+        // +0xe4 (FUN_00476cf0) into +0x40, the next into +0x44. FUN_004c86b0:
+        // +0xe4 cancelled (FUN_0042ef90 -> FUN_00476de0: +0x54 cleared);
+        // +0xe0's type made (FUN_0042ef50) and attached (FUN_00476d10:
+        // +0xe0 cleared, +0x54 the sector planner). Only the strategy's
+        // types count in controller +0x35c/+0x360 (FUN_0041b5d0).
+        let mut fx = fixture();
+        let mut owners = [owner(&fx, 2), owner(&fx, 3), owner(&fx, 4)];
+        owners[1].movement = [4, 0];
+        let mut m = ModuleC {
+            state: 2,
+            ..ModuleC::default()
+        };
+        with_owners(&mut fx, &mut owners, |io| {
+            m.step(io);
+            assert_eq!((m.state, m.sector_found, m.sector_cursor), (3, 3, 4));
+            m.step(io);
+        });
+        assert_eq!(m.state, 4);
+        assert_eq!(m.planners.len(), 1);
+        let made = m.planners[0].clone();
+        assert_eq!((made.kind, made.owner), (4, 3));
+        assert_eq!(owners[1].movement, [0, 0]);
+        assert_eq!(m.made, [0, 0]);
+        assert_eq!(officers_of(&m.planners, 3, 4), 1);
+
+        // From +0x44 (planner 4) no request is left: both are cleared, so
+        // the next search starts from the first.
+        m.state = 2;
+        with_owners(&mut fx, &mut owners, |io| m.step(io));
+        assert_eq!((m.state, m.sector_found, m.sector_cursor), (4, 0, 0));
+
+        // A spare (+0xe4) is taken off its owner and cancelled.
+        owners[1].movement = [0, made.id];
+        m.state = 2;
+        with_owners(&mut fx, &mut owners, |io| {
+            m.step(io);
+            m.step(io);
+        });
+        assert_eq!(owners[1].movement, [0, 0]);
+        assert_eq!(m.planners[0].owner, 0);
+        assert_ne!(m.planners[0].flags & CANCELLED, 0);
+        assert_eq!(officers_of(&m.planners, 3, 4), 0);
+
+        // The search starts at +0x44: with requests on the first and the
+        // last planner and +0x44 naming the last, the last is found.
+        owners[0].movement = [3, 0];
+        owners[2].movement = [5, 0];
+        m.sector_cursor = 4;
+        m.state = 2;
+        with_owners(&mut fx, &mut owners, |io| m.step(io));
+        assert_eq!((m.state, m.sector_found, m.sector_cursor), (3, 4, 0));
+    }
+
+    #[test]
+    fn the_general_post_takes_a_general_near_the_station_and_boards_the_flagship() {
+        // FUN_004bc480: 3 reads the owner's flagship (+0x38) and station
+        // (+0x3c) (FUN_004bc5d0, bit 2); 2 picks a free General of
+        // leadership 50+ near the station (FUN_0047a050); 4
+        // (FUN_004bca20): on a planet of the flagship's system, a Move to
+        // the flagship (bit 8); aboard it, its command 0x263 (bit 4).
+        let mut fx = fixture();
+        let f = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let ship = fx.world.fleets[f].capital_ships[0].id;
+        let mut owners = [SectorPlanner {
+            flagship: Some(ship),
+            station: Some(fx.systems[0]),
+            ..owner(&fx, 2)
+        }];
+        let far = general(&mut fx, 3, 55);
+        let near = general(&mut fx, 1, 60);
+        let mut m = ModuleC {
+            planners: vec![CommandPlanner {
+                id: 1,
+                kind: 4,
+                owner: 2,
+                ..CommandPlanner::default()
+            }],
+            current: 1,
+            ..ModuleC::default()
+        };
+        let mut run = |fx: &mut Fx, m: &mut ModuleC| {
+            with_owners(fx, &mut owners, |io| {
+                let mut last = (None, false);
+                for _ in 0..6 {
+                    last = m.step_planner(0, io);
+                    if last.1 {
+                        break;
+                    }
+                }
+                last
+            })
+        };
+        let (order, done) = run(&mut fx, &mut m);
+        assert!(done);
+        let p = &m.planners[0];
+        assert_eq!((p.flagship, p.station), (Some(ship), Some(fx.systems[0])));
+        assert_ne!(p.flags & KEPT, 0);
+        // The merged pick (FUN_004357b0): the nearer General leads both
+        // the leadership list and the distance list (FUN_00403750).
+        let member = p.member.expect("a General is held");
+        assert_eq!(member, near);
+        let _ = far;
+        fx.world.characters[member].current_system = Some(fx.systems[1]);
+        m.planners[0].member = Some(member);
+        let _ = order;
+        let (order, _) = run(&mut fx, &mut m);
+        assert_eq!(
+            order,
+            Some(AIAction::BoardFleet {
+                character: member,
+                fleet: f
+            })
+        );
+        assert_ne!(m.planners[0].flags & IN_PLACE, 0);
+
+        // Aboard the flagship's fleet: the command, then nothing.
+        fx.world.characters[member].current_fleet = Some(f);
+        fx.world.fleets[f].characters.push(member);
+        let (order, _) = run(&mut fx, &mut m);
+        assert_eq!(
+            order,
+            Some(AIAction::Command {
+                character: member,
+                kind: CommandKind::General
+            })
+        );
+        assert_eq!(m.planners[0].flags & (IN_PLACE | RANKED), IN_PLACE | RANKED);
+        fx.world.characters[member].command = CommandKind::General;
+        let (order, _) = run(&mut fx, &mut m);
+        assert_eq!(order, None);
+        assert_eq!(m.planners[0].flags & (IN_PLACE | RANKED), IN_PLACE | RANKED);
+    }
+
+    #[test]
+    fn an_officer_away_from_the_flagship_s_system_goes_to_the_station_and_waits_there() {
+        // FUN_004bca20: on a planet of another system, a Move to the station
+        // (+0x48), or waiting there (bit 0x10); with no flagship, the same.
+        let mut fx = fixture();
+        let f = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let ship = fx.world.fleets[f].capital_ships[0].id;
+        let c = general(&mut fx, 3, 60);
+        let mut p = CommandPlanner {
+            id: 1,
+            kind: 4,
+            owner: 2,
+            member: Some(c),
+            flagship: Some(ship),
+            station: Some(fx.systems[0]),
+            ..CommandPlanner::default()
+        };
+        let moved = with(&mut fx, |io| board(&mut p, io));
+        assert!(matches!(
+            moved,
+            Some(AIAction::DispatchMission {
+                kind: MissionKind::Move,
+                target_system,
+                ..
+            }) if target_system == fx.systems[0]
+        ));
+        fx.world.characters[c].current_system = Some(fx.systems[0]);
+        assert_eq!(with(&mut fx, |io| board(&mut p, io)), None);
+        assert_ne!(p.flags & WAITING, 0);
+        p.flags = 0;
+        p.flagship = None;
+        assert_eq!(with(&mut fx, |io| board(&mut p, io)), None);
+        assert_ne!(p.flags & WAITING, 0);
+    }
+
+    #[test]
+    fn the_strategy_cancels_only_its_own_posts() {
+        // FUN_004eaaa0: a cancellation names the first planner whose slot
+        // +0xc returns 2 (the strategy's types 1 and 6, FUN_0040f340 gives
+        // 1 for types 3 to 5) and whose +0x20 lacks bit 2.
+        let mut m = ModuleC {
+            planners: vec![
+                CommandPlanner {
+                    id: 1,
+                    kind: 4,
+                    owner: 2,
+                    ..CommandPlanner::default()
+                },
+                CommandPlanner {
+                    id: 2,
+                    kind: 1,
+                    ..CommandPlanner::default()
+                },
+            ],
+            made: [1, 0],
+            ..ModuleC::default()
+        };
+        m.strategy_requests(0, 0, false, true);
+        assert_eq!(m.cancel, 2);
+        m.planners.truncate(1);
+        m.strategy_requests(0, 0, false, true);
+        assert_eq!(m.cancel, 0);
+    }
+
+    #[test]
+    fn the_sector_links_carry_each_officer_post_and_the_cursor_back() {
+        // ModuleC::links / restore_links: what the save keeps apart (v130)
+        // of +0x54, +0x28 and +0x48 per planner and the module's +0x40 and
+        // +0x44; a planner with none of them is left out.
+        let station = Some(SystemKey::default());
+        let post = |id, owner, flagship, station| CommandPlanner {
+            id,
+            kind: 4,
+            owner,
+            flagship,
+            station,
+            ..CommandPlanner::default()
+        };
+        let m = ModuleC {
+            planners: vec![
+                post(1, 2, None, None),
+                post(2, 0, Some(9), None),
+                post(3, 0, None, station),
+                post(4, 0, None, None),
+            ],
+            sector_cursor: 5,
+            sector_found: 6,
+            ..ModuleC::default()
+        };
+        let links = m.links();
+        let ids: Vec<u32> = links.posts.iter().map(|p| p.id).collect();
+        assert_eq!(ids, vec![1, 2, 3]);
+        assert_eq!((links.cursor, links.found), (5, 6));
+        let mut bare = m.clone();
+        for p in &mut bare.planners {
+            *p = post(p.id, 0, None, None);
+        }
+        bare.sector_cursor = 0;
+        bare.sector_found = 0;
+        bare.restore_links(&links);
+        assert_eq!(bare, m);
+    }
+
+    #[test]
+    fn the_admiral_and_commander_posts_take_their_own_officers_and_commands() {
+        // FUN_0047a3c0 (+0x50 0x1000000, slot +0x1c 0x262 Admiral) and
+        // FUN_00479f70 (0x2000000, 0x261 Commander): the member query asks
+        // for the type's capability (FUN_00401d20), and aboard the
+        // flagship the member takes the type's command (FUN_004bca20).
+        let mut fx = fixture();
+        let f = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let ship = fx.world.fleets[f].capital_ships[0].id;
+        let leader = general(&mut fx, 1, 90);
+        let minor = |fx: &mut Fx, admiral: bool| {
+            let c = general(fx, 1, 60);
+            let ch = &mut fx.world.characters[c];
+            ch.can_be_general = false;
+            ch.can_be_admiral = admiral;
+            ch.can_be_commander = !admiral;
+            c
+        };
+        let admiral = minor(&mut fx, true);
+        let commander = minor(&mut fx, false);
+        let mut owners = [SectorPlanner {
+            flagship: Some(ship),
+            station: Some(fx.systems[1]),
+            ..owner(&fx, 2)
+        }];
+        for (kind, member, command) in [
+            (3, admiral, CommandKind::Admiral),
+            (5, commander, CommandKind::Commander),
+        ] {
+            let mut p = CommandPlanner {
+                id: 1,
+                kind,
+                owner: 2,
+                flagship: Some(ship),
+                station: Some(fx.systems[1]),
+                ..CommandPlanner::default()
+            };
+            assert!(
+                with_owners(&mut fx, &mut owners, |io| officer(&mut p, io)),
+                "type {kind}"
+            );
+            assert_eq!(p.member, Some(member), "type {kind}");
+            fx.world.characters[member].current_fleet = Some(f);
+            let order = with_owners(&mut fx, &mut owners, |io| board(&mut p, io));
+            assert_eq!(
+                order,
+                Some(AIAction::Command {
+                    character: member,
+                    kind: command
+                })
+            );
+        }
+        // The better leader, a General only, is passed over by both.
+        let _ = leader;
+    }
+
+    #[test]
+    fn a_lost_flagship_sends_no_officer_and_is_no_place_to_stand() {
+        // FUN_004bca20: the target (+0x28) is a capital ship; once it is
+        // gone (FUN_004f5940 finds no record) no order is given, and a
+        // member on a planet does not stand at it.
+        let mut fx = fixture();
+        let f = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let ship = fx.world.fleets[f].capital_ships[0].id;
+        fx.world.fleets[f].capital_ships[0].alive = false;
+        let c = general(&mut fx, 1, 60);
+        let mut p = CommandPlanner {
+            id: 1,
+            kind: 4,
+            owner: 2,
+            member: Some(c),
+            flagship: Some(ship),
+            station: Some(fx.systems[1]),
+            ..CommandPlanner::default()
+        };
+        assert_eq!(with(&mut fx, |io| board(&mut p, io)), None);
+        assert_eq!(p.flags & (IN_PLACE | RANKED), 0);
+    }
+
+    #[test]
+    fn reading_the_owner_drops_the_kept_bit_and_keeps_the_others() {
+        // FUN_004bc5d0: +0x20 bit 2 cleared first (& 0xfffffffd), set again
+        // only with both a flagship and a station; the other bits stay.
+        let mut fx = fixture();
+        let mut owners = [owner(&fx, 2)];
+        let mut p = CommandPlanner {
+            id: 1,
+            kind: 4,
+            owner: 2,
+            flags: HELD | KEPT | IN_PLACE,
+            ..CommandPlanner::default()
+        };
+        with_owners(&mut fx, &mut owners, |io| read_owner(&mut p, io));
+        assert_eq!(p.flags, HELD | IN_PLACE);
+        // An owner gone: the same.
+        p.flags = HELD | KEPT;
+        p.owner = 9;
+        with_owners(&mut fx, &mut owners, |io| read_owner(&mut p, io));
+        assert_eq!(p.flags, HELD);
+    }
+
+    #[test]
+    fn a_cancellation_names_one_planner_and_none_for_id_zero() {
+        // FUN_0042ef90 on an id: that planner only; FUN_005f5500(0) finds
+        // none.
+        let post = |id| CommandPlanner {
+            id,
+            kind: 3,
+            owner: 2,
+            ..CommandPlanner::default()
+        };
+        let mut planners = vec![post(1), post(2)];
+        cancel(&mut planners, 0);
+        assert_eq!((planners[0].flags, planners[1].flags), (0, 0));
+        cancel(&mut planners, 2);
+        assert_eq!((planners[0].flags, planners[0].owner), (0, 2));
+        assert_eq!((planners[1].flags, planners[1].owner), (CANCELLED, 0));
+    }
+
+    #[test]
+    fn only_the_general_post_admits_an_officer_reserved_for_diplomacy() {
+        // FUN_0047a050 forbids 0x474000f1, FUN_004bc6d0 0x4f4000f1: a
+        // record reserved for research or diplomacy (0x8000000,
+        // FUN_00402230: diplomacy above 79) may be a type 4's General but
+        // not a type 3's Admiral; one holding a command (0x7000000) is
+        // neither's.
+        let mut fx = fixture();
+        let c = general(&mut fx, 1, 60);
+        fx.world.characters[c].can_be_admiral = true;
+        fx.world.characters[c].diplomacy = SkillPair {
+            base: 90,
+            variance: 0,
+        };
+        let mut owners = [SectorPlanner {
+            station: Some(fx.systems[1]),
+            ..owner(&fx, 2)
+        }];
+        let mut pick = |fx: &mut Fx, kind| {
+            let mut p = CommandPlanner {
+                id: 1,
+                kind,
+                owner: 2,
+                station: Some(fx.systems[1]),
+                ..CommandPlanner::default()
+            };
+            with_owners(fx, &mut owners, |io| officer(&mut p, io));
+            p.member
+        };
+        assert_eq!(pick(&mut fx, 4), Some(c));
+        assert_eq!(pick(&mut fx, 3), None);
+        fx.world.characters[c].diplomacy.base = 0;
+        assert_eq!(pick(&mut fx, 3), Some(c));
+        fx.world.characters[c].command = CommandKind::General;
+        assert_eq!(pick(&mut fx, 3), None);
+        assert_eq!(pick(&mut fx, 4), None);
+    }
+
+    #[test]
+    fn an_officer_aboard_another_fleet_boards_the_flagship_only_beside_it() {
+        // FUN_004bca20, a member aboard another ship: neither ship en route
+        // (0x800), the fleets in one system: a Move to the flagship (bit
+        // 8); in different systems: a Move to the station (+0x48); its own
+        // ship en route: nothing.
+        let mut fx = fixture();
+        let target = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let other = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let ship = fx.world.fleets[target].capital_ships[0].id;
+        let c = general(&mut fx, 1, 60);
+        fx.world.characters[c].current_fleet = Some(other);
+        let station = Some(fx.systems[0]);
+        let post = |c| CommandPlanner {
+            id: 1,
+            kind: 4,
+            owner: 2,
+            member: Some(c),
+            flagship: Some(ship),
+            station,
+            ..CommandPlanner::default()
+        };
+        let mut p = post(c);
+        assert_eq!(
+            with(&mut fx, |io| board(&mut p, io)),
+            Some(AIAction::BoardFleet {
+                character: c,
+                fleet: target
+            })
+        );
+        assert_ne!(p.flags & IN_PLACE, 0);
+
+        // The flagship en route: nothing.
+        let mut p = post(c);
+        fx.galaxy.fleets.get_mut(&target).unwrap().ships[0].flags |= 0x800;
+        assert_eq!(with(&mut fx, |io| board(&mut p, io)), None);
+        assert_eq!(p.flags & IN_PLACE, 0);
+        fx.galaxy.fleets.get_mut(&target).unwrap().ships[0].flags &= !0x800;
+
+        // Its own ship en route: nothing.
+        fx.galaxy.fleets.get_mut(&other).unwrap().ships[0].flags |= 0x800;
+        assert_eq!(with(&mut fx, |io| board(&mut p, io)), None);
+        fx.galaxy.fleets.get_mut(&other).unwrap().ships[0].flags &= !0x800;
+
+        // In another system: to the station.
+        fx.world.fleets[other].location = fx.systems[3];
+        let order = with(&mut fx, |io| board(&mut p, io));
+        assert!(matches!(
+            order,
+            Some(AIAction::DispatchMission { kind: MissionKind::Move, target_system, .. })
+                if target_system == fx.systems[0]
+        ));
+    }
+
+    #[test]
+    fn an_officer_post_keeps_a_fit_member_and_lets_an_injured_one_go() {
+        // FUN_004bc6d0: +0x20 & ~0x1d first (bit 2 stays); a member without
+        // 0x50 is kept (1), at the flagship 8, with a rank 4 as well; an
+        // injured one (0x10) is let go, and with no other candidate the
+        // step ends (0). An owner not in the list picks nobody.
+        let mut fx = fixture();
+        let f = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let ship = fx.world.fleets[f].capital_ships[0].id;
+        let c = general(&mut fx, 1, 60);
+        let mut owners = [owner(&fx, 2)];
+        let mut p = CommandPlanner {
+            id: 1,
+            kind: 4,
+            owner: 2,
+            member: Some(c),
+            flagship: Some(ship),
+            flags: KEPT | RANKED | IN_PLACE | WAITING,
+            ..CommandPlanner::default()
+        };
+        assert!(with_owners(&mut fx, &mut owners, |io| officer(&mut p, io)));
+        assert_eq!(p.flags, KEPT | HELD);
+        fx.world.characters[c].current_fleet = Some(f);
+        assert!(with_owners(&mut fx, &mut owners, |io| officer(&mut p, io)));
+        assert_eq!(p.flags, KEPT | HELD | IN_PLACE);
+        fx.world.characters[c].command = CommandKind::General;
+        assert!(with_owners(&mut fx, &mut owners, |io| officer(&mut p, io)));
+        assert_eq!(p.flags, KEPT | HELD | IN_PLACE | RANKED);
+
+        fx.world.characters[c].injury = 10;
+        assert!(!with_owners(&mut fx, &mut owners, |io| officer(&mut p, io)));
+        assert_eq!((p.member, p.flags), (None, KEPT));
+
+        // A fit candidate, but the planner's owner is gone.
+        let other = general(&mut fx, 0, 70);
+        p.owner = 9;
+        assert!(!with_owners(&mut fx, &mut owners, |io| officer(&mut p, io)));
+        p.owner = 2;
+        assert!(with_owners(&mut fx, &mut owners, |io| officer(&mut p, io)));
+        assert_eq!(p.member, Some(other));
+    }
+
+    #[test]
+    fn the_owner_s_flagship_and_station_both_keep_the_target() {
+        // FUN_004bc5d0: bit 2 needs both the flagship (a capital ship) and
+        // the station (a system) of the owner +0x54 itself.
+        let mut fx = fixture();
+        let mut owners = [SectorPlanner {
+            flagship: Some(7),
+            station: Some(fx.systems[0]),
+            ..owner(&fx, 2)
+        }];
+        let read = |fx: &mut Fx, owners: &mut [SectorPlanner], owner| {
+            let mut p = CommandPlanner {
+                id: 1,
+                kind: 3,
+                owner,
+                ..CommandPlanner::default()
+            };
+            with_owners(fx, owners, |io| read_owner(&mut p, io));
+            (p.flags & KEPT, p.flagship)
+        };
+        assert_eq!(read(&mut fx, &mut owners, 2), (KEPT, Some(7)));
+        assert_eq!(read(&mut fx, &mut owners, 9), (0, None));
+        owners[0].flagship = None;
+        assert_eq!(read(&mut fx, &mut owners, 2), (0, None));
+    }
+
+    #[test]
+    fn an_officer_s_step_ends_back_at_state_zero() {
+        // FUN_004bc480: an ended step (*out set) resets +0x1c to 0.
+        let mut fx = fixture();
+        let mut owners = [owner(&fx, 2)];
+        let mut m = ModuleC {
+            planners: vec![CommandPlanner {
+                id: 1,
+                kind: 3,
+                owner: 2,
+                state: 2,
+                ..CommandPlanner::default()
+            }],
+            current: 1,
+            ..ModuleC::default()
+        };
+        let (_, done) = with_owners(&mut fx, &mut owners, |io| m.step_planner(0, io));
+        assert!(done);
+        assert_eq!(m.planners[0].state, 0);
+    }
+
+    #[test]
+    fn an_officer_rides_the_ship_he_is_seated_on() {
+        // FUN_004bca20 reads the member's own ship (record +0x38): seated
+        // on a ship en route (0x800), he is given nothing even when the
+        // fleet's first ship is at rest.
+        let mut fx = fixture();
+        let target = crate::ai_planner::tests::fleet(&mut fx, 1, 1);
+        let other = crate::ai_planner::tests::fleet(&mut fx, 1, 2);
+        let ship = fx.world.fleets[target].capital_ships[0].id;
+        let seat = fx.world.fleets[other].capital_ships[1].id;
+        let c = general(&mut fx, 1, 60);
+        fx.world.characters[c].current_fleet = Some(other);
+        fx.world.characters[c].ship = Some(seat);
+        fx.galaxy.fleets.get_mut(&other).unwrap().ships[1].flags |= 0x800;
+        let mut p = CommandPlanner {
+            id: 1,
+            kind: 4,
+            owner: 2,
+            member: Some(c),
+            flagship: Some(ship),
+            station: Some(fx.systems[0]),
+            ..CommandPlanner::default()
+        };
+        assert_eq!(with(&mut fx, |io| board(&mut p, io)), None);
     }
 }
