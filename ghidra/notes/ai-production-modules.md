@@ -1454,3 +1454,182 @@ with its headquarters, and the Empire does not take it by day 5000: after
 day 4000 it fights no battle and bombards Urdur three times. Whether its
 strategy and sector planners (`ai-sector-plans.md`) should send an
 assault there is not traced.
+
+## Module `0xa` (`FUN_004cc6b0`, step `FUN_004cc9c0`), read in full and ported (2026-11-21)
+
+Read from the decompile and checked in the assembly where it was unclear
+(`0x4cd253`, `0x4cd740`, `0x4cd040..0x4cd1d4`, `0x4cccf3`, `0x4cec9e`).
+The first read above has one error: the class module `0xa` builds in its
+first cycle is a **squadron** (`FUN_0041b230(.., 0x28, 0x200000, ..)`:
+class flag `0x200000` is a fighter class, `FUN_004736c0`, as in module
+7's `FUN_004d46e0`), not a ship. Module `0xa` keeps the squadrons of the
+side's fleets: it builds squadrons at its shipyard sites for a sector
+planner's base short of hangar squadrons or for a fleet with hangar room,
+scraps a fleet's weakest squadron when their upkeep is over budget, and
+builds shipyards under the yard token `0x10`. Its vtable `0x65c6f8` has
+slot `+0x18` = `FUN_004dd810` (the shared refusal: `+0x38`, `+0x3c` = 0).
+
+| Field | Meaning |
+|---|---|
+| `+0x24` | 8: the percent of the maintenance capacity it budgets |
+| `+0x38` | the cycle: `0x3f2` squadrons, `0x3ec` yards |
+| `+0x40`, `+0x44` | the sector planner whose base is served, and the next one (ids in controller `+0xd8`) |
+| `+0x58` | the site, then its shipyard manager; in the yard cycle the borrowed construction yard's manager |
+| `+0x5c` | where the squadrons go: a system or a fleet; in `FUN_004cd310` a fleet, then its ship |
+| `+0x60` | the yard cycle's target |
+| `+0x64` | the class: a squadron class, or the shipyard class |
+| `+0x68` | how many |
+| `+0x6c` | the borrowed yard's construction yards (`v[6]`, less one above 1) |
+| `+0x70` | the target's free room `v[0x33]` |
+| `+0x74` | the sites, marked `0x200000` |
+| `+0x7c` | the claimed sites |
+
+The step: `0x3ec` runs `FUN_004ccb50`, `0x3f2` `FUN_004cca20`, any other
+value sets `0x3f2`, state 0.
+
+### The squadron cycle (`FUN_004cca20`)
+
+| State | Action |
+|---|---|
+| other | 3 |
+| 3 | `FUN_004cccc0` keeps a site: 2. None: 8. |
+| 2 | `FUN_004cd040` chooses where and how many: 4. None: 8. |
+| 4 | `+0x3c` = `FUN_004cd230` (9, 5 or 0); 0: `+0x38 = 0x3ec`, complete. |
+| 8 | `FUN_004cd2f0` (the budget below 0): 5. Else `+0x3c = 0`, `+0x38 = 0x3ec`, not complete. |
+| 5 | `FUN_004cd310`: a Scrap or none. End. |
+| 9 | `FUN_004ce350(+0x5c)`: Destination `0x214` on the shipyard manager (`0xa2..0xa3`); with one, 10, complete, raise. None: end. |
+| 10 | `FUN_004ce490`: Build `0x211`, class `+0x64`, count `+0x68`. End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3ec`, complete.
+
+- `FUN_004cccc0` is module `0xb`'s `FUN_004ca300` on `+0x74` (the first
+  site still the side's, marked `0x200000`, with shipyards `v[4] > 0`,
+  idle `0x200`, calm), falling back on controller `+0x1c`, then `+0x24`;
+  the manager is the shipyard's (`FUN_00509670(0)`).
+- `FUN_004cd040`: `+0x68 = 0`. The walk of module 8's sector planners
+  (controller `+0xd8`) starts at the one `+0x44` names
+  (`FUN_005f5500`), else at the head, and does not wrap. For each,
+  `FUN_00476f90` sets planner `+0x9c` to the hangar room left in the
+  fleets it holds (`FUN_0041acd0(id, 1, 0, 0x17)`, fleet record `+0xac`,
+  `values[23]`) less the squadrons on its base's planet (`v[23]`,
+  `+0xa4`), and gives the base (`+0x40`) when that is above 0 and the
+  base has a record without a blockade (`+0x28` bit 2). The first such
+  base goes to `+0x5c`, `+0x9c` to `+0x68`; `+0x40` takes the planner's
+  id and `+0x44` the next one's (0 at the end). With none both clear, and
+  the side's fleets with `0x100005` (own, free, hangar room left),
+  forbidding `0xc02`, by key `0x17`, order 2 (`FUN_0041a4c0`), are
+  picked: a fleet with a record gives `+0x68 = 1`.
+- `FUN_004cd230`: `w` = `FUN_004cec20`; `w < 0` gives 5, `w == 0` 0.
+  Else the key is `0x8000` (the squadron class record's `+0x48`,
+  `values[6]`: torpedoes × squadron) on a draw `FUN_0041cd80(10) >= 6`
+  (`0x4cd253`: `cmp eax,6; setge`), else `0x400` (`+0x34`, `values[1]`);
+  the class is `FUN_0041b230(&+0x64, 0x28, 0x200000, key, 1)`. When the
+  class and its maintenance `m` are set and `m * count > w`,
+  `count = w / m`. A count above 0 is capped by the site manager's
+  shipyards (`FUN_004f2f60`, `FUN_00528040(0)`: those not suspended,
+  `+0x60` bit 0); controller `+0x20` clears (`FUN_004ece80`), and 9. A
+  count of 0 or less gives 0. With no class the count stands and 9
+  follows: the Build carries no class and is refused.
+- `FUN_004cec20`: 80% of `+0x24` percent of the capacity, less controller
+  `+0x254` (`FUN_0041ba80`: the own fleet records' `values[16]`, the
+  squadrons' maintenance aboard); 0 when the free maintenance falls short.
+- `FUN_004cd310`: the side's fleets `FUN_0041a4c0(5, 2, 9, 1)` (own,
+  free, not en route, by squadrons, the most); its ships
+  `FUN_0041ac80(0x24000, 0x800, 6, 1)` (own, free, not travelling, by
+  squadrons aboard); of that ship's squadrons (`FUN_005039d0(ship, 1)`)
+  the one with the lowest slot `+0x1f4` (`FUN_005031e0`): Scrap `0x200`.
+
+### The yard cycle (`FUN_004ccb50`)
+
+Module 7's (`FUN_004d3350`) with the token `0x10`, renumbered; every
+state function matches module 7's or module `0xb`'s but for the fields,
+and `FUN_004cd580` ranks its second system list on key 1 (`0x4cd740`)
+where module 7's `FUN_004d5000` and module `0xb`'s `FUN_004cacc0` rank
+on `0x33`.
+
+| State | Action |
+|---|---|
+| other | 2 |
+| 2 | `FUN_004cd580` chooses the target `+0x60`: 3. None: end. |
+| 3 | Clear controller `+8` bit `0x10`; with `+0xc == 0x10` and `FUN_004cd860` (`FUN_004e3810`): `FUN_004199b0`, 6. Else `0xb`. |
+| 6 | `FUN_004cda90` (`FUN_004d5510`): a Scrap or none (complete and raise with one). 4. |
+| 4 | `+0x3c` = `FUN_004cdfd0` (9, 7 or 0); 0: `+0x38 = 0x3f2`, complete. |
+| 7 | `FUN_004ce070` (`FUN_004d5af0`): a Scrap or none. End. |
+| 9 | `FUN_004ce5b0(+0x60)`: Destination on the construction manager (`0xa0..0xa1`); with one, 10, complete, raise. None: end. |
+| 10 | `FUN_004ce6f0`: Build `0x210` of `+0x64`, count `+0x68`. End. |
+| `0xb` | `FUN_004ce810` (module `0xb`'s `FUN_004cbe10`: adopt or request bit `0x10`, budget `FUN_004cec80`), `FUN_004ced60` (claim, `+0x7c`). End. |
+
+End: `+0x3c = 0`, `+0x38 = 0x3f2`, complete. `FUN_004cec80` is module
+7's `FUN_004d6700`: 20% of `+0x24` percent, less the sites' `v[34]`.
+
+### Ported (2026-11-21)
+
+`crates/rebellion-core/src/ai_module_a.rs`, save v136
+(`SaveState::ai_module_a`, the last field; the AI's own encoding skips
+it). The scheduler steps it with modules 1 to 7 and `0xb`
+(`ai::step_module`), its refusal is `ModuleA::refused`, and the pass no
+longer hands on the token `0x10` at its start.
+
+- `Inputs::random` is `FUN_0041cd80(n)` from the planner's draws;
+  `Tallies::wing_upkeep` is controller `+0x254`.
+- `ai_module3::choose_target_keyed` takes the second key;
+  `ai_module7::fifth_less_yards` is the 20% yard budget.
+
+port:
+- A production manager's destination is a system in the port
+  (`ProductionState::set_destination`). The original's Destination takes
+  a fleet from a shipyard manager (`FUN_00537180` refuses a non-system
+  only from the construction managers `0xa0..0xa1`); the port names the
+  fleet's system when the order is given, so the squadrons land on that
+  planet, where module 7's surplus cycle can carry them aboard.
+- A fleet's squadrons ride on its first ship's record (`ai_records`), so
+  `FUN_004cd310`'s ship is that one; the squadron is the fleet's weakest
+  (the smallest class, losses not counted).
+- The site fallbacks, controller `+0x1c`, `+0x20` and `+0x24`, have no
+  counterpart (as for modules 7 and `0xb`).
+
+Seeds 1-10 (dual AI, 5000 days), before (module `0xa` ordering nothing)
+and after:
+
+| Seed | Before: end | Systems A/E | Max fleets A/E | After: end | Systems A/E | Max fleets A/E |
+|---|---|---|---|---|---|---|
+| 1 | day 5000 | 38/22 | 31/26 | day 5000 | 32/28 | 27/34 |
+| 2 | Empire, day 3949 | 24/33 | 20/31 | day 5000 | 17/29 | 17/22 |
+| 3 | Empire, day 3373 | 6/37 | 17/32 | day 5000 | 25/26 | 32/18 |
+| 4 | day 5000 | 37/31 | 33/32 | day 5000 | 17/39 | 22/30 |
+| 5 | day 5000 | 43/14 | 32/20 | day 5000 | 33/24 | 20/15 |
+| 6 | day 5000 | 38/38 | 32/21 | day 5000 | 48/16 | 37/22 |
+| 7 | day 5000 | 17/56 | 32/28 | Empire (Death Star), day 2350 | 8/45 | 12/25 |
+| 8 | day 5000 | 3/49 | 22/61 | day 5000 | 26/26 | 21/30 |
+| 9 | day 5000 | 30/25 | 22/25 | Empire (Death Star), day 3241 | 32/24 | 24/23 |
+| 10 | day 5000 | 23/41 | 33/48 | day 5000 | 22/50 | 25/42 |
+
+Before, seeds 2 and 3 ended with the Alliance headquarters taken. After,
+no side exceeds 42 fleets (seed 8's Empire reached 61 before), and the
+two victories are the Death Star's (`victory_check` `DeathStarVictory`).
+The seed-42 golden is regenerated (save v136 and module `0xa`'s orders);
+`a_sweep_run_counts_what_its_days_report` runs 460 days, as seed 1's
+first ground battle moved from day 323 to day 457.
+
+### Modules 9 and `0xe`, looked at (2026-11-21)
+
+- Module `0xe` (`FUN_004d2810`, step `FUN_004d29b0`) gives only Rename
+  `0x203` to up to 10 capital ships with `+0x24` bit `0x4000`, readied
+  only while controller `+0x264` > 0 (`FUN_004d2970`). A Rename is not
+  counted against the day's orders. Cosmetic; it can wait.
+- Module 9 (`FUN_004cf0a0`, step `FUN_004cf290` -> `FUN_004cf2c0`) walks
+  its planners (`FUN_00474070`, vtable `0x65a3a0`; `+0x40`/`+0x44` as in
+  module `0xa`'s walk, `FUN_004cf350`) and steps one (`FUN_00474390`,
+  states 1 to 8, about 900 lines with `FUN_004744b0`, `FUN_004749b0`,
+  `FUN_00474c00`, `FUN_00474ce0`, `FUN_00474ff0`, `FUN_00475330`,
+  `FUN_004742b0`, `FUN_004747b0`). The strategy's state 5
+  (`FUN_004e69d0`) keeps as many planners as controller `+0x224`, the
+  sum of the sector records' `+0x1a0` (`FUN_0041b7e0`): the side's
+  systems with `+0x28` `0x80000000` (its headquarters) without `+0x28`
+  bit 2 (`FUN_00432350`). State 1 (`FUN_004744b0`) lets a planner go
+  when its system is no longer an own headquarters or is blockaded. So
+  module 9 plans for the headquarters, usually one planner. Its orders
+  (the pushes before `FUN_004f5cd0`): Create Fleet `0x270` in state 2
+  (`0x474b1b`) and Move `0x201` in states 5, 6 and 7 (`0x474f5e`,
+  `0x4752d2`, `0x475434`). Worth porting next, as a stage of its own
+  (not traced further here).
