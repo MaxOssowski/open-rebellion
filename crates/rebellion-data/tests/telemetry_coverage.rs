@@ -21,7 +21,6 @@ use rebellion_core::events::{EventAction, EventCondition, GameEvent, SystemTag};
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::game_events::*;
 use rebellion_core::tick::{GameClock, GameSpeed};
-use rebellion_core::tuning::GameConfig;
 use rebellion_core::world::SeedOptions;
 use rebellion_data::simulation::{run_simulation_tick, SimulationStates};
 
@@ -200,8 +199,6 @@ fn telemetry_coverage_all_sys_constants_emit() {
 
     // ── End fixture injections ──────────────────────────────────────────
 
-    let config = GameConfig::default();
-
     // Run 1000 ticks, collect all events
     let mut system_counts: HashMap<&str, usize> = HashMap::new();
     let mut total_events = 0usize;
@@ -210,8 +207,7 @@ fn telemetry_coverage_all_sys_constants_emit() {
     for tick in 1..=1000u64 {
         let tick_events = vec![rebellion_core::tick::TickEvent { tick }];
         let rolls: Vec<f64> = (0..1024).map(|_| rng.gen::<f64>()).collect();
-        let events =
-            run_simulation_tick(&mut world, &mut states, &tick_events, &rolls, tick, &config);
+        let events = run_simulation_tick(&mut world, &mut states, &tick_events, &rolls, tick);
 
         for evt in &events {
             if evt.system == SYS_EVENTS

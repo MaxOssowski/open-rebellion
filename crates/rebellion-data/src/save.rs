@@ -24,7 +24,7 @@
 //! migrating them.
 //!
 //! `SaveState` wraps all mutable simulation state, including the random-number
-//! generator and tuning configuration needed to continue deterministically.
+//! generator needed to continue deterministically.
 //! `GameWorld` (the entity
 //! arenas) is included because fleet positions, popularity, etc. change during
 //! play. Slotmap keys are stable across a session but are NOT portable across
@@ -62,7 +62,6 @@ use rebellion_core::repair::RepairState;
 use rebellion_core::research::ResearchState;
 use rebellion_core::tick::GameClock;
 use rebellion_core::troop_transport::TroopTransportState;
-use rebellion_core::tuning::GameConfig;
 use rebellion_core::uprising::UprisingState;
 use rebellion_core::victory::VictoryState;
 use rebellion_core::world::{CampaignConfig, GameWorld};
@@ -76,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 134;
+pub const SAVE_VERSION: u32 = 135;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -153,7 +152,11 @@ pub const V132: u32 = 132;
 /// (`SaveState::research_planner_bits`), its last field.
 pub const V133: u32 = 133;
 
-/// Whether a save of `version` loads (the current one, or v116 to v133
+/// v134: the save with the retired tuning configuration
+/// ([`RetiredTuning`]) after `SaveState::combat_cooldowns`.
+pub const V134: u32 = 134;
+
+/// Whether a save of `version` loads (the current one, or v116 to v134
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -223,11 +226,16 @@ type CommandsTail = (
 /// (the system views, the extras and the details), a v118 body four (the
 /// extras and the details), a v119 body two (the details); each of v117 to
 /// v120 then takes the two character copy maps, and each of v117 to v121
-/// the two character copy state maps.
+/// the two character copy state maps. A v116 to v134 body then loses its
+/// [`RetiredTuning`], which comes back beside the body.
 ///
 /// # Errors
-/// Returns an error if the empty fields cannot be encoded.
-pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+/// Returns an error if the empty fields cannot be encoded or the retired
+/// tuning cannot be read.
+fn migrate_body(
+    version: u32,
+    mut body: Vec<u8>,
+) -> anyhow::Result<(Vec<u8>, Option<RetiredTuning>)> {
     if version == MIGRATED_VERSION {
         body.extend(bincode::serialize(
             &rebellion_core::object_views::ObjectViews::default(),
@@ -302,7 +310,125 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         // passed its failure limit or holds an unread check or abort.
         body.extend(bincode::serialize(&AiResearchBits::default())?);
     }
-    Ok(body)
+    if version <= V134 {
+        let (body, tuning) = strip_retired_tuning(&body)?;
+        return Ok((body, Some(tuning)));
+    }
+    Ok((body, None))
+}
+
+/// The tuning configuration (`GameConfig`) a v116 to v134 body holds after
+/// `SaveState::combat_cooldowns`: the AI's six heuristic limits, the
+/// production doctrine's two and the three scoring targets. No rule read
+/// it once the production heuristic went; v135 drops it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct RetiredTuning {
+    ai: RetiredAiTuning,
+    production: RetiredProductionTuning,
+    scoring: RetiredScoringTuning,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct RetiredAiTuning {
+    diplomacy_target_popularity_cap: f32,
+    max_covert_ops_per_eval: u64,
+    max_construction_yards: u64,
+    troop_garrison_min: u64,
+    troop_garrison_donor_threshold: u64,
+    max_recon_per_eval: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct RetiredProductionTuning {
+    capship_threshold: u64,
+    fighter_ratio: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+struct RetiredScoringTuning {
+    victory_center: u32,
+    combat_pct_center: f64,
+    mfg_target: u32,
+}
+
+impl Default for RetiredTuning {
+    /// The values every v116 to v134 save of the app held.
+    fn default() -> Self {
+        // port: the retired heuristics' defaults (the removed tuning.rs).
+        Self {
+            ai: RetiredAiTuning {
+                diplomacy_target_popularity_cap: 0.8,
+                max_covert_ops_per_eval: 3,
+                max_construction_yards: 5,
+                troop_garrison_min: 1,
+                troop_garrison_donor_threshold: 3,
+                max_recon_per_eval: 2,
+            },
+            production: RetiredProductionTuning {
+                capship_threshold: 5,
+                fighter_ratio: 3,
+            },
+            scoring: RetiredScoringTuning {
+                victory_center: 3000,
+                combat_pct_center: 10.0,
+                mfg_target: 50,
+            },
+        }
+    }
+}
+
+/// The fields a v116 to v134 body holds before its [`RetiredTuning`], in
+/// `SaveState`'s order.
+type HeadBeforeTuning = (
+    (
+        GameWorld,
+        GameClock,
+        ManufacturingState,
+        MissionState,
+        EventState,
+        AIState,
+        MovementState,
+        FogState,
+        FogState,
+        bool,
+        BlockadeState,
+        UprisingState,
+        ResearchState,
+        VictoryState,
+        EconomyState,
+        Xoshiro256PlusPlus,
+    ),
+    (
+        Option<AIState>,
+        RepairState,
+        ProductionState,
+        rebellion_core::autoscrap::AutoscrapState,
+        rebellion_core::informant::InformantState,
+        rebellion_core::healing::HealingState,
+        rebellion_core::force_discovery::ForceDiscoveryState,
+        rebellion_core::dagobah::DagobahState,
+        rebellion_core::final_battle::FinalBattleState,
+        rebellion_core::jabba::JabbaState,
+        rebellion_core::seat_of_power::SeatOfPowerState,
+        std::collections::HashMap<SystemKey, u64>,
+    ),
+);
+
+/// A v134 layout `body` without its [`RetiredTuning`], and that tuning.
+fn strip_retired_tuning(body: &[u8]) -> anyhow::Result<(Vec<u8>, RetiredTuning)> {
+    let mut rest = body;
+    let _: HeadBeforeTuning = anyhow::Context::context(
+        bincode::deserialize_from(&mut rest),
+        "reading the fields before the retired tuning",
+    )?;
+    let head = body.len() - rest.len();
+    let tuning: RetiredTuning = anyhow::Context::context(
+        bincode::deserialize_from(&mut rest),
+        "reading the retired tuning",
+    )?;
+    let mut stripped = body[..head].to_vec();
+    stripped.extend_from_slice(rest);
+    Ok((stripped, tuning))
 }
 
 /// Decodes a save body of `version`, checks it against the fingerprint the
@@ -324,10 +450,10 @@ pub fn decode_body(
         "save version {version} is not supported by this build (it reads only versions \
          {MIGRATED_VERSION} to {SAVE_VERSION}). Please start a new game."
     );
-    let body = migrate_body(version, body)?;
+    let (body, tuning) = migrate_body(version, body)?;
     let mut state: SaveState =
         anyhow::Context::context(bincode::deserialize(&body), "deserializing save state")?;
-    let found = fingerprint_as(&state, version)?;
+    let found = fingerprint_with(&state, version, tuning.unwrap_or_default())?;
     anyhow::ensure!(
         expected == found,
         "save state fingerprint mismatch: expected {expected}, computed {found}"
@@ -494,10 +620,23 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 }
 
 /// The fingerprint a save of `version` wrote for `state`: a v116 save had no
-/// `object_views` field, a v117 one no system views in it.
+/// `object_views` field, a v117 one no system views in it, and a v116 to
+/// v134 one held the default [`RetiredTuning`].
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
+    fingerprint_with(state, version, RetiredTuning::default())
+}
+
+/// [`fingerprint_as`], with the [`RetiredTuning`] a v116 to v134 save held.
+fn fingerprint_with(
+    state: &SaveState,
+    version: u32,
+    tuning: RetiredTuning,
+) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V134 {
+            fields.insert("game_config".to_owned(), serde_json::to_value(tuning)?);
+        }
         if version <= V133 {
             fields.remove("research_planner_bits");
         }
@@ -640,8 +779,6 @@ pub struct SaveState {
         deserialize_with = "rebellion_core::serde_ordered::deserialize_hash_map"
     )]
     pub combat_cooldowns: std::collections::HashMap<SystemKey, u64>,
-    /// Tuning parameters used by the simulation that produced this state.
-    pub game_config: GameConfig,
     /// Original difficulty, galaxy-size, faction, and victory-condition choices.
     pub campaign_config: CampaignConfig,
     /// Regiments embarked aboard capital-ship transports.
@@ -1422,7 +1559,6 @@ pub(crate) mod tests {
             jabba: rebellion_core::jabba::JabbaState::default(),
             seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             combat_cooldowns: std::collections::HashMap::new(),
-            game_config: GameConfig::default(),
             campaign_config: CampaignConfig::default(),
             troop_transport: TroopTransportState::default(),
             deliveries: DeliveryState::default(),
@@ -1483,7 +1619,6 @@ pub(crate) mod tests {
         state.ai2.as_mut().unwrap().orders_today = 7;
         let system = state.world.systems.keys().next().unwrap();
         state.combat_cooldowns.insert(system, 61);
-        state.game_config.ai.troop_garrison_min = 13;
         state.campaign_config.galaxy_size = rebellion_core::dat::GalaxySize::Huge;
         state.campaign_config.difficulty = rebellion_core::world::SeedDifficulty::Hard;
         state.campaign_config.victory_conditions =
@@ -1557,7 +1692,6 @@ pub(crate) mod tests {
         assert_eq!(loaded_rolls, expected_rolls);
         assert_eq!(loaded.ai2.as_ref().unwrap().orders_today, 7);
         assert_eq!(loaded.combat_cooldowns.get(&system), Some(&61));
-        assert_eq!(loaded.game_config.ai.troop_garrison_min, 13);
         assert_eq!(loaded.campaign_config, state.campaign_config);
         assert!(loaded.repair.is_repairing(fleet));
         assert_eq!(loaded.troop_transport.cargo(fleet), &[troop]);
@@ -1611,12 +1745,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn fingerprint_covers_rng_and_configuration() {
+    fn fingerprint_covers_rng_and_campaign_choices() {
         let original = minimal_save_state();
         let mut rng_changed = original.clone();
         rng_changed.sim_rng.next_u64();
-        let mut config_changed = original.clone();
-        config_changed.game_config.ai.troop_garrison_min += 1;
         let mut campaign_changed = original.clone();
         campaign_changed.campaign_config.victory_conditions =
             rebellion_core::world::VictoryConditions::HeadquartersOnly;
@@ -1625,10 +1757,6 @@ pub(crate) mod tests {
         assert_ne!(
             original_fingerprint,
             compute_state_fingerprint(&rng_changed).unwrap()
-        );
-        assert_ne!(
-            original_fingerprint,
-            compute_state_fingerprint(&config_changed).unwrap()
         );
         assert_ne!(
             original_fingerprint,
@@ -2027,9 +2155,24 @@ pub(crate) mod tests {
     fn write_old(saves_dir: &std::path::Path, state: &SaveState, version: u32, cut: usize) -> usize {
         let mut body = bincode::serialize(state).unwrap();
         body.truncate(body.len() - cut);
-        // The old body alone is short of a current one.
+        if version <= V134 {
+            body = with_retired_tuning(&body, RetiredTuning::default());
+        }
+        // The old body alone is not a current one.
         assert!(bincode::deserialize::<SaveState>(&body).is_err());
         write_body(saves_dir, state, version, &body)
+    }
+
+    /// `body` with `tuning` after its `combat_cooldowns`, where a v116 to
+    /// v134 body held it.
+    fn with_retired_tuning(body: &[u8], tuning: RetiredTuning) -> Vec<u8> {
+        let mut rest = body;
+        let _: HeadBeforeTuning = bincode::deserialize_from(&mut rest).unwrap();
+        let head = body.len() - rest.len();
+        let mut old = body[..head].to_vec();
+        old.extend(bincode::serialize(&tuning).unwrap());
+        old.extend_from_slice(rest);
+        old
     }
 
     /// `body` written as a `version` file fingerprinted from `state`.
@@ -2452,6 +2595,43 @@ pub(crate) mod tests {
         assert_eq!(
             fingerprint_as(&state, V133).unwrap(),
             fingerprint_as(&loaded, V133).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v134_save_loads_without_its_tuning_configuration() {
+        // v135 drops the tuning configuration no rule read; a v134 save
+        // held it after combat_cooldowns, and its fingerprint covered it.
+        let saves_dir = tmp_dir("v134_migration");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        state.combat_cooldowns.insert(system, 61);
+        let mut tuning = RetiredTuning::default();
+        tuning.ai.troop_garrison_min = 13;
+        let body = with_retired_tuning(&bincode::serialize(&state).unwrap(), tuning);
+        assert_eq!(
+            body.len(),
+            bincode::serialize(&state).unwrap().len() + 76,
+            "the tuning's eleven fixed-width fields"
+        );
+        let fingerprint = fingerprint_with(&state, V134, tuning).unwrap();
+        let at = write_body(&saves_dir, &state, V134, &body);
+        let path = slot_path(&saves_dir, 0);
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes[at..at + 8].copy_from_slice(&fingerprint.value.to_le_bytes());
+        std::fs::write(&path, bytes).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v134 save migrates");
+        assert_eq!(loaded.combat_cooldowns.get(&system), Some(&61));
+        assert_eq!(loaded.campaign_config, state.campaign_config);
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_ne!(
+            fingerprint,
+            fingerprint_as(&state, V134).unwrap(),
+            "the fingerprint covered the saved tuning"
         );
     }
 
@@ -3007,7 +3187,10 @@ pub(crate) mod tests {
         // layout, so a v127 body loads and its entries are dropped.
         let saves_dir = tmp_dir("v127_migration");
         let (state, troop) = state_with_tracked_regiment();
-        let body = bincode::serialize(&state).unwrap();
+        let body = with_retired_tuning(
+            &bincode::serialize(&state).unwrap(),
+            RetiredTuning::default(),
+        );
         write_body(&saves_dir, &state, V127, &body);
 
         let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v127 save loads");

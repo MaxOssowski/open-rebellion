@@ -826,7 +826,6 @@ struct LiveCampaign<'a> {
     deliveries: &'a mut DeliveryState,
     player_agent: &'a mut PlayerAgent,
     combat_cooldowns: &'a mut std::collections::HashMap<rebellion_core::ids::SystemKey, u64>,
-    game_config: &'a mut rebellion_core::tuning::GameConfig,
     campaign_config: &'a mut CampaignConfig,
     ai_day: &'a mut AiDay,
     day_rolls: &'a mut Vec<f64>,
@@ -863,7 +862,6 @@ impl LiveCampaign<'_> {
             jabba: *self.jabba,
             seat_of_power: *self.seat_of_power,
             combat_cooldowns: self.combat_cooldowns.clone(),
-            game_config: self.game_config.clone(),
             campaign_config: *self.campaign_config,
             troop_transport: self.troop_transport.clone(),
             deliveries: self.deliveries.clone(),
@@ -931,7 +929,6 @@ impl LiveCampaign<'_> {
         *self.jabba = state.jabba;
         *self.seat_of_power = state.seat_of_power;
         *self.combat_cooldowns = state.combat_cooldowns;
-        *self.game_config = state.game_config;
         *self.campaign_config = state.campaign_config;
         *self.troop_transport = state.troop_transport;
         *self.deliveries = state.deliveries;
@@ -1554,7 +1551,6 @@ async fn main() {
     let mut mission_state = MissionState::new();
     let mut event_state = EventState::new();
     let mut ai_state = AIState::new(AiFaction::Empire);
-    let mut game_config = rebellion_core::tuning::GameConfig::default();
     let mut campaign_config = CampaignConfig::default();
     let mut dual_ai_mode = false;
     let mut secondary_ai_state: Option<AIState> = None;
@@ -3933,7 +3929,6 @@ async fn main() {
                                     economy_state = EconomyState::default();
                                     player_agent =
                                         PlayerAgent::for_new_game(campaign_config.difficulty);
-                                    game_config = rebellion_core::tuning::GameConfig::default();
                                     dual_ai_mode = false;
                                     secondary_ai_state = None;
 
@@ -8377,7 +8372,6 @@ async fn main() {
                         deliveries: &mut delivery_state,
                         player_agent: &mut player_agent,
                         combat_cooldowns: &mut combat_cooldowns,
-                        game_config: &mut game_config,
                         campaign_config: &mut campaign_config,
                         ai_day: &mut ai_day,
                         day_rolls: &mut day_rolls,
@@ -8465,7 +8459,6 @@ async fn main() {
                                 deliveries: &mut delivery_state,
                                 player_agent: &mut player_agent,
                                 combat_cooldowns: &mut combat_cooldowns,
-                                game_config: &mut game_config,
                                 campaign_config: &mut campaign_config,
                                 ai_day: &mut ai_day,
                                 day_rolls: &mut day_rolls,
@@ -20522,8 +20515,8 @@ mod shared_day_tests {
             GameSpeed::Medium,
             true,
             days,
-            &mut |world, states, ticks, rolls, config| {
-                run_simulation_tick(world, states, ticks, rolls, 0, config);
+            &mut |world, states, ticks, rolls| {
+                run_simulation_tick(world, states, ticks, rolls, 0);
             },
         )
         .unwrap();
@@ -20545,7 +20538,7 @@ mod shared_day_tests {
             GameSpeed::Medium,
             true,
             days,
-            &mut |world, sim, ticks, rolls, _config| {
+            &mut |world, sim, ticks, rolls| {
                 let mut presentation = AppDayPresentation {
                     log: &mut log,
                     battled: &mut battled,

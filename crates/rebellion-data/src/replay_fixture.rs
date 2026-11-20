@@ -16,7 +16,6 @@ use rebellion_core::production_cycle::ProductionState;
 use rebellion_core::repair::RepairState;
 use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, GameSpeed};
-use rebellion_core::tuning::GameConfig;
 use rebellion_core::uprising::UprisingState;
 use rebellion_core::victory::VictoryState;
 use rebellion_core::world::{CampaignConfig, GameWorld, SeedOptions, VictoryConditions};
@@ -33,23 +32,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:fced619ce2ca908d";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:7e17004f001a7e12";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:01d8bea72cbe41a2";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:c6dfd9ca5c0c9869";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:b7ea2bdda3907cf9"),
-    (2, 0, "v1:11dd5eedf05070e5"),
-    (3, 5, "v1:c55b9f73eb2c7dcd"),
-    (4, 10, "v1:8d1997eb051f7b97"),
-    (5, 15, "v1:2a33f8328ce63993"),
-    (6, 20, "v1:ef0ddf1876a487c8"),
-    (7, 25, "v1:e6ad5409b4b12420"),
-    (8, 25, "v1:7e17004f001a7e12"),
-    (9, 25, "v1:7e17004f001a7e12"),
+    (1, 0, "v1:6b5fe4b727e97fea"),
+    (2, 0, "v1:7b705b652edfc09c"),
+    (3, 5, "v1:f9711c64988d9fea"),
+    (4, 10, "v1:54efbc5e02e4af06"),
+    (5, 15, "v1:3b75d0d23379ab66"),
+    (6, 20, "v1:70a986737658b64b"),
+    (7, 25, "v1:7ae98f0834a27f67"),
+    (8, 25, "v1:c6dfd9ca5c0c9869"),
+    (9, 25, "v1:c6dfd9ca5c0c9869"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,7 +240,6 @@ pub fn campaign_initial_state(world: GameWorld, seed: u64) -> anyhow::Result<Sav
         jabba: rebellion_core::jabba::JabbaState::default(),
         seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
         combat_cooldowns: std::collections::HashMap::new(),
-        game_config: GameConfig::default(),
         campaign_config: CampaignConfig::from_seed_options(options, VictoryConditions::Standard),
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),

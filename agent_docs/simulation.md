@@ -157,9 +157,9 @@ the day's start (`SliceRolls`, padded with 1.0; the app saves them,
 campaign; the app's tactical battles are the one exception.
 `SimulationStates` bundles all 15 state types plus combat cooldowns and economy
 state. `GameEventRecord` (in `rebellion-core/src/game_events.rs`) is structured
-telemetry with no IO. The `config` parameter (`&GameConfig` from `tuning.rs`)
-controls tunable AI, movement, and production behavior; the playtest binary
-accepts `--config <path>` for autoresearch.
+telemetry with no IO. The tuning configuration (`GameConfig`, `tuning.rs`)
+and the playtest binary's `--config <path>` were removed once no day system
+read them (2026-11-21, save v135).
 
 **Architecture**: simulation.rs is a thin orchestrator that calls `advance()` on each system and delegates mutation + telemetry to integrator methods. No `events.push()` calls remain in simulation.rs — `integrator.finish()` is the sole return path.
 

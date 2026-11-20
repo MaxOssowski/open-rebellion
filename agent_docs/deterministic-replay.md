@@ -33,20 +33,21 @@ it does not yet make the app and playtest simulation loops equivalent.
 | Tactical battle native/WASM equality | Complete 2026-11-20 | Same battle headless with Observe Battle; `portable_math` |
 | Automatic = tactical outcome | Not comparable | Different engines (see below) |
 
-## Format v1
+## Format v2
 
-`ReplayManifest` contains:
+Format v2 (2026-11-21) is v1 without the tuning configuration's
+fingerprint, which went with `GameConfig` (save v135). `ReplayManifest`
+contains:
 
 - a format and engine version;
 - the deterministic seed, RNG identity, and fixed roll budget;
 - every simulation `.DAT` input in canonical filename order;
-- the active `GameConfig` fingerprint;
 - the initial state fingerprint;
 - ordered `ReplayCommandRecord` values; and
 - expected `ReplayCheckpoint` values.
 
 Each command has the simulation tick immediately before application, a
-zero-based global sequence, an actor, and a typed command. Format v1 supports
+zero-based global sequence, an actor, and a typed command. Format v2 supports
 the current headless control commands. Existing command semantics may not
 change without incrementing `REPLAY_FORMAT_VERSION`.
 
@@ -173,7 +174,7 @@ depends on the player's commands and on wall-clock frames: the app steps
 (`advance_tactical_frame`), so the step count reached by any moment differs
 between machines. Its result is applied to the campaign outside the day loop
 (`tactical_flow.rs`) and has no replay command yet; replaying a played battle
-needs its commands recorded by step, which format v1 cannot express.
+needs its commands recorded by step, which format v2 cannot express.
 
 ## Validation
 
@@ -198,7 +199,7 @@ It records a nine-command, 25-tick campaign on the full 200-system galaxy
 must load through it), reloads its initial state through the current save
 format, and checks every command-prefix
 fingerprint against a cross-process golden, which currently runs
-`v1:fced619ce2ca908d` -> `v1:7e17004f001a7e12`. Any save layout or
+`v1:01d8bea72cbe41a2` -> `v1:c6dfd9ca5c0c9869`. Any save layout or
 simulation change moves every fingerprint; regenerate the golden only for a
 named cause and name it in the commit. The v13 goldens did not reproduce
 even at their own commit `e8d4945`; that cause remains open. The unit tests use

@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v134, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v130 migrations"
+description: "Native and browser save v135, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v134 migrations"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-11-20
+updated: 2026-11-21
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v134. v116 to v133 still load
+serializable snapshot. The current format is v135. v116 to v134 still load
 through their migrations (below); no other version does.
 
-## Native format (v134)
+## Native format (v135)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -69,7 +69,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `repair` | `RepairState`; v98 adds each repairing ship's timer `0x380` (due day, FastRepair period), by ship id |
 | `production` | `ProductionState`: each side's raw and refined stockpiles, the refineries waiting for raw material, and every mine's and refinery's cycle and upkeep allocation (v33); the yards waiting for refined material and every yard's cycle (v34) |
 | `combat_cooldowns` | `HashMap<SystemKey, u64>` |
-| `game_config` | `GameConfig` (v59 drops `AiConfig`'s `alliance_deploy_budget`, `empire_deploy_budget` and `ds_retreat_strength_ratio`; v60 its `max_attack_fronts`, `battle_cooldown_ticks`, `proximity_divisor` and the four `weight_*` attack scoring weights) |
+| ~~`game_config`~~ | Removed in v135: the tuning configuration (`GameConfig`) no rule read once the production heuristic went. A v116 to v134 body loses it on load (`save::RetiredTuning`, 76 bytes after `combat_cooldowns`), and its fingerprint is checked with it (v59 had dropped `AiConfig`'s `alliance_deploy_budget`, `empire_deploy_budget` and `ds_retreat_strength_ratio`; v60 its `max_attack_fronts`, `battle_cooldown_ticks`, `proximity_divisor` and the four `weight_*` attack scoring weights) |
 | `campaign_config` | `CampaignConfig` |
 | `troop_transport` | `TroopTransportState`; it keeps the squadrons travelling on their own (v47); v59 drops the fleets' hold; v112 adds the headquarters' trip (`headquarters_move::HeadquartersTransit`) |
 | `deliveries` | `DeliveryState`; v100 adds each delivery's side, for its autoroute when its destination is destroyed; v116 adds the name its order gave it |
@@ -111,9 +111,9 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## The v116 to v133 migrations
+## The v116 to v134 migrations
 
-The loader reads `SAVE_VERSION` (134), `V133`, `V132`, `V131`, `V130`, `V129`, `V128`, `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
+The loader reads `SAVE_VERSION` (135), `V134`, `V133`, `V132`, `V131`, `V130`, `V129`, `V128`, `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
 `MIGRATED_VERSION` (116). Any other version is rejected with a message to
 start a new game.
 
@@ -135,7 +135,11 @@ takes `seed_extras_from_fog` (v116 to v118) and `seed_details_from_fog`
 A v121 save's copies load without state bits, a v122 save's without
 command words. Every body before v132 lacks the AI day (`ai_day`) and
 loads with a finished day, since it was made between days. Every body
-before v134 lacks the research planners' bits and loads with none. A v123 or older save's queued units are placed in their
+before v134 lacks the research planners' bits and loads with none. Every
+body before v135 holds the retired tuning configuration after
+`combat_cooldowns`; `strip_retired_tuning` cuts it out after the tails
+are appended, and the old fingerprint is checked with it as its
+`game_config` key (`fingerprint_with`). A v123 or older save's queued units are placed in their
 containers on load (`products::reconcile`); its deliveries stay trips.
 A v127 body has v128's layout, but its blockade map tracked regiments
 aboard fleets, which the original never rolls

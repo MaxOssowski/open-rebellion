@@ -1,6 +1,6 @@
 {
   "format": "open-rebellion-replay",
-  "format_version": 1,
+  "format_version": 2,
   "engine_version": "0.1.0",
   "seed": 42,
   "rng": "xoshiro256++/0.6",
@@ -475,12 +475,7 @@
       }
     ]
   },
-  "config_fingerprint": {
-    "algorithm": "fnv1a64",
-    "version": 1,
-    "value": "549c2ff65ab39aee"
-  },
-  "initial_state_fingerprint": "v1:fced619ce2ca908d",
+  "initial_state_fingerprint": "v1:01d8bea72cbe41a2",
   "commands": [
     {
       "tick": 0,
@@ -565,47 +560,47 @@
     {
       "tick": 0,
       "command_count": 1,
-      "state_fingerprint": "v1:b7ea2bdda3907cf9"
+      "state_fingerprint": "v1:6b5fe4b727e97fea"
     },
     {
       "tick": 0,
       "command_count": 2,
-      "state_fingerprint": "v1:11dd5eedf05070e5"
+      "state_fingerprint": "v1:7b705b652edfc09c"
     },
     {
       "tick": 5,
       "command_count": 3,
-      "state_fingerprint": "v1:c55b9f73eb2c7dcd"
+      "state_fingerprint": "v1:f9711c64988d9fea"
     },
     {
       "tick": 10,
       "command_count": 4,
-      "state_fingerprint": "v1:8d1997eb051f7b97"
+      "state_fingerprint": "v1:54efbc5e02e4af06"
     },
     {
       "tick": 15,
       "command_count": 5,
-      "state_fingerprint": "v1:2a33f8328ce63993"
+      "state_fingerprint": "v1:3b75d0d23379ab66"
     },
     {
       "tick": 20,
       "command_count": 6,
-      "state_fingerprint": "v1:ef0ddf1876a487c8"
+      "state_fingerprint": "v1:70a986737658b64b"
     },
     {
       "tick": 25,
       "command_count": 7,
-      "state_fingerprint": "v1:e6ad5409b4b12420"
+      "state_fingerprint": "v1:7ae98f0834a27f67"
     },
     {
       "tick": 25,
       "command_count": 8,
-      "state_fingerprint": "v1:7e17004f001a7e12"
+      "state_fingerprint": "v1:c6dfd9ca5c0c9869"
     },
     {
       "tick": 25,
       "command_count": 9,
-      "state_fingerprint": "v1:7e17004f001a7e12"
+      "state_fingerprint": "v1:c6dfd9ca5c0c9869"
     }
   ]
 }

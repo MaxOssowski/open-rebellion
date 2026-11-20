@@ -1,7 +1,6 @@
 //! Versioned, platform-neutral replay artifacts.
 //!
-//! A replay identifies the exact simulation `.DAT` inputs and tuning
-//! configuration, then records state-changing commands in one total order.
+//! A replay identifies the exact simulation `.DAT` inputs, then records state-changing commands in one total order.
 //! Native and WASM runners can therefore reject incompatible inputs before
 //! comparing versioned save-state fingerprints at declared checkpoints.
 
@@ -14,7 +13,6 @@ use rand::Rng;
 use rebellion_core::ai::{AIState, AiFaction};
 use rebellion_core::fog::FogState;
 use rebellion_core::tick::{GameSpeed, TickEvent};
-use rebellion_core::tuning::GameConfig;
 use rebellion_core::victory::VictorySystem;
 use rebellion_core::world::GameWorld;
 use serde::{Deserialize, Serialize};
@@ -22,12 +20,11 @@ use serde::{Deserialize, Serialize};
 use crate::save::{compute_state_fingerprint, SaveState, StateFingerprint};
 use crate::simulation::{run_simulation_tick, SimulationStates};
 
-/// Current JSON replay envelope version.
-pub const REPLAY_FORMAT_VERSION: u16 = 1;
+/// Current JSON replay envelope version. Version 2 drops the tuning
+/// configuration's fingerprint with the configuration itself.
+pub const REPLAY_FORMAT_VERSION: u16 = 2;
 /// Current canonical simulation-input manifest version.
 pub const DATA_MANIFEST_VERSION: u16 = 1;
-/// Current tuning-configuration fingerprint version.
-pub const CONFIG_FINGERPRINT_VERSION: u16 = 1;
 /// Random values reserved for every simulation tick in replay format v1.
 pub const REPLAY_ROLLS_PER_TICK: u16 = 1024;
 /// Defensive limit for one `advance_ticks` command.
@@ -244,7 +241,6 @@ pub struct ReplayManifest {
     pub rng: String,
     pub rolls_per_tick: u16,
     pub data: SimulationDataManifest,
-    pub config_fingerprint: ContentFingerprint,
     pub initial_state_fingerprint: String,
     pub commands: Vec<ReplayCommandRecord>,
     pub checkpoints: Vec<ReplayCheckpoint>,
@@ -253,12 +249,11 @@ pub struct ReplayManifest {
 impl ReplayManifest {
     ///
     /// # Errors
-    /// Returns an error if configuration fingerprinting or initial manifest validation fails.
+    /// Returns an error if initial manifest validation fails.
     pub fn new(
         engine_version: impl Into<String>,
         seed: u64,
         data: SimulationDataManifest,
-        config: &GameConfig,
         initial_state_fingerprint: StateFingerprint,
     ) -> anyhow::Result<Self> {
         let manifest = Self {
@@ -269,7 +264,6 @@ impl ReplayManifest {
             rng: "xoshiro256++/0.6".to_string(),
             rolls_per_tick: REPLAY_ROLLS_PER_TICK,
             data,
-            config_fingerprint: compute_config_fingerprint(config)?,
             initial_state_fingerprint: initial_state_fingerprint.to_string(),
             commands: Vec::new(),
             checkpoints: Vec::new(),
@@ -373,8 +367,6 @@ impl ReplayManifest {
             );
         }
         self.data.validate()?;
-        self.config_fingerprint
-            .validate(CONFIG_FINGERPRINT_VERSION, "configuration")?;
         validate_state_fingerprint(&self.initial_state_fingerprint)?;
 
         let mut previous_tick = 0_u64;
@@ -473,9 +465,9 @@ pub struct ReplayRecording {
 }
 
 /// A day's driver for [`drive_days`]: the world, the states, the day's
-/// tick events and rolls, and the configuration.
+/// tick events and rolls.
 pub type DayDriver<'a> =
-    dyn FnMut(&mut GameWorld, &mut SimulationStates, &[TickEvent], &[f64], &GameConfig) + 'a;
+    dyn FnMut(&mut GameWorld, &mut SimulationStates, &[TickEvent], &[f64]) + 'a;
 
 /// Run `days` days of `initial` at `speed`, with the dual AI when `dual_ai`,
 /// drawing each day's rolls from the state's generator as the replay runner
@@ -530,7 +522,6 @@ where
         environment.engine_version,
         environment.seed,
         environment.data.clone(),
-        &initial_state.game_config,
         initial_fingerprint,
     )?;
     let mut runtime = ReplayRuntime::from_save_state(initial_state);
@@ -671,15 +662,6 @@ fn validate_execution_environment(
         );
     }
 
-    let config_fingerprint = compute_config_fingerprint(&initial_state.game_config)?;
-    if manifest.config_fingerprint != config_fingerprint {
-        bail!(
-            "replay configuration mismatch: artifact {}, runtime {}",
-            manifest.config_fingerprint.value,
-            config_fingerprint.value
-        );
-    }
-
     let state_fingerprint = compute_state_fingerprint(initial_state)?;
     if manifest.initial_state_fingerprint != state_fingerprint.to_string() {
         bail!(
@@ -802,7 +784,6 @@ impl CampaignDayRunner {
             &mut runtime.states,
             &[TickEvent { tick }],
             &rolls,
-            &runtime.game_config,
         );
     }
 
@@ -818,7 +799,6 @@ impl CampaignDayRunner {
                 &tick_events,
                 &rolls,
                 tick,
-                &runtime.game_config,
             ),
             AiPassSchedule::Spread => {
                 let mut integrator = crate::integrator::PerceptionIntegrator::new(tick, tick);
@@ -891,7 +871,6 @@ struct ReplayRuntime {
     inactive_fog: FogState,
     player_is_alliance: bool,
     sim_rng: rand_xoshiro::Xoshiro256PlusPlus,
-    game_config: GameConfig,
     player_agent: rebellion_core::agent_automation::PlayerAgent,
 }
 
@@ -926,7 +905,6 @@ impl ReplayRuntime {
             jabba,
             seat_of_power,
             combat_cooldowns,
-            game_config,
             campaign_config,
             troop_transport,
             deliveries,
@@ -1000,7 +978,6 @@ impl ReplayRuntime {
             inactive_fog,
             player_is_alliance,
             sim_rng,
-            game_config,
             player_agent,
         }
     }
@@ -1040,7 +1017,6 @@ impl ReplayRuntime {
                         &tick_events,
                         &rolls,
                         tick,
-                        &self.game_config,
                     );
                 }
             }
@@ -1117,7 +1093,6 @@ impl ReplayRuntime {
             jabba: self.states.jabba,
             seat_of_power: self.states.seat_of_power,
             combat_cooldowns: self.states.combat_cooldowns.clone(),
-            game_config: self.game_config.clone(),
             campaign_config: self.states.campaign_config,
             troop_transport: self.states.troop_transport.clone(),
             deliveries: self.states.deliveries.clone(),
@@ -1257,23 +1232,6 @@ pub fn compute_simulation_data_manifest_from_dir(
         inputs.push((name, bytes));
     }
     compute_simulation_data_manifest(inputs)
-}
-
-/// Fingerprint the serialized tuning configuration embedded in a replay.
-///
-/// # Errors
-/// Returns an error if the configuration cannot be serialized for hashing.
-pub fn compute_config_fingerprint(config: &GameConfig) -> anyhow::Result<ContentFingerprint> {
-    let bytes = serde_json::to_vec(config).context("serializing replay configuration")?;
-    Ok(ContentFingerprint::fnv1a(
-        CONFIG_FINGERPRINT_VERSION,
-        fingerprint_bytes(
-            b"OPENREB-GAME-CONFIG\0",
-            CONFIG_FINGERPRINT_VERSION,
-            "game-config",
-            &bytes,
-        ),
-    ))
 }
 
 fn canonical_data_name(name: &str) -> anyhow::Result<String> {
@@ -1473,7 +1431,6 @@ mod tests {
             jabba: rebellion_core::jabba::JabbaState::default(),
             seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
             combat_cooldowns: std::collections::HashMap::new(),
-            game_config: GameConfig::default(),
             campaign_config: CampaignConfig::default(),
             troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
             deliveries: rebellion_core::delivery::DeliveryState::default(),
@@ -1562,14 +1519,9 @@ mod tests {
 
     #[test]
     fn replay_round_trip_preserves_total_order_and_checkpoints() {
-        let mut replay = ReplayManifest::new(
-            "0.1.0-test",
-            42,
-            sample_data(),
-            &GameConfig::default(),
-            sample_state_fingerprint(),
-        )
-        .unwrap();
+        let mut replay =
+            ReplayManifest::new("0.1.0-test", 42, sample_data(), sample_state_fingerprint())
+                .unwrap();
         assert_eq!(
             replay
                 .record_command(
@@ -1606,14 +1558,8 @@ mod tests {
 
     #[test]
     fn replay_validation_rejects_version_order_and_authority_errors() {
-        let base = ReplayManifest::new(
-            "0.1.0-test",
-            42,
-            sample_data(),
-            &GameConfig::default(),
-            sample_state_fingerprint(),
-        )
-        .unwrap();
+        let base = ReplayManifest::new("0.1.0-test", 42, sample_data(), sample_state_fingerprint())
+            .unwrap();
 
         let mut unsupported = base.clone();
         unsupported.format_version += 1;
@@ -1648,14 +1594,9 @@ mod tests {
 
     #[test]
     fn replay_recording_rejects_time_travel_and_invalid_checkpoints() {
-        let mut replay = ReplayManifest::new(
-            "0.1.0-test",
-            42,
-            sample_data(),
-            &GameConfig::default(),
-            sample_state_fingerprint(),
-        )
-        .unwrap();
+        let mut replay =
+            ReplayManifest::new("0.1.0-test", 42, sample_data(), sample_state_fingerprint())
+                .unwrap();
         replay
             .record_command(
                 10,
@@ -1680,23 +1621,6 @@ mod tests {
         assert!(replay
             .record_checkpoint(10, 2, sample_state_fingerprint())
             .is_err());
-    }
-
-    #[test]
-    fn configuration_fingerprint_is_deterministic_and_sensitive() {
-        let original = GameConfig::default();
-        let same = GameConfig::default();
-        let mut changed = GameConfig::default();
-        changed.ai.troop_garrison_min += 1;
-
-        assert_eq!(
-            compute_config_fingerprint(&original).unwrap(),
-            compute_config_fingerprint(&same).unwrap()
-        );
-        assert_ne!(
-            compute_config_fingerprint(&original).unwrap(),
-            compute_config_fingerprint(&changed).unwrap()
-        );
     }
 
     #[test]
@@ -1839,15 +1763,6 @@ mod tests {
                 .contains("simulation data mismatch")
         );
 
-        let mut changed_config = initial.clone();
-        changed_config.game_config.ai.troop_garrison_min += 1;
-        assert!(
-            execute_replay(environment, &recording.manifest, changed_config)
-                .unwrap_err()
-                .to_string()
-                .contains("configuration mismatch")
-        );
-
         let mut changed_state = initial.clone();
         changed_state.clock.set_speed(GameSpeed::Fast);
         assert!(
@@ -1910,14 +1825,9 @@ mod tests {
 
     #[test]
     fn replay_validation_rejects_decreasing_checkpoint_prefixes_and_huge_advances() {
-        let mut replay = ReplayManifest::new(
-            "0.1.0-test",
-            42,
-            sample_data(),
-            &GameConfig::default(),
-            sample_state_fingerprint(),
-        )
-        .unwrap();
+        let mut replay =
+            ReplayManifest::new("0.1.0-test", 42, sample_data(), sample_state_fingerprint())
+                .unwrap();
         replay
             .record_command(0, ReplayActor::Engine, ReplayCommand::ToggleDualAi)
             .unwrap();

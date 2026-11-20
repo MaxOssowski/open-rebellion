@@ -72,7 +72,6 @@ pub mod tactical;
 pub mod tactical_resources;
 pub mod tick;
 pub mod troop_transport;
-pub mod tuning;
 pub mod uprising;
 pub mod victory;
 pub mod world;

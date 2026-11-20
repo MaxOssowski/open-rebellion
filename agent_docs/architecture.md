@@ -43,7 +43,6 @@ crates/rebellion-core/src/
 ├── missions.rs       — 9 mission types, MSTB probability tables, 6 MissionEffect variants (880 LOC, 14 tests)
 ├── events.rs         — EventCondition (16 variants)/Action (10 variants), chaining, deterministic rng, 7 carbonite fail + permanent freeze constants (~780 LOC, 17 tests)
 ├── ai.rs             — AISystem, per-fleet targeting, deconfliction, two-pass deployment, battle penalty, config-driven (1121 LOC, 13 tests)
-├── tuning.rs         — GameConfig: 16 externalized AI/movement/production parameters, parity/augmentation tagged (~160 LOC)
 ├── movement.rs       — MovementOrder, Euclidean distance-based transit, config-aware variant (625 LOC, 19 tests). `cancel_orders_to(system)` cancels all in-transit orders targeting a given system (used by Death Star cleanup).
 ├── fleet_join.rs     — Joining and splitting fleets: a move onto a fleet hands over its capital ships, Create Fleet, the join checks (FUN_004ffc90, FUN_004feca0; ghidra/notes/fleet-join-split.md)
 ├── troop_transport.rs — Fleet cargo for regiments: loading through the Fleet window, the hold, unloading by hand and regiments travelling on their own (FUN_00556390, FUN_00552300)

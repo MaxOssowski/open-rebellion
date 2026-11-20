@@ -262,16 +262,12 @@ pub fn start_views(world: &mut GameWorld, states: &SimulationStates) {
 ///
 /// `wall_ms` is the wall-clock milliseconds since session start, used for
 /// the `wall_ms` field on each event record.
-///
-/// port: no day system reads `_config` since the production heuristic,
-/// module `0xa`'s stand-in and the tuning's last reader, went.
 pub fn run_simulation_tick(
     world: &mut GameWorld,
     states: &mut SimulationStates,
     tick_events: &[TickEvent],
     rolls: &[f64],
     wall_ms: u64,
-    _config: &rebellion_core::tuning::GameConfig,
 ) -> Vec<GameEventRecord> {
     let Some(last_tick_event) = tick_events.last() else {
         return Vec::new();
@@ -1858,14 +1854,7 @@ mod tests {
     }
 
     fn run_one_tick(world: &mut GameWorld, states: &mut SimulationStates) {
-        run_simulation_tick(
-            world,
-            states,
-            &[TickEvent { tick: 1 }],
-            &[0.99; 2048],
-            10,
-            &rebellion_core::tuning::GameConfig::default(),
-        );
+        run_simulation_tick(world, states, &[TickEvent { tick: 1 }], &[0.99; 2048], 10);
     }
 
     #[test]
@@ -2487,7 +2476,6 @@ mod tests {
                 &[TickEvent { tick }],
                 &[0.99; 2048],
                 10,
-                &rebellion_core::tuning::GameConfig::default(),
             );
             if world.systems[target].ground_units.contains(&troop) {
                 landed_at = Some(tick);
@@ -2574,7 +2562,6 @@ mod tests {
                 &[TickEvent { tick }],
                 &[0.99; 2048],
                 10,
-                &rebellion_core::tuning::GameConfig::default(),
             );
         }
         states
@@ -2666,7 +2653,6 @@ mod tests {
                     &[TickEvent { tick }],
                     &[0.0; 2048],
                     10,
-                    &rebellion_core::tuning::GameConfig::default(),
                 );
             }
             states.research.progress(true, TechType::Ship).points
@@ -2726,14 +2712,7 @@ mod tests {
     fn empty_tick_events_returns_empty() {
         let (mut world, mut states) = make_test_states();
 
-        let result = run_simulation_tick(
-            &mut world,
-            &mut states,
-            &[],
-            &[],
-            0,
-            &rebellion_core::tuning::GameConfig::default(),
-        );
+        let result = run_simulation_tick(&mut world, &mut states, &[], &[], 0);
         assert!(result.is_empty());
     }
 
@@ -2877,7 +2856,6 @@ mod tests {
                 &[TickEvent { tick: 1 }],
                 &[0.99; 2_048],
                 10,
-                &rebellion_core::tuning::GameConfig::default(),
             );
             states.troop_transport.cargo(fleet).is_empty()
                 && world.systems[target].ground_units.contains(&troop)
@@ -3004,7 +2982,6 @@ mod tests {
             combat_cooldowns: HashMap::new(),
             campaign_config: CampaignConfig::default(),
         };
-        let config = rebellion_core::tuning::GameConfig::default();
 
         let first_events = run_simulation_tick(
             &mut world,
@@ -3012,7 +2989,6 @@ mod tests {
             &[TickEvent { tick: 1 }],
             &[0.99; 2_048],
             10,
-            &config,
         );
         let first_strength = world.troops[alliance_troop].regiment_strength;
         assert_eq!(first_strength, 1_000);
@@ -3027,7 +3003,6 @@ mod tests {
             &[TickEvent { tick: 2 }],
             &[0.99; 2_048],
             20,
-            &config,
         );
 
         assert_eq!(
@@ -3056,7 +3031,6 @@ mod tests {
             &[TickEvent { tick: 3 }],
             &[0.99; 2_048],
             30,
-            &config,
         );
         assert_eq!(
             world.systems[target].control,
@@ -3205,7 +3179,6 @@ mod tests {
             &[TickEvent { tick: 1 }],
             &[0.5; 2_048],
             10,
-            &rebellion_core::tuning::GameConfig::default(),
         );
 
         assert!(world.systems[alliance_hq].is_headquarters);
@@ -3367,7 +3340,6 @@ mod tests {
             &[TickEvent { tick: 1 }],
             &[0.99; 2_048],
             10,
-            &rebellion_core::tuning::GameConfig::default(),
         );
 
         assert!(world.systems[alliance_hq].is_headquarters);
@@ -3531,7 +3503,6 @@ mod tests {
             &[TickEvent { tick: 1 }],
             &[0.99; 2048],
             10,
-            &rebellion_core::tuning::GameConfig::default(),
         );
 
         assert_eq!(states.troop_transport.cargo(fleet), [troop]);
