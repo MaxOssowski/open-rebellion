@@ -2334,6 +2334,98 @@ decompile on 2026-11-20:
 
 Nothing is left open there.
 
+## Module 4's final review (2026-11-20)
+
+Each planner checked against this note and the decompile. "Matches"
+names the functions re-read for the review; the rest were read when
+ported (sections above).
+
+**Fixed in the review:**
+- *State 7's bit 8* (`FUN_004bd570`, the strategy classes and the
+  research planners). At `0x4bd5ff` the first loop walks the team
+  (`ebp+0x3c`) and sets `+0x20` bit 8 for any free member (record without
+  `0x74000f1`) whose `+0x38` is the place; the away ones get the Move.
+  The second loop only moves the decoys. State 8 (`FUN_0047b360`) then
+  orders with every free member. Bit `0x10` is the target bit that each
+  slot `+0x50` sets. This note had read 8 and `0x10` as "the team is
+  there" and "the decoys are there", and the port waited for every
+  member and decoy. Ported: the order goes once one free team member
+  stands at the place, with the free members standing there. port: a
+  member moved in the same cycle is taken as en route, as the next
+  refresh makes it.
+- *A held planner's place* (`FUN_004bda60`): a failed state 2 goes to 9
+  without state 3, so `+0x38` stays. The port emptied it.
+- *The nearness query* (`FUN_00403750`, order 2) joins, while `+0x38` is
+  a system, the team selectors `FUN_00480f30`, `FUN_004808c0`,
+  `FUN_00482ce0`, `FUN_0047d520`, `FUN_0047f790`, `FUN_0047f320` and every
+  decoy selector (`FUN_00480aa0`, `FUN_00480110`, `FUN_0047e3f0`,
+  `FUN_00483410`, `FUN_00482ec0`, `FUN_0047d720`, `FUN_00482330`). Not
+  `FUN_004815a0`, `FUN_0047db40`, `FUN_0047ff90`, `FUN_0047cee0`,
+  `FUN_0047e270`, `FUN_00483290`, `FUN_00482180` or the research
+  selectors. Its masks are the selector's query's, with no skill bound.
+  It keys a record by the squared distance of its system (`FUN_00403c20`
+  walks the location up to one) from the place; a record with no system
+  is not listed, so the pick drops it. Ported: `Planner::refill_near`.
+- *A member's system for the place*: `FUN_004bdcd0` step 2 and
+  `FUN_004bd0a0`'s last step walk the member's location up its
+  containers (`FUN_004f2d10`, `+0x1c`), so a member aboard a fleet gives
+  the fleet's system. Ported with `ai_module_c::located` (hyp: a fleet in
+  transit gives the system it left).
+- *Side `+0xa4`*: `FUN_004182a0` state 1 runs `FUN_0042dd00` on the
+  controller's `+0x138` and copies its `+0x14` (`+0x14c`) to `+0xa4`.
+  `FUN_0042dd00` counts the class records of families `0x38..0x3b` for
+  side 1 when `+0x44` is 0 and for side 2 otherwise. With the class
+  record's DAT fields at `+0x28` past their file offset (`+0xa8` is
+  `can_be_admiral` at file `0x80`), `+0x44` is `is_empire` (file
+  `0x1c`). The shipped MNCHARSD sets exactly one side flag on each record
+  (26 Alliance, 28 Empire), counted once at setup, so the side keeps two
+  Recruitment planners all game. The hypothesis holds; `minor_classes`
+  now reads `is_empire` as the original does, with no change in play.
+
+**The campaign oddities:**
+- Recon never fails. Its slot `+0x274` is `FUN_0056bea0` (chance 100),
+  `+0x27c` `FUN_0056bec0` (result 3), and `+0x280` is `FUN_0056bee0`, not
+  the shared `FUN_00576700` that turns 0 into 2 (`mission-lifecycle.md`).
+  A Recon is lost only to detection, which ends it without a result.
+- The Empire's Assassination fails about 80% of the time. `FUN_00576620`
+  sets 3 only when the target is destroyed after slot `+0x2ec`:
+  `FUN_004ef690` injures it (GNPRTB 2574, shipped 100), and the injury
+  kills only a minor character, with GNPRTB 2577 (25%,
+  `FUN_0053eb30`). A main character never dies (`FUN_006158b0`). So at
+  most a quarter of the successful rolls on a minor character succeed,
+  and none on a main one. The port follows this
+  (`mission_detection::dies_of_injury`).
+
+**The planners** (S = strategy row, H = a sector planner's):
+
+| Planner | Result |
+|---|---|
+| S1 Recruitment `0x55` | matches (`FUN_004e8290` row 1, `FUN_0047dcc0`, `FUN_0047dad0`); `+0xa4` fixed; fixed: bit 8; port: no order while the pool is empty |
+| S2-4 Research `0x53`/1-3 | matches; bit 8 is the same rule for one member; the `0x80` release belongs to the other stage |
+| S5 Diplomacy `0x51` | matches (`FUN_00481720`, `FUN_00481ef0`); fixed: bit 8; open: slot `+0x18` returns 0 with `+0x20` bit `0x20`, whose writer is not traced |
+| S6 Subdue `0x57` | matches (`FUN_0047d060`, `FUN_0047d320`); fixed: bit 8 |
+| S7 Incite `0x56` | matches (`FUN_00480370`, `FUN_004806d0`); fixed: bit 8 and the decoys' nearness |
+| S8 DS Sabotage `0x6a` | not built: row 8 stays dead ("The controller's Death Star bit") |
+| S9 Abduction `0x62` | matches (`FUN_00483640`, `FUN_00483d10`); fixed: bit 8 and the decoys' nearness |
+| S10 Rescue `0x61` | matches (`FUN_0047e620`, `FUN_0047ecf0`); fixed: bit 8 and the decoys' nearness |
+| S11 Recon `0x54`/5 | matches (`FUN_0047f970`, `FUN_0047f720`); fixed: bit 8 and the team's nearness |
+| S12 Espionage `0x52`/6 | matches (`FUN_00481110`, `FUN_00480eb0`); fixed: bit 8 and the team's nearness |
+| H Recon `0x54` | matches (`FUN_004bda60`, `FUN_004bdbc0`, `FUN_004bdcd0`, `FUN_004be230`, `FUN_0047b360`, `FUN_0047f2c0`); fixed: the kept place, the member's fleet, the nearness |
+| H Espionage `0x52` | matches (as above, `FUN_00480860`, `FUN_00480aa0`); fixed: as above |
+| H Sabotage `0x69` | matches (as above, `FUN_0047d4d0`, `FUN_0047d520`, `FUN_0047d720`); fixed: as above |
+| H `0x62`/4, `0x63` | matches (as above, `FUN_00482b30`, `FUN_00482ce0`, `FUN_00482ec0`); fixed: as above |
+
+Deliberate port deviations that stay: one Move per member (`0x201`
+expands per character); cancellations and requests apply at once; a
+member moved in the cycle is left out of the order; a cancelled
+planner goes at once; the counts are taken from the list each pass.
+
+The planner's state-7 order and the selectors move every campaign. 5
+seeds of 5000 days, dual AI, on `15e8c8ec` before and with the review
+after. These are not the same runs: the games diverge from the first
+weeks. Non-Move missions 7,953 before; 7,088 with the bit-8 fix; 9,631
+with every fix.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`: traced 2026-11-20 ("The
