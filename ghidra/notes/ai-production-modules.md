@@ -1379,7 +1379,7 @@ module `0xa`'s Build (`FUN_004ce350`) passes the same validation (slot
 queued it, and the item never completed: the construction yard of the
 headquarters' system stayed busy for good.
 
-Every 1998-default seed from 1 to 10 queued it for the Alliance (3 to 32
+Every seed from 1 to 10 (dual AI) queued it for the Alliance (3 to 32
 times in 5000 days). Where module 1's only site was that system (seed 4,
 Woostri), the site kept no idle yard (`FUN_004daca0`), and module 1, which
 holds the yard token from setup (`+0xc = 0x80`), never reached state 1
@@ -1447,3 +1447,10 @@ fleets peak at 17 to 61; the Empire wins seeds 2 (day 3949) and 3 (day
 fleets. The sweep gate and the seed-42 golden pass unchanged;
 `a_sweep_run_counts_what_its_days_report` now runs 330 days, as seed 1's
 first ground battle moved from inside 210 days to day 323.
+
+Open: on seed 8 the Empire holds 49 systems and 61 fleets (102 capital
+ships) from about day 4000, the Alliance 3 systems (Urdur, Vjun, Linuri)
+with its headquarters, and the Empire does not take it by day 5000: after
+day 4000 it fights no battle and bombards Urdur three times. Whether its
+strategy and sector planners (`ai-sector-plans.md`) should send an
+assault there is not traced.
