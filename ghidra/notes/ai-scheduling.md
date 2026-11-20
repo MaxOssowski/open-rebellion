@@ -314,11 +314,13 @@ then `run_day_timers`), `start_ai_day`, `run_ai_passes` and
 `close_simulation_day`. Its messages, movies, sounds, advisor lines and
 the tactical battle come from `DayPresentation` hooks, which see each
 step's events before and after they are applied (`AppDayPresentation`).
-The runners still differ in two ways the audit's F-012 acceptance names:
-the app draws its rolls from its generator as asked (`RngRolls`), the
-runner from a 1024-roll slice a day padded with 1.0 (`SliceRolls`); and
-the app fights a battle with both sides' fleets as a tactical battle
-(`take_battle`) while the galaxy shows.
+Both draw a day's rolls the same way: 1024 from the campaign's generator
+at the day's start (`SliceRolls`; the app keeps them for the day's end,
+`SaveState::day_rolls`, v133). With no player input and no tactical
+battle, a seed gives both the same campaign
+(`the_app_s_day_with_its_presentation_matches_the_headless_runner`). The
+one documented exception: the app fights a battle with both sides' fleets
+as a tactical battle (`take_battle`) while the galaxy shows.
 
 Status 2026-11-20 (later): stages 3 and 4 are done
 (`rebellion-core/src/ai_schedule.rs`, save v132). Stage 5 is not done: no

@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v132, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v130 migrations"
+description: "Native and browser save v133, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v130 migrations"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-11-20
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v132. v116 to v131 still load
+serializable snapshot. The current format is v133. v116 to v132 still load
 through their migrations (below); no other version does.
 
-## Native format (v132)
+## Native format (v133)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -79,6 +79,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `squadron_damage` | `Vec<DamagedSquadron>` (v126): each squadron below full strength, its losses (`+0x60`) and repair timer `0x380`, by its place (a fleet's or a planet's entry index, or a transit's index; `squadrons::damaged_squadrons`, `ghidra/notes/squadron-strength.md`). `FighterEntry::damage` and `SquadronTransit::lost` are skipped by their own encodings; the loaders put them back (`squadrons::restore_damaged_squadrons`). An older save has none, so its squadrons load whole |
 | `system_copy_bits` | `SystemCopyBitsMap` (v127, the last field): each side's copies' explored and destroyed bits by the system's id (`ObjectViews::system_bits`, `ghidra/notes/fog-of-war.md`). The views' own encoding skips it; the loaders put it back. An older save has none: each side then reads the system's own `exploration_status` (`object_views::side_explored`) |
 | `ai_command_planners`, `ai_sector_links` | module `0xc` of each AI player (v129, v130); see `save.rs` |
+| `day_rolls` | `Vec<f64>` (v133, the last field): the rolls the app drew for the current day at its start, as the headless runner draws a day's (1024 from `sim_rng`); the day's end takes the rest from `ai_day.roll_cursor`. An older save has none |
 | `ai_day` | `rebellion_core::ai_schedule::AiDay` (v132, the last field): the current day's AI passes (the passes the day has, those run, the bombardment stream's state, and the day's end owed: the loyalty watch and the days it closes). The app runs one pass a sub-tick, so a save made within a day resumes at its next pass. A v131 or older save was made between days and loads with a finished day |
 | `system_copy_uprisings` | `SystemCopyUprisings` (v131): each side's copies' uprising bit (`+0x88` bit 2) by the system's id (`ObjectViews::system_uprisings`, `ghidra/notes/fog-of-war.md`). The views' own encoding skips it; the loaders put it back. A v130 or older save's copies take each system's own bit at load (`object_views::seed_uprisings`) |
 
@@ -109,9 +110,9 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## The v116 to v131 migrations
+## The v116 to v132 migrations
 
-The loader reads `SAVE_VERSION` (132), `V131`, `V130`, `V129`, `V128`, `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
+The loader reads `SAVE_VERSION` (133), `V132`, `V131`, `V130`, `V129`, `V128`, `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
 `MIGRATED_VERSION` (116). Any other version is rejected with a message to
 start a new game.
 
