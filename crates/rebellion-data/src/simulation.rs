@@ -264,7 +264,14 @@ pub fn run_simulation_tick(
     // The headless runner has no input between sub-ticks: the day's passes
     // run in one burst (rebellion_core::ai_schedule).
     run_ai_passes(world, states, config, &mut integrator, u32::MAX);
-    close_simulation_day(world, states, rolls, &mut integrator);
+    let mut day_rolls = SliceRolls::at(rolls, states.ai_day.roll_cursor as usize);
+    close_simulation_day(
+        world,
+        states,
+        &mut day_rolls,
+        &mut integrator,
+        &mut NoPresentation,
+    );
     integrator.finish()
 }
 
@@ -999,40 +1006,118 @@ pub fn begin_simulation_day(
     states.ai_day.roll_cursor = u32::try_from(roll_cursor).unwrap_or(u32::MAX);
 }
 
-/// The end of a day whose AI passes have all run: the regiments the
-/// passes sent through a blockade, the flagships' names, loyalty, the
-/// products, each side's views, and the victory check. Does nothing while
-/// passes are still to run or once the day is closed. `rolls` is the slice
-/// [`begin_simulation_day`] took its rolls from; this goes on after them.
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep the end of the day's ordered systems together."
-)]
+/// Where a day's rolls come from: uniform values in `0..1`, taken in the
+/// order the day's systems ask for them.
+pub trait RollSource {
+    /// The next `n` rolls.
+    fn take(&mut self, n: usize) -> Vec<f64>;
+}
+
+/// The headless runner's rolls: a slice generated for the day, padded with
+/// 1.0 (which fires no probability check) once it runs out.
+pub struct SliceRolls<'a> {
+    rolls: &'a [f64],
+    cursor: usize,
+}
+
+impl<'a> SliceRolls<'a> {
+    /// The rolls of `rolls` from `cursor` on.
+    #[must_use]
+    pub fn at(rolls: &'a [f64], cursor: usize) -> Self {
+        Self {
+            rolls,
+            cursor: cursor.min(rolls.len()),
+        }
+    }
+
+    /// How many rolls have been taken.
+    #[must_use]
+    pub const fn cursor(&self) -> usize {
+        self.cursor
+    }
+}
+
+impl RollSource for SliceRolls<'_> {
+    fn take(&mut self, n: usize) -> Vec<f64> {
+        let end = (self.cursor + n).min(self.rolls.len());
+        let mut v: Vec<f64> = self.rolls[self.cursor..end].to_vec();
+        self.cursor = end;
+        v.resize(n, 1.0);
+        v
+    }
+}
+
+/// The interactive game's rolls: drawn from its generator as asked.
+pub struct RngRolls<'a, R: rand::Rng>(pub &'a mut R);
+
+impl<R: rand::Rng> RollSource for RngRolls<'_, R> {
+    fn take(&mut self, n: usize) -> Vec<f64> {
+        (0..n).map(|_| self.0.gen::<f64>()).collect()
+    }
+}
+
+/// What a runner shows of the day's systems. The shared day functions call
+/// it with each step's events **before** they are applied, so the world it
+/// reads is the one they change; the headless runner shows nothing
+/// ([`NoPresentation`]). The interactive app turns them into its messages,
+/// movies and sounds.
+pub trait DayPresentation {
+    /// The player's agent (`FUN_00439a10`) runs once for each of `days`
+    /// days, after the day's AI passes. The headless runner has no player.
+    fn player_agent(&mut self, _world: &GameWorld, _states: &mut SimulationStates, _days: u32) {}
+
+    /// Blockade events about to be applied.
+    fn blockade(&mut self, _world: &GameWorld, _events: &[rebellion_core::blockade::BlockadeEvent]) {
+    }
+
+    /// The victory conditions word changed to `new` (`0x128`).
+    fn victory_word(&mut self, _world: &GameWorld, _new: u32, _day: u64) {}
+
+    /// The game was decided (`victory` already holds it).
+    fn game_decided(
+        &mut self,
+        _world: &GameWorld,
+        _outcome: &rebellion_core::victory::VictoryOutcome,
+        _victory: &VictoryState,
+        _day: u64,
+    ) {
+    }
+}
+
+/// A runner that shows nothing: the headless playtest and replays.
+pub struct NoPresentation;
+
+impl DayPresentation for NoPresentation {}
+
+/// The end of a day whose AI passes have all run: the player's agent, the
+/// regiments the passes sent through a blockade, the flagships' names,
+/// loyalty, the products, each side's views, and the victory check. Does
+/// nothing while passes are still to run or once the day is closed. Both
+/// the headless runner and the interactive app run it
+/// (`ghidra/notes/ai-scheduling.md`).
 pub fn close_simulation_day(
     world: &mut GameWorld,
     states: &mut SimulationStates,
-    rolls: &[f64],
+    rolls: &mut dyn RollSource,
     integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
 ) {
-    let Some((loyalty_before, _days)) = states.ai_day.close() else {
+    let Some((loyalty_before, days)) = states.ai_day.close() else {
         return;
     };
     let current_tick = states.ai_day.day;
     let tick_events = [TickEvent { tick: current_tick }];
-    let mut roll_cursor = (states.ai_day.roll_cursor as usize).min(rolls.len());
-    let mut take_rolls = |n: usize| -> Vec<f64> {
-        let end = (roll_cursor + n).min(rolls.len());
-        let mut v: Vec<f64> = rolls[roll_cursor..end].to_vec();
-        roll_cursor = end;
-        v.resize(n, 1.0);
-        v
-    };
+
+    // The player's agent: its running modules' Destination and build
+    // orders, once a day (FUN_00439a10).
+    presentation.player_agent(world, states, days);
 
     // ── 8b. Regiments the day's orders sent running a blockade ───────────
     let running_regiments =
         BlockadeSystem::running_regiments(&mut states.blockade, world, &states.troop_transport);
-    let running_rolls = take_rolls(running_regiments.len());
+    let running_rolls = rolls.take(running_regiments.len());
     let running = BlockadeSystem::resolve_running(&running_regiments, &running_rolls, current_tick);
+    presentation.blockade(world, &running);
     integrator.apply_blockade_events(world, &mut states.troop_transport, &running);
 
     // ── 10. (The port's 50-day defection is gone: the original's only
@@ -1044,10 +1129,6 @@ pub fn close_simulation_day(
     // ── 12. Research ─────────────────────────────────────────────────────
     // Research missions add their points when they resolve (step 5).
 
-    // ── 13. (The port's Jedi tiers are gone: the Force grows through the
-    // missions, Dagobah, escapes and the encounter; ghidra/notes/
-    // jedi-rs-replacement.md.)
-
     // port: a fleet that gained its side's flagship class this tick, by a
     // build or a join on arrival, takes its signature name (fleet_name_bank).
     world.name_flagship_fleets();
@@ -1058,7 +1139,7 @@ pub fn close_simulation_day(
         world,
         loyalty_before,
         Some(states.victory.alliance_hq),
-        &mut |m| draw_from_roll(take_rolls(1)[0], m),
+        &mut |m| draw_from_roll(rolls.take(1)[0], m),
     );
     integrator.record_loyalty_shifts(&shifts);
 
@@ -1092,6 +1173,7 @@ pub fn close_simulation_day(
         states.campaign_config.victory_conditions,
     ) {
         integrator.record_victory_conditions(old, new, current_tick);
+        presentation.victory_word(world, new, current_tick);
     }
     integrator.emit_victory_check(&states.victory);
     if let Some(outcome) = VictorySystem::check(
@@ -1101,14 +1183,13 @@ pub fn close_simulation_day(
         states.campaign_config.victory_conditions,
     ) {
         integrator.apply_victory(&outcome, &mut states.victory, world);
+        presentation.game_decided(world, &outcome, &states.victory, current_tick);
     }
 
     // ── 15. Campaign snapshot (every 250 ticks) ────────────────────────
     if current_tick.is_multiple_of(250) && current_tick > 0 {
         integrator.emit_campaign_snapshot(world, states.movement.len(), &states.economy);
     }
-
-    states.ai_day.roll_cursor = u32::try_from(roll_cursor).unwrap_or(u32::MAX);
 }
 
 #[cfg(test)]
@@ -1481,6 +1562,17 @@ mod tests {
             .finish()
             .iter()
             .any(|e| e.event_type == rebellion_core::game_events::EVT_VICTORY_CONDITIONS));
+    }
+
+    #[test]
+    fn slice_rolls_go_on_from_their_cursor_and_pad_with_one_once_spent() {
+        let rolls = [0.1, 0.2, 0.3];
+        let mut source = SliceRolls::at(&rolls, 1);
+        assert_eq!(source.take(1), [0.2]);
+        assert_eq!(source.cursor(), 2);
+        assert_eq!(source.take(3), [0.3, 1.0, 1.0]);
+        assert_eq!(source.cursor(), 3);
+        assert_eq!(SliceRolls::at(&rolls, 9).cursor(), 3);
     }
 
     #[test]

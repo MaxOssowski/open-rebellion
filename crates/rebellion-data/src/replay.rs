@@ -1785,11 +1785,13 @@ mod tests {
                     );
                     assert_eq!(runtime.states.ai_day.done, upto);
                 }
+                let cursor = runtime.states.ai_day.roll_cursor as usize;
                 crate::simulation::close_simulation_day(
                     &mut runtime.world,
                     &mut runtime.states,
-                    &rolls,
+                    &mut crate::simulation::SliceRolls::at(&rolls, cursor),
                     &mut integrator,
+                    &mut crate::simulation::NoPresentation,
                 );
             } else {
                 run_simulation_tick(

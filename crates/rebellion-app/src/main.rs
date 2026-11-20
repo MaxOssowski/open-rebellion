@@ -3081,9 +3081,83 @@ async fn main() {
         } else {
             vec![]
         };
+        // The campaign's simulation states moved into the shared day
+        // functions' bundle (rebellion_data::simulation::SimulationStates)
+        // and back. The player's fog stands in its `fog`; the other side's
+        // stays here.
+        macro_rules! sim_pack {
+            () => {
+                rebellion_data::simulation::SimulationStates {
+                    clock: std::mem::take(&mut clock),
+                    manufacturing: std::mem::take(&mut mfg_state),
+                    missions: std::mem::take(&mut mission_state),
+                    events: std::mem::take(&mut event_state),
+                    ai: std::mem::replace(&mut ai_state, AIState::new(AiFaction::Empire)),
+                    ai2: secondary_ai_state.take(),
+                    movement: std::mem::take(&mut movement_state),
+                    fog: std::mem::replace(
+                        &mut fog_alliance_state,
+                        FogState::new(Faction::Alliance),
+                    ),
+                    blockade: std::mem::take(&mut blockade_state),
+                    uprising: std::mem::take(&mut uprising_state),
+                    research: std::mem::take(&mut research_state),
+                    victory: victory_state.clone(),
+                    economy: std::mem::take(&mut economy_state),
+                    repair: std::mem::take(&mut repair_state),
+                    production: std::mem::take(&mut production_state),
+                    autoscrap: std::mem::take(&mut autoscrap_state),
+                    informant: std::mem::take(&mut informant_state),
+                    healing: std::mem::take(&mut healing_state),
+                    force_discovery: std::mem::take(&mut force_discovery_state),
+                    dagobah: std::mem::take(&mut dagobah_state),
+                    final_battle: std::mem::take(&mut final_battle_state),
+                    jabba: std::mem::take(&mut jabba_state),
+                    seat_of_power: std::mem::take(&mut seat_of_power_state),
+                    troop_transport: std::mem::take(&mut troop_transport_state),
+                    deliveries: std::mem::take(&mut delivery_state),
+                    combat_cooldowns: std::mem::take(&mut combat_cooldowns),
+                    campaign_config,
+                    ai_day,
+                }
+            };
+        }
+        macro_rules! sim_unpack {
+            ($sim:expr) => {{
+                let sim = $sim;
+                clock = sim.clock;
+                mfg_state = sim.manufacturing;
+                mission_state = sim.missions;
+                event_state = sim.events;
+                ai_state = sim.ai;
+                secondary_ai_state = sim.ai2;
+                movement_state = sim.movement;
+                fog_alliance_state = sim.fog;
+                blockade_state = sim.blockade;
+                uprising_state = sim.uprising;
+                research_state = sim.research;
+                victory_state = sim.victory;
+                economy_state = sim.economy;
+                repair_state = sim.repair;
+                production_state = sim.production;
+                autoscrap_state = sim.autoscrap;
+                informant_state = sim.informant;
+                healing_state = sim.healing;
+                force_discovery_state = sim.force_discovery;
+                dagobah_state = sim.dagobah;
+                final_battle_state = sim.final_battle;
+                jabba_state = sim.jabba;
+                seat_of_power_state = sim.seat_of_power;
+                troop_transport_state = sim.troop_transport;
+                delivery_state = sim.deliveries;
+                combat_cooldowns = sim.combat_cooldowns;
+                campaign_config = sim.campaign_config;
+                ai_day = sim.ai_day;
+            }};
+        }
         // The AI's passes through the interactive host (AppPasses), until
         // `$upto` of the day's have run; with `$close`, a day whose passes
-        // are done runs its end (AppPasses::close_day). Returns whether a
+        // are done runs its end (close_simulation_day). Returns whether a
         // pass ended the game.
         macro_rules! run_ai_day {
             ($upto:expr, $close:expr) => {{
@@ -3115,8 +3189,6 @@ async fn main() {
                     pending_ending: &mut pending_ending,
                     player_faction,
                     assault_summary: &mut assault_summary_state,
-                    player_agent: &mut player_agent,
-                    sim_rng: &mut sim_rng,
                     bombard: BombardEnv::new(ai_day.bombard_state, Some(alliance_hq)),
                     #[cfg(not(target_arch = "wasm32"))]
                     audio_engine: &mut audio_engine,
@@ -3125,17 +3197,39 @@ async fn main() {
                 };
                 let ended = ai_day.run_until(&mut host, $upto);
                 ai_day.bombard_state = host.bombard.rng_state();
-                if $close {
-                    if let Some((watch, days)) = ai_day.close() {
-                        macroquad::logging::info!(
-                            "[ai] end day={} passes={} orders={} second_orders={}",
-                            ai_day.day,
-                            ai_day.passes,
-                            host.ai.orders_today,
-                            host.ai2.as_ref().map_or(0, |ai| ai.orders_today)
-                        );
-                        host.close_day(watch, days, ai_day.day);
-                    }
+                if $close && ai_day.owes_close() {
+                    macroquad::logging::info!(
+                        "[ai] end day={} passes={} orders={} second_orders={}",
+                        ai_day.day,
+                        ai_day.passes,
+                        ai_state.orders_today,
+                        secondary_ai_state.as_ref().map_or(0, |ai| ai.orders_today)
+                    );
+                    // The day's end, shared with the headless runner
+                    // (rebellion_data::simulation::close_simulation_day).
+                    let now = advisor_now(&clock);
+                    let mut sim = sim_pack!();
+                    let mut presentation = AppDayPresentation {
+                        log: &mut msg_log,
+                        battled: &battled_systems,
+                        message_texts: &message_texts,
+                        cockpit_faction: cockpit_state.faction,
+                        advisor_schedule: advisor_schedule.as_mut(),
+                        advisor_now: now,
+                        pending_ending: &mut pending_ending,
+                        player_faction,
+                        player_agent: &mut player_agent,
+                    };
+                    let mut integrator =
+                        rebellion_data::integrator::PerceptionIntegrator::new(sim.ai_day.day, 0);
+                    rebellion_data::simulation::close_simulation_day(
+                        &mut world,
+                        &mut sim,
+                        &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
+                        &mut integrator,
+                        &mut presentation,
+                    );
+                    sim_unpack!(sim);
                 }
                 ended
             }};
@@ -16198,8 +16292,9 @@ fn character_audience(world: &GameWorld, character: CharacterKey) -> Option<Rail
     }
 }
 
-/// The day's blockade events: their messages, the support timer's shift
-/// and the regiments lost running a blockade.
+/// The day's blockade events: their messages, then the support timer's
+/// shift and the regiments lost running a blockade, as the headless
+/// integrator applies them (`apply_blockade_events`).
 #[expect(
     clippy::too_many_arguments,
     reason = "a blockade event reaches the world, the log and the regiments in transit"
@@ -16212,6 +16307,46 @@ fn present_blockade_events(
     player_is_alliance: bool,
     message_texts: &std::collections::HashMap<u16, String>,
     troop_transport_state: &mut TroopTransportState,
+    cockpit_faction: CockpitFaction,
+) {
+    blockade_messages(
+        world,
+        msg_log,
+        events,
+        battled,
+        player_is_alliance,
+        message_texts,
+        cockpit_faction,
+    );
+    for evt in events {
+        match evt {
+            rebellion_core::blockade::BlockadeEvent::SupportShifted {
+                system,
+                side,
+                support_delta,
+                ..
+            } => {
+                // Timer 0x386 only sets the support (FUN_0050c9f0).
+                rebellion_core::uprising::shift_support(world, *system, *side, *support_delta);
+            }
+            rebellion_core::blockade::BlockadeEvent::TroopDestroyed { troop, .. } => {
+                // The regiment left the system on its own.
+                troop_transport_state.destroy_travelling(world, *troop);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The messages of blockade events not yet applied: a regiment lost
+/// running a blockade is named before it goes.
+fn blockade_messages(
+    world: &GameWorld,
+    msg_log: &mut MessageLog,
+    events: &[rebellion_core::blockade::BlockadeEvent],
+    battled: &std::collections::HashSet<rebellion_core::ids::SystemKey>,
+    player_is_alliance: bool,
+    message_texts: &std::collections::HashMap<u16, String>,
     cockpit_faction: CockpitFaction,
 ) {
     for evt in events {
@@ -16243,15 +16378,7 @@ fn present_blockade_events(
                     *system,
                 ));
             }
-            rebellion_core::blockade::BlockadeEvent::SupportShifted {
-                system,
-                side,
-                support_delta,
-                ..
-            } => {
-                // Timer 0x386 only sets the support (FUN_0050c9f0).
-                rebellion_core::uprising::shift_support(world, *system, *side, *support_delta);
-            }
+            rebellion_core::blockade::BlockadeEvent::SupportShifted { .. } => {}
             rebellion_core::blockade::BlockadeEvent::TroopDestroyed {
                 system,
                 troop,
@@ -16266,8 +16393,6 @@ fn present_blockade_events(
                     );
                     (name, unit.is_alliance)
                 });
-                // The regiment left the system on its own.
-                troop_transport_state.destroy_travelling(world, *troop);
                 let name = world
                     .systems
                     .get(*system)
@@ -16306,11 +16431,88 @@ fn present_blockade_events(
     }
 }
 
+/// The interactive game's side of the shared day functions
+/// (`rebellion_data::simulation::DayPresentation`): the messages, movies
+/// and the player's agent.
+struct AppDayPresentation<'a> {
+    log: &'a mut MessageLog,
+    battled: &'a std::collections::HashSet<rebellion_core::ids::SystemKey>,
+    message_texts: &'a std::collections::HashMap<u16, String>,
+    cockpit_faction: CockpitFaction,
+    advisor_schedule: Option<&'a mut rebellion_render::advisor_schedule::AdvisorSchedule>,
+    advisor_now: u32,
+    pending_ending: &'a mut Option<u32>,
+    player_faction: MissionFaction,
+    player_agent: &'a mut PlayerAgent,
+}
+
+impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
+    fn player_agent(
+        &mut self,
+        world: &GameWorld,
+        states: &mut rebellion_data::simulation::SimulationStates,
+        days: u32,
+    ) {
+        // Not in dual-AI mode, where an AI plays the player's side.
+        if states.ai2.is_some() {
+            return;
+        }
+        for _ in 0..days {
+            let orders = self.player_agent.advance(
+                world,
+                &states.manufacturing,
+                &states.economy,
+                self.player_faction == MissionFaction::Alliance,
+            );
+            for order in &orders {
+                macroquad::logging::info!("[agent] order={:?}", order);
+            }
+            rebellion_core::agent_automation::apply_orders(&orders, &mut states.manufacturing);
+        }
+    }
+
+    fn blockade(&mut self, world: &GameWorld, events: &[rebellion_core::blockade::BlockadeEvent]) {
+        blockade_messages(
+            world,
+            self.log,
+            events,
+            self.battled,
+            self.player_faction == MissionFaction::Alliance,
+            self.message_texts,
+            self.cockpit_faction,
+        );
+    }
+
+    fn victory_word(&mut self, _world: &GameWorld, new: u32, day: u64) {
+        victory_word_movies(self.log, new, self.message_texts, day);
+    }
+
+    fn game_decided(
+        &mut self,
+        _world: &GameWorld,
+        outcome: &rebellion_core::victory::VictoryOutcome,
+        victory: &VictoryState,
+        day: u64,
+    ) {
+        game_decided_messages(
+            outcome,
+            victory,
+            self.log,
+            self.advisor_schedule.as_deref_mut(),
+            self.advisor_now,
+            self.pending_ending,
+            self.player_faction == MissionFaction::Alliance,
+            day,
+        );
+    }
+}
+
 /// The interactive game's host of the AI's passes
 /// (`rebellion_core::ai_schedule`): the orders post their messages, and a
 /// pass that applied any settles its bombardments, assaults, destroyed
 /// planets, blockades and the victory word before the next
-/// ([`settle_after_ai_pass`]). The day's end is [`AppPasses::close_day`].
+/// ([`settle_after_ai_pass`]). The day's end is the shared
+/// `close_simulation_day` ([`AppDayPresentation`]).
 struct AppPasses<'a> {
     ai: &'a mut AIState,
     ai2: &'a mut Option<AIState>,
@@ -16337,106 +16539,11 @@ struct AppPasses<'a> {
     pending_ending: &'a mut Option<u32>,
     player_faction: MissionFaction,
     assault_summary: &'a mut rebellion_render::assault_summary::AssaultSummaryState,
-    player_agent: &'a mut PlayerAgent,
-    sim_rng: &'a mut Xoshiro256PlusPlus,
     bombard: BombardEnv,
     #[cfg(not(target_arch = "wasm32"))]
     audio_engine: &'a mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))]
     audio_vol: &'a AudioVolumeState,
-}
-
-impl AppPasses<'_> {
-    /// The end of a day whose passes have all run, as the headless
-    /// runner's `close_simulation_day`: the player's agent, the regiments
-    /// the day's orders sent through a blockade, loyalty, the products,
-    /// each side's views and the victory word.
-    fn close_day(&mut self, loyalty_before: rebellion_core::loyalty::LoyaltyWatch, days: u32, day: u64) {
-        let player_is_alliance = self.player_faction == MissionFaction::Alliance;
-        // ── The player's agent (FUN_00439a10): once a day, its running
-        // modules issue Destination and build orders. Not in dual-AI
-        // mode, where an AI plays the player's side.
-        if self.ai2.is_none() {
-            for _ in 0..days {
-                let orders = self.player_agent.advance(
-                    self.world,
-                    self.mfg,
-                    self.economy,
-                    player_is_alliance,
-                );
-                for order in &orders {
-                    macroquad::logging::info!("[agent] order={:?}", order);
-                }
-                rebellion_core::agent_automation::apply_orders(&orders, self.mfg);
-            }
-        }
-
-        // ── Regiments the day's orders sent running a blockade ──────────
-        let running =
-            BlockadeSystem::running_regiments(self.blockade, self.world, self.transport);
-        let running_rolls: Vec<f64> = (0..running.len()).map(|_| self.sim_rng.gen::<f64>()).collect();
-        let running = BlockadeSystem::resolve_running(&running, &running_rolls, day);
-        present_blockade_events(
-            self.world,
-            self.log,
-            &running,
-            self.battled,
-            player_is_alliance,
-            self.message_texts,
-            self.transport,
-            self.cockpit_faction,
-        );
-
-        // ── Loyalty: Coruscant taken, the Alliance HQ lost ──────────────
-        // (FUN_005616a0, FUN_00561780; ghidra/notes/betrayal-and-loyalty.md)
-        let sim_rng = &mut *self.sim_rng;
-        rebellion_core::loyalty::settle(
-            self.world,
-            loyalty_before,
-            Some(self.victory.alliance_hq),
-            &mut |m| sim_rng.gen_range(0..m.max(1)),
-        );
-
-        // The day's orders placed their units in their containers
-        // (FUN_0052a140; rebellion_core::products).
-        rebellion_core::products::reconcile(self.world, self.mfg);
-
-        // ── Each side's views of the other side's objects ───────────────
-        // After movement, control and missions (FUN_004f9a60 per object;
-        // ghidra/notes/per-side-object-views.md). The fleet, mission and
-        // traveller copies first: they read the day before's system
-        // copies for who was seen leaving.
-        rebellion_core::object_views::advance_extras(
-            self.world,
-            self.movement,
-            self.missions,
-            self.transport,
-        );
-        rebellion_core::object_views::advance_with_uprisings(
-            self.world,
-            self.transport,
-            self.movement,
-            self.uprising,
-        );
-
-        // ── Victory check ────────────────────────────────────────────────
-        // The victory conditions word (FUN_005180e0): each change is
-        // 0x128, Alliance Headquarters Destroyed (FUN_0048e5a0) with bit
-        // 0x1 and Coruscant Captured (FUN_0048f790) while the Alliance
-        // holds Coruscant.
-        settle_victory_word(
-            self.victory,
-            self.world,
-            self.conditions,
-            self.message_texts,
-            self.log,
-            self.advisor_schedule.as_deref_mut(),
-            self.advisor_now,
-            self.pending_ending,
-            player_is_alliance,
-            day,
-        );
-    }
 }
 
 impl AiPassHost for AppPasses<'_> {
@@ -16642,17 +16749,55 @@ fn settle_victory_word(
     if let Some((_, new)) =
         rebellion_core::victory::advance_conditions_word(victory_state, world, victory_conditions)
     {
-        macroquad::logging::info!("[victory] word={:#x} day={}", new, tick);
-        for movie in rebellion_render::story_messages::victory_conditions_movies(new, message_texts)
-        {
-            msg_log.queue_story_movie(movie);
-        }
+        victory_word_movies(msg_log, new, message_texts, tick);
     }
     let Some(outcome) = VictorySystem::outcome(victory_state, world, victory_conditions) else {
         return;
     };
     victory_state.resolved = true;
-    let msg = match &outcome {
+    game_decided_messages(
+        &outcome,
+        victory_state,
+        msg_log,
+        advisor_schedule,
+        advisor_now,
+        pending_ending,
+        player_is_alliance,
+        tick,
+    );
+}
+
+/// The victory conditions word's change to `new` (`0x128`): its story
+/// movies, Alliance Headquarters Destroyed and Coruscant Captured.
+fn victory_word_movies(
+    msg_log: &mut MessageLog,
+    new: u32,
+    message_texts: &std::collections::HashMap<u16, String>,
+    tick: u64,
+) {
+    macroquad::logging::info!("[victory] word={:#x} day={}", new, tick);
+    for movie in rebellion_render::story_messages::victory_conditions_movies(new, message_texts) {
+        msg_log.queue_story_movie(movie);
+    }
+}
+
+/// The decided game's line, then the advisor's win or loss speech or the
+/// ending ([`settle_victory_word`]).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the end reaches the log, the advisor and the ending"
+)]
+fn game_decided_messages(
+    outcome: &rebellion_core::victory::VictoryOutcome,
+    victory_state: &VictoryState,
+    msg_log: &mut MessageLog,
+    advisor_schedule: Option<&mut rebellion_render::advisor_schedule::AdvisorSchedule>,
+    advisor_now: u32,
+    pending_ending: &mut Option<u32>,
+    player_is_alliance: bool,
+    tick: u64,
+) {
+    let msg = match outcome {
         rebellion_core::victory::VictoryOutcome::HqCaptured { winner, loser, .. } => {
             format!("{winner:?} captured {loser:?} headquarters! {winner:?} wins!")
         }
@@ -16673,7 +16818,7 @@ fn settle_victory_word(
         // movies the same day queued have played (A0 empire-clean/61, 62:
         // MDATA.103, then the defeat).
         *pending_ending = Some(ending_cutscene(
-            victory_winner_is_alliance(&outcome),
+            victory_winner_is_alliance(outcome),
             player_is_alliance,
         ));
     }
