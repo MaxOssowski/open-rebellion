@@ -149,22 +149,51 @@ released, restore versioned migration before the next layout change.
 
 ## Browser storage
 
-WASM stores base64 bincode and versioned JSON metadata in `localStorage`:
+WASM keeps each slot as base64 bincode and versioned JSON metadata under
+version-keyed string entries:
 
 ```text
-rebellion_save_v26_<slot>
-rebellion_meta_v26_<slot>
+rebellion_save_v<SAVE_VERSION>_<slot>
+rebellion_meta_v<SAVE_VERSION>_<slot>
 ```
 
 Metadata includes the full save name, game tick, and fingerprint with its
-`u64` value encoded as a decimal string so JavaScript cannot truncate it. The
-key prefix follows `SAVE_VERSION`, so entries from older builds are ignored.
-Their stale entries remain in `localStorage` until the browser clears them.
+`u64` value encoded as a decimal string so JavaScript cannot truncate it. A
+slot is read from the newest version that has both entries (see above).
 
-This path is functional but not the production persistence target: base64 and
-synchronous `localStorage` can block the main thread or hit quota limits. M3
-moves it to versioned, compressed, asynchronous IndexedDB and adds browser
-quota/corruption acceptance tests.
+Since 2026-11-20 the entries live in IndexedDB (database `open-rebellion`,
+store `saves`), through `rebellionSaveStore` in `web/gl.js`:
+
+- `load()` waits for `rebellionSaveStore.open()`, which reads every entry
+  into memory; the game's synchronous reads (`list_saves`, `load_slot`)
+  come from that copy.
+- A save stages body and metadata and commits them in one IndexedDB
+  transaction (`browser_saves::save_slot`). The copy changes at once; the
+  transaction completes in the background and the game polls its ticket
+  (`save::save_write_status`). A failed transaction puts the copy back, so
+  the slot shows what the disk holds.
+- Game Options holds the window (`GameOptionsState::save_in_flight`) until
+  the commit settles, then shows the original's message: REBDLOG 0x1217
+  "Selected Game Saved Successfully" or 0x1219 "Selected Game Failed To
+  Save" (`FUN_00408240`). On `QuotaExceededError` the port also writes
+  its cause on the window's error line (port: the original has no
+  disk-full string). A corrupt save keeps the existing behaviour: an
+  unreadable header leaves its row empty (`FUN_00415cd0`), a corrupt body
+  fails its load on the error line.
+- On the first load, save entries an older build left in `localStorage`
+  are copied into IndexedDB and then removed from `localStorage`; if the
+  copy fails they stay there for the next load.
+- Where IndexedDB cannot be opened (a blocked or private context), the slots
+  stay in `localStorage`, written synchronously with the same statuses.
+- The settings (`rebellion_settings_v1`) stay in `localStorage`.
+
+The slot logic is generic over `browser_saves::SaveStore`; native unit
+tests run it on `MemoryStore`, which can settle commits late, fail them
+over a quota, or fail reads. `tools/interface-parity/save-storage.mjs`
+checks the browser path: save, reload, load, migration, and a full quota
+(Chromium `Storage.overrideQuotaForOrigin`).
+
+Not done yet: compression of the body (still base64 bincode strings).
 
 ## API
 
