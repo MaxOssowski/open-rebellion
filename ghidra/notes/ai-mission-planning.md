@@ -407,7 +407,7 @@ reads.
 | 5 | `004cfb20`, `0x65c758` | `004cfed0` | troops `0x212`, Retire `0x242`, `0x210`, `0x214` | sector bit `0x40`; marks `0x400000` (`FUN_004d0860`) | troop production |
 | 6 | `004dd460`, `0x65c818` | `004dd7a0` | `0x200`, `0x212`, `0x210`, `0x214` | marks `0x400000` | garrison balance |
 | 7 | `004d2ef0`, `0x65c7b8` | `004d3100` | `0x200`, `0x201`, ships `0x211`, `0x210`, `0x214` | marks `0x200000` | ship balance |
-| 8 | `004cf410`, `0x65c738` | `004cf600` -> `FUN_004cf630` | through its planners (`0x201`) | side `+0x204`; one planner per sector (`FUN_004762b0`, vtable `0x65a3b0`) | sector fleet planners (states read and ported 2026-10-15, `ai-sector-plans.md`; plan objects not yet) |
+| 8 | `004cf410`, `0x65c738` | `004cf600` -> `FUN_004cf630` | through its planners (`0x201`) | side `+0x204`; one planner per sector (`FUN_004762b0`, vtable `0x65a3b0`) | sector fleet planners (states read and ported 2026-10-15, plan objects 2026-10-16, `ai-sector-plans.md`) |
 | 9 | `004cf0a0`, `0x65c718` | `004cf290` -> `FUN_004cf2c0` | through its planners | fleets `0x08..0x0f` | fleet planners |
 | `0xa` | `004cc6b0`, `0x65c6f8` | `004cc9c0` | `0x200`, `0x211`, `0x210`, `0x214` | sector bit `0x20`; marks `0x200000`; managers `0xa0..0xaf` | shipyard placement |
 | `0xb` | `004c8820`, `0x65c6d8` | `004c8b30` | `0x200`, `0x201`, `0x270`, `0x211`, `0x210`, `0x214` | marks `0x200000` (`FUN_004c8d20`, `FUN_004cacc0`) | capital ships: repair, the Death Star's return, production (read 2026-10-15, `ai-production-modules.md`) |
@@ -592,7 +592,7 @@ flips. The port takes the first of equal entries.
   step (`step_module`, `module_pending`), and the mission module one entry
   a step (`mission_next`). The port's heuristics stand in: research
   strategy for `0xd`; the research planners and the mission heuristics for
-  4; production split by kind for `0xa`, `0xb`; fleets for 8; troop
+  4 (the mission heuristics all gone by 2026-10-19); production split by kind for `0xa`, `0xb`; fleets for 8; troop
   moves for `0xc` (retired 2026-11-20: module `0xc` posts officers,
   `ai-command-planners.md`). Modules 7, 9 and `0xe` order nothing. Modules 1, 2, 3,
   5 and 6 are ported (`ai-production-modules.md`).
@@ -760,7 +760,8 @@ not admit (`MissionRefusal::MembersNotAllowed`). The port departs from the
 original as follows:
 - port: the planners run in one cycle, so the nearness query never joins
   and the order keeps only the members standing with its first (the
-  original gathers them in state 7);
+  original gathers them in state 7). Replaced 2026-10-18 by the
+  persistent planners below; the nearness query still does not join;
 - port: a plan with no team keeps no decoys, and a member one plan sends is
   not taken by the next in the same evaluation;
 - port: the tie draws come from a stream seeded by the day and the side;
@@ -777,7 +778,10 @@ original as follows:
   character in a fleet rank 1;
 - port: Espionage takes the class for subtypes other than 6 and Abduction
   its default class (side `+0x31c` is untraced); the mission kind and target
-  are the port's (side `+0x318`).
+  are the port's (side `+0x318`). Superseded: the strategy's rows
+  (`FUN_004e8290`) and the sector planners' requests (`FUN_004b7150`) now
+  give kind and subtype, and `mission_planning::selectors` picks the class
+  by both (2026-10-19).
 
 ## Why the port's AI sends no two-character team (2026-10-18)
 
@@ -820,12 +824,13 @@ The user approved the save change and the AI change.
   - kind, team, decoys and target;
   - `created`, `last_cycle` and `staging`.
 - `AISystem::adopt_mission_orders` turns the heuristics' orders into
-  planners (`FUN_0042f830`):
+  planners (`FUN_0042f830`; removed 2026-10-19 with the last heuristics):
   - one already running for the same kind and target takes the new one's
     place;
   - a member another planner holds is left out (`FUN_0047b610`).
-- `AISystem::mission_planner_cycle`, once per day per planner, runs these
-  states:
+- `AISystem::mission_planner_cycle`, once per day per planner (since
+  2026-11-20 one planner per module-4 cycle, "The mission module's
+  planner list"), runs these states:
   - state 2 drops a member the planner cannot keep (`FUN_0047ba40`), and
     an empty team ends the planner (`FUN_0047aff0`);
   - state 6 is `staging_point`;
@@ -836,11 +841,15 @@ The user approved the save change and the AI change.
 - `Planner::plan` keeps both picks wherever they stand; `members_together`
   is gone.
 - port:
-  - the heuristics stand in for the strategy (`+0x318`, `+0x31c`);
+  - the heuristics stand in for the strategy (`+0x318`, `+0x31c`;
+    replaced 2026-10-18 and 2026-10-19 by the strategy's rows and the
+    sector planners' requests);
   - (2026-10-18) states 3 and 4 refill the team and decoys each cycle
     (`Planner::refill`); a team still empty after state 3 ends the
     planner (port);
-  - a planner older than `MISSION_PLANNER_DAYS` (60) ends;
+  - a planner older than `MISSION_PLANNER_DAYS` (60) ends (since the
+    heuristics went, it reaches only planners of older saves, "The
+    port's 60-day limit");
   - the nearness query is read as the side's unblockaded system nearest
     the target (replaced 2026-11-20 by the original's queries).
 - Campaigns: 24 seeds of 1500 days, before and after.
@@ -1475,7 +1484,13 @@ Campaigns: 24 seeds of 1500 days, against the Rescue commit.
 - Systems held at the end, summed over the seeds: Alliance 570 and 589,
   Empire 579 and 564.
 
-## The sector planners' mission planners (read 2026-10-19, not ported)
+## The sector planners' mission planners (read and ported 2026-10-19)
+
+Ported in seven stages, all on 2026-10-19: the requests (stage 1), the
+targets (stages 2 to 4), the classes' selectors (5), the cycle's states 3
+to 9 (6), and the held planners' bits with the end of the heuristic
+Sabotage and Assassination (7). The "port:" lists of the early stages
+record the state at that stage; the later stages say what replaced them.
 
 Sabotage and Assassination have no row in the strategy. They come from
 module 8's sector planners, as do a second Recon and Espionage class.
@@ -1608,7 +1623,7 @@ port:
 - a cancelled planner goes at once;
 - the cancellation resolves at the take;
 - `+0x20` `0x100` is not kept;
-- the held planners' bits are computed but not yet added to `+0x64`.
+- (until stage 7) the held planners' bits are computed but not yet added to `+0x64`.
   The held planners do not run their cycle yet (`FUN_004bda60`), so none
   ever completes its team. Their `0x400` would then mark every sector
   planner short for good, which no original game shows. With the bits
@@ -1616,8 +1631,9 @@ port:
   test system held 4 fleets where 1 was expected; once another
   regiment's arrival came last.
 
-The held planners order nothing. The heuristic Sabotage and
-Assassination in `evaluate_espionage` still stand in. The 24 runs of
+At stage 1 the held planners ordered nothing, and the heuristic Sabotage
+and Assassination in `evaluate_espionage` still stood in (removed in
+stage 7). The 24 runs of
 1500 days are unchanged event for event.
 
 **The Recon and Espionage targets** (read and ported 2026-10-19, stage
@@ -1713,8 +1729,8 @@ port:
   taken as already running, and so never sent;
 - a sector planner of kind 0 gives none;
 - bit `0x10` is not kept;
-- states 3 to 8 are not ported, so the held planners still order
-  nothing.
+- states 3 to 8 were not yet ported, so the held planners still ordered
+  nothing (ported in stage 6).
 
 The held planners' targets enter the seed-42 golden from tick 10. The 24
 campaigns differ only through the draws the picks take from the planner's
@@ -1966,7 +1982,7 @@ gathering-place commit:
 - Subdue orders 138 and 165, Incite 39 and 57, Espionage 845 and 708,
   research 147 and 174.
 
-## The mission module's planner list (read 2026-11-20, not ported)
+## The mission module's planner list (read and ported 2026-11-20)
 
 `FUN_004d2490` runs one state per module step:
 - 1, `FUN_004d2580`: cancel the planner `+0x314` names (`FUN_0042f690`),
