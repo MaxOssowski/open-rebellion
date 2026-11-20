@@ -1212,21 +1212,16 @@ mod tests {
         // list, so it goes. FUN_004815a0 (Diplomacy) never joins it.
         let mut world = world();
         let spies: Vec<_> = (0..2).map(|i| unit(&mut world, 90 - i * 30, 0)).collect();
-        let distance = |far: MissionMember| {
-            move |m: MissionMember| Some(if m == far { 100 } else { 0 })
-        };
+        let distance =
+            |far: MissionMember| move |m: MissionMember| Some(if m == far { 100 } else { 0 });
         // Without the query: the better spy.
         let (team, _) = planner(&world).refill((MissionKind::Espionage, 6), 0, 0, Some(0));
         assert_eq!(team, spies[0..1]);
         // The better one far, the other near: equal sums, the earlier in
         // the espionage list (the lower skill) wins.
         let far = distance(spies[0]);
-        let (team, _) = planner(&world).refill_near(
-            (MissionKind::Espionage, 6),
-            (0, 0),
-            Some(0),
-            Some(&far),
-        );
+        let (team, _) =
+            planner(&world).refill_near((MissionKind::Espionage, 6), (0, 0), Some(0), Some(&far));
         assert_eq!(team, spies[1..2]);
         // The better one has no system: it is passed over.
         let nowhere = |m: MissionMember| (m != spies[0]).then_some(0);
@@ -1273,12 +1268,8 @@ mod tests {
             })
             .collect();
         let shun = |m: MissionMember| (m != diplomats[0]).then_some(0);
-        let (team, _) = planner(&world).refill_near(
-            (MissionKind::Diplomacy, 0),
-            (0, 0),
-            Some(0),
-            Some(&shun),
-        );
+        let (team, _) =
+            planner(&world).refill_near((MissionKind::Diplomacy, 0), (0, 0), Some(0), Some(&shun));
         assert_eq!(team, diplomats[0..1]);
     }
 
