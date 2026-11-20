@@ -214,7 +214,8 @@ Master reads where the original reads the copy (leaks):
   `fleet_window.rs:2017`, `manufacturing_window.rs:638`, `:666`,
   `system_finder.rs:199`, `missions.rs:1024` (already tagged port).
 - AI: `ai_records.rs:1143`, `ai_strategy.rs:634`, `agent_build.rs:195`
-  read the shared explored bit (the AI's own copy reads are untraced).
+  read the shared explored bit (traced 2026-11-20: the AI system record
+  reads the side's copy, see "Ported (2026-11-20)").
 - Regiment landing (`troop_transport::accept_planet`, `FUN_005073d0`'s
   open neutral planet): reads the moving side's copy since 2026-11-20
   (`side_explored`). The shared bit kept a Rim system unexplored, so an AI
@@ -293,9 +294,40 @@ and after each A0 state below, compared with A0 pixel for pixel.
 - The Defenses, Fleet, Manufacturing and Missions windows, the quadrant
   icons, the System Finder tabs, the explored-container creation check
   and the AI system record read the side's explored bit.
-- Not changed: the AI's own-system reads (`ai_strategy.rs`,
-  `agent_build.rs`), whose tests hold a side's own system unexplored; the
-  headless simulation's single fog (`rebellion-data/src/simulation.rs`).
+- Not changed then: the AI's own-system reads (`ai_strategy.rs`,
+  `agent_build.rs`), the headless simulation's start, the facility-count
+  displays and the uprising mark (all ported 2026-11-20, below).
+
+## Ported (2026-11-20)
+
+- The GID's facility counters (Mines, Refineries, Shipyards, Training
+  Facilities, Construction Yards and their idle displays, the three
+  defense displays, All Defenses' facility part) walk the viewer's copy:
+  `FUN_0042b330` hands its counters `param_3 = FUN_004f2d10(view +0x9c,
+  id)`. A frozen copy counts the facilities it was last synced with
+  (`lib.rs` `GidFacilities`). port: the regiments and squadrons of All
+  Defenses, Troopers and Fighter Squadrons still count the system's own;
+  the copy's regiments and squadrons are kept apart (`SystemView`,
+  regiment views).
+- The copy's uprising bit (`+0x88` bit 2): the mode-1 sync
+  (`FUN_0050e5b0`) copies it with explored, so a copy takes the system's
+  bit whenever the day's view step syncs it (a live copy that changes, one
+  that freezes, each push) and a frozen copy keeps it
+  (`object_views::sync_uprisings`, `side_uprising`). The sector window's
+  marks 905/906 (`FUN_0045bbb0`) and the GID's Uprisings display read it.
+  Saved as `SaveState::system_copy_uprisings` (save v131). port: a v130
+  save's copies take each system's bit at load.
+- The AI system record (`FUN_00433e40`) reads the side's copy: it calls
+  `FUN_004f3220(side, id)` at `0x433e91` (`[esi+0x1c]` is the side, 1 or
+  2; disassembly). `ai_strategy::orders_retreat` and
+  `agent_build::idle_producer_at` read `side_explored` like
+  `ai_records`. Both read only the side's own systems, whose copy is live
+  and explored, so a captured Rim system whose own bit is still clear now
+  counts its squadrons and idle yards.
+- The headless runners (`rebellion-playtest`, the seed-42 replay fixture)
+  take the setup push at the start as the app's new game does
+  (`object_views::start`, `simulation::start_views`). port: the headless
+  simulation keeps one fog record, which no longer gives sight.
 
 ## The GID's gray cross and Yavin to the Empire (traced 2026-11-19)
 
