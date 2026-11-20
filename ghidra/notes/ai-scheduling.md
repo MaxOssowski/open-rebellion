@@ -199,24 +199,51 @@ completing module with an order. From Medium up, it can.
 
 ## The port, compared
 
+Updated 2026-11-20 (stages 3 and 4). The list below "Differences a player
+can notice" describes the port **before** these stages; see "Staged port
+plan" for what is done.
+
 - `ai.rs` (`AISystem::pass`, `passes_per_day`, `ORDERS_PER_DAY`,
   `next_module`, `MODULE_IDS`, `AIState::begin_day`) matches the tick:
   refresh, ready, then steps, one order a completing step, and 10 a day.
-- `rebellion-data/src/simulation.rs` step 7 and
-  `rebellion-app/src/main.rs` ("AI: each day, ...") run **all of a
-  day's passes in one burst**. The burst comes after economy, yards,
-  deliveries, movement, combat, fog, missions, the story systems,
-  escapes and events. It comes **before** blockade, uprising and
-  disaster, informants, healing, Force discovery, the Death Star,
-  repair, mines and refineries, autoscrap, the research tally, loyalty,
-  object views and victory.
-- The playtest runs the primary AI (by default the Empire) before the
-  secondary; the app does the same with `ai_state`.
+- `rebellion-core/src/ai_schedule.rs` is the one pass driver both day
+  paths use. `run_pass` asks each side for its tick against the same
+  world, the Alliance's first (`tick_order`: `FUN_004361a0`, `+0x10`
+  then `+0x14`), then applies both sides' orders, the Alliance's first,
+  then settles once if any applied. So neither side's tick sees the
+  other's orders of the same pass. `AiDay` holds the day's place: its
+  passes (the speed's sub-ticks, fixed when the day begins), the passes
+  run, the bombardment stream's state, and the end of the day owed (the
+  loyalty watch and the days it closes). It is saved (v132).
+- Each host supplies `AiPassHost`: `HeadlessPasses` in
+  `rebellion-data/src/simulation.rs` (the integrator) and `AppPasses` in
+  `rebellion-app/src/main.rs` (the messages). A pass that applied orders
+  settles, in both: its bombardment and assault reports and the planets a
+  Death Star destroyed, then the blockade (`BlockadeSystem::detect`) and
+  the victory word. A win holds the day's remaining passes.
+- The day splits in three in both paths: the start (every system up to
+  the day's timers, then the regiments that set out since the last day
+  running a blockade, then `AiDay::begin`), the passes, and the end once
+  the last pass ran (the regiments the day's orders sent through a
+  blockade, the player's agent in the app, loyalty, the products, the
+  views and victory). `rebellion-data` names them
+  `begin_simulation_day`, `run_ai_passes` and `close_simulation_day`;
+  `run_simulation_tick` runs all three, so the playtest and replays keep
+  the burst. The app runs one pass as each sub-tick begins
+  (`AiDay::due(GameClock::day_part)`): the first with the day's start,
+  the rest as real time passes, and the day's end after the last; a frame
+  that reaches the next day first runs what is left of the day before. A
+  held or paused clock holds the remaining passes; a queued play-test
+  day runs them at once.
+- The burst and the spread give the same campaign when nothing comes
+  between sub-ticks (`replay.rs`,
+  `spreading_a_day_s_ai_passes_over_its_sub_ticks_matches_the_burst`,
+  seed 42, dual AI, Medium, 30 days).
 - The port rebuilds every record on every pass
-  (`ai_records::Galaxy::build`). When the day's budget is spent, `pass`
-  returns at once and skips the refresh too.
+  (`ai_records::Galaxy::build`). Stage 6 made `pass` refresh even when
+  the day's budget is spent.
 
-### Differences a player can notice
+### Differences a player can notice (before stages 3 and 4)
 
 1. **The AI acts at the day boundary, not through the day.** At Slow, the
    port issues a day's orders (fleet departures, builds, missions)
@@ -279,7 +306,16 @@ state they keep is the `seen` dates of record `+0x44`.
 Each stage is gated and committed on its own. A new or changed rule
 carries its source (the `FUN_` addresses above).
 
-Status 2026-11-20: stages 1, 2 and 6 are done in both day paths
+Status 2026-11-20 (later): stages 3 and 4 are done
+(`rebellion-core/src/ai_schedule.rs`, save v132). F-012 is done for the
+AI's part of the day: one pass driver, one order of the passes and the
+same three-part day in both paths. The systems of the day's start and
+end are still written twice, the app's with its messages; the order of
+the end now matches. Stage 5 is not done: no case where a stale record
+changes a decision a player can see has been found, and the field audit
+it needs is still open.
+
+Status earlier on 2026-11-20: stages 1, 2 and 6 are done in both day paths
 (`rebellion-data/src/simulation.rs` and the app), without the F-012
 unification. Stage 1 also moves the blockade's dawn look (arrivals and
 timer `0x386`) ahead of the passes; the regiments running a blockade
@@ -330,6 +366,16 @@ applied orders, and a win stops the day's remaining passes
      - `a_player_order_given_mid_day_is_seen_by_the_next_ai_pass`
      - `pausing_mid_day_holds_the_remaining_passes`
      - `loading_a_mid_day_save_resumes_at_its_pass`
+   - Done 2026-11-20. Replays need no sub-tick stamp: format v1 records
+     commands between whole days, and its runner keeps the burst, so a
+     command still lands between a day's end and the next day's start.
+     The app records no replay.
+   - port: the day's start and its end stay where the burst had them, so
+     the end of the day (loyalty, views, victory check) comes after the
+     day's last pass rather than as each event fires. The regiments that
+     set out since the last day roll before the first pass (they rolled
+     after the passes before); those the day's orders send roll at its
+     end.
 4. **Order latency and side order (dual AI).** Run the Alliance's pass
    first (`FUN_004361a0`, `FUN_004365d0`). Hold both sides' accepted
    orders from pass k and apply them before pass k+1. A human's order
@@ -337,6 +383,8 @@ applied orders, and a win stops the day's remaining passes
    and goldens change. No save change unless held orders can span a
    save, in which case save them (hyp: they cannot, since a pass and its
    application happen in one call).
+   - Done 2026-11-20 (`ai_schedule::run_pass`). Held orders never span a
+     save: a pass thinks and applies in one call.
 5. **Record dirtiness (only if the audit in item 5 above finds a visible
    case).** Keep per-object records in `AIState` and refresh one only
    when a port event equivalent to its marking notification fired.

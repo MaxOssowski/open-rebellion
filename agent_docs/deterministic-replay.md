@@ -25,7 +25,7 @@ it does not yet make the app and playtest simulation loops equivalent.
 | Gap-free command ordering | F-011B2 complete | `{tick, sequence, actor}` validation |
 | Replay executor and recorder | F-011B3 complete | Per-command state checkpoints |
 | Fresh-process native replay | F-011B3 complete | Stable 25-tick original-data golden |
-| App/playtest tick convergence | Open | F-012 and M2 |
+| App/playtest tick convergence | Partial | One AI pass driver and three-part day (`ai_schedule`); the day's systems are still written twice (F-012) |
 | Native/WASM checkpoint equality | F-011B4 complete | Exact seed-42 artifact, nine checkpoints |
 | Automatic/tactical combat equality | Open | M2 |
 
@@ -117,7 +117,7 @@ It records a nine-command, 25-tick campaign on the full 200-system galaxy
 must load through it), reloads its initial state through the current save
 format, and checks every command-prefix
 fingerprint against a cross-process golden, which currently runs
-`v1:882c5a60ab3cbcaa` -> `v1:0cad57d835ef378b`. Any save layout or
+`v1:3434430ca99d9af0` -> `v1:88eae5aad5573c6f`. Any save layout or
 simulation change moves every fingerprint; regenerate the golden only for a
 named cause and name it in the commit. The v13 goldens did not reproduce
 even at their own commit `e8d4945`; that cause remains open. The unit tests use

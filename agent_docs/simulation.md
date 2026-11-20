@@ -96,11 +96,15 @@ run_simulation_tick():
   8. blockade        = BlockadeSystem::advance()        → integrator.apply_blockade_events()
   9. uprising, informants, healing, Force discovery, repair, mines and
      refineries, autoscrap, the yards' research tally (the day's timers)
-  7. ai_actions      = AISystem::pass() × passes_per_day → integrator.apply_ai_actions()
-     after a pass that applied orders: settle_after_pass (BlockadeSystem::detect,
+  8b. regiments that set out since the last day run a blockade
+  -- begin_simulation_day ends: AiDay::begin (ai_schedule) --
+  7. run_ai_passes: ai_schedule::run_pass × passes_per_day; each pass asks
+     both sides (Alliance first) against the same world, then applies both
+     sides' orders, then, if any applied, settle_after_pass (bombardments,
+     assaults, the Death Star's destroyed planets, BlockadeSystem::detect,
      the victory word; a win holds the day's remaining passes)
-  8b. regiments running a blockade (BlockadeSystem::resolve_running)
-  11. ds_events      = DeathStarSystem::advance()       → integrator.apply_death_star_events()
+  -- close_simulation_day, once the last pass ran --
+  8b. regiments the day's orders sent running a blockade
   12. research       = (none: research missions add points in step 5, apply_mission_result)
   13e. loyalty, 13f. per-side views
   14. victory        = VictorySystem::check()           → integrator.apply_victory()
@@ -108,7 +112,16 @@ run_simulation_tick():
   return integrator.finish()
 ```
 
-Order matters: economy runs before manufacturing (production modifiers); combat needs fleet positions from movement; every timer due on a day fires before the day's first AI tick, as in the original's frame loop (`FUN_0041dff0` phase 5 before phase 8; `ghidra/notes/ai-scheduling.md`); the AI reads mission and manufacturing state that earlier systems may have modified. The app's day path (`rebellion-app/src/main.rs`) keeps the same split with `settle_after_ai_pass` (F-012 still duplicates it).
+`run_simulation_tick` runs `begin_simulation_day`, all of the day's passes
+(`run_ai_passes` with `u32::MAX`) and `close_simulation_day` in one call: the
+headless runner's burst. The interactive app runs the same three parts with
+its own host (`AppPasses`): the day's start at the day's event, then one pass
+as each sub-tick begins (`AiDay::due(GameClock::day_part())`), then the
+day's end after the last pass (`ghidra/notes/ai-scheduling.md`). Burst and
+spread give the same campaign when no input comes between sub-ticks
+(`replay.rs`, `spreading_a_day_s_ai_passes_over_its_sub_ticks_matches_the_burst`).
+
+Order matters: economy runs before manufacturing (production modifiers); combat needs fleet positions from movement; every timer due on a day fires before the day's first AI tick, as in the original's frame loop (`FUN_0041dff0` phase 5 before phase 8; `ghidra/notes/ai-scheduling.md`); the AI reads mission and manufacturing state that earlier systems may have modified. The app's day path (`rebellion-app/src/main.rs`) shares the pass driver (`rebellion_core::ai_schedule`) and the three-part day; F-012 still duplicates the start's and end's systems, the app's with their messages.
 
 ## Shared Simulation Tick (v0.8.0) + PerceptionIntegrator (v0.19.0)
 
