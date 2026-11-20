@@ -7450,8 +7450,9 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     });
     page = await context.newPage();
     if (scenario.battle_options_presentation) {
-      // An occupied first save slot (the build's localStorage keys,
-      // rebellion_data::save::slot_key / meta_key), so a battle's Game
+      // An occupied first save slot (the build's keys,
+      // rebellion_data::browser_saves; seeded as an older build's
+      // localStorage save, which web/gl.js moves into IndexedDB), so a battle's Game
       // Options can show its Load lit. The row needs a readable header
       // (FUN_00415cd0 reads it; an unreadable one leaves the row empty,
       // rebellion_data::save::game_options_saves); the body need not decode.

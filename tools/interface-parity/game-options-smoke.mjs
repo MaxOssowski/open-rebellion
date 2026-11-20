@@ -48,7 +48,9 @@ try {
     const screenshot = name => page.screenshot({ path: path.join(output, `${faction}-${name}.png`) });
     const click = async (x, y) => { await page.mouse.click(x, y, { delay: 300 }); await page.waitForTimeout(350); };
     const key = async value => { await page.keyboard.press(value, { delay: 100 }); await page.waitForTimeout(350); };
-    const storage = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
+    // The page's save slots (web/gl.js rebellionSaveStore: IndexedDB).
+    const storage = () => page.evaluate(() => rebellionSaveStore.entries());
+    const store = async values => assert.equal(await page.evaluate(v => rebellionSaveStore.write(v), values), 1, 'the fixture write commits');
     try {
       await page.goto(url);
       // The intro plays first; skip each movie until the menu is active.
@@ -103,10 +105,7 @@ try {
       // 'verified=' field went with 66227a8f; the equality is the check).
       assert.ok(consoleLog.some(line => line.includes(`load_state_fingerprint slot=0`) && line.includes(`fingerprint=${fingerprint}`)), 'accepted load verifies saved fingerprint');
       assert.ok(consoleLog.some(line => line.includes('[campaign] restored slot=0 mode=Galaxy') && line.includes(`fingerprint=${fingerprint}`) && line.includes(`faction=${faction === 'alliance' ? 'Alliance' : 'Empire'}`)), 'live restored campaign matches saved fingerprint and faction');
-      await page.evaluate(([save9, meta9, save0, meta0]) => {
-        localStorage.setItem(save9, save0);
-        localStorage.setItem(meta9, meta0);
-      }, [k('save', 9), k('meta', 9), saved[k('save', 0)], saved[k('meta', 0)]]);
+      await store({ [k('save', 9)]: saved[k('save', 0)], [k('meta', 9)]: saved[k('meta', 0)] });
       // The window has the original's six rows (FUN_00407180; manual p. 79)
       // and no other save or load path: a save in slot 10 stays in storage,
       // unlisted, and F8 / F9 open nothing.
@@ -130,12 +129,12 @@ try {
       await screenshot('reentered-options');
       // Slot 2 holds a zero-length save; slot 3 a readable header over a
       // corrupt body.
-      await page.evaluate(([save1, meta1, save2, meta2, meta0]) => {
-        localStorage.setItem(save1, '');
-        localStorage.setItem(meta1, '');
-        localStorage.setItem(save2, 'corrupt fixture');
-        localStorage.setItem(meta2, meta0);
-      }, [k('save', 1), k('meta', 1), k('save', 2), k('meta', 2), saved[k('meta', 0)]]);
+      await store({
+        [k('save', 1)]: '',
+        [k('meta', 1)]: '',
+        [k('save', 2)]: 'corrupt fixture',
+        [k('meta', 2)]: saved[k('meta', 0)],
+      });
       await key('Escape');
       await key('F1');
       const corrupt = await storage();

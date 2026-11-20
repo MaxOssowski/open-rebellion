@@ -308,7 +308,8 @@ try {
 
   // The confirmations (FUN_00416c50: REBDLOG 10623 with Yes 10624 at
   // (252, 287) and No 10626 at (343, 287), FUN_00416e90).
-  const storage = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
+  // The page's save slots (web/gl.js rebellionSaveStore: IndexedDB).
+  const storage = () => page.evaluate(() => rebellionSaveStore.entries());
   const DIALOG = [114, 152, 412, 176];
   const dialogShown = (png) => {
     let changed = 0;
