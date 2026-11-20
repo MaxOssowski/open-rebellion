@@ -178,6 +178,9 @@ pub fn run(
 /// with a yard of the area, no uprising (`1`) or blockade (`2`), and its
 /// manager building nothing (`RemainingGameObjCount == 0`).
 ///
+/// The record reads the side's copy of the system (`FUN_00433e40` calls
+/// `FUN_004f3220(side, id)` at `0x433e91`).
+///
 /// port: every yard counts as active (`+0x50 & 1`); the port has no yard
 /// under construction.
 fn idle_producer_at(
@@ -192,7 +195,7 @@ fn idle_producer_at(
         return false;
     };
     crate::uprising::holder(sys) == Some(side)
-        && sys.exploration_status == crate::dat::ExplorationStatus::Explored
+        && crate::object_views::side_explored(world, side, system)
         && sys.is_populated
         && !uprisings.is_uprising(system)
         && !crate::blockade::BlockadeSystem::system_is_blockaded(world, sys)

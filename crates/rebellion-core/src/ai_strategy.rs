@@ -623,7 +623,8 @@ pub fn orders_retreat(
         return true;
     };
     // FUN_00433e40: an unexplored system's record has no counts; the
-    // planet's squadrons (v[25]) count only on a populated planet.
+    // planet's squadrons (v[25]) count only on a populated planet. The
+    // record reads the side's copy (FUN_004f3220(side, id) at 0x433e91).
     let side = if is_alliance {
         crate::dat::Faction::Alliance
     } else {
@@ -631,7 +632,7 @@ pub fn orders_retreat(
     };
     let holder = crate::uprising::holder(sys);
     let own = holder == Some(side);
-    let squadrons = sys.exploration_status == crate::dat::ExplorationStatus::Explored
+    let squadrons = crate::object_views::side_explored(world, side, system)
         && sys.is_populated
         && sys
             .fighters
@@ -867,8 +868,14 @@ mod tests {
             world.systems[system].is_populated = false;
             assert!(orders(&world, system, false, true));
             world.systems[system].is_populated = true;
+            // The record reads the side's copy (FUN_00433e40 calls
+            // FUN_004f3220(side, id) at 0x433e91), and the copy of an own
+            // system is live and synced explored (FUN_004f9a60,
+            // System_SyncExplored FUN_0050fc80;
+            // ghidra/notes/fog-of-war.md), so the system's own bit is not
+            // read. Until 2026-11-20 this expected a retreat from it.
             world.systems[system].exploration_status = ExplorationStatus::Unexplored;
-            assert!(orders(&world, system, false, true));
+            assert!(!orders(&world, system, false, true));
         }
 
         // FUN_004e77f0: at its own defended system the word is the own
