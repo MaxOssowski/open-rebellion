@@ -43,6 +43,7 @@ pub mod integrator;
 pub mod mods;
 pub mod replay;
 pub mod replay_fixture;
+pub mod replay_sweep;
 pub mod save;
 pub mod seeds;
 pub mod settings;

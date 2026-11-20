@@ -189,11 +189,15 @@
 
             const params = new URLSearchParams(window.location.search);
             const values = params.getAll("replay-check");
+            // 1: the seed-42 fixture; 3: the multi-seed sweep; 2: any
+            // other value, which fails closed in the query phase.
             const mode = values.length === 0
                 ? 0
                 : values.length === 1 && values[0] === "seed42-v1"
                     ? 1
-                    : 2;
+                    : values.length === 1 && values[0] === "sweep-v1"
+                        ? 3
+                        : 2;
 
             function register(imports) {
                 imports.env.open_rebellion_replay_mode = function () {

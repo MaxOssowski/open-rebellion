@@ -65,19 +65,26 @@ def parse_json_line(output: str) -> dict:
     raise ValueError(f"command emitted no JSON object: {output[-500:]}")
 
 
-def native_report() -> dict:
+def native_report(*, sweep: bool = False) -> dict:
+    # The sweep runs 1,200 campaign days; the release profile matches the
+    # browser's optimized WASM and keeps it to seconds.
+    profile = ["--release"] if sweep else []
+    mode = ["--sweep"] if sweep else []
     result = run(
         [
             "cargo",
             "run",
             "-q",
+            *profile,
             "-p",
             "rebellion-data",
             "--bin",
             "replay-gate",
             "--",
             "data/base",
-        ]
+            *mode,
+        ],
+        timeout=1800,
     )
     if result.returncode != 0:
         raise RuntimeError(f"native replay gate failed:\n{result.stderr}\n{result.stdout}")
@@ -91,6 +98,7 @@ def browser_report(
     query: str,
     expect_report: bool,
     abort_runtime_pack: bool = False,
+    eval_timeout: int = 35,
 ) -> dict:
     page_name = f"open-rebellion-replay-{scenario}-{os.getpid()}"
     base = ["agent-browser", "--session", page_name, "--json"]
@@ -147,6 +155,7 @@ def browser_report(
                 "framePumped"
                 "});"
                 "})()",
+                timeout=eval_timeout,
             )
             page_state = json.loads(evaluated.get("result", "{}"))
             if expect_report and page_state.get("report") is not None:
@@ -302,11 +311,87 @@ def verify(
     }
 
 
+SWEEP_COMPARED_FIELDS = (
+    "schema_version",
+    "fixture_id",
+    "status",
+    "data_input_count",
+    "data_bytes",
+    "data_fingerprint",
+    "runs",
+    "battle",
+    "failure_phase",
+    "error",
+)
+
+
+def verify_sweep(native: dict, browser: dict) -> dict:
+    """Compare the native and WASM multi-seed sweeps field by field."""
+    failures: list[str] = []
+    browser_gate = browser.get("report")
+    if not isinstance(browser_gate, dict):
+        failures.append("browser did not publish the sweep report")
+        browser_gate = {}
+    for name, gate in (("native", native), ("WASM", browser_gate)):
+        if gate.get("status") != "passed":
+            failures.append(
+                f"{name} sweep failed in {gate.get('failure_phase')}: {gate.get('error')}"
+            )
+    for field in SWEEP_COMPARED_FIELDS:
+        if native.get(field) != browser_gate.get(field):
+            failures.append(f"native/WASM mismatch in {field}")
+    native_runs = native.get("runs") or []
+    browser_runs = browser_gate.get("runs") or []
+    for native_run, browser_run in zip(native_runs, browser_runs):
+        if native_run != browser_run:
+            label = f"seed {native_run.get('seed')} {native_run.get('schedule')}"
+            for key in sorted(native_run):
+                if native_run.get(key) != browser_run.get(key):
+                    failures.append(f"{label}: {key} differs")
+    native_battle = native.get("battle") or {}
+    browser_battle = browser_gate.get("battle") or {}
+    for key in sorted(set(native_battle) | set(browser_battle)):
+        if native_battle.get(key) != browser_battle.get(key):
+            failures.append(
+                f"battle: {key} differs: native {json.dumps(native_battle.get(key))}, "
+                f"WASM {json.dumps(browser_battle.get(key))}"
+            )
+    if browser.get("errors"):
+        failures.append(f"browser emitted errors: {browser['errors']}")
+    battle = native_battle
+    return {
+        "status": "passed" if not failures else "failed",
+        "native_platform": native.get("platform"),
+        "browser_platform": browser_gate.get("platform"),
+        "runs": [
+            {
+                "seed": run.get("seed"),
+                "schedule": run.get("schedule"),
+                "days": run.get("days"),
+                "final_fingerprint": run.get("final_fingerprint"),
+                "ai_orders": run.get("ai_orders"),
+                "events": run.get("events"),
+                "space_battles": run.get("space_battles"),
+                "ground_battles": run.get("ground_battles"),
+            }
+            for run in native_runs
+        ],
+        "battle": {key: value for key, value in battle.items() if key != "auto_results"},
+        "browser_errors": len(browser.get("errors", [])),
+        "failures": failures,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--sweep",
+        action="store_true",
+        help="compare the multi-seed sweep (rebellion_data::replay_sweep) instead",
+    )
     parser.add_argument(
         "--site",
         type=Path,
@@ -333,6 +418,27 @@ def main() -> int:
         if server.poll() is not None:
             detail = server.stderr.read() if server.stderr is not None else ""
             raise RuntimeError(f"local replay-gate server failed to start: {detail}")
+        if args.sweep:
+            native = native_report(sweep=True)
+            sweep_browser = browser_report(
+                args.port,
+                scenario="sweep",
+                query=f"?replay-check=sweep-v1&gate-run={os.getpid()}",
+                expect_report=True,
+                eval_timeout=900,
+            )
+            result = verify_sweep(native, sweep_browser)
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print(
+                    f"Replay sweep: {result['status'].upper()} | "
+                    f"{len(result['runs'])} runs | "
+                    f"{result['browser_errors']} browser errors"
+                )
+                for failure in result["failures"]:
+                    print(f"- {failure}")
+            return 0 if result["status"] == "passed" else 1
         native = native_report()
         browser = browser_report(
             args.port,
