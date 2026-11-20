@@ -960,9 +960,11 @@ and the function returns 1. The refresh keeps the claim
   prevention (two diplomats a pass to own systems below 40%) are removed.
 
 port:
-- the request and cancellation reach the want within one step;
+- the request and cancellation reach the want within one step (one
+  each per strategy call since 2026-11-20, "The strategy's rows, one
+  request a call" below);
 - the strategy's other rows are not yet ported, so row 5 is not ordered
-  behind rows 1 to 4;
+  behind rows 1 to 4 (ordered since 2026-11-20);
 - slots `+0x30`, `+0x34` and `+0x3c` (Mission Reports, the abort and a
   better diplomat) are not ported for Diplomacy.
 
@@ -1909,6 +1911,53 @@ commit:
   after;
 - Abduction 353 and 402, Assassination 348 and 305, Recon 2,888 and
   2,669.
+
+## The strategy's rows, one request a call (ported 2026-11-20)
+
+`FUN_004e8290` (the strategy class's slot `+0x18`, called by
+`FUN_004e5710`, strategy state 3) clears its four outputs and walks its
+rows in order. Each row tests `*request == 0` before it asks, and
+`*cancel == 0` before it cancels, so one call yields at most one request
+(kind `+0x318`, subtype `+0x31c`) and one cancellation: the first row
+whose count is below its want, and the first whose count is above.
+
+| Row | Kind | Count | Want |
+|---|---|---|---|
+| 1 | Recruitment `0x55` | `+0x320` | 2 while `S+0xa4` > 0 |
+| 2-4 | Research `0x53`/1-3 | `+0x324..+0x32c` | `S+0x2cc`, `+0x2d0`, `+0x2c8`; 0 once Done |
+| 5 | Diplomacy `0x51` | `+0x34c` | `S+0x214` |
+| 6 | Subdue `0x57` | `+0x330` | `S+0x21c + 1` with `F & 0x100`, else 0 |
+| 7 | Incite `0x56` | `+0x350` | `S+0x218` |
+| 8 | DS Sabotage `0x6a` | `+0x334` | Alliance only: 1 with `F & 4` |
+| 9 | Abduction `0x62` | `+0x338` | 1 |
+| 10 | Rescue `0x61` | `+0x340` | 1 with `F & 0x200` |
+| 11 | Recon `0x54`/5 | `+0x344` | the sector planners (`+0xd8`) |
+| 12 | Espionage `0x52`/6 | `+0x348` | `S+0x1bc` less the sector planners |
+
+`FUN_004e5710` stores the request in `+0x318`/`+0x31c` and, for the
+cancellation, the id of the planner of that kind and subtype with the
+least slot `+0x18` (not already flagged `0x10000000`) in `+0x314`. The
+mission module's state 1 (`FUN_004d2580`) cancels it (`FUN_0042f690`) and
+builds the request (`FUN_0042f640`).
+
+Row 8 stays dead: `F & 4` comes from `FUN_0041ba80`, which sets it only
+for an own fleet record (`*param_4 & 1`) with bit `0x10`, a Death Star
+fleet, and the row asks only when strategy `+4` is 1, the Alliance.
+
+The port ran each row to its want at once, rows 2 to 4 in the research
+strategy. Ported: `AISystem::mission_strategy` builds the rows in order
+(`StrategyRow`), and each call cancels one (`cancel_planner`) and adds
+one (`add_planner`). The research strategy keeps only the reports.
+port: both take effect at once, not at the mission module's next state 1.
+
+Campaigns: 8 seeds of 1500 days, both sides AI, against the
+gathering-place commit:
+- mission orders 13,880 before, 13,993 after; Move orders 7,756 and
+  7,857;
+- results: 7,490 successes and 2,398 failures before, 7,678 and 2,566
+  after;
+- Subdue orders 138 and 165, Incite 39 and 57, Espionage 845 and 708,
+  research 147 and 174.
 
 ## The planner's `+0x20` bit `0x80` (traced 2026-11-20)
 

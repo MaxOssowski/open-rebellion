@@ -1108,6 +1108,24 @@ struct RecordInputs<'a> {
     transport: &'a crate::troop_transport::TroopTransportState,
 }
 
+/// A row of the strategy's missions (`FUN_004e8290`): the research
+/// planners of a tree, or the standing planners of a kind with the skill
+/// their cancel key sums (slot `+0x18`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StrategyRow {
+    Research(TechType),
+    Standing(MissionKind, crate::world::Skill),
+}
+
+/// The research kind of `tech` (`0x53`, subtypes 1 to 3).
+fn research_kind(tech: TechType) -> MissionKind {
+    match tech {
+        TechType::Ship => MissionKind::ShipDesignResearch,
+        TechType::Troop => MissionKind::TroopTrainingResearch,
+        TechType::Facility => MissionKind::FacilityDesignResearch,
+    }
+}
+
 /// Side `+0xa4`: the side's MNCHARSD classes (`FUN_0042dd00`, family
 /// `0x38`, counted at setup).
 ///
@@ -1614,7 +1632,6 @@ impl AISystem {
             0xd => {
                 Self::research_strategy(
                     state,
-                    planner,
                     world,
                     mission_state,
                     research_state,
@@ -1622,7 +1639,7 @@ impl AISystem {
                     faction,
                     actions,
                 );
-                Self::mission_strategy(state, world, galaxy);
+                Self::mission_strategy(state, planner, world, research_state, galaxy);
             }
             4 => Self::mission_step(state, planner, ctx, galaxy, actions),
             0xa => production(actions),
@@ -2093,8 +2110,8 @@ impl AISystem {
         }
     }
 
-    /// The strategy's rows for the standing planners (`FUN_004e8290`), each
-    /// kept at its want by [`Self::keep_planners`]:
+    /// The strategy's rows (`FUN_004e8290`), in order; each wants a count
+    /// of planners:
     ///
     /// - row 1, Recruitment (count `+0x320`, slot `+0x40` 0,
     ///   `FUN_0047a470`): two while the side has MNCHARSD classes (side
@@ -2125,64 +2142,39 @@ impl AISystem {
     ///   `+0x1bc`, sector `+0x2c` 8) less the sector planners; the weakest
     ///   by espionage (`FUN_00480e10`: record `+0x44`).
     ///
-    /// port: rows 2 to 4 are the research planners
-    /// ([`Self::research_strategy`]) and row 8 is not ported (it asks only
-    /// for an Alliance with a Death Star fleet),
-    /// so the rows are not ordered behind each other, and each count
-    /// reaches its want within one step (the original asks once per
-    /// strategy pass).
+    /// Rows 2 to 4 are the research planners (count `+0x324..+0x32c`,
+    /// [`ResearchPlanner`]): as many as the side's characters able to
+    /// research the tree (`+0x2cc`, `+0x2d0`, `+0x2c8`), none once the tree
+    /// is Done for the AI (controller `0x2000000`, `0x4000000`,
+    /// `0x8000000`); the weakest by the tree's skill goes first
+    /// (`FUN_0047bc30`).
+    ///
+    /// Each call asks for at most one planner and cancels at most one:
+    /// `FUN_004e8290` fills each output once, from the first row that wants
+    /// it; `FUN_004e5710` stores them in `+0x318`/`+0x31c` and `+0x314`; and
+    /// the mission module's state 1 (`FUN_004d2580`) cancels, then builds.
+    ///
+    /// port: row 8 (Death Star Sabotage, `0x6a`) is not ported. It asks
+    /// only for the Alliance (strategy `+4` 1) with an own fleet whose
+    /// record has bit `0x10` (`FUN_0041ba80`: controller bit 4), a Death
+    /// Star fleet, which the Alliance never has. The cancellation and the
+    /// request apply at once, where the original's mission module takes
+    /// them at its next state 1.
     fn mission_strategy(
         state: &mut AIState,
+        planner: &Planner<'_>,
         world: &GameWorld,
+        research: &ResearchState,
         galaxy: &mut crate::ai_records::Galaxy,
     ) {
         use crate::world::Skill;
+        use StrategyRow::{Research, Standing};
         let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
         let recruiters = if minor_classes(world, is_alliance) > 0 {
             2
         } else {
             0
         };
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::Recruitment, recruiters, Skill::Leadership),
-        );
-        let diplomats = diplomacy_wanted(galaxy);
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::Diplomacy, diplomats, Skill::Diplomacy),
-        );
-        let subduers = subdue_wanted(galaxy);
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::SubdueUprising, subduers, Skill::Leadership),
-        );
-        let inciters = incite_wanted(galaxy);
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::InciteUprising, inciters, Skill::Leadership),
-        );
-        let scouts = state.module8.planners.len();
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::Reconnaissance, scouts, Skill::Espionage),
-        );
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::Abduction, 1, Skill::Combat),
-        );
         // FUN_0041bc10 sets controller bit 0x200 for a record of the side's
         // character that is a prisoner (+0x30 2, 0x20000000, 0x40): a
         // prisoner counts on its home side (FUN_00401d20).
@@ -2192,76 +2184,164 @@ impl AISystem {
                 && c.is_alliance == is_alliance
                 && c.is_empire != is_alliance
         });
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::Rescue, usize::from(prisoner), Skill::Combat),
-        );
+        let scouts = state.module8.planners.len();
         let held = galaxy.sectors.iter().filter(|s| s.summary & 8 != 0).count();
-        let spies = held.saturating_sub(scouts);
-        Self::keep_planners(
-            state,
-            world,
-            galaxy,
-            (MissionKind::Espionage, spies, Skill::Espionage),
-        );
-    }
-
-    /// One row of the strategy (`FUN_004e8290`): while the side has fewer
-    /// standing planners of `kind` than `wanted`, ask for one more
-    /// (`FUN_004d2580` builds it); while more, cancel the one whose team
-    /// has the least `skill` (slot `+0x18`; `FUN_004e5710`), the earlier
-    /// on a tie. A cancelled planner frees its members and its claim
-    /// (`FUN_0047aff0`, slot `+0x38`, `FUN_00481fe0` for Diplomacy); its
-    /// mission runs on.
-    fn keep_planners(
-        state: &mut AIState,
-        world: &GameWorld,
-        galaxy: &mut crate::ai_records::Galaxy,
-        (kind, wanted, skill): (MissionKind, usize, crate::world::Skill),
-    ) {
-        let count = |state: &AIState| {
-            state
+        let research_want = |tech: TechType| {
+            if ai_research_done(world, research, is_alliance, tech) {
+                0
+            } else {
+                planner.able(research_kind(tech))
+            }
+        };
+        let rows = [
+            (
+                Standing(MissionKind::Recruitment, Skill::Leadership),
+                recruiters,
+            ),
+            (Research(TechType::Ship), research_want(TechType::Ship)),
+            (Research(TechType::Troop), research_want(TechType::Troop)),
+            (
+                Research(TechType::Facility),
+                research_want(TechType::Facility),
+            ),
+            (
+                Standing(MissionKind::Diplomacy, Skill::Diplomacy),
+                diplomacy_wanted(galaxy),
+            ),
+            (
+                Standing(MissionKind::SubdueUprising, Skill::Leadership),
+                subdue_wanted(galaxy),
+            ),
+            (
+                Standing(MissionKind::InciteUprising, Skill::Leadership),
+                incite_wanted(galaxy),
+            ),
+            (Standing(MissionKind::Abduction, Skill::Combat), 1),
+            (
+                Standing(MissionKind::Rescue, Skill::Combat),
+                usize::from(prisoner),
+            ),
+            (
+                Standing(MissionKind::Reconnaissance, Skill::Espionage),
+                scouts,
+            ),
+            (
+                Standing(MissionKind::Espionage, Skill::Espionage),
+                held.saturating_sub(scouts),
+            ),
+        ];
+        let count = |state: &AIState, row: StrategyRow| match row {
+            Research(tech) => state
+                .research_planners
+                .iter()
+                .filter(|p| p.tech == tech)
+                .count(),
+            Standing(kind, _) => state
                 .mission_planners
                 .iter()
                 .filter(|p| p.standing && p.kind == kind)
-                .count()
+                .count(),
         };
-        while count(state) > wanted {
-            let team_skill = |p: &MissionPlanner| -> u32 {
-                p.team
+        let request = rows
+            .iter()
+            .find(|&&(row, want)| count(state, row) < want)
+            .map(|&(row, _)| row);
+        let cancel = rows
+            .iter()
+            .find(|&&(row, want)| count(state, row) > want)
+            .map(|&(row, _)| row);
+        if let Some(row) = cancel {
+            Self::cancel_planner(state, world, galaxy, row);
+        }
+        if let Some(row) = request {
+            Self::add_planner(state, row);
+        }
+    }
+
+    /// `FUN_004e5710` -> `FUN_0042f690`: cancel the planner of `row` whose
+    /// slot `+0x18` (its team's skill) is least, the earlier on a tie. A
+    /// cancelled planner frees its members and its claim (`FUN_0047aff0`,
+    /// slot `+0x38`, `FUN_00481fe0` for Diplomacy); its mission runs on.
+    fn cancel_planner(
+        state: &mut AIState,
+        world: &GameWorld,
+        galaxy: &mut crate::ai_records::Galaxy,
+        row: StrategyRow,
+    ) {
+        match row {
+            StrategyRow::Research(tech) => {
+                // FUN_0047bc30: the designer's skill in the tree.
+                let skill = |p: &ResearchPlanner| {
+                    p.member
+                        .and_then(|c| {
+                            crate::missions::member_skill(
+                                world,
+                                crate::missions::MissionMember::Character(c),
+                                tech.skill(),
+                            )
+                        })
+                        .unwrap_or(0)
+                };
+                let weakest = state
+                    .research_planners
                     .iter()
-                    .filter_map(|&m| crate::missions::member_skill(world, m, skill))
-                    .sum()
-            };
-            let Some(at) = state
-                .mission_planners
-                .iter()
-                .enumerate()
-                .filter(|(_, p)| p.standing && p.kind == kind)
-                .min_by_key(|&(at, p)| (team_skill(p), at))
-                .map(|(at, _)| at)
-            else {
-                break;
-            };
-            let p = state.mission_planners.remove(at);
-            if let Some(system) = p.claimed {
-                release_claim(&mut state.record_claims, galaxy, system);
+                    .enumerate()
+                    .filter(|(_, p)| p.tech == tech)
+                    .min_by_key(|&(at, p)| (skill(p), at))
+                    .map(|(at, _)| at);
+                if let Some(at) = weakest {
+                    state.research_planners.remove(at);
+                }
             }
-            if let Some(sector) = p.sector {
-                release_sector(
-                    &mut state.sector_claims,
-                    galaxy,
-                    sector,
-                    sector_claim_bit(p.kind),
-                );
+            StrategyRow::Standing(kind, skill) => {
+                let team_skill = |p: &MissionPlanner| -> u32 {
+                    p.team
+                        .iter()
+                        .filter_map(|&m| crate::missions::member_skill(world, m, skill))
+                        .sum()
+                };
+                let Some(at) = state
+                    .mission_planners
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.standing && p.kind == kind)
+                    .min_by_key(|&(at, p)| (team_skill(p), at))
+                    .map(|(at, _)| at)
+                else {
+                    return;
+                };
+                let p = state.mission_planners.remove(at);
+                if let Some(system) = p.claimed {
+                    release_claim(&mut state.record_claims, galaxy, system);
+                }
+                if let Some(sector) = p.sector {
+                    release_sector(
+                        &mut state.sector_claims,
+                        galaxy,
+                        sector,
+                        sector_claim_bit(p.kind),
+                    );
+                }
             }
         }
-        while count(state) < wanted {
-            let id = state.next_planner_id;
-            state.next_planner_id += 1;
-            state.mission_planners.push(MissionPlanner {
+    }
+
+    /// `FUN_004d2580` -> `FUN_0042f640`: build one planner of `row`.
+    fn add_planner(state: &mut AIState, row: StrategyRow) {
+        let id = state.next_planner_id;
+        state.next_planner_id += 1;
+        match row {
+            StrategyRow::Research(tech) => state.research_planners.push(ResearchPlanner {
+                id,
+                tech,
+                member: None,
+                site: None,
+                target: None,
+                mission: None,
+                report: None,
+                failures: 0,
+            }),
+            StrategyRow::Standing(kind, _) => state.mission_planners.push(MissionPlanner {
                 id,
                 kind,
                 team: Vec::new(),
@@ -2281,7 +2361,7 @@ impl AISystem {
                 pending: 0,
                 owner: 0,
                 subtype: 0,
-            });
+            }),
         }
     }
 
@@ -2293,30 +2373,20 @@ impl AISystem {
     // Research heuristics
     // -----------------------------------------------------------------------
 
-    /// The research part of the strategy (`FUN_004e8290`), module `0xd`.
+    /// The research planners' Mission Reports, read in module `0xd` before
+    /// the strategy's rows ([`Self::mission_strategy`]).
     ///
-    /// Per tree (ships, troops, facilities): first each planner reads its
-    /// Mission Report (`FUN_0047c890`, `FUN_0047b250`): a success clears its
+    /// Per tree (ships, troops, facilities) each planner reads its Mission
+    /// Report (`FUN_0047c890`, `FUN_0047b250`): a success clears its
     /// failures, a failure counts one, past slot `+0x24` (1000) the planner
     /// aborts its mission, and either result aborts the mission when the
-    /// remembered site lost its site bit (`FUN_0047c110` and siblings).
-    /// Then the strategy cancels the weakest surplus planner while there
-    /// are more than characters able to research the tree, or every one
-    /// once the tree is Done for the AI (`FUN_004e5710` -> `FUN_0042f690` ->
-    /// `FUN_0047aff0`: the planner and its hold go, its mission runs on),
-    /// and adds planners while there are fewer (`FUN_004d2580`). The
+    /// remembered site lost its site bit (`FUN_0047c110` and siblings). The
     /// mission module runs the planners ([`Self::mission_step`]).
     ///
-    /// port: a tree's cancellations and additions all happen within one
-    /// step; the original makes one per strategy step. The reports' aborts
-    /// are the planners' orders (`FUN_0047b250`) in the original.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "The planners read the same state the AI evaluation does."
-    )]
+    /// port: the reports' aborts are the planners' orders (`FUN_0047b250`)
+    /// in the original.
     fn research_strategy(
         state: &mut AIState,
-        planner: &mut Planner<'_>,
         world: &GameWorld,
         mission_state: &MissionState,
         research_state: &ResearchState,
@@ -2337,11 +2407,6 @@ impl AISystem {
             }
         }
         for tech in TechType::ALL {
-            let kind = match tech {
-                TechType::Ship => MissionKind::ShipDesignResearch,
-                TechType::Troop => MissionKind::TroopTrainingResearch,
-                TechType::Facility => MissionKind::FacilityDesignResearch,
-            };
             let site = |system: SystemKey| {
                 ai_research_site(world, uprisings, research_state, is_alliance, tech, system)
             };
@@ -2373,60 +2438,6 @@ impl AISystem {
                         });
                     }
                 }
-            }
-            let wanted = planner.able(kind);
-            let done = ai_research_done(world, research_state, is_alliance, tech);
-            let limit = if done { 0 } else { wanted };
-            while state
-                .research_planners
-                .iter()
-                .filter(|p| p.tech == tech)
-                .count()
-                > limit
-            {
-                // FUN_004e5710: the least team skill (slot +0x18,
-                // FUN_0047bc30), the earlier planner on a tie.
-                let skill = |p: &ResearchPlanner| {
-                    p.member
-                        .and_then(|c| {
-                            crate::missions::member_skill(
-                                world,
-                                crate::missions::MissionMember::Character(c),
-                                tech.skill(),
-                            )
-                        })
-                        .unwrap_or(0)
-                };
-                let weakest = state
-                    .research_planners
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, p)| p.tech == tech)
-                    .min_by_key(|&(at, p)| (skill(p), at))
-                    .map(|(at, _)| at);
-                if let Some(at) = weakest {
-                    state.research_planners.remove(at);
-                }
-            }
-            while state
-                .research_planners
-                .iter()
-                .filter(|p| p.tech == tech)
-                .count()
-                < limit
-            {
-                let id = state.next_planner_id;
-                state.next_planner_id += 1;
-                state.research_planners.push(ResearchPlanner {
-                    id,
-                    tech,
-                    member: None,
-                    site: None,
-                    target: None,
-                    mission: None,
-                    report: None,
-                    failures: 0,
-                });
             }
         }
     }
@@ -5234,8 +5245,35 @@ mod tests {
         actions
     }
 
-    /// The research strategy, the planners' holds, and every planner's
-    /// cycle at once.
+    /// The strategy's rows (`FUN_004e8290`), one request and one
+    /// cancellation a call, run until the counts settle.
+    fn rows_settled(
+        state: &mut AIState,
+        planner: &Planner<'_>,
+        world: &GameWorld,
+        research: &ResearchState,
+        galaxy: &mut crate::ai_records::Galaxy,
+    ) {
+        for _ in 0..64 {
+            let ids = |state: &AIState| -> Vec<u64> {
+                state
+                    .research_planners
+                    .iter()
+                    .map(|p| p.id)
+                    .chain(state.mission_planners.iter().map(|p| p.id))
+                    .collect()
+            };
+            let before = ids(state);
+            AISystem::mission_strategy(state, planner, world, research, galaxy);
+            if ids(state) == before {
+                return;
+            }
+        }
+        panic!("the strategy's rows did not settle");
+    }
+
+    /// The research planners' reports, the strategy's rows until they
+    /// settle, the planners' holds, and every research planner's cycle.
     fn research_all(
         state: &mut AIState,
         planner: &mut Planner<'_>,
@@ -5244,13 +5282,19 @@ mod tests {
     ) {
         AISystem::research_strategy(
             state,
-            planner,
             ctx.world,
             ctx.mission_state,
             ctx.research_state,
             ctx.uprisings,
             ctx.faction,
             actions,
+        );
+        rows_settled(
+            state,
+            planner,
+            ctx.world,
+            ctx.research_state,
+            &mut crate::ai_records::Galaxy::default(),
         );
         for p in &state.research_planners {
             if let Some(c) = p.member {
@@ -5423,7 +5467,7 @@ mod tests {
             transport: &transport,
         };
         let mut galaxy = AISystem::records(state, &planner, &inputs);
-        AISystem::mission_strategy(state, world, &mut galaxy);
+        rows_settled(state, &planner, world, &research, &mut galaxy);
         let mut actions = Vec::new();
         AISystem::mission_planner_cycle(
             state,
@@ -6208,6 +6252,82 @@ mod tests {
     }
 
     #[test]
+    fn each_strategy_call_asks_one_planner_and_cancels_one_by_row_order() {
+        // FUN_004e8290 fills its request (+0x318/+0x31c) and its
+        // cancellation (+0x314, FUN_004e5710) once each, from the first row
+        // that wants it: row 1 Recruitment, rows 2-4 research, 5 Diplomacy,
+        // 6 Subdue, 7 Incite, 9 Abduction, 10 Rescue, 11 Recon, 12
+        // Espionage. FUN_004d2580 then cancels and builds one.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let _ = add_system(&mut world, sector, 0.5, 0.5);
+        let _minor = add_character(&mut world, false, false, 0);
+        let mut state = AIState::new(AiFaction::Empire);
+        let standing = |id, kind| MissionPlanner {
+            id,
+            kind,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: None,
+            target_character: None,
+            target_object: None,
+            created: 0,
+            last_cycle: 0,
+            staging: None,
+            standing: true,
+            claimed: None,
+            sector: None,
+            mission: None,
+            report: None,
+            failures: 0,
+            pending: 0,
+            owner: 0,
+            subtype: 0,
+        };
+        // Three Abduction planners (row 9 wants one) and one Rescue planner
+        // with no prisoner (row 10 wants none).
+        for (id, kind) in [
+            (1, MissionKind::Abduction),
+            (2, MissionKind::Abduction),
+            (3, MissionKind::Abduction),
+            (4, MissionKind::Rescue),
+        ] {
+            state.mission_planners.push(standing(id, kind));
+        }
+        state.next_planner_id = 5;
+        let counts = |state: &AIState| {
+            [
+                MissionKind::Recruitment,
+                MissionKind::Abduction,
+                MissionKind::Rescue,
+            ]
+            .map(|kind| only(state, kind).len())
+        };
+        let mut call = |state: &mut AIState| {
+            AISystem::mission_strategy(
+                state,
+                &planner_for(&world, AiFaction::Empire),
+                &world,
+                &ResearchState::new(),
+                &mut crate::ai_records::Galaxy::default(),
+            );
+            counts(state)
+        };
+        assert_eq!(call(&mut state), [1, 2, 1]);
+        assert_eq!(call(&mut state), [2, 1, 1]);
+        assert_eq!(call(&mut state), [2, 1, 0]);
+        assert_eq!(call(&mut state), [2, 1, 0]);
+        // Abduction's cancellation took the earliest of equal teams.
+        assert_eq!(
+            only(&state, MissionKind::Abduction)
+                .iter()
+                .map(|p| p.id)
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+    }
+
+    #[test]
     fn only_standing_diplomacy_planners_count_against_the_want_and_each_has_its_own_id() {
         // FUN_004e8290 row 5 counts +0x34c, the live Diplomacy planners
         // (slot +0x40 = 0xb, FUN_004814f0).
@@ -6243,7 +6363,13 @@ mod tests {
             .push(other(MissionKind::DeathStarSabotage, true));
         state.next_planner_id = 3;
         let mut galaxy = crate::ai_records::Galaxy::default();
-        AISystem::mission_strategy(&mut state, &world, &mut galaxy);
+        AISystem::mission_strategy(
+            &mut state,
+            &planner_for(&world, AiFaction::Empire),
+            &world,
+            &ResearchState::new(),
+            &mut galaxy,
+        );
         // Only row 9's Abduction planner joins (FUN_004e8290 asks for one
         // always).
         assert_eq!(state.mission_planners.len(), 3);
@@ -8217,16 +8343,20 @@ mod tests {
         let (mut world, _, rebels, _) = recon_world(1, false);
         let mut state = AIState::new(AiFaction::Empire);
         state.module8.planners = vec![crate::ai_module8::SectorPlanner::default()];
+        // Row 9's Abduction planner comes before row 11's Recon planner.
+        let recon = |state: &AIState| -> MissionPlanner {
+            only(state, MissionKind::Reconnaissance)[0].clone()
+        };
         strategy_pass(&mut state, &world, 1);
-        let first = state.mission_planners[0].target_system.unwrap();
+        let first = recon(&state).target_system.unwrap();
         for s in rebels {
             world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Empire);
             world.systems[s].exploration_status = crate::dat::ExplorationStatus::Explored;
         }
         strategy_pass(&mut state, &world, 2);
-        assert_ne!(state.mission_planners[0].target_system, Some(first));
-        assert_eq!(state.mission_planners[0].target_system, None);
-        assert_eq!(state.mission_planners[0].sector, None);
+        assert_ne!(recon(&state).target_system, Some(first));
+        assert_eq!(recon(&state).target_system, None);
+        assert_eq!(recon(&state).sector, None);
         assert!(state.sector_claims.is_empty());
     }
 
@@ -10214,16 +10344,19 @@ mod tests {
             .iter()
             .map(|p| (p.id, p.tech))
             .collect();
+        // FUN_004e8290 asks one planner a call, by its rows: row 1's two
+        // Recruitment planners (the designers are minor characters) take
+        // ids 0 and 1, then rows 2 to 4, then row 9's Abduction planner.
         assert_eq!(
             techs,
             vec![
-                (0, TechType::Ship),
-                (1, TechType::Ship),
-                (2, TechType::Troop),
-                (3, TechType::Facility)
+                (2, TechType::Ship),
+                (3, TechType::Ship),
+                (4, TechType::Troop),
+                (5, TechType::Facility)
             ]
         );
-        assert_eq!(state.next_planner_id, 4);
+        assert_eq!(state.next_planner_id, 7);
     }
 
     #[test]
@@ -10885,6 +11018,12 @@ mod tests {
             });
         }
         let ship = designer(&mut world, TechType::Ship, 50);
+        // A major designer: with no minor character the strategy's row 1
+        // (Recruitment) wants none, so its first request is the research
+        // planner (row 2, FUN_004e8290).
+        if let Some(key) = ship.character() {
+            world.characters[key].is_major = true;
+        }
         (world, ship)
     }
 
@@ -12681,15 +12820,12 @@ mod tests {
         let ctx = inputs(&world, &missions, &research, &mfg, &config, &uprisings);
         let busy = state.busy_characters.clone();
         let mut planner = Planner::new(&world, &missions, &busy, true, 7);
-        AISystem::research_strategy(
+        rows_settled(
             &mut state,
-            &mut planner,
+            &planner,
             &world,
-            &missions,
             &research,
-            &uprisings,
-            AiFaction::Alliance,
-            &mut Vec::new(),
+            &mut crate::ai_records::Galaxy::default(),
         );
         let ids: Vec<u64> = state.research_planners.iter().map(|p| p.id).collect();
         let mut step = |state: &mut AIState| {
