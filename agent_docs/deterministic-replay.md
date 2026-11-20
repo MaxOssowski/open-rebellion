@@ -157,9 +157,14 @@ function outside tests; keep it that way or route new calls through
 
 The automatic battle (`abstract_battle::resolve_space_battle`, FUN_005ae9c0)
 and the tactical engine (`BattleSession::step`) are different engines and do
-not produce the same outcome or state: in the staged battle the automatic
-resolution destroys the Empire's Star Destroyer while the tactical one loses
-the Alliance's corvette. The automatic battle also counts the planet's
+not produce the same state, even when they agree on the winner. In the
+staged battle both now give the Empire the win and lose the Alliance's
+corvette: the automatic battle has the Star Destroyer and its six TIE
+squadrons come out untouched, while the tactical one ends with its own
+damage and losses. Until the hangar squadrons launched at the abstract
+battle's first step (FUN_005d14d0 / FUN_005af4b0, fix 4ae64b6c), the
+automatic resolution had the lone Star Destroyer worn down and destroyed by
+the corvette and Yavin's squadrons. The automatic battle also counts the planet's
 squadrons (`squadrons::scramble`), which the tactical session built from the
 fleets does not. What is comparable, and the sweep checks, is each engine's
 result across runtimes for the same input. A played tactical battle also
