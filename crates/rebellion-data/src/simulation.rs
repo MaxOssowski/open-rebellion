@@ -438,7 +438,10 @@ pub fn day_head(
         world.difficulty_index,
         &states.uprising,
     );
+    let step = DayStep::Economy(&economy_events);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_economy_events(world, &economy_events);
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 1. Manufacturing ─────────────────────────────────────────────────
     // `newly_idle` feeds the K6 EVT_MANUFACTURING_IDLE telemetry for any
@@ -470,6 +473,8 @@ pub fn day_head(
     for completion in &mfg_advance.completions {
         states.combat_cooldowns.remove(&completion.system);
     }
+    let step = DayStep::Manufactured(&mfg_advance);
+    present(presentation, world, states, &step, StepPhase::After);
     // Remote products travel, then complete at their destination (F-030).
     // A finished product travelling in its container arrives there
     // (event 0x387; rebellion_core::products::arrive); one whose system is
@@ -480,6 +485,8 @@ pub fn day_head(
     for completion in &arrived.completions {
         states.combat_cooldowns.remove(&completion.system);
     }
+    let step = DayStep::UnitsArrived(&arrived.completions);
+    present(presentation, world, states, &step, StepPhase::After);
     states.deliveries.depart(world, &mfg_advance.departures);
     states.deliveries.depart(world, &arrived.departures);
     let delivered = states.deliveries.advance(world, tick_events);
@@ -488,6 +495,10 @@ pub fn day_head(
     for completion in &delivered.arrivals {
         states.combat_cooldowns.remove(&completion.system);
     }
+    let step = DayStep::UnitsArrived(&delivered.arrivals);
+    present(presentation, world, states, &step, StepPhase::After);
+    let step = DayStep::Idle(&mfg_advance.newly_idle);
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 2. Movement ──────────────────────────────────────────────────────
     let arrivals = MovementSystem::advance(&mut states.movement, tick_events);
@@ -500,16 +511,25 @@ pub fn day_head(
     for arrival in &arrivals {
         states.combat_cooldowns.remove(&arrival.system);
     }
+    present(presentation, world, states, &DayStep::FleetArrivals(&arrivals), StepPhase::After);
     // Regiments travelling on their own (FUN_00556430, event 0x387).
     let regiments = states.troop_transport.advance_transit(world, current_tick);
     integrator.apply_regiment_arrivals(world, &regiments);
+    present(presentation, world, states, &DayStep::RegimentsArrived(&regiments), StepPhase::After);
     // Squadrons travelling on their own (squadrons::SquadronTransits).
-    let _ = states
+    let (squadrons_arrived, squadrons_lost) = states
         .troop_transport
         .squadrons
         .advance(world, current_tick);
+    let step = DayStep::SquadronsArrived(&squadrons_arrived, &squadrons_lost);
+    present(presentation, world, states, &step, StepPhase::After);
     // The headquarters' trip ends (rebellion_core::headquarters_move).
-    let _ = rebellion_core::headquarters_move::advance(&mut states.troop_transport, current_tick);
+    if let Some(transit) =
+        rebellion_core::headquarters_move::advance(&mut states.troop_transport, current_tick)
+    {
+        let step = DayStep::HeadquartersArrived(&transit);
+        present(presentation, world, states, &step, StepPhase::After);
+    }
 
     // ── 3. Combat ────────────────────────────────────────────────────────
     let combat_triggers: Vec<_> = world
@@ -531,6 +551,11 @@ pub fn day_head(
     for sys_key in combat_triggers {
         let combat_rolls = rolls.take(256);
         let sorties = squadrons::scramble(world, sys_key);
+        // A runner may fight the battle itself (the app's tactical battle
+        // for the player's side); the day's other battles wait for it.
+        if presentation.take_battle(world, states, sys_key, &sorties, combat_rolls[0]) {
+            break;
+        }
         let battle_before = rebellion_core::loyalty::battle_watch(world, sys_key);
         // FUN_004362b0: each side answers the battle choice. An AI side's
         // strategy gives its retreat order (FUN_00485d50); a side no AI
@@ -582,6 +607,8 @@ pub fn day_head(
         BlockadeSystem::after_withdrawal(&mut states.blockade, world, sys_key, &withdrawals);
 
         integrator.emit_system_space_combat(world, &space_result);
+        let step = DayStep::BattleFought(&space_result);
+        present(presentation, world, states, &step, StepPhase::After);
         states.combat_cooldowns.insert(
             sys_key,
             if space_result.stalemate {
@@ -619,6 +646,8 @@ pub fn day_head(
         {
             if system.control != ControlKind::Controlled(winner) {
                 integrator.apply_ground_occupation(world, sys_key, winner, current_tick);
+                let step = DayStep::Occupied(sys_key, winner);
+                present(presentation, world, states, &step, StepPhase::After);
             }
         }
     }
@@ -635,6 +664,7 @@ pub fn day_head(
     // ── 4. Fog of war ────────────────────────────────────────────────────
     let reveals = FogSystem::advance(&mut states.fog, world, &states.movement);
     integrator.emit_fog_reveals(&reveals, world);
+    present(presentation, world, states, &DayStep::FogAdvanced, StepPhase::After);
 
     run_day_missions(world, states, tick_events, rolls, integrator, presentation);
     Some((loyalty_before, running_regiments))
@@ -927,27 +957,16 @@ pub fn begin_simulation_day(
     integrator: &mut PerceptionIntegrator,
 ) {
     let mut day_rolls = SliceRolls::at(rolls, 0);
-    let Some((loyalty_before, running)) =
-        day_head(
-            world,
-            states,
-            tick_events,
-            &mut day_rolls,
-            integrator,
-            &mut NoPresentation,
-        )
-    else {
-        return;
-    };
-    run_day_timers(
+    let Some(loyalty_before) = begin_day(
         world,
         states,
         tick_events,
-        &running,
         &mut day_rolls,
         integrator,
         &mut NoPresentation,
-    );
+    ) else {
+        return;
+    };
     start_ai_day(
         world,
         states,
@@ -959,6 +978,33 @@ pub fn begin_simulation_day(
         &mut NoPresentation,
     );
     states.ai_day.roll_cursor = u32::try_from(day_rolls.cursor()).unwrap_or(u32::MAX);
+}
+
+/// The day's systems ahead of its AI: [`day_head`] (economy to events,
+/// with [`run_day_missions`]) and [`run_day_timers`]. Both the headless
+/// runner and the interactive app run it (F-012); `presentation` sees each
+/// step. Returns the galaxy the day's loyalty shifts compare against, for
+/// [`start_ai_day`]; `None` without a day.
+pub fn begin_day(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    tick_events: &[TickEvent],
+    rolls: &mut dyn RollSource,
+    integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
+) -> Option<rebellion_core::loyalty::LoyaltyWatch> {
+    let (loyalty_before, running) =
+        day_head(world, states, tick_events, rolls, integrator, presentation)?;
+    run_day_timers(
+        world,
+        states,
+        tick_events,
+        &running,
+        rolls,
+        integrator,
+        presentation,
+    );
+    Some(loyalty_before)
 }
 
 /// The day's timers, which fire in its first sub-tick ahead of its first
@@ -1260,6 +1306,21 @@ pub trait DayPresentation {
     ) {
     }
 
+    /// Whether this runner fights the battle at `system` itself (the app's
+    /// tactical battle). When it does, the day's remaining battles wait;
+    /// otherwise the abstract battle resolves it. `roll` is the battle's
+    /// first roll. The headless runner fights none.
+    fn take_battle(
+        &mut self,
+        _world: &mut GameWorld,
+        _states: &mut SimulationStates,
+        _system: SystemKey,
+        _sorties: &[rebellion_core::squadrons::Sortie],
+        _roll: f64,
+    ) -> bool {
+        false
+    }
+
     /// The AI's day `day` begins with `passes` passes at `speed`.
     fn ai_day_begun(&mut self, _day: u64, _speed: rebellion_core::tick::GameSpeed, _passes: u32) {}
 
@@ -1313,6 +1374,31 @@ pub enum DayStep<'a> {
     ResearchTally(&'a [rebellion_core::research::ResearchTally]),
     /// The regiments that set out since the last day, running a blockade.
     RunningRegiments(&'a [rebellion_core::blockade::BlockadeEvent]),
+    /// The economy's events (control, smuggling, troop surplus...).
+    Economy(&'a [rebellion_core::economy::EconomyEvent]),
+    /// The yards' day: completions, departures and trips.
+    Manufactured(&'a rebellion_core::manufacturing::ManufacturingAdvance),
+    /// Products and deliveries completed at their destination.
+    UnitsArrived(&'a [rebellion_core::manufacturing::CompletionEvent]),
+    /// Production areas whose queues just emptied (`0x160`).
+    Idle(&'a [(SystemKey, rebellion_core::manufacturing::ProductionArea)]),
+    /// Fleets that arrived.
+    FleetArrivals(&'a [rebellion_core::movement::ArrivalEvent]),
+    /// Regiments travelling on their own that arrived or were lost.
+    RegimentsArrived(&'a rebellion_core::troop_transport::RegimentArrivals),
+    /// Squadrons travelling on their own that arrived, and those lost.
+    SquadronsArrived(
+        &'a [rebellion_core::squadrons::SquadronTransit],
+        &'a [rebellion_core::squadrons::SquadronTransit],
+    ),
+    /// The headquarters' trip ended.
+    HeadquartersArrived(&'a rebellion_core::headquarters_move::HeadquartersTransit),
+    /// An abstract battle was fought.
+    BattleFought(&'a crate::integrator::SystemSpaceCombatResult),
+    /// One side's regiments took the system.
+    Occupied(SystemKey, rebellion_core::dat::Faction),
+    /// The runner's fog advanced.
+    FogAdvanced,
     /// The missions' day: member moves, releases, arrivals and detections.
     MissionAdvance(&'a rebellion_core::missions::MissionAdvance),
     /// Luke sent to Dagobah (`FUN_00544030`), on this day.
@@ -1939,6 +2025,122 @@ mod tests {
             &mut none,
         );
         assert!(none.0.is_empty());
+    }
+
+    /// A presentation that takes every battle, as the app takes the
+    /// player's.
+    #[derive(Default)]
+    struct BattleTaker {
+        steps: StepLog,
+        taken: Vec<SystemKey>,
+    }
+
+    impl DayPresentation for BattleTaker {
+        fn step(
+            &mut self,
+            world: &GameWorld,
+            states: &SimulationStates,
+            step: &DayStep<'_>,
+            phase: StepPhase,
+        ) {
+            self.steps.step(world, states, step, phase);
+        }
+
+        fn take_battle(
+            &mut self,
+            _world: &mut GameWorld,
+            _states: &mut SimulationStates,
+            system: SystemKey,
+            _sorties: &[rebellion_core::squadrons::Sortie],
+            _roll: f64,
+        ) -> bool {
+            self.taken.push(system);
+            true
+        }
+    }
+
+    #[test]
+    fn the_day_s_head_shows_its_steps_in_the_day_s_order() {
+        // Economy before manufacturing (FUN_00508250's state feeds the
+        // yards), then movement, fog and the missions (F-012).
+        let (mut world, mut states) = make_test_states();
+        let mut log = StepLog::default();
+        day_head(
+            &mut world,
+            &mut states,
+            &[TickEvent { tick: 1 }],
+            &mut SliceRolls::at(&[], 0),
+            &mut PerceptionIntegrator::new(1, 0),
+            &mut log,
+        );
+        let head: Vec<&str> = log
+            .0
+            .iter()
+            .map(String::as_str)
+            .take_while(|step| !step.starts_with("MissionAdvance"))
+            .collect();
+        assert_eq!(
+            head,
+            [
+                "Economy Before",
+                "Economy After",
+                "Manufactured After",
+                "UnitsArrived After",
+                "UnitsArrived After",
+                "Idle After",
+                "FleetArrivals After",
+                "RegimentsArrived After",
+                "SquadronsArrived After",
+                "FogAdvanced After",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_runner_that_fights_a_battle_itself_leaves_it_unresolved() {
+        // port: the app's tactical battle (F-012); the abstract battle
+        // (FUN_0040a050 state 8) resolves only the battles a runner leaves.
+        let opposed = || {
+            let (mut world, states) = make_test_states();
+            let system = world.systems.keys().next().unwrap();
+            let class = world.capital_ship_classes.insert(Default::default());
+            for is_alliance in [true, false] {
+                let key = world.fleets.insert(Fleet {
+                    location: system,
+                    capital_ships: vec![rebellion_core::world::ShipInstance::new(
+                        class, 100, false,
+                    )],
+                    fighters: vec![],
+                    characters: vec![],
+                    is_alliance,
+                    has_death_star: false,
+                    special_forces: Vec::new(),
+                });
+                world.systems[system].fleets.push(key);
+            }
+            (world, states, system)
+        };
+        let fought = |presentation: &mut dyn DayPresentation| {
+            let (mut world, mut states, system) = opposed();
+            day_head(
+                &mut world,
+                &mut states,
+                &[TickEvent { tick: 1 }],
+                &mut SliceRolls::at(&[0.5; 2048], 0),
+                &mut PerceptionIntegrator::new(1, 0),
+                presentation,
+            );
+            (system, states.combat_cooldowns.contains_key(&system))
+        };
+        let mut log = StepLog::default();
+        let (_, cooled) = fought(&mut log);
+        assert!(cooled);
+        assert!(log.0.iter().any(|step| step == "BattleFought After"));
+        let mut taker = BattleTaker::default();
+        let (system, cooled) = fought(&mut taker);
+        assert_eq!(taker.taken, [system]);
+        assert!(!cooled);
+        assert!(!taker.steps.0.iter().any(|step| step == "BattleFought After"));
     }
 
     #[test]

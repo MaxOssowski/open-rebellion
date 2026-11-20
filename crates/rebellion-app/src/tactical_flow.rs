@@ -384,6 +384,7 @@ fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[Fl
 /// (`ghidra/notes/planetary-assault.md`). Carried regiments stay aboard
 /// until an order moves them (`ghidra/notes/regiment-unload.md`). The
 /// simulation's step 3b (`rebellion_data::simulation`) does the same.
+#[cfg(test)]
 pub(crate) fn occupy(world: &mut GameWorld, tick: u64, log: &mut MessageLog) {
     let systems: Vec<SystemKey> = world.systems.keys().collect();
     for system in systems {

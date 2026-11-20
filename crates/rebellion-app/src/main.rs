@@ -54,14 +54,11 @@ use rebellion_core::missions::{
     MissionEffect, MissionFaction, MissionKind, MissionMember, MissionState,
 };
 use rebellion_core::movement::{
-    apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms,
-    fleet_move_enabled, fleet_transit_ticks, fleets_move_enabled, reconcile_fleet_orbits,
-    system_side_fleets, validate_fleet_dispatch,
-    validate_fleets_dispatch, MovementState, MovementSystem,
+    begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms, fleet_move_enabled,
+    fleet_transit_ticks, fleets_move_enabled, system_side_fleets, validate_fleet_dispatch,
+    validate_fleets_dispatch, MovementState,
 };
-use rebellion_core::production_cycle::{
-    advance_yards, scrap_yardless_queues, suspended_systems, ProductionState,
-};
+use rebellion_core::production_cycle::ProductionState;
 use rebellion_core::repair::{RepairEvent, RepairState};
 use rebellion_core::research::ResearchState;
 use rebellion_core::tick::{GameClock, GameSpeed};
@@ -3171,6 +3168,11 @@ async fn main() {
                     player_agent: &mut player_agent,
                     advisor: &mut advisor_state,
                     stash: DayStash::default(),
+                    game_mode: &mut game_mode,
+                    tactical_state: &mut tactical_state,
+                    battle_sorties: &mut battle_sorties,
+                    tactical_flags: game_options_state.tactical_flags(),
+                    other_fog: &mut fog_empire_state,
                     #[cfg(not(target_arch = "wasm32"))]
                     audio_engine: &mut audio_engine,
                     #[cfg(not(target_arch = "wasm32"))]
@@ -3257,756 +3259,31 @@ async fn main() {
             // last sub-tick).
             run_ai_day!(u32::MAX, true);
 
-            // Used by the Dabora 2 notification paths that need to timestamp
-            // message-log entries. `current_tick` is re-bound further down for
-            // the rest of the tick loop; this earlier binding is read-only.
-            let economy_tick = tick_events.last().map_or(0, |e| e.tick);
-
-            // Active movement orders are authoritative; repair stale orbit
-            // indexes before economy and manufacturing inspect fleet presence.
-            reconcile_fleet_orbits(&movement_state, &mut world);
-
-            // The galaxy the day's loyalty shifts compare against.
-            let loyalty_before =
-                rebellion_core::loyalty::watch(&world, Some(victory_state.alliance_hq));
-
-            // ── Economy (runs BEFORE manufacturing — affects production) ──────
-            let economy_events = EconomySystem::advance_with_uprisings(
-                &mut economy_state,
-                &world,
-                &tick_events,
-                world.difficulty_index,
-                &uprising_state,
-            );
-            for ev in &economy_events {
-                match ev {
-                    EconomyEvent::ControlResolved {
-                        system,
-                        new_control,
-                    } => {
-                        let previous = world.systems.get(*system).and_then(|s| s.control.faction());
-                        if let Some(sys) = world.systems.get_mut(*system) {
-                            sys.control = *new_control;
-                        }
-                        // FUN_00510d70 → FUN_004f6f40: the system's
-                        // facilities follow its new holder.
-                        world.hand_over_facilities(*system);
-                        // Notification 0x100, System Joins / Declares
-                        // Neutrality (FUN_00499760), while the support
-                        // alone moved it. port: no regiment at the system
-                        // stands for bit 0x2000 (FUN_00510d70).
-                        if world
-                            .systems
-                            .get(*system)
-                            .is_some_and(|sys| sys.ground_units.is_empty())
-                        {
-                            if let Some(message) = system_joins_message(
-                                &world,
-                                *system,
-                                previous,
-                                new_control.faction(),
-                                player_faction == MissionFaction::Alliance,
-                                tick_events.last().map_or(0, |event| event.tick),
-                                &message_texts,
-                            ) {
-                                msg_log.push(message);
-                            }
-                        }
-                    }
-                    // Notification 0x145, Smuggling (FUN_00499130).
-                    EconomyEvent::SmugglingPercentChanged {
-                        system,
-                        previous,
-                        percent,
-                    } => {
-                        if let Some(sys) = world.systems.get(*system) {
-                            if let Some(message) =
-                                rebellion_render::story_messages::smuggling_message(
-                                    &sys.name,
-                                    sys.control.faction(),
-                                    player_faction == MissionFaction::Alliance,
-                                    *previous,
-                                    *percent,
-                                    tick_events.last().map_or(0, |event| event.tick),
-                                    &message_texts,
-                                )
-                            {
-                                msg_log.push(message);
-                            }
-                        }
-                    }
-                    // Notification 0x148, Near Uprising (FUN_00498cb0).
-                    EconomyEvent::TroopSurplusChanged {
-                        system,
-                        previous,
-                        surplus,
-                    } => {
-                        if let Some(sys) = world.systems.get(*system) {
-                            let holder = sys.control.faction();
-                            if let Some(message) =
-                                rebellion_render::story_messages::near_uprising_message(
-                                    *system,
-                                    &sys.name,
-                                    holder,
-                                    player_faction == MissionFaction::Alliance,
-                                    // +0x88 bit 8, Garrisoned (FUN_0050ba90).
-                                    !sys.ground_units.is_empty(),
-                                    uprising_state.is_uprising(*system),
-                                    *previous,
-                                    *surplus,
-                                    tick_events.last().map_or(0, |event| event.tick),
-                                    &message_texts,
-                                )
-                            {
-                                msg_log.push(
-                                    message.with_picture_if(
-                                        holder.and_then(pictures::near_uprising),
-                                    ),
-                                );
-                            }
-                        }
-                    }
-                    // Knesset Shamash-Bet Dabora 2 notification events —
-                    // surface them in the interactive message log.
-                    _ => {} // Telemetry-only events (collection rate, garrison, incidents, support change tier)
-                }
-            }
-
-            // ── Manufacturing (blockaded systems are skipped) ─────────────────
-            // `newly_idle` carries the K6 EVT_MANUFACTURING_IDLE transitions
-            // for the interactive message log.
-            // A manager with no yard left scraps its queue; yards in a
-            // system in uprising or under blockade are suspended.
-            scrap_yardless_queues(&world, &mut mfg_state);
-            // An unfinished facility the side change left with no place
-            // (FUN_00515480, slot +0xac(2)) leaves its queue.
-            rebellion_core::products::destroy_lost(&mut world, &mut mfg_state);
-            rebellion_core::products::number_new_spares(&mut world);
-            rebellion_core::products::reconcile(&mut world, &mfg_state);
-            let suspended = suspended_systems(&blockade_state, &uprising_state);
-            // Each yard cycle takes one refined material and ends with one
-            // build point for its manager.
-            let mut mfg_advance = advance_yards(
-                &mut production_state,
-                &world,
-                &mut mfg_state,
-                |system| suspended.contains(&system),
-                &tick_events,
-            );
-            // A finished product completes in its container, or travels
-            // there from its yard (FUN_0052bee0; rebellion_core::products).
-            rebellion_core::products::settle_advance(&mut world, &mut mfg_advance);
-            for completion in &mfg_advance.completions {
-                // Apply the built item to the game world (ships, facilities, troops).
-                rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
-                // A regiment or special force built aboard boards its fleet.
-                rebellion_core::products::board(
-                    &mut world,
-                    &mut troop_transport_state,
-                    std::slice::from_ref(completion),
-                );
-                let sys_name = world
-                    .systems
-                    .get(completion.system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                // Notification 0x107, Units Deployed (FUN_00497940).
-                let (title, text) = rebellion_render::story_messages::deployed_texts(
-                    &world,
-                    completion.kind,
-                    &sys_name,
-                    &message_texts,
-                )
-                .map_or((None, format!("Construction complete at {sys_name}")), |(t, b)| {
-                    (Some(t), b)
-                });
-                let mut message = GameMessage::at_system(
-                    completion.tick,
-                    text,
-                    MessageCategory::Manufacturing,
-                    completion.system,
-                )
-                .with_picture_if(pictures::deployed(&world, completion.kind))
-                .with_sounds(MessageSounds::deployed(
-                    matches!(completion.kind, rebellion_core::manufacturing::BuildableKind::Fighter(_)),
-                    system_audience(&world, completion.system) != Some(RailAudience::Empire),
-                ))
-                // FUN_00497940 writes code 3 (advisor-briefing.md, "The events").
-                .with_advisor_event(3);
-                if let Some(title) = title {
-                    message = message.with_title(title);
-                }
-                msg_log.push(filed(
-                    message,
-                    rebellion_render::story_messages::unit_message_rail(completion.kind, false),
-                    system_audience(&world, completion.system),
-                ));
-                advisor_manufacturing_complete(&mut advisor_state, &sys_name);
-                #[cfg(not(target_arch = "wasm32"))]
-                audio_engine.play_sfx(SfxKind::BuildComplete, &audio_vol);
-            }
-            // Remote products complete at their facility, then travel to
-            // their destination and complete there on arrival (F-030).
-            let system_name = |world: &GameWorld, key| {
-                world
-                    .systems
-                    .get(key)
-                    .map_or_else(|| "unknown".to_string(), |s| s.name.clone())
-            };
-            // A product travelling in its container leaves as a delivery
-            // does (rebellion_core::products::settle).
-            for departure in mfg_advance.departures.iter().chain(&mfg_advance.trips) {
-                let origin = system_name(&world, departure.origin);
-                let destination = system_name(&world, departure.destination);
-                // Notification 0x107, Units Deployed (FUN_00497940): the
-                // product is Deployed on completion (FUN_0052bee0), already
-                // bound to its destination, which the message names.
-                let (title, text) = rebellion_render::story_messages::deployed_texts(
-                    &world,
-                    departure.kind,
-                    &destination,
-                    &message_texts,
-                )
-                .map_or(
-                    (None, format!("Construction complete at {origin}, en route to {destination}")),
-                    |(title, body)| (Some(title), body),
-                );
-                let mut message = GameMessage::at_system(
-                    departure.tick,
-                    text,
-                    MessageCategory::Manufacturing,
-                    departure.destination,
-                )
-                .with_picture_if(pictures::deployed(&world, departure.kind))
-                .with_sounds(MessageSounds::deployed(
-                    matches!(departure.kind, rebellion_core::manufacturing::BuildableKind::Fighter(_)),
-                    system_audience(&world, departure.origin) != Some(RailAudience::Empire),
-                ))
-                .with_advisor_event(3);
-                if let Some(title) = title {
-                    message = message.with_title(title);
-                }
-                msg_log.push(filed(
-                    message,
-                    rebellion_render::story_messages::unit_message_rail(departure.kind, false),
-                    system_audience(&world, departure.origin),
-                ));
-                advisor_manufacturing_complete(&mut advisor_state, &origin);
-                #[cfg(not(target_arch = "wasm32"))]
-                audio_engine.play_sfx(SfxKind::BuildComplete, &audio_vol);
-            }
-            // A finished product travelling in its container arrives there
-            // (event 0x387; rebellion_core::products::arrive).
-            let arrived = rebellion_core::products::arrive(
-                &mut world,
-                tick_events.last().map_or(clock.tick, |event| event.tick),
-            );
-            delivery_state.depart(&world, &mfg_advance.departures);
-            delivery_state.depart(&world, &arrived.departures);
-            let delivered = delivery_state.advance(&world, &tick_events);
-            for completion in arrived.completions.iter().chain(&delivered.arrivals) {
-                rebellion_data::integrator::apply_build_completion_inner(completion, &mut world);
-                // A regiment or special force built aboard boards its fleet.
-                rebellion_core::products::board(
-                    &mut world,
-                    &mut troop_transport_state,
-                    std::slice::from_ref(completion),
-                );
-                // Notification 0x105 clearing, Unit Arrival (FUN_004981c0).
-                let arrived_at = system_name(&world, completion.system);
-                let (title, text) = rebellion_render::story_messages::arrival_texts(
-                    &world,
-                    completion.kind,
-                    &arrived_at,
-                    &message_texts,
-                )
-                .map_or((None, format!("Unit arrived at {arrived_at}")), |(t, b)| {
-                    (Some(t), b)
-                });
-                let mut message = GameMessage::at_system(
-                    completion.tick,
-                    text,
-                    MessageCategory::Manufacturing,
-                    completion.system,
-                )
-                .with_picture_if(pictures::deployed(&world, completion.kind))
-                // FUN_004981c0: ships are case 2, other units case 3.
-                .with_sounds(MessageSounds::arrival(
-                    if matches!(completion.kind, rebellion_core::manufacturing::BuildableKind::CapitalShip(_)) {
-                        pictures::Arrival::Fleet
-                    } else {
-                        pictures::Arrival::Units
-                    },
-                    system_audience(&world, completion.system) != Some(RailAudience::Empire),
-                ))
-                .with_advisor_event(
-                    rebellion_render::story_messages::arrival_event(completion.kind),
-                );
-                if let Some(title) = title {
-                    message = message.with_title(title);
-                }
-                msg_log.push(filed(
-                    message,
-                    rebellion_render::story_messages::unit_message_rail(completion.kind, true),
-                    system_audience(&world, completion.system),
-                ));
-            }
-            // No message for `delivered.lost` (event 0x303,
-            // GameObjDestroyedOnArrivalNotif): its UI record (factory
-            // FUN_0043eca0, class 0x00659778) has `ret 4` at slot +0x1c
-            // (0x005ae1e0), the slot FUN_004974f0 calls to feed a builder,
-            // so Facility Lost (FUN_00497690) never receives it. A0
-            // 2026-11-18 edited saves part 8 f-07..f-09: none shown.
-            // Notification 0x160, Facility Idle (FUN_0048be60): a manager's
-            // remaining count reached 0. Only the holder's side hears it,
-            // and only while the system has a facility of that area.
-            for &(system, area) in &mfg_advance.newly_idle {
-                let Some(sys) = world.systems.get(system) else {
-                    continue;
-                };
-                let player_holds = sys.control.faction()
-                    == Some(if player_faction == MissionFaction::Alliance {
-                        Faction::Alliance
-                    } else {
-                        Faction::Empire
-                    });
-                let picture = pictures::idle_yard(&world, system, area);
-                if !player_holds || picture.is_none() {
-                    continue;
-                }
-                if let Some((title, text)) = rebellion_render::story_messages::facility_idle_texts(
-                    &sys.name,
-                    area,
-                    &message_texts,
-                ) {
-                    msg_log.push(filed(
-                        GameMessage::at_system(
-                            economy_tick,
-                            text,
-                            MessageCategory::Manufacturing,
-                            system,
-                        )
-                        .with_title(title)
-                        .with_picture_if(picture)
-                        .with_sounds(MessageSounds::facility_idle())
-                        // FUN_0048be60 writes code 3.
-                        .with_advisor_event(3)
-                        // Class_0065b260_vt30: kept while the manager idles.
-                        .with_lifetime(rebellion_render::message_log::MessageLifetime::WhileIdle {
-                            system,
-                            area,
-                        }),
-                        MessageRail::Manufacturing,
-                        Some(RailAudience::side(player_faction == MissionFaction::Alliance)),
-                    ));
-                }
-            }
-
-            // ── Movement ────────────────────────────────────────────────────
-            let arrivals = MovementSystem::advance(&mut movement_state, &tick_events);
-            for arrival in &arrivals {
-                let Some(applied) = apply_fleet_arrival(
-                    &mut world,
-                    &movement_state,
-                    &mut troop_transport_state,
-                    arrival,
-                ) else {
-                    continue;
-                };
-                msg_log.push(fleet_arrival_message(
-                    &world,
-                    arrival.fleet,
-                    arrival.system,
-                    applied.is_alliance,
-                    arrival.tick,
-                    &message_texts,
-                ));
-                #[cfg(not(target_arch = "wasm32"))]
-                audio_engine.play_sfx(SfxKind::FleetArrival, &audio_vol);
-            }
-            // Regiments travelling on their own (FUN_00556430, event 0x387).
-            let now = tick_events.last().map_or(clock.tick, |event| event.tick);
-            let regiments = troop_transport_state.advance_transit(&mut world, now);
-            for transit in &regiments.arrived {
-                let system = match transit.leg {
-                    RegimentLeg::Surface(system) => Some(system),
-                    RegimentLeg::Fleet(fleet) => world.fleets.get(fleet).map(|f| f.location),
-                };
-                let Some(system) = system else { continue };
-                let name = world
-                    .systems
-                    .get(system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                let audience = world
-                    .troops
-                    .get(transit.troop)
-                    .map(|troop| RailAudience::side(troop.is_alliance));
-                // Notification 0xd, Unit Arrival (FUN_004981c0 case 3:
-                // 0x707a / 0x707b and the unit's 0x707e line).
-                let shipped = world.troops.get(transit.troop).and_then(|troop| {
-                    rebellion_render::story_messages::arrival_texts(
-                        &world,
-                        rebellion_core::manufacturing::BuildableKind::Troop(troop.class_dat_id),
-                        &name,
-                        &message_texts,
-                    )
-                });
-                let (title, text) = match shipped {
-                    Some((title, body)) => (Some(title), body),
-                    None => (None, format!("Regiment arrived at {name}")),
-                };
-                let mut message = GameMessage::at_system(
-                    transit.arrival_tick,
-                    text,
-                    MessageCategory::Mission,
-                    system,
-                );
-                if let Some(title) = title {
-                    message = message.with_title(title);
-                }
-                msg_log.push(filed(
-                    message
-                    .with_picture_if(world.troops.get(transit.troop).and_then(
-                        |troop| {
-                            pictures::arrival(
-                                pictures::Arrival::Units,
-                                pictures::reader(troop.is_alliance),
-                            )
-                        },
-                    ))
-                    .with_sounds(MessageSounds::arrival(
-                        pictures::Arrival::Units,
-                        audience != Some(RailAudience::Empire),
-                    ))
-                    // FUN_004981c0's units case (3), code 6.
-                    .with_advisor_event(6),
-                    MessageRail::Fleet,
-                    audience,
-                ));
-            }
-            for transit in &regiments.lost {
-                // Event 0x303, GameObjDestroyedOnArrivalNotif.
-                msg_log.push(GameMessage::at_system(
-                    transit.arrival_tick,
-                    "Regiment lost on arrival: its destination no longer exists".to_string(),
-                    MessageCategory::Mission,
-                    transit.origin,
-                ));
-            }
-            // Squadrons travelling on their own (squadrons::SquadronTransits).
-            let (squadrons_arrived, squadrons_lost) =
-                troop_transport_state.squadrons.advance(&mut world, now);
-            for transit in &squadrons_arrived {
-                let system = match transit.to {
-                    SquadronPlace::Planet(system) => Some(system),
-                    SquadronPlace::Fleet(fleet) => world.fleets.get(fleet).map(|f| f.location),
-                };
-                let Some(system) = system else { continue };
-                let name = world
-                    .systems
-                    .get(system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                let alliance = rebellion_core::squadrons::is_alliance(&world, transit.class);
-                // Notification 0xd, Unit Arrival (FUN_004981c0 case 3).
-                let shipped = rebellion_render::story_messages::arrival_texts(
-                    &world,
-                    rebellion_core::manufacturing::BuildableKind::Fighter(transit.class),
-                    &name,
-                    &message_texts,
-                );
-                let (title, text) = match shipped {
-                    Some((title, body)) => (Some(title), body),
-                    None => (None, format!("Squadron arrived at {name}")),
-                };
-                let mut message = GameMessage::at_system(
-                    transit.arrival_tick,
-                    text,
-                    MessageCategory::Mission,
-                    system,
-                );
-                if let Some(title) = title {
-                    message = message.with_title(title);
-                }
-                msg_log.push(filed(
-                    message
-                    .with_picture_if(alliance.and_then(|alliance| {
-                        pictures::arrival(pictures::Arrival::Units, pictures::reader(alliance))
-                    }))
-                    .with_sounds(MessageSounds::arrival(
-                        pictures::Arrival::Units,
-                        alliance != Some(false),
-                    ))
-                    .with_advisor_event(6),
-                    MessageRail::Fleet,
-                    alliance.map(RailAudience::side),
-                ));
-            }
-            for transit in &squadrons_lost {
-                // Event 0x303, GameObjDestroyedOnArrivalNotif.
-                msg_log.push(GameMessage::at_system(
-                    transit.arrival_tick,
-                    "Squadron lost on arrival: its destination no longer exists".to_string(),
-                    MessageCategory::Mission,
-                    transit.origin,
-                ));
-            }
-            // The headquarters' trip ends (rebellion_core::headquarters_move):
-            // Unit Arrival case 4 (FUN_004981c0), to the Alliance.
-            if let Some(transit) =
-                rebellion_core::headquarters_move::advance(&mut troop_transport_state, now)
-            {
-                macroquad::logging::info!(
-                    "[interface] headquarters arrived day={}",
-                    transit.arrival_tick
-                );
-                if let Some(message) =
-                    headquarters_arrival_message(&world, &transit, &message_texts)
-                {
-                    msg_log.push(message);
-                }
-            }
-
             let current_tick = tick_events.last().map_or(0, |event| event.tick);
-
-            // ── Combat ──────────────────────────────────────────────────────
-            // After fleet arrivals, check every system for opposing fleets.
-            // Collect combat triggers first (immutable world borrow).
-            let combat_triggers: Vec<_> = world
-                .systems
-                .keys()
-                .filter_map(|sys_key| {
-                    // Combat cooldown: skip systems that had combat within last 5 ticks.
-                    if let Some(&last_battle) = combat_cooldowns.get(&sys_key) {
-                        if current_tick < last_battle.saturating_add(5) {
-                            return None;
-                        }
-                    }
-                    // FUN_00509710 / FUN_00516d50: both sides present, by a
-                    // fleet or a squadron on the planet, start a battle.
-                    let (alliance, empire) =
-                        rebellion_core::squadrons::sides_present(&world, sys_key);
-                    (alliance && empire).then_some(sys_key)
-                })
-                .collect();
-
-            for sys_key in combat_triggers {
-                // The planet's squadrons go up for the battle and land after
-                // it (squadrons::Sortie).
-                let sorties = rebellion_core::squadrons::scramble(&mut world, sys_key);
-                let first_fleet = |alliance: bool| {
-                    world.systems[sys_key].fleets.iter().copied().find(|&key| {
-                        world
-                            .fleets
-                            .get(key)
-                            .is_some_and(|fleet| fleet.is_alliance == alliance)
-                    })
-                };
-                let (Some(atk_fleet), Some(def_fleet)) = (first_fleet(true), first_fleet(false))
-                else {
-                    rebellion_core::squadrons::recover(&mut world, &sorties);
-                    continue;
-                };
-                let sys_name = world
-                    .systems
-                    .get(sys_key)
-                    .map_or_else(|| "Unknown".into(), |s| s.name.clone());
-
-                // Check if the player is involved in this battle.
-                let player_is_alliance = player_faction == MissionFaction::Alliance;
-                let atk_is_alliance = world.fleets.get(atk_fleet).is_some_and(|f| f.is_alliance);
-                let def_is_alliance = world.fleets.get(def_fleet).is_some_and(|f| f.is_alliance);
-                // Player is involved if either fleet belongs to the player's faction.
-                let player_involved = (player_is_alliance == atk_is_alliance)
-                    || (player_is_alliance == def_is_alliance);
-
-                if player_involved && game_mode == GameMode::Galaxy {
-                    // Transition to tactical combat view for player-involved battles.
-                    let player_is_attacker = if player_is_alliance {
-                        atk_is_alliance
-                    } else {
-                        !atk_is_alliance
-                    };
-                    if let Err(error) = tactical_flow::begin_player_battle(
-                        &world,
-                        &troop_transport_state,
-                        tactical_flow::BattleEntry {
-                            system: sys_key,
-                            attacker: atk_fleet,
-                            defender: def_fleet,
-                            player_is_attacker,
-                            tick: current_tick,
-                            rng_seed: sim_rng.gen::<u32>(),
-                        },
-                        &mut tactical_state,
-                        &mut combat_cooldowns,
-                        &mut msg_log,
-                        &mut game_mode,
-                    ) {
-                        eprintln!("Skipping invalid tactical battle at {sys_name}: {error:?}");
-                        rebellion_core::squadrons::recover(&mut world, &sorties);
-                        continue;
-                    }
-                    battle_sorties = sorties;
-                    // FUN_00485d50: the AI side answers the battle choice
-                    // with its retreat order, which Take Command's battle
-                    // keeps (the battle object is shared by both modes).
-                    let ais: Vec<&AIState> = std::iter::once(&ai_state)
-                        .chain(&secondary_ai_state)
-                        .collect();
-                    let orders = rebellion_core::ai_strategy::retreat_orders(
-                        &ais,
-                        &world,
-                        &movement_state,
-                        &troop_transport_state,
-                        sys_key,
-                    );
-                    if let Some(session) = tactical_state.session.as_mut() {
-                        session.retreat_allowed = orders;
-                        session.retreat_allowed[usize::from(!player_is_alliance)] = false;
-                    }
-                    tactical_state.set_display_options(game_options_state.tactical_flags());
-                    #[cfg(not(target_arch = "wasm32"))]
-                    audio_engine.play_sfx(SfxKind::CombatStart, &audio_vol);
-                    break; // Handle one player battle at a time.
-                }
-
-                // AI vs AI: auto-resolve as before.
-                let battle_before = rebellion_core::loyalty::battle_watch(&world, sys_key);
-                let attacker_is_alliance = world.fleets.get(atk_fleet).map(|f| f.is_alliance);
-                let combat_rolls: Vec<f64> = (0..256).map(|_| sim_rng.gen::<f64>()).collect();
-                // FUN_004362b0: each AI side's retreat order (FUN_00485d50).
-                let ais: Vec<&AIState> =
-                    std::iter::once(&ai_state).chain(&secondary_ai_state).collect();
-                let retreat_allowed = rebellion_core::ai_strategy::retreat_orders(
-                    &ais,
-                    &world,
-                    &movement_state,
-                    &troop_transport_state,
-                    sys_key,
-                );
-                // FUN_0040a050 state 8: an abstract battle (FUN_005ae9c0) of
-                // every fleet of both sides (FUN_0040c780).
-                let (space_result, _) = rebellion_core::abstract_battle::resolve_space_battle(
-                    &world,
-                    sys_key,
-                    &rebellion_core::abstract_battle::side_fleets(&world, sys_key, atk_fleet),
-                    &rebellion_core::abstract_battle::side_fleets(&world, sys_key, def_fleet),
-                    rebellion_core::abstract_battle::abstract_seed(&combat_rolls),
-                    current_tick,
-                    retreat_allowed,
-                );
-
-                // Apply ship damage: reduce counts proportional to destroyed hulls.
-                apply_space_combat_result(&space_result, &mut world, &combat_rolls);
-                rebellion_core::squadrons::recover(&mut world, &sorties);
-                // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift.
-                let winner = battle_winner(space_result.winner, attacker_is_alliance);
-                rebellion_core::loyalty::settle_battle(&mut world, battle_before, sys_key, winner);
-                // FUN_00516ef0: the loser's fleets and planet squadrons leave
-                // on Autorouting.
-                let withdrawals = rebellion_core::abstract_battle::withdraw_loser(
+            // ── The day's systems ahead of its AI: economy, yards,
+            // deliveries, movement, battles (the player's own as a tactical
+            // battle, AppDayPresentation::take_battle), occupation, fog,
+            // missions, the story systems, escapes, events and the day's
+            // timers. Shared with the headless runner
+            // (rebellion_data::simulation::begin_day, F-012); the app shows
+            // each step's events (AppDayPresentation).
+            let loyalty_before = {
+                let now = advisor_now(&clock);
+                let mut sim = sim_pack!();
+                let mut presentation = app_presentation!(now);
+                let mut integrator =
+                    rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
+                let watch = rebellion_data::simulation::begin_day(
                     &mut world,
-                    &mut movement_state,
-                    &mut troop_transport_state.squadrons,
-                    sys_key,
-                    winner,
-                    current_tick,
+                    &mut sim,
+                    &tick_events,
+                    &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
+                    &mut integrator,
+                    &mut presentation,
                 );
-                // FUN_0050a0b0 -> FUN_00510b80: the side that withdrew changes,
-                // and the garrison takes the system's withdraw percent.
-                BlockadeSystem::after_withdrawal(
-                    &mut blockade_state,
-                    &world,
-                    sys_key,
-                    &withdrawals,
-                );
-                troop_transport_state.destroy_untransportable_cargo(&mut world);
-                // Record combat cooldown to prevent infinite re-trigger on draws.
-                combat_cooldowns.insert(sys_key, current_tick);
-                battled_systems.insert(sys_key);
-
-                let winner_str = match space_result.winner {
-                    CombatSide::Attacker => "Alliance victory",
-                    CombatSide::Defender => "Empire victory",
-                    CombatSide::Draw => "Draw",
-                };
-                msg_log.push(GameMessage::at_system(
-                    current_tick,
-                    format!("Space battle at {sys_name} — {winner_str}"),
-                    MessageCategory::Combat,
-                    sys_key,
-                ));
-                #[cfg(not(target_arch = "wasm32"))]
-                audio_engine.play_sfx(SfxKind::CombatStart, &audio_vol);
-            }
-
-            // One side's regiments alone take a planet (the simulation's
-            // step 3b); carried regiments stay aboard until ordered, and no
-            // ground battle happens outside a Planetary Assault
-            // (ghidra/notes/planetary-assault.md).
-            tactical_flow::occupy(&mut world, current_tick, &mut msg_log);
-
-            // Roll the regiments that set out on their own since the last
-            // tick (FUN_00504990).
-            let running_regiments = if tick_events.is_empty() {
-                Vec::new()
-            } else {
-                BlockadeSystem::running_regiments(
-                    &mut blockade_state,
-                    &world,
-                    &troop_transport_state,
-                )
+                sim_unpack!(sim);
+                watch.unwrap_or_default()
             };
-
-            // ── Fog of war ──────────────────────────────────────────────────
-            // port: the fog only records where each side's fleets have
-            // stood; it shows nothing and posts no message. hyp: no message;
-            // the consumer of the original's exploration notification 0x14a
-            // is untraced (ghidra/notes/fog-of-war.md).
-            FogSystem::advance(&mut fog_alliance_state, &world, &movement_state);
-            FogSystem::advance(&mut fog_empire_state, &world, &movement_state);
-
-            // ── The missions, the story systems, the results, escapes and
-            // events: shared with the headless runner
-            // (rebellion_data::simulation::run_day_missions).
-            {
-                let now = advisor_now(&clock);
-                let mut sim = sim_pack!();
-                let mut presentation = app_presentation!(now);
-                let mut integrator =
-                    rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
-                rebellion_data::simulation::run_day_missions(
-                    &mut world,
-                    &mut sim,
-                    &tick_events,
-                    &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
-                    &mut integrator,
-                    &mut presentation,
-                );
-                sim_unpack!(sim);
-            }
-
-            // ── The day's timers, then the regiments that set out since the
-            // last day running a blockade: shared with the headless runner
-            // (rebellion_data::simulation::run_day_timers), every timer due
-            // today before the day's first AI tick (FUN_0041dff0 phase 5
-            // ahead of phase 8; ghidra/notes/ai-scheduling.md).
-            {
-                let now = advisor_now(&clock);
-                let mut sim = sim_pack!();
-                let mut presentation = app_presentation!(now);
-                let mut integrator =
-                    rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
-                rebellion_data::simulation::run_day_timers(
-                    &mut world,
-                    &mut sim,
-                    &tick_events,
-                    &running_regiments,
-                    &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
-                    &mut integrator,
-                    &mut presentation,
-                );
-                sim_unpack!(sim);
-            }
 
             // ── AI: each day has as many passes as the speed has sub-ticks,
             // one a sub-tick, the Alliance's then the Empire's, both sides'
@@ -15562,6 +14839,13 @@ struct AppDayPresentation<'a> {
     player_agent: &'a mut PlayerAgent,
     advisor: &'a mut AdvisorState,
     stash: DayStash,
+    game_mode: &'a mut GameMode,
+    tactical_state: &'a mut TacticalState,
+    /// The planet squadrons up for the player's battle.
+    battle_sorties: &'a mut Vec<rebellion_core::squadrons::Sortie>,
+    tactical_flags: [bool; 5],
+    /// The Empire's fog; the shared day advances the Alliance's.
+    other_fog: &'a mut FogState,
     #[cfg(not(target_arch = "wasm32"))]
     audio_engine: &'a mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))]
@@ -15579,6 +14863,8 @@ struct DayStash {
     /// The Force each member had before the missions' day
     /// (`advance_force_changes`).
     force_changes: Vec<AdvanceForceChange>,
+    /// Each system's holder before the economy's control changes.
+    previous_control: Vec<(SystemKey, Option<Faction>)>,
 }
 
 impl AppDayPresentation<'_> {
@@ -15943,6 +15229,294 @@ impl AppDayPresentation<'_> {
             message = message.with_title(title);
         }
         self.log.push(filed(message, MessageRail::PopularSupport, audience));
+    }
+}
+
+impl AppDayPresentation<'_> {
+    /// The yards' completions and departures: Units Deployed (0x107,
+    /// FUN_00497940), with the advisor's line and the build sound.
+    fn manufactured_messages(
+        &mut self,
+        world: &GameWorld,
+        advance: &rebellion_core::manufacturing::ManufacturingAdvance,
+    ) {
+        let message_texts = self.message_texts;
+        for completion in &advance.completions {
+            let sys_name = world
+                .systems
+                .get(completion.system)
+                .map_or_else(|| "unknown".into(), |s| s.name.clone());
+            let (title, text) = rebellion_render::story_messages::deployed_texts(
+                world,
+                completion.kind,
+                &sys_name,
+                message_texts,
+            )
+            .map_or((None, format!("Construction complete at {sys_name}")), |(t, b)| {
+                (Some(t), b)
+            });
+            let mut message = GameMessage::at_system(
+                completion.tick,
+                text,
+                MessageCategory::Manufacturing,
+                completion.system,
+            )
+            .with_picture_if(pictures::deployed(world, completion.kind))
+            .with_sounds(MessageSounds::deployed(
+                matches!(
+                    completion.kind,
+                    rebellion_core::manufacturing::BuildableKind::Fighter(_)
+                ),
+                system_audience(world, completion.system) != Some(RailAudience::Empire),
+            ))
+            // FUN_00497940 writes code 3 (advisor-briefing.md, "The events").
+            .with_advisor_event(3);
+            if let Some(title) = title {
+                message = message.with_title(title);
+            }
+            self.log.push(filed(
+                message,
+                rebellion_render::story_messages::unit_message_rail(completion.kind, false),
+                system_audience(world, completion.system),
+            ));
+            advisor_manufacturing_complete(self.advisor, &sys_name);
+            #[cfg(not(target_arch = "wasm32"))]
+            self.audio_engine.play_sfx(SfxKind::BuildComplete, self.audio_vol);
+        }
+        let system_name = |key| {
+            world
+                .systems
+                .get(key)
+                .map_or_else(|| "unknown".to_string(), |s| s.name.clone())
+        };
+        // A product travelling in its container leaves as a delivery does
+        // (rebellion_core::products::settle).
+        for departure in advance.departures.iter().chain(&advance.trips) {
+            let origin = system_name(departure.origin);
+            let destination = system_name(departure.destination);
+            // Notification 0x107, Units Deployed (FUN_00497940): the product
+            // is Deployed on completion (FUN_0052bee0), already bound to its
+            // destination, which the message names.
+            let (title, text) = rebellion_render::story_messages::deployed_texts(
+                world,
+                departure.kind,
+                &destination,
+                message_texts,
+            )
+            .map_or(
+                (
+                    None,
+                    format!("Construction complete at {origin}, en route to {destination}"),
+                ),
+                |(title, body)| (Some(title), body),
+            );
+            let mut message = GameMessage::at_system(
+                departure.tick,
+                text,
+                MessageCategory::Manufacturing,
+                departure.destination,
+            )
+            .with_picture_if(pictures::deployed(world, departure.kind))
+            .with_sounds(MessageSounds::deployed(
+                matches!(
+                    departure.kind,
+                    rebellion_core::manufacturing::BuildableKind::Fighter(_)
+                ),
+                system_audience(world, departure.origin) != Some(RailAudience::Empire),
+            ))
+            .with_advisor_event(3);
+            if let Some(title) = title {
+                message = message.with_title(title);
+            }
+            self.log.push(filed(
+                message,
+                rebellion_render::story_messages::unit_message_rail(departure.kind, false),
+                system_audience(world, departure.origin),
+            ));
+            advisor_manufacturing_complete(self.advisor, &origin);
+            #[cfg(not(target_arch = "wasm32"))]
+            self.audio_engine.play_sfx(SfxKind::BuildComplete, self.audio_vol);
+        }
+    }
+
+    /// Notification 0x105 clearing, Unit Arrival (FUN_004981c0): a product
+    /// or delivery completed at its destination.
+    fn unit_arrived_message(
+        &mut self,
+        world: &GameWorld,
+        completion: &rebellion_core::manufacturing::CompletionEvent,
+    ) {
+        let arrived_at = world
+            .systems
+            .get(completion.system)
+            .map_or_else(|| "unknown".to_string(), |s| s.name.clone());
+        let (title, text) = rebellion_render::story_messages::arrival_texts(
+            world,
+            completion.kind,
+            &arrived_at,
+            self.message_texts,
+        )
+        .map_or((None, format!("Unit arrived at {arrived_at}")), |(t, b)| {
+            (Some(t), b)
+        });
+        let mut message = GameMessage::at_system(
+            completion.tick,
+            text,
+            MessageCategory::Manufacturing,
+            completion.system,
+        )
+        .with_picture_if(pictures::deployed(world, completion.kind))
+        // FUN_004981c0: ships are case 2, other units case 3.
+        .with_sounds(MessageSounds::arrival(
+            if matches!(
+                completion.kind,
+                rebellion_core::manufacturing::BuildableKind::CapitalShip(_)
+            ) {
+                pictures::Arrival::Fleet
+            } else {
+                pictures::Arrival::Units
+            },
+            system_audience(world, completion.system) != Some(RailAudience::Empire),
+        ))
+        .with_advisor_event(rebellion_render::story_messages::arrival_event(completion.kind));
+        if let Some(title) = title {
+            message = message.with_title(title);
+        }
+        self.log.push(filed(
+            message,
+            rebellion_render::story_messages::unit_message_rail(completion.kind, true),
+            system_audience(world, completion.system),
+        ));
+    }
+
+    /// Notification 0xd, Unit Arrival (FUN_004981c0 case 3), for regiments
+    /// travelling on their own, and the line for those lost on arrival.
+    fn regiment_arrival_messages(
+        &mut self,
+        world: &GameWorld,
+        regiments: &rebellion_core::troop_transport::RegimentArrivals,
+    ) {
+        let message_texts = self.message_texts;
+        for transit in &regiments.arrived {
+            let system = match transit.leg {
+                RegimentLeg::Surface(system) => Some(system),
+                RegimentLeg::Fleet(fleet) => world.fleets.get(fleet).map(|f| f.location),
+            };
+            let Some(system) = system else { continue };
+            let name = world
+                .systems
+                .get(system)
+                .map_or_else(|| "unknown".into(), |s| s.name.clone());
+            let audience = world
+                .troops
+                .get(transit.troop)
+                .map(|troop| RailAudience::side(troop.is_alliance));
+            // Notification 0xd, Unit Arrival (FUN_004981c0 case 3: 0x707a /
+            // 0x707b and the unit's 0x707e line).
+            let shipped = world.troops.get(transit.troop).and_then(|troop| {
+                rebellion_render::story_messages::arrival_texts(
+                    world,
+                    rebellion_core::manufacturing::BuildableKind::Troop(troop.class_dat_id),
+                    &name,
+                    message_texts,
+                )
+            });
+            let (title, text) = match shipped {
+                Some((title, body)) => (Some(title), body),
+                None => (None, format!("Regiment arrived at {name}")),
+            };
+            let mut message =
+                GameMessage::at_system(transit.arrival_tick, text, MessageCategory::Mission, system);
+            if let Some(title) = title {
+                message = message.with_title(title);
+            }
+            self.log.push(filed(
+                message
+                    .with_picture_if(world.troops.get(transit.troop).and_then(|troop| {
+                        pictures::arrival(
+                            pictures::Arrival::Units,
+                            pictures::reader(troop.is_alliance),
+                        )
+                    }))
+                    .with_sounds(MessageSounds::arrival(
+                        pictures::Arrival::Units,
+                        audience != Some(RailAudience::Empire),
+                    ))
+                    // FUN_004981c0's units case (3), code 6.
+                    .with_advisor_event(6),
+                MessageRail::Fleet,
+                audience,
+            ));
+        }
+        for transit in &regiments.lost {
+            // Event 0x303, GameObjDestroyedOnArrivalNotif.
+            self.log.push(GameMessage::at_system(
+                transit.arrival_tick,
+                "Regiment lost on arrival: its destination no longer exists".to_string(),
+                MessageCategory::Mission,
+                transit.origin,
+            ));
+        }
+    }
+
+    /// Unit Arrival (FUN_004981c0 case 3) for squadrons travelling on their
+    /// own, and the line for those lost on arrival.
+    fn squadron_arrival_messages(
+        &mut self,
+        world: &GameWorld,
+        arrived: &[rebellion_core::squadrons::SquadronTransit],
+        lost: &[rebellion_core::squadrons::SquadronTransit],
+    ) {
+        let message_texts = self.message_texts;
+        for transit in arrived {
+            let system = match transit.to {
+                SquadronPlace::Planet(system) => Some(system),
+                SquadronPlace::Fleet(fleet) => world.fleets.get(fleet).map(|f| f.location),
+            };
+            let Some(system) = system else { continue };
+            let name = world
+                .systems
+                .get(system)
+                .map_or_else(|| "unknown".into(), |s| s.name.clone());
+            let alliance = rebellion_core::squadrons::is_alliance(world, transit.class);
+            let shipped = rebellion_render::story_messages::arrival_texts(
+                world,
+                rebellion_core::manufacturing::BuildableKind::Fighter(transit.class),
+                &name,
+                message_texts,
+            );
+            let (title, text) = match shipped {
+                Some((title, body)) => (Some(title), body),
+                None => (None, format!("Squadron arrived at {name}")),
+            };
+            let mut message =
+                GameMessage::at_system(transit.arrival_tick, text, MessageCategory::Mission, system);
+            if let Some(title) = title {
+                message = message.with_title(title);
+            }
+            self.log.push(filed(
+                message
+                    .with_picture_if(alliance.and_then(|alliance| {
+                        pictures::arrival(pictures::Arrival::Units, pictures::reader(alliance))
+                    }))
+                    .with_sounds(MessageSounds::arrival(
+                        pictures::Arrival::Units,
+                        alliance != Some(false),
+                    ))
+                    .with_advisor_event(6),
+                MessageRail::Fleet,
+                alliance.map(RailAudience::side),
+            ));
+        }
+        for transit in lost {
+            // Event 0x303, GameObjDestroyedOnArrivalNotif.
+            self.log.push(GameMessage::at_system(
+                transit.arrival_tick,
+                "Squadron lost on arrival: its destination no longer exists".to_string(),
+                MessageCategory::Mission,
+                transit.origin,
+            ));
+        }
     }
 }
 
@@ -16348,8 +15922,322 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
                     }
                 }
             }
+            (DayStep::Economy(events), StepPhase::Before) => {
+                self.stash.previous_control = events
+                    .iter()
+                    .filter_map(|ev| match ev {
+                        EconomyEvent::ControlResolved { system, .. } => Some((
+                            *system,
+                            world.systems.get(*system).and_then(|s| s.control.faction()),
+                        )),
+                        _ => None,
+                    })
+                    .collect();
+            }
+            (DayStep::Economy(events), StepPhase::After) => {
+                let tick = states.clock.tick;
+                let previous = std::mem::take(&mut self.stash.previous_control);
+                for ev in *events {
+                    match ev {
+                        EconomyEvent::ControlResolved {
+                            system,
+                            new_control,
+                        } => {
+                            let before = previous
+                                .iter()
+                                .find(|(key, _)| key == system)
+                                .and_then(|(_, side)| *side);
+                            // Notification 0x100, System Joins / Declares
+                            // Neutrality (FUN_00499760), while the support
+                            // alone moved it. port: no regiment at the
+                            // system stands for bit 0x2000 (FUN_00510d70).
+                            if world
+                                .systems
+                                .get(*system)
+                                .is_some_and(|sys| sys.ground_units.is_empty())
+                            {
+                                if let Some(message) = system_joins_message(
+                                    world,
+                                    *system,
+                                    before,
+                                    new_control.faction(),
+                                    player_is_alliance,
+                                    tick,
+                                    message_texts,
+                                ) {
+                                    self.log.push(message);
+                                }
+                            }
+                        }
+                        // Notification 0x145, Smuggling (FUN_00499130).
+                        EconomyEvent::SmugglingPercentChanged {
+                            system,
+                            previous,
+                            percent,
+                        } => {
+                            if let Some(sys) = world.systems.get(*system) {
+                                if let Some(message) =
+                                    rebellion_render::story_messages::smuggling_message(
+                                        &sys.name,
+                                        sys.control.faction(),
+                                        player_is_alliance,
+                                        *previous,
+                                        *percent,
+                                        tick,
+                                        message_texts,
+                                    )
+                                {
+                                    self.log.push(message);
+                                }
+                            }
+                        }
+                        // Notification 0x148, Near Uprising (FUN_00498cb0).
+                        EconomyEvent::TroopSurplusChanged {
+                            system,
+                            previous,
+                            surplus,
+                        } => {
+                            if let Some(sys) = world.systems.get(*system) {
+                                let holder = sys.control.faction();
+                                if let Some(message) =
+                                    rebellion_render::story_messages::near_uprising_message(
+                                        *system,
+                                        &sys.name,
+                                        holder,
+                                        player_is_alliance,
+                                        // +0x88 bit 8, Garrisoned (FUN_0050ba90).
+                                        !sys.ground_units.is_empty(),
+                                        states.uprising.is_uprising(*system),
+                                        *previous,
+                                        *surplus,
+                                        tick,
+                                        message_texts,
+                                    )
+                                {
+                                    self.log.push(message.with_picture_if(
+                                        holder.and_then(pictures::near_uprising),
+                                    ));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            (DayStep::Manufactured(advance), StepPhase::After) => {
+                self.manufactured_messages(world, advance);
+            }
+            (DayStep::UnitsArrived(completions), StepPhase::After) => {
+                for completion in *completions {
+                    self.unit_arrived_message(world, completion);
+                }
+            }
+            // Notification 0x160, Facility Idle (FUN_0048be60): a manager's
+            // remaining count reached 0. Only the holder's side hears it,
+            // and only while the system has a facility of that area.
+            (DayStep::Idle(idle), StepPhase::After) => {
+                for &(system, area) in *idle {
+                    let Some(sys) = world.systems.get(system) else {
+                        continue;
+                    };
+                    let player_holds = sys.control.faction()
+                        == Some(if player_is_alliance {
+                            Faction::Alliance
+                        } else {
+                            Faction::Empire
+                        });
+                    let picture = pictures::idle_yard(world, system, area);
+                    if !player_holds || picture.is_none() {
+                        continue;
+                    }
+                    if let Some((title, text)) =
+                        rebellion_render::story_messages::facility_idle_texts(
+                            &sys.name,
+                            area,
+                            message_texts,
+                        )
+                    {
+                        self.log.push(filed(
+                            GameMessage::at_system(
+                                states.clock.tick,
+                                text,
+                                MessageCategory::Manufacturing,
+                                system,
+                            )
+                            .with_title(title)
+                            .with_picture_if(picture)
+                            .with_sounds(MessageSounds::facility_idle())
+                            // FUN_0048be60 writes code 3.
+                            .with_advisor_event(3)
+                            // Class_0065b260_vt30: kept while the manager idles.
+                            .with_lifetime(
+                                rebellion_render::message_log::MessageLifetime::WhileIdle {
+                                    system,
+                                    area,
+                                },
+                            ),
+                            MessageRail::Manufacturing,
+                            Some(RailAudience::side(player_is_alliance)),
+                        ));
+                    }
+                }
+            }
+            (DayStep::FleetArrivals(arrivals), StepPhase::After) => {
+                for arrival in *arrivals {
+                    let Some(fleet) = world
+                        .fleets
+                        .get(arrival.fleet)
+                        .filter(|fleet| fleet.location == arrival.system)
+                    else {
+                        continue;
+                    };
+                    self.log.push(fleet_arrival_message(
+                        world,
+                        arrival.fleet,
+                        arrival.system,
+                        fleet.is_alliance,
+                        arrival.tick,
+                        message_texts,
+                    ));
+                    #[cfg(not(target_arch = "wasm32"))]
+                    self.audio_engine.play_sfx(SfxKind::FleetArrival, self.audio_vol);
+                }
+            }
+            (DayStep::RegimentsArrived(regiments), StepPhase::After) => {
+                self.regiment_arrival_messages(world, regiments);
+            }
+            (DayStep::SquadronsArrived(arrived, lost), StepPhase::After) => {
+                self.squadron_arrival_messages(world, arrived, lost);
+            }
+            // The headquarters' trip ends (rebellion_core::headquarters_move):
+            // Unit Arrival case 4 (FUN_004981c0), to the Alliance.
+            (DayStep::HeadquartersArrived(transit), StepPhase::After) => {
+                macroquad::logging::info!(
+                    "[interface] headquarters arrived day={}",
+                    transit.arrival_tick
+                );
+                if let Some(message) = headquarters_arrival_message(world, transit, message_texts) {
+                    self.log.push(message);
+                }
+            }
+            (DayStep::BattleFought(result), StepPhase::After) => {
+                self.battled.insert(result.system);
+                let sys_name = world
+                    .systems
+                    .get(result.system)
+                    .map_or_else(|| "Unknown".into(), |s| s.name.clone());
+                let winner_str = match result.winner {
+                    CombatSide::Attacker => "Alliance victory",
+                    CombatSide::Defender => "Empire victory",
+                    CombatSide::Draw => "Draw",
+                };
+                self.log.push(GameMessage::at_system(
+                    states.clock.tick,
+                    format!("Space battle at {sys_name} — {winner_str}"),
+                    MessageCategory::Combat,
+                    result.system,
+                ));
+                #[cfg(not(target_arch = "wasm32"))]
+                self.audio_engine.play_sfx(SfxKind::CombatStart, self.audio_vol);
+            }
+            // port: a log line only. Regiments taking the planet set its
+            // control bits 0x30, so FUN_00510d70 leaves bit 0x2000 clear and
+            // System Joins (FUN_00499760) stays silent; notification 0x31b
+            // has no message (FUN_00488de0).
+            (DayStep::Occupied(system, winner), StepPhase::After) => {
+                let name = world
+                    .systems
+                    .get(*system)
+                    .map_or("unknown", |value| value.name.as_str());
+                self.log.push(GameMessage::at_system(
+                    states.clock.tick,
+                    format!("{name} occupied by {winner:?}"),
+                    MessageCategory::Combat,
+                    *system,
+                ));
+            }
+            // port: the fog only records where each side's fleets have
+            // stood; the runner's fog is the Alliance's, and the Empire's
+            // advances here (ghidra/notes/fog-of-war.md).
+            (DayStep::FogAdvanced, StepPhase::After) => {
+                FogSystem::advance(self.other_fog, world, &states.movement);
+            }
             _ => {}
         }
+    }
+
+    fn take_battle(
+        &mut self,
+        world: &mut GameWorld,
+        states: &mut rebellion_data::simulation::SimulationStates,
+        system: SystemKey,
+        sorties: &[rebellion_core::squadrons::Sortie],
+        roll: f64,
+    ) -> bool {
+        // One player battle at a time, while the galaxy shows.
+        if *self.game_mode != GameMode::Galaxy {
+            return false;
+        }
+        let first_fleet = |alliance: bool| {
+            world.systems.get(system).and_then(|value| {
+                value.fleets.iter().copied().find(|&key| {
+                    world
+                        .fleets
+                        .get(key)
+                        .is_some_and(|fleet| fleet.is_alliance == alliance)
+                })
+            })
+        };
+        let (Some(attacker), Some(defender)) = (first_fleet(true), first_fleet(false)) else {
+            return false;
+        };
+        let player_is_alliance = self.player_faction == MissionFaction::Alliance;
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a roll in 0..1 scaled to the battle's 32-bit seed"
+        )]
+        let rng_seed = (roll * f64::from(u32::MAX)) as u32;
+        if let Err(error) = tactical_flow::begin_player_battle(
+            world,
+            &states.troop_transport,
+            tactical_flow::BattleEntry {
+                system,
+                attacker,
+                defender,
+                // The attacker is the Alliance's first fleet.
+                player_is_attacker: player_is_alliance,
+                tick: states.clock.tick,
+                rng_seed,
+            },
+            self.tactical_state,
+            &mut states.combat_cooldowns,
+            self.log,
+            self.game_mode,
+        ) {
+            eprintln!("Skipping invalid tactical battle: {error:?}");
+            return false;
+        }
+        *self.battle_sorties = sorties.to_vec();
+        // FUN_00485d50: the AI side answers the battle choice with its
+        // retreat order, which Take Command's battle keeps (the battle
+        // object is shared by both modes).
+        let ais: Vec<&AIState> = std::iter::once(&states.ai).chain(&states.ai2).collect();
+        let orders = rebellion_core::ai_strategy::retreat_orders(
+            &ais,
+            world,
+            &states.movement,
+            &states.troop_transport,
+            system,
+        );
+        if let Some(session) = self.tactical_state.session.as_mut() {
+            session.retreat_allowed = orders;
+            session.retreat_allowed[usize::from(!player_is_alliance)] = false;
+        }
+        self.tactical_state.set_display_options(self.tactical_flags);
+        #[cfg(not(target_arch = "wasm32"))]
+        self.audio_engine.play_sfx(SfxKind::CombatStart, self.audio_vol);
+        true
     }
 
     fn ai_day_begun(&mut self, day: u64, speed: GameSpeed, passes: u32) {
