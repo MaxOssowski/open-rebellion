@@ -2064,6 +2064,94 @@ hold, and the tests that build such planners. The original cancels a
 planner only through the strategy or the sector planner, as the port
 does for its own.
 
+## Repeated orders (traced 2026-11-20)
+
+Dual-AI campaigns of 5000 days (seeds 1 to 5, on `31913943`) showed the
+same order given hundreds of times. The JSONL names special forces by
+class only, so many "repeats" there are different units. A throwaway
+`eprintln!` in the integrator printed the object keys, each member's
+state at dispatch, and each mission's end code, so a loop could be told
+apart from many units doing the same thing. Three loops came out:
+
+1. **One regiment unloaded every day onto a Rim system** (seed 2 Joiol
+   1,076 orders, seed 3 Clak'dor VII 1,066, seed 5 Allyuen 1,285). Module
+   8's plan (`FUN_004b1440`, `land_one`) lands one regiment of a fleet
+   standing at a neutral, unpopulated system (`FUN_004ae440`). The port's
+   regiment check (`accept_planet`, `FUN_005073d0`) admits such a planet
+   only when it is explored (`+0x88 & 2`), and it read the port's shared
+   `exploration_status`. That field stands for the master: the seeding
+   sets it, and in play only the bounty hunters' step (`jabba.rs`) does,
+   since intelligence results now write the side's copy. So a Rim system
+   stayed unexplored for good. The side's copy was explored, as the fleet
+   had arrived (`object_views::side_explored`). The planet refused, the
+   placement fell back on the regiment's own fleet (`FUN_00552300` step
+   3; the fleet had room), and the move returned `Unchanged`. The order
+   was accepted and did nothing, so it came again on the next cycle.
+   Fixed: `accept_planet` reads the moving side's copy. hyp: which copy
+   `FUN_005073d0` reads is not traced. `FUN_00504e60` resolves the
+   destination through the class handler (`FUN_0053efa0`), which suggests
+   the master, and `fog-of-war.md` reads the master as explored for every
+   system. Either reading admits these landings.
+2. **Moves to a destroyed system** (seed 2: Han Solo 533 and Huoba Neva
+   621 Moves to Balmorra after the Death Star destroyed it on day 4365).
+   A sector planner's Sabotage kept Balmorra as its gathering place: its
+   record still had `+0x30` bit 1, and `FUN_004bdcd0` tests only that bit
+   and `+0x28` bit 2. Each Move was dispatched, ended the next day with
+   code 7 (container destroyed), and was sent again. In the original, the
+   Move's route placement (`FUN_004f4b60` -> `FUN_00551770` ->
+   `FUN_00552300` -> `FUN_00552b10`) asks the system's slot `+0x74`,
+   `FUN_005073d0`. For a `0x241` Move to a destroyed system (`+0x50`
+   bit 3) it returns `1`/`0x22`; only a fleet's `0x204` and a mission's
+   `0x240` are let through. The AI therefore never sends that Move. Fixed:
+   `accepts` refuses it, and the module's slot `+0x18` takes the refusal.
+3. **Moves to a system the side no longer holds** (seed 1 after fix 1:
+   Crix Madine, 734 Moves to Ord Trasi, held by the Empire). Each Move
+   ended with code 8 (rule 3, the target's side). `FUN_004f4b60` rule 4
+   refuses such a Move with `1`/`0x28`, as the player's Move does
+   (`missions::move_target_allowed`). Fixed: `accepts` checks it too.
+
+**The original repeats 2 and 3 as refusals.** The planner that asks
+still holds its member and its place, so the original would also ask
+again each cycle. Its order is refused at validation, though: it uses
+no budget, creates no mission, and does not put the member on a
+mission for a day. A destroyed own system keeps record `+0x30` bit 1:
+the refresh (`FUN_00433e40`) reads the holder from `+0x24` and only adds
+`0x10` for the destroyed bit (`+0x50 & 8`). No staging query reads that
+bit (`FUN_004bd0a0`, `FUN_004bdcd0`). The port's record does not set
+`0x10` yet; no reader was found.
+
+**Repeats the original makes the same way.**
+- Two Generals sharing one post trade the command each cycle
+  (`ai-command-planners.md`, kept as read): seeds 1, 2 and 5 still give
+  1,500 to 3,000 Command orders.
+- A standing Reconnaissance at a guarded system (seed 5 Selonia: 258
+  dispatches, 136 successes). The planner counts no failures
+  (`FUN_0047f2c0`, `FUN_0047f720`). Only a success marks the target seen,
+  so a foiled Recon leaves it the oldest-seen candidate, and it is picked
+  again.
+- A sector planner's Espionage sent to the same system about every 50
+  days (seed 1 Ryloth, 98 by the same two units). A success marks the
+  system seen (`sector_report`), and the next pick goes by age.
+
+Campaigns (`rebellion-playtest data/base --dual-ai --ticks 5000`, seeds 1
+to 5, `31913943` before, the three fixes after). "Regiment" is the most
+repeated MoveRegiments target and "Move" the most repeated Move of one
+character:
+
+| Seed | Before: end, A/E systems, most fleets | After | Regiment before/after | Character Move before/after | Moves to destroyed | Command orders |
+|---|---|---|---|---|---|---|
+| 1 | day 5000, 37/16, 35 | day 5000, 39/29, 54 | Womrik 142 / Womrik 117 | Menndo 19 / Leia 15 | 0 / 0 | 2,617 / 2,434 |
+| 2 | day 5000, 25/21, 39 | day 5000, 21/46, 49 | Joiol 1,076 / Sullust 133 | Huoba Neva 621 / Pter Thanas 16 | 1,154 / 0 | 1,815 / 1,507 |
+| 3 | day 5000, 17/25, 33 | day 5000, 15/51, 41 | Clak'dor VII 1,066 / Coruscant 103 | Shenir Rix 14 / 11 | 0 / 0 | 25 / 22 |
+| 4 | day 1780 Empire (HQ destroyed), 7/33, 15 | the same | Bothawui 88 / 88 | Jerjerrod 7 / 7 | 0 / 0 | 386 / 386 |
+| 5 | day 5000, 36/17, 58 | day 5000, 34/37, 36 | Allyuen 1,285 / Umgul 222 | Ma'w'shiye 23 / Tura Raftican 10 | 0 / 0 | 1,643 / 3,053 |
+
+The regiments that land now take their Rim systems, so the Empire's
+system count rises in seeds 2, 3 and 5. The Rescue at Zebitrope IV and
+the daily Incite reported from another run did not occur on this
+branch: seeds 1 to 5 sent 0 Rescues to Zebitrope IV and 15 to 53
+Incites per campaign.
+
 ## Still open
 
 - The fleet record bit `0x10` behind `F & 4`.
