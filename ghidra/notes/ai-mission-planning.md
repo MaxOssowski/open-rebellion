@@ -1993,11 +1993,24 @@ gives about four `mission_step` calls a day per side, with 27 (Empire)
 and 17 (Alliance) mission planners and 9 research planners at day 200.
 With one planner per call each would cycle every 7 to 9 days, not daily.
 
-Not ported: the change depends on how many module-4 steps the cadence
-gives a day, which the scheduling work (`ai-scheduling.md`) is
-settling. The port should then list every planner in creation order
-(`MissionEntry` by planner id), skip those whose mission reported
-result 0, stop at the list's end, and drop the once-a-day guard.
+Ported 2026-11-20 (`AISystem::mission_step`, `mission_list`,
+`mission_planner_run`): each module-4 cycle takes the requests, then
+walks the list of every planner, research and mission alike, by id (the
+order they were made; `MissionEntry::Planner`) from `mission_next`, else
+the head, to the first whose order's mission no longer runs (the port's
+`0x80000000`), and runs its whole cycle; `mission_next` names the entry
+after it. With none ready to the end the cursor clears and nothing runs.
+The once-a-day guard (`MissionPlanner::last_cycle`) is gone.
+- port: a cursor naming a planner that has gone resumes at the next one
+  made after it;
+- port: the reports are read at each module-4 cycle, before the walk;
+- no save change: `MissionEntry::Planner` is a new last variant, and a
+  saved `Research(id)` cursor reads as that planner.
+
+Campaigns, 5 seeds of 5,000 days, both sides AI, against `d211baa8`
+(missions dispatched before -> after): seed 1 6,326 -> 4,206, seed 2
+5,892 -> 4,149, seed 3 3,212 -> 5,214, seed 4 4,005 -> 1,295 (a victory
+on day 2,724), seed 5 6,432 -> 3,908.
 
 ## The planner's `+0x20` bit `0x80` (traced 2026-11-20)
 

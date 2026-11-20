@@ -380,17 +380,29 @@ fn production_module(kind: &BuildableKind) -> Option<u8> {
     }
 }
 
-/// One entry of the mission module's planner list (`FUN_004d2730`).
-///
-/// port: the original lists one planner per request; the port lists its
-/// research planners here, and its other planners run each pass.
+/// One entry of the mission module's planner list (`FUN_004d2730`): every
+/// planner, research and mission alike, in the order they were made (by
+/// id, which they share).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MissionEntry {
-    /// The research planner with this id.
+    /// A research planner, as saves before the whole list named one.
     Research(u64),
     /// A group of the port's former mission heuristics. None is listed
     /// any longer; older saves may still name one.
     Group(u8),
+    /// The planner with this id.
+    Planner(u64),
+}
+
+impl MissionEntry {
+    /// The planner the entry names; a group names none.
+    #[must_use]
+    pub fn planner(self) -> Option<u64> {
+        match self {
+            Self::Research(id) | Self::Planner(id) => Some(id),
+            Self::Group(_) => None,
+        }
+    }
 }
 
 /// The AI passes in a game-day at `speed`: one AI tick per sub-tick
@@ -668,8 +680,7 @@ pub struct MissionPlanner {
     pub target_object: Option<crate::missions::MissionTarget>,
     /// The day it was made.
     pub created: u64,
-    /// The last day it ran a cycle: the AI ticks several times a day, and
-    /// a Move order is not applied before the day's end.
+    /// The last day it ran a cycle.
     #[serde(default)]
     pub last_cycle: u64,
     /// Where it gathers its team (`+0x38`, state 6 `FUN_004bd0a0`).
@@ -1890,10 +1901,21 @@ impl AISystem {
         }
     }
 
-    /// One step of the mission module (`FUN_004d2490` states 5 and 6): the
-    /// entry `+0x4c` names, else the first, runs, and `+0x4c` takes the
-    /// entry after it (`FUN_004d2730`). Its list holds the research
-    /// planners.
+    /// One cycle of the mission module (`FUN_004d2490`): the strategy's and
+    /// the sector planners' requests (states 1 to 3), then states 5 and 6.
+    /// State 5 (`FUN_004d2730`) walks the planner list from the entry
+    /// `+0x4c` names, else the head, to the first planner whose slot
+    /// `+0x28` holds (`FUN_004bda40`: `+0x20` lacks `0x80000000`, which
+    /// the order's mission keeps while it runs); `+0x48` takes it and
+    /// `+0x4c` the entry after it. With none from there to the list's end
+    /// both clear and nothing runs: the walk does not wrap. State 6 runs
+    /// the planner's whole cycle (slot `+0x2c`: `FUN_004bced0` for the
+    /// strategy's classes, `FUN_004bda60` for a sector planner's), whose
+    /// orders the module issues one a step.
+    ///
+    /// port: the reports are read at each cycle; the original reads each
+    /// when its notification arrives. A planner `+0x4c` named that has
+    /// gone hands the walk to the next one made after it.
     fn mission_step(
         state: &mut AIState,
         planner: &mut Planner<'_>,
@@ -1909,35 +1931,65 @@ impl AISystem {
             ..
         } = *ctx;
         Self::take_sector_request(state, world, galaxy);
-        let entries: Vec<MissionEntry> = state
+        Self::mission_planner_reports(state, galaxy, (ctx.mission_state, ctx.tick), actions);
+        let list = Self::mission_list(state, ctx.mission_state);
+        let from = state
+            .mission_next
+            .and_then(MissionEntry::planner)
+            .map_or(0, |next| {
+                list.iter()
+                    .position(|&(id, _)| id >= next)
+                    .unwrap_or(list.len())
+            });
+        let Some(at) = (from..list.len()).find(|&i| list[i].1) else {
+            state.mission_next = None;
+            return;
+        };
+        let id = list[at].0;
+        state.mission_next = list
+            .get(at + 1)
+            .map(|&(next, _)| MissionEntry::Planner(next));
+        if let Some(p) = state.research_planners.iter_mut().find(|p| p.id == id) {
+            let is_alliance = matches!(faction, AiFaction::Alliance);
+            Self::research_cycle(
+                p,
+                planner,
+                world,
+                research_state,
+                uprisings,
+                is_alliance,
+                actions,
+            );
+        } else {
+            Self::mission_planner_run(state, id, planner, world, galaxy, ctx.tick, actions);
+        }
+    }
+
+    /// The mission module's planner list (`+0x30`): each planner's id in
+    /// the order they were made, and whether slot `+0x28` holds
+    /// (`FUN_004bda40`): no mission of its order still running.
+    fn mission_list(state: &AIState, missions: &MissionState) -> Vec<(u64, bool)> {
+        let running = |mission: Option<u64>| {
+            mission.is_some_and(|id| {
+                missions
+                    .missions()
+                    .iter()
+                    .any(|m| m.id == id && m.end_code == 0)
+            })
+        };
+        let mut list: Vec<(u64, bool)> = state
             .research_planners
             .iter()
-            .map(|p| MissionEntry::Research(p.id))
+            .map(|p| (p.id, !running(p.mission)))
+            .chain(
+                state
+                    .mission_planners
+                    .iter()
+                    .map(|p| (p.id, !running(p.mission))),
+            )
             .collect();
-        let at = entries
-            .iter()
-            .position(|&e| Some(e) == state.mission_next)
-            .unwrap_or(0);
-        state.mission_next = entries.get(at + 1).copied();
-        match entries.get(at).copied() {
-            Some(MissionEntry::Research(id)) => {
-                let is_alliance = matches!(faction, AiFaction::Alliance);
-                if let Some(p) = state.research_planners.iter_mut().find(|p| p.id == id) {
-                    Self::research_cycle(
-                        p,
-                        planner,
-                        world,
-                        research_state,
-                        uprisings,
-                        is_alliance,
-                        actions,
-                    );
-                }
-            }
-            Some(MissionEntry::Group(_)) | None => {}
-        }
-        Self::mission_planner_reports(state, galaxy, (ctx.mission_state, ctx.tick), actions);
-        Self::mission_planner_cycle(state, planner, world, galaxy, ctx.tick, actions);
+        list.sort_unstable_by_key(|&(id, _)| id);
+        list
     }
 
     /// One cycle of every mission planner (`FUN_004bced0`):
@@ -1963,6 +2015,7 @@ impl AISystem {
     /// port: a planner of the heuristics whose team is still empty after
     /// state 3 ends, and one older than [`MISSION_PLANNER_DAYS`] ends. A
     /// standing planner lives until the strategy cancels it.
+    #[cfg(test)]
     fn mission_planner_cycle(
         state: &mut AIState,
         planner: &mut Planner<'_>,
@@ -1971,6 +2024,44 @@ impl AISystem {
         tick: u64,
         actions: &mut Vec<AIAction>,
     ) {
+        let ids: Vec<u64> = state.mission_planners.iter().map(|p| p.id).collect();
+        for id in ids {
+            Self::mission_planner_run(state, id, planner, world, galaxy, tick, actions);
+        }
+    }
+
+    /// One whole cycle of the mission planner `id` (the cycle
+    /// [`Self::mission_planner_cycle`] describes); a planner whose cycle
+    /// ends it is dropped.
+    fn mission_planner_run(
+        state: &mut AIState,
+        id: u64,
+        planner: &mut Planner<'_>,
+        world: &GameWorld,
+        galaxy: &mut crate::ai_records::Galaxy,
+        tick: u64,
+        actions: &mut Vec<AIAction>,
+    ) {
+        let Some(at) = state.mission_planners.iter().position(|p| p.id == id) else {
+            return;
+        };
+        let mut p = state.mission_planners.remove(at);
+        if Self::mission_planner_cycle_of(&mut p, state, planner, world, galaxy, tick, actions) {
+            state.mission_planners.insert(at, p);
+        }
+    }
+
+    /// [`Self::mission_planner_run`]'s cycle of `p`, taken out of the
+    /// side's list; false when the planner ends.
+    fn mission_planner_cycle_of(
+        p: &mut MissionPlanner,
+        state: &mut AIState,
+        planner: &mut Planner<'_>,
+        world: &GameWorld,
+        galaxy: &mut crate::ai_records::Galaxy,
+        tick: u64,
+        actions: &mut Vec<AIAction>,
+    ) -> bool {
         use crate::mission_planning::standing_system;
         let is_alliance = matches!(state.faction, Some(AiFaction::Alliance));
         let claims = &mut state.record_claims;
@@ -1978,130 +2069,115 @@ impl AISystem {
         let seen = &state.seen;
         let sectors = &state.module8.planners;
         let no_site = state.controller.flags & crate::ai_module1::NO_SITE != 0;
-        state.mission_planners.retain_mut(|p| {
-            // A sector planner's mission planner runs FUN_004bda60 once a
-            // day: state 2 takes its target from its owner's plan, and
-            // [`sector_cycle`] runs states 3 to 9.
-            if p.owner != 0 {
-                if p.last_cycle != tick {
-                    p.last_cycle = tick;
-                    let owner = sectors.iter().find(|s| s.id == p.owner);
-                    let target = match p.kind {
-                        MissionKind::Abduction | MissionKind::Assassination => owner
-                            .and_then(|s| sector_character_target(s, planner, world, galaxy))
-                            .map(|(system, c)| (system, Some(c), None)),
-                        MissionKind::Sabotage => owner
-                            .and_then(|s| {
-                                sector_sabotage_target(
-                                    s,
-                                    planner,
-                                    world,
-                                    galaxy,
-                                    (is_alliance, no_site),
-                                )
-                            })
-                            .map(|(system, object)| (system, None, Some(object))),
-                        kind => owner
-                            .and_then(|s| {
-                                sector_mission_target(kind, s, planner, galaxy, (tick, seen))
-                            })
-                            .map(|system| (system, None, None)),
-                    };
-                    p.target_system = target.map(|t| t.0);
-                    p.target_character = target.and_then(|t| t.1);
-                    p.target_object = target.and_then(|t| t.2);
-                    let sector = owner.and_then(|s| s.sector);
-                    sector_cycle(p, sector, planner, (world, galaxy), actions);
-                }
-                return true;
-            }
-            if !p.standing && tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
-                return false;
-            }
-            if p.last_cycle == tick {
-                return p.standing || !p.team.is_empty();
-            }
+        // A sector planner's mission planner runs FUN_004bda60: state
+        // 2 takes its target from its owner's plan, and
+        // [`sector_cycle`] runs states 3 to 9.
+        if p.owner != 0 {
             p.last_cycle = tick;
-            let kind = p.kind;
-            p.team
-                .retain(|&m| planner.keeps(m) && !planner.outranked(kind, m));
-            p.decoys.retain(|&m| planner.keeps(m));
-            for &member in p.team.iter().chain(&p.decoys) {
-                planner.hold(member);
-            }
-            let defense = p
-                .target_system
-                .and_then(|t| galaxy.system(t))
-                .map(|r| r.values[29]);
-            let (team, decoys) = planner.refill(
-                (p.kind, strategy_subtype(p.kind)),
-                p.team.len(),
-                p.decoys.len(),
-                defense,
-            );
-            p.team.extend(team);
-            p.decoys.extend(decoys);
-            if p.standing {
-                p.target_system = match p.kind {
-                    MissionKind::Recruitment => recruitment_target(p, planner, world, galaxy),
-                    MissionKind::InciteUprising => incite_target(p, planner, galaxy),
-                    MissionKind::SubdueUprising => subdue_target(p, planner, galaxy),
-                    MissionKind::Reconnaissance => {
-                        recon_target(p, planner, galaxy, sector_claims, (tick, seen))
-                    }
-                    MissionKind::Espionage => {
-                        espionage_target(p, planner, galaxy, sector_claims, (tick, seen))
-                    }
-                    MissionKind::Abduction => abduction_target(p, planner, world, galaxy),
-                    MissionKind::Rescue => rescue_target(p, planner, world, galaxy),
-                    _ => diplomacy_target(p, planner, galaxy, claims),
-                };
-            }
-            if p.team.is_empty() {
-                return p.standing;
-            }
-            let Some(target) = p.target_system else {
-                return true;
+            let owner = sectors.iter().find(|s| s.id == p.owner);
+            let target = match p.kind {
+                MissionKind::Abduction | MissionKind::Assassination => owner
+                    .and_then(|s| sector_character_target(s, planner, world, galaxy))
+                    .map(|(system, c)| (system, Some(c), None)),
+                MissionKind::Sabotage => owner
+                    .and_then(|s| {
+                        sector_sabotage_target(s, planner, world, galaxy, (is_alliance, no_site))
+                    })
+                    .map(|(system, object)| (system, None, Some(object))),
+                kind => owner
+                    .and_then(|s| sector_mission_target(kind, s, planner, galaxy, (tick, seen)))
+                    .map(|system| (system, None, None)),
             };
-            p.staging = staging_point(p.staging, target, &p.team, planner, (world, galaxy));
-            let Some(staging) = p.staging else {
-                return true;
+            p.target_system = target.map(|t| t.0);
+            p.target_character = target.and_then(|t| t.1);
+            p.target_object = target.and_then(|t| t.2);
+            let sector = owner.and_then(|s| s.sector);
+            sector_cycle(p, sector, planner, (world, galaxy), actions);
+            return true;
+        }
+        if !p.standing && tick.saturating_sub(p.created) > MISSION_PLANNER_DAYS {
+            return false;
+        }
+        p.last_cycle = tick;
+        let kind = p.kind;
+        p.team
+            .retain(|&m| planner.keeps(m) && !planner.outranked(kind, m));
+        p.decoys.retain(|&m| planner.keeps(m));
+        for &member in p.team.iter().chain(&p.decoys) {
+            planner.hold(member);
+        }
+        let defense = p
+            .target_system
+            .and_then(|t| galaxy.system(t))
+            .map(|r| r.values[29]);
+        let (team, decoys) = planner.refill(
+            (p.kind, strategy_subtype(p.kind)),
+            p.team.len(),
+            p.decoys.len(),
+            defense,
+        );
+        p.team.extend(team);
+        p.decoys.extend(decoys);
+        if p.standing {
+            p.target_system = match p.kind {
+                MissionKind::Recruitment => recruitment_target(p, planner, world, galaxy),
+                MissionKind::InciteUprising => incite_target(p, planner, galaxy),
+                MissionKind::SubdueUprising => subdue_target(p, planner, galaxy),
+                MissionKind::Reconnaissance => {
+                    recon_target(p, planner, galaxy, sector_claims, (tick, seen))
+                }
+                MissionKind::Espionage => {
+                    espionage_target(p, planner, galaxy, sector_claims, (tick, seen))
+                }
+                MissionKind::Abduction => abduction_target(p, planner, world, galaxy),
+                MissionKind::Rescue => rescue_target(p, planner, world, galaxy),
+                _ => diplomacy_target(p, planner, galaxy, claims),
             };
-            let mut gathered = true;
-            for &member in p.team.iter().chain(&p.decoys) {
-                if standing_system(world, member) == Some(staging) {
-                    continue;
-                }
-                gathered = false;
-                if planner.sendable(member) {
-                    actions.push(AIAction::DispatchMission {
-                        kind: MissionKind::Move,
-                        team: vec![member],
-                        decoys: Vec::new(),
-                        target_system: staging,
-                        target_character: None,
-                        target_object: None,
-                    });
-                }
+        }
+        if p.team.is_empty() {
+            return p.standing;
+        }
+        let Some(target) = p.target_system else {
+            return true;
+        };
+        p.staging = staging_point(p.staging, target, &p.team, planner, (world, galaxy));
+        let Some(staging) = p.staging else {
+            return true;
+        };
+        let mut gathered = true;
+        for &member in p.team.iter().chain(&p.decoys) {
+            if standing_system(world, member) == Some(staging) {
+                continue;
             }
-            let free = p.team.iter().chain(&p.decoys).all(|&m| planner.sendable(m));
-            // port: a Recruitment ordered while the side's pool is empty
-            // ends at once (code 0x10, FUN_0056b370); the planner waits.
-            let side = crate::dat::Faction::of_alliance(is_alliance);
-            let futile = p.kind == MissionKind::Recruitment && world.recruit_pool_empty(side);
-            if !(gathered && free) || futile {
-                return true;
+            gathered = false;
+            if planner.sendable(member) {
+                actions.push(AIAction::DispatchMission {
+                    kind: MissionKind::Move,
+                    team: vec![member],
+                    decoys: Vec::new(),
+                    target_system: staging,
+                    target_character: None,
+                    target_object: None,
+                });
             }
-            actions.push(AIAction::DispatchMission {
-                kind: p.kind,
-                team: p.team.clone(),
-                decoys: p.decoys.clone(),
-                target_system: target,
-                target_character: p.target_character,
-                target_object: p.target_object,
-            });
-            p.standing
+        }
+        let free = p.team.iter().chain(&p.decoys).all(|&m| planner.sendable(m));
+        // port: a Recruitment ordered while the side's pool is empty
+        // ends at once (code 0x10, FUN_0056b370); the planner waits.
+        let side = crate::dat::Faction::of_alliance(is_alliance);
+        let futile = p.kind == MissionKind::Recruitment && world.recruit_pool_empty(side);
+        if !(gathered && free) || futile {
+            return true;
+        }
+        actions.push(AIAction::DispatchMission {
+            kind: p.kind,
+            team: p.team.clone(),
+            decoys: p.decoys.clone(),
+            target_system: target,
+            target_character: p.target_character,
+            target_object: p.target_object,
         });
+        p.standing
     }
 
     /// The Mission Reports of the standing Diplomacy, Incite and Subdue
@@ -7427,7 +7503,10 @@ mod tests {
             .collect();
         assert_eq!(moves, [(vec![team[0]], target), (vec![team[1]], target)]);
         assert_eq!(state.mission_planners.len(), 1);
-        // A second AI tick the same day leaves the planner as it is.
+        // A second cycle the same day orders the moves again while the
+        // members stand away and free: the list (FUN_004d2730) and slot
+        // +0x28 (FUN_004bda40) keep no day. Applied, the Moves make the
+        // members busy.
         let mut again = Vec::new();
         let mut galaxy = galaxy_of(&state, &world);
         AISystem::mission_planner_cycle(
@@ -7438,7 +7517,7 @@ mod tests {
             2,
             &mut again,
         );
-        assert!(again.is_empty());
+        assert_eq!(orders(&again, MissionKind::Move).len(), 2);
         assert_eq!(state.mission_planners.len(), 1);
 
         // One there, one still away: no order yet.
@@ -9116,9 +9195,10 @@ mod tests {
     }
 
     #[test]
-    fn a_sector_planner_s_mission_planner_takes_its_target_once_a_day() {
-        // FUN_004bdbc0: state 2 asks the owner +0x70 (FUN_00476e80); the
-        // cycle runs once a day.
+    fn a_sector_planner_s_mission_planner_takes_its_target_each_cycle() {
+        // FUN_004bdbc0: state 2 asks the owner +0x70 (FUN_00476e80) at
+        // each cycle, which the list runs whenever it reaches the planner
+        // (FUN_004d2730), more than once a day too.
         let (world, _, rebels, _) = recon_world(0, true);
         let mut state = AIState::new(AiFaction::Empire);
         let mut galaxy = galaxy_of(&state, &world);
@@ -9146,8 +9226,7 @@ mod tests {
         };
         assert_eq!(run(&mut state, &mut galaxy, 5), Some(rebels[0]));
         state.seen.insert(rebels[0], 4);
-        assert_eq!(run(&mut state, &mut galaxy, 5), Some(rebels[0]));
-        assert_eq!(run(&mut state, &mut galaxy, 6), Some(rebels[1]));
+        assert_eq!(run(&mut state, &mut galaxy, 5), Some(rebels[1]));
         // An owner gone gives none.
         state.module8.planners[0].id = 8;
         assert_eq!(run(&mut state, &mut galaxy, 7), None);
@@ -13002,34 +13081,65 @@ mod tests {
     }
 
     #[test]
-    fn a_mission_step_runs_one_entry_and_the_next_step_the_one_after() {
-        // FUN_004d2490 state 5 (FUN_004d2730) takes the entry +0x4c names,
-        // else the first, and stores the one after it; state 6 runs it.
-        // port: the research planners come first, then the groups.
+    fn a_mission_step_runs_the_next_ready_planner_and_stops_at_the_list_s_end() {
+        // FUN_004d2490 state 5 (FUN_004d2730): from the entry +0x4c names,
+        // else the head, the first planner whose slot +0x28 holds
+        // (FUN_004bda40: +0x20 lacks 0x80000000, kept while its order's
+        // mission runs) goes into +0x48 and the entry after it into +0x4c;
+        // state 6 runs its cycle. With none from there to the list's end
+        // both clear and nothing runs: the walk does not wrap. The list
+        // holds every planner in the order they were made.
         let mut world = empty_world();
         let sector = add_sector(&mut world);
         let shipyard = yard_system(&mut world, sector, 0x28);
         let first = designer(&mut world, TechType::Ship, 60);
         let second = designer(&mut world, TechType::Ship, 40);
         let mut state = AIState::new(AiFaction::Alliance);
-        let (missions, research, mfg, config, uprisings) = (
-            MissionState::new(),
+        let mut missions = MissionState::new();
+        let (research, mfg, config, uprisings) = (
             ResearchState::new(),
             ManufacturingState::new(),
             GameConfig::default(),
             crate::uprising::UprisingState::default(),
         );
+        {
+            let busy = state.busy_characters.clone();
+            let planner = Planner::new(&world, &missions, &busy, true, 7);
+            rows_settled(
+                &mut state,
+                &planner,
+                &world,
+                &research,
+                &mut crate::ai_records::Galaxy::default(),
+            );
+        }
+        // Only the two research planners, and a later planner whose
+        // order's mission still runs.
+        state.mission_planners.clear();
+        let ids: Vec<u64> = state.research_planners.iter().map(|p| p.id).collect();
+        assert_eq!(ids.len(), 2);
+        let mut later = Vec::new();
+        adopted(
+            &mut state,
+            1,
+            &mut vec![rescue_order(vec![second], shipyard)],
+        );
+        later.push(state.mission_planners[0].id);
+        assert!(later[0] > ids[1]);
+        let running = missions.dispatch(crate::missions::MissionRequest {
+            kind: MissionKind::Rescue,
+            faction: MissionFaction::Alliance,
+            team: vec![second],
+            decoys: Vec::new(),
+            target_system: shipyard,
+            target_character: None,
+            target_object: None,
+            tick: 1,
+        });
+        state.mission_planners[0].mission = Some(running);
         let ctx = inputs(&world, &missions, &research, &mfg, &config, &uprisings);
         let busy = state.busy_characters.clone();
         let mut planner = Planner::new(&world, &missions, &busy, true, 7);
-        rows_settled(
-            &mut state,
-            &planner,
-            &world,
-            &research,
-            &mut crate::ai_records::Galaxy::default(),
-        );
-        let ids: Vec<u64> = state.research_planners.iter().map(|p| p.id).collect();
         let mut step = |state: &mut AIState| {
             let mut actions = Vec::new();
             AISystem::mission_step(
@@ -13043,10 +13153,27 @@ mod tests {
         };
 
         assert_eq!(step(&mut state), vec![(vec![first], shipyard, None)]);
-        assert_eq!(state.mission_next, Some(MissionEntry::Research(ids[1])));
+        assert_eq!(state.mission_next, Some(MissionEntry::Planner(ids[1])));
         assert_eq!(step(&mut state), vec![(vec![second], shipyard, None)]);
+        assert_eq!(state.mission_next, Some(MissionEntry::Planner(later[0])));
+        // The later planner's mission runs: none is ready to the end.
+        assert_eq!(step(&mut state), vec![]);
         assert_eq!(state.mission_next, None);
+        assert_eq!(state.mission_planners.len(), 1);
+        assert_eq!(state.mission_planners[0].last_cycle, 0, "it did not run");
+        // From the head again.
         assert_eq!(step(&mut state), vec![(vec![first], shipyard, None)]);
+        // A mission no longer running readies it (FUN_0047b950).
+        state.mission_planners[0].mission = Some(running + 1);
+        state.mission_next = Some(MissionEntry::Planner(later[0]));
+        step(&mut state);
+        assert_eq!(state.mission_planners[0].last_cycle, 7, "it ran");
+        assert_eq!(state.mission_next, None);
+        // A cursor naming a planner that has gone goes on from the next
+        // one made after it.
+        state.mission_next = Some(MissionEntry::Planner(ids[0] + 1_000));
+        assert_eq!(step(&mut state), vec![]);
+        assert_eq!(state.mission_next, None);
     }
 
     #[test]
