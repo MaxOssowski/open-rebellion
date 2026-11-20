@@ -83,6 +83,22 @@ In order:
      the counts compare (`FUN_005c5eb0`).
 2. New arrivals in the battle's `+0x58` list become active: state
    `+0x170` = 2 (`FUN_005c5f20`).
+   Read 2026-11-20 from the disassembly (`0x5d161c`..`0x5d16a1`): only
+   side 1 runs this; side 0's branch jumps from `0x5d14fa` to `0x5d16a1`.
+   Each unit leaves its carrier's hangar (`FUN_005b8450`, when the carrier
+   `+0x164` is in the battle, `FUN_005a6360`), takes state 2 and joins the
+   stepping commander's fighter list `+0x64` (`FUN_005c5f20` with `ecx` =
+   `ebp+0x64`). The list is then emptied (slot `+0x04`). The arrivals are
+   the squadrons that start inside a hangar: in abstract mode
+   `FUN_005964c0` registers a carried squadron without a working
+   hyperdrive through `FUN_005af4b0`, which adds it to the battle's
+   `+0x4c` and `+0x58`. So a carrier's squadrons fight from the first
+   step. Ported 2026-11-20 (`AbstractBattle::launch_arrivals`); before,
+   the port's abstract battle never launched them, so an Imperial Star
+   Destroyer fought without its TIEs. `port:` the original puts every
+   arrival in side 1's list; only Imperial squadrons start in a hangar
+   (the Alliance's FIGHTSD classes have hyperdrive 60), so the port keeps
+   each on its own side.
 3. Slot `+0x08`, then `FUN_005c9200(dt)`: the task-force and order
    management. This is what gives units their orders.
 4. The fire. Each task force in the commander's list `+0x70` with a

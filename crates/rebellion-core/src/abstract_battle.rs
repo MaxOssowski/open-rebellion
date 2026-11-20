@@ -167,6 +167,11 @@ pub struct AbstractBattle {
     /// [`crate::world::System::last_arrival`]), which `FUN_0040c780` asks
     /// when both retreat words are set.
     pub last_arrival: Option<crate::dat::Faction>,
+    /// The battle's `+0x58` list: the squadrons that start inside a hangar
+    /// (state 1). `FUN_005964c0` registers each through `FUN_005af4b0`,
+    /// which adds it to the battle's units (`+0x4c`) and to this list; the
+    /// Empire's first step launches them (`FUN_005d14d0`, `0x5d161c`).
+    pub arrivals: Vec<usize>,
 }
 
 const fn side_index(alliance: bool) -> usize {
@@ -460,7 +465,11 @@ impl AbstractBattle {
             retreat_marked: [false; 2],
             trench_commander: TRENCH_RUN_COMMANDER_FLOOR,
             last_arrival: None,
+            arrivals: Vec::new(),
         };
+        battle.arrivals = (0..battle.session.fighters.len())
+            .filter(|&index| battle.session.fighters[index].in_hangar)
+            .collect();
         battle.lows = [battle.side_strength(true), battle.side_strength(false)];
         battle
     }
@@ -811,6 +820,9 @@ impl AbstractBattle {
     /// side is beaten.
     fn side_step(&mut self, alliance: bool) -> bool {
         self.death_star_step(alliance);
+        if !alliance {
+            self.launch_arrivals();
+        }
         self.assign_targets(alliance);
         for (group, members) in self.groups(alliance) {
             let Some(&target) = self.targets.get(&group) else {
@@ -838,6 +850,29 @@ impl AbstractBattle {
         }
         let active = units_of(&self.session, alliance).len();
         active == 0 && (alliance || !self.death_star_operational())
+    }
+
+    /// `FUN_005d14d0` for side 1 (`0x5d161c`..`0x5d16a1`), after the Death
+    /// Star: each unit of the battle's `+0x58` list leaves its carrier's
+    /// hangar (`FUN_005b8450`, when the carrier `+0x164` is in the battle,
+    /// `FUN_005a6360`), enters state 2 and joins the commander's fighters
+    /// (`+0x64`, `FUN_005c5f20`); then the list is emptied (slot `+0x04`).
+    /// The Alliance's step skips this (`0x5d14fa` falls through to
+    /// `0x5d16a1`).
+    ///
+    /// port: the original adds every arrival to side 1's list. In the stock
+    /// data only Imperial squadrons start in a hangar (FIGHTSD: the Alliance
+    /// classes have hyperdrive 60, and `FUN_005964c0` hangars only a squadron
+    /// without a working one), so the port keeps each on its own side.
+    fn launch_arrivals(&mut self) {
+        for index in std::mem::take(&mut self.arrivals) {
+            for ship in &mut self.session.ships {
+                ship.hangar.retain(|&inside| inside != index);
+            }
+            let fighter = &mut self.session.fighters[index];
+            fighter.in_hangar = false;
+            fighter.alive = true;
+        }
     }
 
     /// Slot `+0x0c` (`FUN_005d0f50`): the side may leave, has not yet, and a
@@ -2395,6 +2430,37 @@ mod tests {
         assert_eq!(lost(&|battle| battle.deal(AbstractUnit::Capital(0), 50.0)), (false, true, 0, true));
         // Outright (the Death Star's shot, a side destroyed).
         assert_eq!(lost(&|battle| battle.destroy(AbstractUnit::Capital(0))), (false, true, 0, true));
+    }
+
+    // FUN_005964c0 (abstract branch, FUN_005af4b0) puts a carried squadron
+    // without a hyperdrive in the battle's +0x58 list; the Empire's step
+    // (FUN_005d14d0, 0x5d161c..0x5d16a1) takes it out of its carrier's hangar
+    // (FUN_005b8450) in state 2, so it fights from the first step.
+    #[test]
+    fn squadrons_inside_a_hangar_launch_at_the_empire_s_first_step() {
+        let lasers = TacticalWeaponArc {
+            laser_cannons: 5,
+            ..TacticalWeaponArc::default()
+        };
+        let mut carrier = ship(false, TacticalWeaponArc::default(), 0.0);
+        carrier.fighter_capacity = 2;
+        carrier.hangar = vec![0];
+        let mut inside = fighter(false, lasers);
+        inside.alive = false;
+        inside.in_hangar = true;
+        inside.home_carrier = Some(0);
+        let target = ship(true, TacticalWeaponArc::default(), 0.0);
+        let mut battle = AbstractBattle::new(session(vec![carrier, target], vec![inside]));
+        assert_eq!(battle.arrivals, [0]);
+        assert_eq!(battle.side_strength(false), 0.0);
+        assert!(battle.step().is_none());
+        let session = &battle.session;
+        assert!(session.fighters[0].alive && !session.fighters[0].in_hangar);
+        assert!(session.ships[0].hangar.is_empty());
+        assert!(battle.arrivals.is_empty());
+        assert!(battle.side_strength(false) > 0.0);
+        // It fired at the Alliance ship in that step.
+        assert!(session.ships[1].shield < 50, "{}", session.ships[1].shield);
     }
 
     // port: a capital ship keeps integer hull and shields, so a fraction of
