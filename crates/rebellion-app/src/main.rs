@@ -760,6 +760,48 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
         .collect()
 }
 
+/// The line under the Game Options window after the browser refused a
+/// save for lack of space. port: the original has only "Selected Game
+/// Failed To Save" (`FUN_00408240`, REBDLOG 0x1219), which the window
+/// still shows; a disk-full cause has no string of its own there.
+const SAVE_QUOTA_MESSAGE: &str =
+    "Browser storage is full. Free some space for this site, then save again.";
+
+/// Settles the Game Options save whose commit was `status`: once it is no
+/// longer pending the rows show what is stored and the window shows
+/// `FUN_00408240`'s message, "Selected Game Saved Successfully" or
+/// "Selected Game Failed To Save". Returns the slot and whether it saved.
+/// A native save settles at once; a browser one when IndexedDB answers.
+fn settle_game_options_save(
+    state: &mut GameOptionsState,
+    save_slots: &mut Vec<rebellion_render::SaveSlotInfo>,
+    saves_dir: &Path,
+    status: rebellion_data::save::WriteStatus,
+) -> Option<(usize, bool)> {
+    use rebellion_data::save::WriteStatus;
+    let slot = state.save_in_flight?;
+    let saved = match status {
+        WriteStatus::Pending => return None,
+        WriteStatus::Committed => true,
+        WriteStatus::QuotaExceeded | WriteStatus::Failed => false,
+    };
+    state.save_in_flight = None;
+    // A failed commit put the slot back as it was.
+    *save_slots = read_save_slots(saves_dir);
+    state.refresh_saves(save_slots);
+    state.saved_notice = Some(saved);
+    if saved {
+        state.error = None;
+        state.saved_this_visit = true;
+    } else {
+        macroquad::logging::warn!("[save] slot={} commit failed: {:?}", slot, status);
+        if status == WriteStatus::QuotaExceeded {
+            state.error = Some(SAVE_QUOTA_MESSAGE.to_owned());
+        }
+    }
+    Some((slot, saved))
+}
+
 struct LiveCampaign<'a> {
     world: &'a mut GameWorld,
     clock: &'a mut GameClock,
@@ -3731,6 +3773,18 @@ async fn main() {
             }
 
             GameMode::GameOptions { origin } => {
+                if let Some((slot, true)) = settle_game_options_save(
+                    &mut game_options_state,
+                    &mut save_slots,
+                    &saves_dir,
+                    rebellion_data::save::save_write_status(),
+                ) {
+                    msg_log.push(GameMessage::new(
+                        clock.tick,
+                        format!("Saved game to slot {}", slot + 1),
+                        MessageCategory::Event,
+                    ));
+                }
                 let mut action = draw_game_options(
                     &mut game_options_state,
                     &mut bmp_cache,
@@ -8348,17 +8402,19 @@ async fn main() {
                                 state.clock.tick,
                                 fingerprint
                             );
-                            save_slots = read_save_slots(&saves_dir);
-                            game_options_state.refresh_saves(&save_slots);
-                            game_options_state.error = None;
-                            // FUN_00408240: "Selected Game Saved Successfully".
-                            game_options_state.saved_notice = Some(true);
-                            game_options_state.saved_this_visit = true;
-                            msg_log.push(GameMessage::new(
-                                clock.tick,
-                                format!("Saved game to slot {}", slot + 1),
-                                MessageCategory::Event,
-                            ));
+                            game_options_state.save_in_flight = Some(slot);
+                            if let Some((slot, true)) = settle_game_options_save(
+                                &mut game_options_state,
+                                &mut save_slots,
+                                &saves_dir,
+                                rebellion_data::save::save_write_status(),
+                            ) {
+                                msg_log.push(GameMessage::new(
+                                    clock.tick,
+                                    format!("Saved game to slot {}", slot + 1),
+                                    MessageCategory::Event,
+                                ));
+                            }
                         }
                         Err(error) => {
                             macroquad::logging::warn!("[save] slot={} failed: {}", slot, error);
@@ -17008,6 +17064,74 @@ mod tactical_ground_tests {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod options_save_tests {
+    use rebellion_data::save::WriteStatus;
+    use rebellion_render::game_options::{GameOptionsOrigin, GameOptionsState};
+
+    fn settle(status: WriteStatus) -> (GameOptionsState, Option<(usize, bool)>) {
+        let root = std::env::temp_dir().join(format!(
+            "options-settle-{:?}-{}",
+            status,
+            std::process::id()
+        ));
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        state.save_in_flight = Some(3);
+        state.error = Some("stale".into());
+        let mut slots = Vec::new();
+        let settled = super::settle_game_options_save(&mut state, &mut slots, &root, status);
+        (state, settled)
+    }
+
+    #[test]
+    fn a_pending_save_holds_the_window_without_a_message() {
+        let (state, settled) = settle(WriteStatus::Pending);
+        assert_eq!(settled, None);
+        assert_eq!(state.save_in_flight, Some(3));
+        assert_eq!(state.saved_notice, None);
+        assert!(state.modal());
+    }
+
+    #[test]
+    fn a_committed_save_shows_the_saved_message() {
+        // FUN_00408240: REBDLOG 0x1217 "Selected Game Saved Successfully",
+        // and the visit's flag that lets Restart ask nothing.
+        let (state, settled) = settle(WriteStatus::Committed);
+        assert_eq!(settled, Some((3, true)));
+        assert_eq!(state.save_in_flight, None);
+        assert_eq!(state.saved_notice, Some(true));
+        assert!(state.saved_this_visit);
+        assert_eq!(state.error, None);
+    }
+
+    #[test]
+    fn a_save_over_the_quota_shows_the_failed_message_and_its_cause() {
+        // FUN_00408240: REBDLOG 0x1219 "Selected Game Failed To Save".
+        let (state, settled) = settle(WriteStatus::QuotaExceeded);
+        assert_eq!(settled, Some((3, false)));
+        assert_eq!(state.saved_notice, Some(false));
+        assert!(!state.saved_this_visit);
+        assert_eq!(state.error.as_deref(), Some(super::SAVE_QUOTA_MESSAGE));
+    }
+
+    #[test]
+    fn another_failed_save_shows_the_failed_message_only() {
+        let (state, settled) = settle(WriteStatus::Failed);
+        assert_eq!(settled, Some((3, false)));
+        assert_eq!(state.saved_notice, Some(false));
+        assert_eq!(state.error.as_deref(), Some("stale"));
+    }
+
+    #[test]
+    fn nothing_settles_without_a_save_in_flight() {
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        let mut slots = Vec::new();
+        let root = std::env::temp_dir();
+        assert_eq!(
+            super::settle_game_options_save(&mut state, &mut slots, &root, WriteStatus::Committed),
+            None
+        );
+        assert_eq!(state.saved_notice, None);
+    }
+
     #[test]
     fn unreadable_native_saves_show_an_empty_row_and_stay_unchanged() {
         // FUN_00415cd0 keeps FUN_00411730's empty header when the read

@@ -156,6 +156,11 @@ pub struct GameOptionsState {
     /// A save succeeded since the window opened (`FUN_00408240` sets the
     /// slot's flag at `+0xac + 4k`); Restart then asks nothing.
     pub saved_this_visit: bool,
+    /// The slot whose save the browser still commits (IndexedDB answers
+    /// asynchronously; `rebellion_data::browser_saves`). port: the original
+    /// writes its file before `FUN_00408240` shows the message; the window
+    /// holds until the commit settles, then shows the same message.
+    pub save_in_flight: Option<usize>,
     pub occupied: [bool; SAVE_ROWS],
     pub names: [String; SAVE_ROWS],
     pub error: Option<String>,
@@ -181,6 +186,7 @@ impl Default for GameOptionsState {
             pending: None,
             saved_notice: None,
             saved_this_visit: false,
+            save_in_flight: None,
             occupied: [false; SAVE_ROWS],
             names: std::array::from_fn(|_| String::new()),
             error: None,
@@ -235,7 +241,7 @@ impl GameOptionsState {
     /// Whether a question or a message holds the window.
     #[must_use]
     pub const fn modal(&self) -> bool {
-        self.pending.is_some() || self.saved_notice.is_some()
+        self.pending.is_some() || self.saved_notice.is_some() || self.save_in_flight.is_some()
     }
 
     pub fn request(&mut self, action: GameOptionsAction) -> GameOptionsAction {
@@ -271,7 +277,10 @@ impl GameOptionsState {
     pub fn escape(&mut self) -> GameOptionsAction {
         // The message takes only Enter (Class_006589a8_vt4c); a question
         // takes Escape as No (Class_00658950_vt4c).
-        if self.saved_notice.is_some() || self.pending.take().is_some() {
+        if self.saved_notice.is_some()
+            || self.save_in_flight.is_some()
+            || self.pending.take().is_some()
+        {
             GameOptionsAction::None
         } else {
             GameOptionsAction::Return
@@ -1929,6 +1938,23 @@ mod tests {
             "Selected Game Saved Successfully"
         );
         assert_eq!(saved_notice_string(false), "Selected Game Failed To Save");
+    }
+
+    #[test]
+    fn a_save_in_flight_holds_the_window_until_it_settles() {
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        state.refresh_saves(&[]);
+        state.save_in_flight = Some(0);
+        assert!(state.modal());
+        assert_eq!(state.escape(), GameOptionsAction::None);
+        assert_eq!(
+            state.request(GameOptionsAction::Exit),
+            GameOptionsAction::None
+        );
+        assert!(state.pending.is_none());
+        state.save_in_flight = None;
+        assert!(!state.modal());
+        assert_eq!(state.escape(), GameOptionsAction::Return);
     }
 
     #[test]
