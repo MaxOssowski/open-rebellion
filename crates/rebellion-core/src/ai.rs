@@ -319,6 +319,27 @@ fn accepts(
                         })
                 })
         }
+        // A person's Move (0x201 -> 0x241, validator FUN_004f4b60): a
+        // target whose side bits are not the order's side gives 1/0x28
+        // (rule 4, missions::move_target_allowed); then the route places
+        // the members at the destination (FUN_00551770 -> FUN_00552300 ->
+        // FUN_00552b10), whose slot +0x74 for a system, FUN_005073d0,
+        // refuses a destroyed one (+0x50 bit 3) with 1/0x22; only a fleet's
+        // 0x204 and a mission's 0x240 are let through.
+        AIAction::DispatchMission {
+            kind: MissionKind::Move,
+            target_system,
+            ..
+        } => {
+            crate::missions::move_target_allowed(
+                world,
+                faction.as_mission_faction(),
+                *target_system,
+            ) && world
+                .systems
+                .get(*target_system)
+                .is_some_and(|s| !s.is_destroyed)
+        }
         _ => true,
     }
 }
@@ -11737,6 +11758,80 @@ mod tests {
             &crate::troop_transport::TroopTransportState::new(),
             &crate::movement::MovementState::new()
         ));
+    }
+
+    #[test]
+    fn a_move_to_a_destroyed_system_is_refused_but_a_mission_there_is_not() {
+        // FUN_005073d0, a system's slot +0x74, gives 1/0x22 for a destroyed
+        // system to a 0x241 Move, which a gathering place kept on a
+        // destroyed system (FUN_004bdcd0 tests only record +0x30 bit 1 and
+        // +0x28 bit 2) would otherwise send every cycle; a 0x240 mission
+        // order is let through.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let gone = add_system(&mut world, sector, 0.5, 0.5);
+        world.systems[gone].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[gone].is_destroyed = true;
+        let order = |kind| AIAction::DispatchMission {
+            kind,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: gone,
+            target_character: None,
+            target_object: None,
+        };
+        let ok = |world: &GameWorld, kind| {
+            accepts(
+                &order(kind),
+                world,
+                &ResearchState::new(),
+                AiFaction::Alliance,
+                &crate::troop_transport::TroopTransportState::new(),
+                &crate::movement::MovementState::new(),
+            )
+        };
+        assert!(!ok(&world, MissionKind::Move));
+        assert!(ok(&world, MissionKind::Espionage));
+        world.systems[gone].is_destroyed = false;
+        assert!(ok(&world, MissionKind::Move));
+    }
+
+    #[test]
+    fn a_move_to_a_system_of_another_side_is_refused() {
+        // FUN_004f4b60 rule 4: a Move (family 0x40..0x4f) whose target's side
+        // bits (+0x24 bits 6..7) are not the order's side gives 1/0x28, as
+        // for the player's Move (missions::move_target_allowed). A planner
+        // still posting a member to a lost system is refused, not sent on a
+        // Move that ends at once with code 8.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let there = add_system(&mut world, sector, 0.5, 0.5);
+        let order = AIAction::DispatchMission {
+            kind: MissionKind::Move,
+            team: Vec::new(),
+            decoys: Vec::new(),
+            target_system: there,
+            target_character: None,
+            target_object: None,
+        };
+        let ok = |world: &GameWorld| {
+            accepts(
+                &order,
+                world,
+                &ResearchState::new(),
+                AiFaction::Alliance,
+                &crate::troop_transport::TroopTransportState::new(),
+                &crate::movement::MovementState::new(),
+            )
+        };
+        for (control, allowed) in [
+            (ControlKind::Controlled(crate::dat::Faction::Alliance), true),
+            (ControlKind::Controlled(crate::dat::Faction::Empire), false),
+            (ControlKind::Uncontrolled, false),
+        ] {
+            world.systems[there].control = control;
+            assert_eq!(ok(&world), allowed, "{control:?}");
+        }
     }
 
     #[test]
