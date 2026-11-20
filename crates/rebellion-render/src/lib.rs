@@ -1189,6 +1189,10 @@ fn gid_metric(
             .queue(system_key, area)
             .is_none_or(rebellion_core::manufacturing::ProductionQueue::is_empty)
     };
+    // FUN_0042b330's counters take the viewer's copy (param_3 =
+    // FUN_004f2d10(view +0x9c, id)): a frozen copy counts the facilities it
+    // holds (ghidra/notes/fog-of-war.md).
+    let facilities = GidFacilities::of(world, viewer, system_key);
     match mode {
         // The briefing's side displays and marked systems take their mark in
         // gid_marker_for_system.
@@ -1204,7 +1208,7 @@ fn gid_metric(
         // FUN_0042b330 case 0x91: the holder's regiments (FUN_005044f0,
         // families 0x10..0x13), armed defenses (FUN_00526e90, 0x22..0x27)
         // and squadrons (FUN_00503550).
-        GidMode::AllDefenses => gid_all_defenses(world, system_key, system),
+        GidMode::AllDefenses => gid_all_defenses(world, system_key, system, &facilities),
         GidMode::Uprisings => u32::from(system_in_revolt(system_key, system, gid.uprisings)),
         GidMode::IdleFleets | GidMode::FleetsEnRoute | GidMode::BriefingFleets => {
             gid_fleets(
@@ -1241,17 +1245,11 @@ fn gid_metric(
                 .map_or(0, |economy| economy.raw_material_allocated);
             u32::from(system.raw_materials).saturating_sub(used)
         }
-        GidMode::Mines | GidMode::Refineries => system
-            .production_facilities
+        GidMode::Mines | GidMode::Refineries => facilities
+            .production
             .iter()
-            .filter(|key| {
-                world
-                    .production_facilities
-                    .get(**key)
-                    .is_some_and(|facility| {
-                        Some(facility.side) == holder
-                            && (facility.is_mine == (mode == GidMode::Mines))
-                    })
+            .filter(|facility| {
+                Some(facility.side) == holder && (facility.is_mine == (mode == GidMode::Mines))
             })
             .count() as u32,
         GidMode::Shipyards
@@ -1259,42 +1257,32 @@ fn gid_metric(
         | GidMode::TrainingFacilities
         | GidMode::IdleTrainingFacilities
         | GidMode::ConstructionYards
-        | GidMode::IdleConstructionYards => system
-            .manufacturing_facilities
+        | GidMode::IdleConstructionYards => facilities
+            .manufacturing
             .iter()
-            .filter(|key| {
-                world
-                    .manufacturing_facilities
-                    .get(**key)
-                    .is_some_and(|facility| {
-                        let family = facility.class_dat_id.family();
-                        let correct_type = match mode {
-                            GidMode::Shipyards | GidMode::IdleShipyards => {
-                                facility.is_shipyard || family == 0x28
-                            }
-                            GidMode::TrainingFacilities | GidMode::IdleTrainingFacilities => {
-                                family == 0x29
-                            }
-                            GidMode::ConstructionYards | GidMode::IdleConstructionYards => {
-                                matches!(family, 0x20 | 0x2a)
-                            }
-                            _ => false,
-                        };
-                        let idle_area = match mode {
-                            GidMode::IdleShipyards => Some(ProductionArea::Shipyard),
-                            GidMode::IdleTrainingFacilities => {
-                                Some(ProductionArea::TrainingFacility)
-                            }
-                            GidMode::IdleConstructionYards => {
-                                Some(ProductionArea::ConstructionYard)
-                            }
-                            _ => None,
-                        };
-                        Some(facility.side) == holder
-                            && correct_type
-                            && idle_area
-                                .is_none_or(|area| holder == Some(viewer) && area_idle(area))
-                    })
+            .filter(|facility| {
+                let family = facility.class.family();
+                let correct_type = match mode {
+                    GidMode::Shipyards | GidMode::IdleShipyards => {
+                        facility.is_shipyard || family == 0x28
+                    }
+                    GidMode::TrainingFacilities | GidMode::IdleTrainingFacilities => {
+                        family == 0x29
+                    }
+                    GidMode::ConstructionYards | GidMode::IdleConstructionYards => {
+                        matches!(family, 0x20 | 0x2a)
+                    }
+                    _ => false,
+                };
+                let idle_area = match mode {
+                    GidMode::IdleShipyards => Some(ProductionArea::Shipyard),
+                    GidMode::IdleTrainingFacilities => Some(ProductionArea::TrainingFacility),
+                    GidMode::IdleConstructionYards => Some(ProductionArea::ConstructionYard),
+                    _ => None,
+                };
+                Some(facility.side) == holder
+                    && correct_type
+                    && idle_area.is_none_or(|area| holder == Some(viewer) && area_idle(area))
             })
             .count() as u32,
         GidMode::Troopers => system
@@ -1328,34 +1316,108 @@ fn gid_metric(
                     _ => 0,
                 }
         }
-        GidMode::DeathStarShields => system
-            .defense_facilities
+        GidMode::DeathStarShields => facilities
+            .defense
             .iter()
-            .filter(|key| {
-                world.defense_facilities.get(**key).is_some_and(|facility| {
-                    Some(facility.side) == holder && facility.class_dat_id.index() == 4
-                })
+            .filter(|facility| Some(facility.side) == holder && facility.class.index() == 4)
+            .count() as u32,
+        GidMode::PlanetaryShieldGenerators => facilities
+            .defense
+            .iter()
+            .filter(|facility| {
+                Some(facility.side) == holder && matches!(facility.class.index(), 3 | 6)
             })
             .count() as u32,
-        GidMode::PlanetaryShieldGenerators => system
-            .defense_facilities
+        GidMode::PlanetaryDefenseBatteries => facilities
+            .defense
             .iter()
-            .filter(|key| {
-                world.defense_facilities.get(**key).is_some_and(|facility| {
-                    Some(facility.side) == holder && matches!(facility.class_dat_id.index(), 3 | 6)
-                })
+            .filter(|facility| {
+                Some(facility.side) == holder && matches!(facility.class.index(), 1 | 2 | 5)
             })
             .count() as u32,
-        GidMode::PlanetaryDefenseBatteries => system
-            .defense_facilities
-            .iter()
-            .filter(|key| {
-                world.defense_facilities.get(**key).is_some_and(|facility| {
-                    Some(facility.side) == holder
-                        && matches!(facility.class_dat_id.index(), 1 | 2 | 5)
+    }
+}
+
+/// A facility as a GID counter finds it.
+#[derive(Debug, Clone, Copy)]
+struct GidFacility {
+    class: rebellion_core::ids::DatId,
+    side: rebellion_core::dat::Faction,
+    is_mine: bool,
+    is_shipyard: bool,
+}
+
+/// The facilities the GID's counters walk at a system: the viewer's copy's
+/// (`FUN_0042b330` takes `param_3 = FUN_004f2d10(view +0x9c, id)`). A
+/// frozen copy holds those it was last synced with; the viewer's own
+/// system, a live copy and the debug mode hold the system's own.
+#[derive(Debug, Default)]
+struct GidFacilities {
+    defense: Vec<GidFacility>,
+    manufacturing: Vec<GidFacility>,
+    production: Vec<GidFacility>,
+}
+
+impl GidFacilities {
+    fn of(world: &GameWorld, viewer: rebellion_core::dat::Faction, key: SystemKey) -> Self {
+        let Some(system) = world.systems.get(key) else {
+            return Self::default();
+        };
+        let from_view = |list: &[rebellion_core::object_views::FacilityView]| {
+            list.iter()
+                .map(|facility| GidFacility {
+                    class: facility.class,
+                    side: facility.side,
+                    is_mine: facility.is_mine,
+                    is_shipyard: false,
                 })
-            })
-            .count() as u32,
+                .collect()
+        };
+        let fog = rebellion_core::fog::FogState::new(viewer);
+        if let viewed_contents::SystemSight::Frozen(view) =
+            viewed_contents::system_sight(world, &fog, viewer, key)
+        {
+            return Self {
+                defense: from_view(&view.defense_facilities),
+                manufacturing: from_view(&view.manufacturing_facilities),
+                production: from_view(&view.production_facilities),
+            };
+        }
+        Self {
+            defense: system
+                .defense_facilities
+                .iter()
+                .filter_map(|key| world.defense_facilities.get(*key))
+                .map(|facility| GidFacility {
+                    class: facility.class_dat_id,
+                    side: facility.side,
+                    is_mine: false,
+                    is_shipyard: false,
+                })
+                .collect(),
+            manufacturing: system
+                .manufacturing_facilities
+                .iter()
+                .filter_map(|key| world.manufacturing_facilities.get(*key))
+                .map(|facility| GidFacility {
+                    class: facility.class_dat_id,
+                    side: facility.side,
+                    is_mine: false,
+                    is_shipyard: facility.is_shipyard,
+                })
+                .collect(),
+            production: system
+                .production_facilities
+                .iter()
+                .filter_map(|key| world.production_facilities.get(*key))
+                .map(|facility| GidFacility {
+                    class: facility.class_dat_id,
+                    side: facility.side,
+                    is_mine: facility.is_mine,
+                    is_shipyard: false,
+                })
+                .collect(),
+        }
     }
 }
 
@@ -1405,7 +1467,12 @@ fn gid_metric_size(mode: GidMode, value: u32) -> usize {
 /// (families `0x22..0x27`) and squadrons on the planet and aboard its
 /// fleets at the system. hyp: the squadrons count as Fighter Squadrons'
 /// do (`FUN_00503550` is that display's counter).
-fn gid_all_defenses(world: &GameWorld, system_key: SystemKey, system: &System) -> u32 {
+fn gid_all_defenses(
+    world: &GameWorld,
+    system_key: SystemKey,
+    system: &System,
+    facilities: &GidFacilities,
+) -> u32 {
     use rebellion_core::dat::Faction;
     let Some(holder) = system
         .control
@@ -1421,12 +1488,11 @@ fn gid_all_defenses(world: &GameWorld, system_key: SystemKey, system: &System) -
         .filter_map(|key| world.troops.get(*key))
         .filter(|troop| troop.is_alliance == alliance)
         .count();
-    let defenses = system
-        .defense_facilities
+    let defenses = facilities
+        .defense
         .iter()
-        .filter_map(|key| world.defense_facilities.get(*key))
         .filter(|facility| {
-            facility.side == holder && (0x22..=0x27).contains(&facility.class_dat_id.family())
+            facility.side == holder && (0x22..=0x27).contains(&facility.class.family())
         })
         .count();
     let squadrons = system
@@ -2207,6 +2273,10 @@ mod interaction_tests {
         // FUN_0042b330 case 0x91: FUN_005044f0 + FUN_00526e90 (families
         // 0x22..0x27) + FUN_00503550, for the holder; (6, 5, 3, 2, 1).
         use rebellion_core::dat::Faction;
+        let all_defenses = |world: &GameWorld, key| {
+            let facilities = GidFacilities::of(world, Faction::Alliance, key);
+            gid_all_defenses(world, key, &world.systems[key], &facilities)
+        };
         use rebellion_core::world::{DefenseFacilityInstance, TroopUnit};
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
@@ -2256,7 +2326,7 @@ mod interaction_tests {
         }
         // Two Imperial regiments and two armed defenses (0x28 is not one,
         // nor is the Alliance's).
-        assert_eq!(gid_all_defenses(&world, key, &world.systems[key]), 4);
+        assert_eq!(all_defenses(&world, key), 4);
         assert_eq!(gid_metric_size(GidMode::AllDefenses, 4), 2);
         // The holder's squadrons aboard its fleets and on the planet.
         let imperial_class = world.fighter_classes.insert(Default::default());
@@ -2282,11 +2352,11 @@ mod interaction_tests {
                 .push(rebellion_core::world::FighterEntry { class, count: 1, carrier: None, damage: None });
         }
         assert_eq!(
-            gid_all_defenses(&world, key, &world.systems[key]),
+            all_defenses(&world, key),
             4 + 2 + 1
         );
         world.systems[key].control = ControlKind::Uncontrolled;
-        assert_eq!(gid_all_defenses(&world, key, &world.systems[key]), 0);
+        assert_eq!(all_defenses(&world, key), 0);
     }
 
     #[test]
@@ -3307,6 +3377,139 @@ mod interaction_tests {
             ),
             0
         );
+    }
+
+    #[test]
+    fn the_facility_displays_count_the_viewer_s_frozen_copy() {
+        // FUN_0042b330 reads param_3 = FUN_004f2d10(view +0x9c, id), the
+        // viewer's copy, and its counters (FUN_005276d0, FUN_005273d0,
+        // FUN_00527150, FUN_0052c8c0..) walk that copy's facilities
+        // (ghidra/notes/fog-of-war.md, "What the windows read").
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{
+            DefenseFacilityInstance, ManufacturingFacilityInstance, ProductionFacilityInstance,
+        };
+        let mut world = GameWorld::default();
+        let key = world.systems.insert(System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Naboo".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.2,
+            popularity_empire: 0.8,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(Faction::Empire),
+        });
+        let mine = |world: &mut GameWorld| {
+            let facility = world
+                .production_facilities
+                .insert(ProductionFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(0x2b00_0001),
+                    side: Faction::Empire,
+                    is_mine: true,
+                });
+            world.systems[key].production_facilities.push(facility);
+        };
+        mine(&mut world);
+        let shield = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: rebellion_core::ids::DatId::new(0x2200_0004),
+            side: Faction::Empire,
+        });
+        world.systems[key].defense_facilities.push(shield);
+        let yard = |world: &mut GameWorld, class: u32| {
+            let facility = world
+                .manufacturing_facilities
+                .insert(ManufacturingFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(class),
+                    side: Faction::Empire,
+                    is_shipyard: false,
+                });
+            world.systems[key].manufacturing_facilities.push(facility);
+        };
+        // A shipyard (MANFACSD family 0x28), a training facility (0x29) and
+        // a construction yard (0x2a).
+        for class in [0x2800_0001, 0x2900_0001, 0x2a00_0001] {
+            yard(&mut world, class);
+        }
+        // The Alliance's copy, frozen with one mine, the shield and the
+        // three yards.
+        let view = rebellion_core::object_views::SystemView::of(&world, &world.systems[key], false);
+        world
+            .object_views
+            .alliance_systems
+            .insert(world.systems[key].dat_id, view);
+        // Since then the Empire built a mine, a shipyard and a construction
+        // yard and lost the shield.
+        mine(&mut world);
+        let shipyard = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2800_0002),
+                side: Faction::Empire,
+                is_shipyard: true,
+            });
+        world.systems[key].manufacturing_facilities.push(shipyard);
+        yard(&mut world, 0x2a00_0001);
+        world.systems[key].defense_facilities.clear();
+        let movement = rebellion_core::movement::MovementState::new();
+        let mut manufacturing = ManufacturingState::new();
+        // The construction area is busy; the others stand idle.
+        manufacturing.enqueue(
+            key,
+            rebellion_core::manufacturing::QueueItem::new(
+                rebellion_core::manufacturing::BuildableKind::ManufacturingFacility(
+                    rebellion_core::manufacturing::FacilityBuild {
+                        class: rebellion_core::ids::DatId::new(0x2a00_0001),
+                        is_alliance: false,
+                    },
+                ),
+                5,
+            ),
+        );
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+            marked_system: None,
+            fog: &rebellion_core::fog::FogState::new(Faction::Alliance),
+        };
+        let metric = |viewer_is_alliance, mode| {
+            gid_metric(&world, key, &world.systems[key], viewer_is_alliance, mode, &gid)
+        };
+        assert_eq!(metric(true, GidMode::Mines), 1);
+        assert_eq!(metric(true, GidMode::Shipyards), 1);
+        assert_eq!(metric(true, GidMode::TrainingFacilities), 1);
+        assert_eq!(metric(true, GidMode::ConstructionYards), 1);
+        assert_eq!(metric(true, GidMode::DeathStarShields), 1);
+        assert_eq!(metric(true, GidMode::AllDefenses), 1);
+        // The holder sees its own system.
+        assert_eq!(metric(false, GidMode::Mines), 2);
+        assert_eq!(metric(false, GidMode::Shipyards), 2);
+        assert_eq!(metric(false, GidMode::TrainingFacilities), 1);
+        assert_eq!(metric(false, GidMode::ConstructionYards), 2);
+        assert_eq!(metric(false, GidMode::IdleConstructionYards), 0);
+        assert_eq!(metric(false, GidMode::IdleTrainingFacilities), 1);
+        assert_eq!(metric(false, GidMode::DeathStarShields), 0);
     }
 
     // FUN_0042b330 case 0x72: FUN_00503550(system, holder, 1), the holder
