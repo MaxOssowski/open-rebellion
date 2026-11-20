@@ -230,3 +230,30 @@ port:
   with none is left out of the merged pick.
 - hyp: `FUN_004ece80` after a refused target in `FUN_0047a5b0` clears the
   target (`+0x28`), as its other uses clear the field just read.
+
+**Two Generals at one post (as read, unconfirmed in A0).** A type 1
+planner that loses its target (the guard bit goes, for instance when a
+production module moves its site claim) chooses another (slot `+0x30`)
+but keeps its member, and nothing then sets the new target's
+`0x20000000`: only a new member's pick does (`FUN_0047a5b0`). A second
+planner can so choose the same system and post its own General there.
+Each General standing there without a command takes `0x263`, and
+`FUN_00561bb0` strips the other's, so the two trade the command every
+cycle, an order each time. The port does the same: in the campaigns
+below a few pairs give most of the Command orders (seed 2: 7,817).
+
+Campaigns (`rebellion-playtest data/base --dual-ai --ticks 5000`, seeds 1
+to 5, on main `c8539650` before and after):
+
+| Seed | Before: end, A/E systems, most fleets | After: end, A/E systems, most fleets | Regiment Moves before/after | Command orders |
+|---|---|---|---|---|
+| 1 | day 5000, 27/26, 34 | day 5000, 17/36, 37 | 6,781 / 902 | 2,253 |
+| 2 | day 5000, 17/29, 32 | day 5000, 24/22, 35 | 5,412 / 1,139 | 7,817 |
+| 3 | day 2877 Empire (Death Star), 16/26, 23 | day 2548 Alliance (Coruscant taken), 19/23, 32 | 3,187 / 875 | 19 |
+| 4 | day 3919 Empire (Death Star), 17/35, 18 | day 5000, 52/0, 41 | 6,385 / 2,258 | 1,625 |
+| 5 | day 5000, 53/0, 51 | day 5000, 26/27, 21 | 6,487 / 1,663 | 830 |
+
+The regiment moves left are module 6's; the troop heuristic gave the
+rest. Each run ends in a victory or reaches day 5000; seed 4 after and
+seed 5 before end with the Empire holding no system and no victory
+declared, so that state is not new.
