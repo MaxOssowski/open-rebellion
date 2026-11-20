@@ -118,7 +118,7 @@ def run_claude(task: dict) -> tuple[bool, float]:
 2. All tests must pass: PATH="/usr/bin:$PATH" cargo test -p rebellion-core -p rebellion-data
 3. Follow existing code patterns (read files before modifying).
 4. Do NOT modify unrelated files.
-5. Do NOT touch tuning.rs config values, eval scripts, or autoresearch infrastructure.
+5. Do NOT touch eval scripts or autoresearch infrastructure.
 6. Add tests for new functionality.
 
 ## Verification

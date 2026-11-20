@@ -342,8 +342,12 @@ Based on 3-agent review + 23-function GhidraMCP session (2026-03-23) + TheArchit
 
 ## Roadmap: AI Parity Completion (v0.14.0)
 
-### Phase A: Config Externalization — COMPLETE
-*Unblocks autoresearch. ~160 LOC.*
+### Phase A: Config Externalization — COMPLETE, REMOVED 2026-11-21
+*Unblocks autoresearch. ~160 LOC.* Removed 2026-11-21 (save v135, replay
+format 2): once the ported AI modules replaced the heuristics, no rule read
+`GameConfig`, so the type, `--config`, `configs/autoresearch/`,
+`autoresearch_loop.py` and `autoresearch/run-001/` went. The list below is
+history.
 
 - [x] Created `crates/rebellion-core/src/tuning.rs` — `GameConfig` with 4 sub-configs (`AiConfig`, `MovementConfig`, `ProductionConfig`, `ScoringConfig`), 16 tunable parameters
 - [x] Externalized all AI/movement/production constants — threaded `&GameConfig` through `AISystem::advance()`, `score_attack_target()`, `fleet_transit_ticks_with_config()`

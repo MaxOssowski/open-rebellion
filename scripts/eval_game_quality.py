@@ -3,8 +3,8 @@
 Evaluate a headless playtest JSONL log for game quality.
 
 Reads a JSONL event log produced by `rebellion-playtest --output` and computes
-a composite quality score in [0.0, 1.0]. Used by autoresearch_loop.py for the
-Karpathy self-improvement loop: edit config → run headless → measure → keep/discard.
+a composite quality score in [0.0, 1.0]. Its config-mutating loop
+(autoresearch_loop.py) was removed with the tuning configuration on 2026-11-21.
 
 Usage:
     python3 scripts/eval_game_quality.py campaign.jsonl

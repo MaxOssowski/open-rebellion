@@ -174,7 +174,7 @@ After making the change:
 3. Eval: ./target/release/rebellion-playtest data/base --seed 42 --ticks 5000 --dual-ai --output /tmp/parity-check.jsonl && python3 scripts/eval_parity.py /tmp/parity-check.jsonl --json
 4. Confirm the targeted sub-metric improved. If not, debug before finishing.
 
-FORBIDDEN — do NOT modify: scripts/eval_parity.py, scripts/autoresearch_parity_loop.py, crates/rebellion-core/src/tuning.rs, configs/.
+FORBIDDEN — do NOT modify: scripts/eval_parity.py, scripts/autoresearch_parity_loop.py.
 Do NOT create new files or modules. Do NOT make more than one logical change."""
 
     env = dict(os.environ)
