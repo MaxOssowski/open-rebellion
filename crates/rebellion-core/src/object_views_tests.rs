@@ -2232,3 +2232,47 @@ fn seeding_uprisings_gives_each_copy_its_systems_bit() {
     assert!(side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
     assert!(!side_uprising(&setup.world, Faction::Alliance, coruscant, &uprisings));
 }
+
+// A live copy (FUN_004f9a60) shows the system as it is: a revolt that
+// starts in sight shows at once, even before the copy's next sync.
+#[test]
+fn a_live_copy_shows_a_revolt_that_starts_in_sight() {
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let mut uprisings = crate::uprising::UprisingState::default();
+    fleet(&mut setup.world, chandrila, true);
+    advance_with_uprisings(&mut setup.world, &setup.transport, &setup.movement, &uprisings);
+    advance_with_uprisings(&mut setup.world, &setup.transport, &setup.movement, &uprisings);
+    revolt(&mut uprisings, chandrila);
+    assert!(side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+}
+
+// port: the debug "see everything" mode shows each system's own bit.
+#[test]
+fn seeing_everything_shows_the_systems_own_uprising() {
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let mut uprisings = crate::uprising::UprisingState::default();
+    super::setup(&mut setup.world);
+    revolt(&mut uprisings, chandrila);
+    assert!(!side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+    setup.world.object_views.see_everything = true;
+    assert!(side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+}
+
+// FUN_0051b990: a new campaign's start gives each side its setup copies.
+#[test]
+fn a_campaign_start_gives_each_side_a_copy_of_the_other_sides_core_systems() {
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let id = setup.world.systems[chandrila].dat_id;
+    start(
+        &mut setup.world,
+        &setup.movement,
+        &crate::missions::MissionState::new(),
+        &setup.transport,
+        &crate::uprising::UprisingState::default(),
+    );
+    let copy = setup.world.object_views.system(Faction::Alliance, id).unwrap();
+    assert!(!copy.live);
+}
