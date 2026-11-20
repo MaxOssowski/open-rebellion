@@ -14,7 +14,16 @@ First read 2026-11-20 from the REBEXE decompile corpus
 `FUN_00479a40`..`FUN_00479fd0`, `FUN_00476cf0`, `FUN_00476d10`,
 `FUN_00476de0`, `FUN_00478140`, `FUN_00479520`, `FUN_004b9290`,
 `FUN_004b72d0`, `FUN_00401d20`, `FUN_00402230`, `FUN_0041b7e0`,
-`FUN_00417fa0`.
+`FUN_00417fa0`. Read 2026-11-20 for the second stage: `FUN_004bc480`,
+`FUN_004bc410`, `FUN_004bc520`, `FUN_004bc5d0`, `FUN_004bc6d0`,
+`FUN_0047a050`, `FUN_004bca20`, `FUN_004bc040`, `FUN_004bc180`,
+`FUN_0047a000`, `FUN_0047a3c0`, `FUN_00479f70`, `FUN_0042ef90`,
+`FUN_00476cf0`, `FUN_00476d10`, `FUN_00476de0`, `FUN_00476e50`,
+`FUN_00479520`, `FUN_00478140`, `FUN_004add40`, `FUN_004b1650`,
+`FUN_004b16d0`, `FUN_004b1690`, `FUN_004b8b30`, `FUN_004b9290`,
+`FUN_004b72d0`, `FUN_004b1800`, `FUN_00479560` (with its disassembly),
+`FUN_004799d0`, `FUN_004adde0` (with its disassembly), `FUN_00432120`,
+`FUN_00431f40`, `FUN_0041a460`, `FUN_0041b2b0`, `FUN_00477190`.
 
 ## What the module is
 
@@ -149,14 +158,20 @@ States: 1, cancelled: `FUN_004bc520` (as `FUN_004bbba0`, without slot
 - `FUN_004bc5d0`: from the owner (`+0x54`): target `+0x28` = the sector
   planner's `+0x38` (its flagship, a capital ship `0x14..0x1b`), `+0x48`
   = its `+0x3c` (a system); bit 2 when both are so.
-- Member (`FUN_004bc6d0`): bits 1, 3, 4 cleared; a member still its own
-  and without `0x50` is kept (bit 1), bit 8 when at the target and `0xc`
-  when it also holds a command; else released. Without one, the owner's
-  query `FUN_00403460(0x800002, +0x50, 0x4f4000f1, 0, 6, 50, 10000, 1)`
-  merged with `FUN_00403750` from `+0x48` (or the flagship's system,
-  `FUN_00432120`), order 2; the pick held with `+0x2c` = `+0x4c`. Type 4
-  (`FUN_0047a050`) forbids `0x474000f1`: a General reserved for research
-  or diplomacy (`0x8000000`) is admitted.
+- Member (`FUN_004bc6d0`): bits 1, 4, 8 and `0x10` cleared (`& ~0x1d`);
+  a member still its own and without `0x50` is kept (bit 1), bit 8 when
+  its place (record `+0x38`) is the target and `0xc` when it also holds a
+  command; else released. Without one, the owner's query
+  `FUN_00403460(0x800002, +0x50, 0x4f4000f1, 0, 6, 50, 10000, 1)` merged
+  with `FUN_00403750` from `+0x48`, or without a station from the owner's
+  sector's first system (`FUN_00432120(sector record, 0)` reads the
+  record's system list `+0x48`, index 0; not the flagship's system, as
+  first read), order 2; the pick held with record `+0x28` = the planner's
+  id and `+0x2c` = `+0x4c`. Type 4 (`FUN_0047a050`) forbids `0x474000f1`:
+  a General reserved for research or diplomacy (`0x8000000`) is admitted.
+- `+0x4c` (slot `+0x20`, `FUN_004bc410`): the owner's plan id
+  (`FUN_00476d10` passes the sector planner's `+0x44`); the held member's
+  record `+0x2c` takes it too.
 - Order (`FUN_004bca20`): a free member (no `0x74000f1`) aboard the
   flagship without a command takes slot `+0x1c`'s order (bit 4). A
   target not a ship: move to `+0x48` unless there (bit `0x10`). Else the
@@ -175,6 +190,42 @@ States: 1, cancelled: `FUN_004bc520` (as `FUN_004bbba0`, without slot
   8), `+0x64` `0x200` with one, and `+0xe4` the first held planner
   `FUN_004add40` gives up. With `+0x60` `0x2000000`, `FUN_00479560` keeps
   or chooses the flagship (`+0x38`, record `+0x24` `0x1000000`).
+- The counts `+0xc8 + 4 * FUN_00479520(type)` rise in `FUN_00476d10` and
+  fall in `FUN_00476de0` only (`FUN_00477190` zeroes `+0x6c..+0x90`, not
+  them), and `FUN_00476de0` runs for every cancellation of a planner with
+  an owner (`FUN_0042ef90`), so a count is the planners of that type
+  naming the sector planner in `+0x54`.
+- `FUN_004add40` (give up, for `+0xe4`): type 3 `FUN_004b1650` (two or
+  more held, or one with no fleet held); type 4 the plan's slot `+0x4c`
+  (kinds 4 and 6 `FUN_004b8b30`: more than one; the others
+  `FUN_004b1690`: any; both need the sector record); type 5
+  `FUN_004b16d0` (more than one, or any with `+0x98` 0); a planner not
+  found, 1.
+- `FUN_00479560` with `0x2000000` (the lists from the disassembly: the
+  new pick walks the held fleets `+0x2c`, the last loop the held ships
+  `+0x24`): a flagship still in `+0x24`, the planner's (`+0x30`) and
+  marked keeps the post unless the ship has `0x2000000` (passed over,
+  which takes the mark off and chooses anew). Kept and out of hyperspace
+  (`0x800`), the best ship of its fleet (`FUN_0041ac80(fleet, 0x4001,
+  0x2803800, key 3, order 1)`) takes the mark when its `+0x50` is higher
+  or the flagship lacks bit 1; with no such ship, the best with `0x4000`
+  when its `+0x50` is higher. Else the best ship (`0x4000`, forbidding
+  `0x2803800`) of each held fleet, the first strictly highest `+0x50`
+  above 0, is marked. Then every held ship loses `0x2000000`.
+- `FUN_004799d0` with `0x2000000`: the plan's slot `+0x10`, every kind's
+  `FUN_004adde0`, on `+0x3c`: the base (`+0x40`) takes the post when its
+  record is the side's (`+0x30` 1) and neither in uprising nor blockaded
+  (`+0x28 & 3`); a station other than the base failing that test is
+  cleared; with none, `FUN_0041a460(sector, req +0x28, req +0x2c, req
+  +0x30, forbid +0x28, forbid +0x2c, forbid +0x30, order 1)` with
+  `(0x80000000, 0, 1, 3, 0, 0)`, then `(0x3e00000, 0, 1, 3, 0, 0)`, then
+  `(0, 0, 1, 3, 0, 0)`, then `FUN_0041b2b0(sector, 0, 1, 0, 3, 0, 0)` (as
+  pushed at `0x4ae0f7`: `+0x2c` 1, not `+0x30` 1). Without `0x2000000`
+  `+0x3c` is cleared.
+- `FUN_004b06b0` (the plan object's state 6) leaves aboard a person of
+  the side's whose record `+0x28` names a planner in the sector planner's
+  list `+0xd4` (`FUN_00476e50`, `ECX` = plan `+0x10`, `+0xd4`); a person
+  held by another planner, or by none, goes down with the rest.
 
 ## The strategy's side (module `0xd`)
 
@@ -220,10 +271,8 @@ field) carries the module, since `AIState` sits mid-body; v116 to v128
 saves load with none.
 
 port:
-- Types 3, 4 and 5 and the sector planners' side (`FUN_004c8630`,
-  `FUN_004c86b0`, `FUN_00478140`'s flags, `FUN_00479560` with
-  `0x2000000`) are not ported: states 2 and 3 find no request, and the
-  sector planners' counts `+0xc8..+0xd0` stay 0.
+- Types 3, 4 and 5 and the sector planners' side were ported in the
+  second stage (below).
 - A member's record is the port's; an injured character has `0x10`
   (`FUN_00402230`, ported with the mission records), so an injured
   member is let go.
@@ -260,3 +309,68 @@ The regiment moves left are module 6's; the troop heuristic gave the
 rest. Each run ends in a victory or reaches day 5000; seed 4 after and
 seed 5 before end with the Empire holding no system and no victory
 declared, so that state is not new.
+
+## Ported (2026-11-20, save v130): the sector planners' officers
+
+`ai_module_c.rs`: the module's states 2 and 3 (`find_request`,
+`sector_requests`: `FUN_004c8630`, `FUN_004c86b0`, `FUN_00476d10`), the
+cancellation (`cancel`, `FUN_0042ef90` -> `FUN_00476de0`), types 3, 4
+and 5 (`step_officer`: `read_owner` `FUN_004bc5d0`, `officer`
+`FUN_004bc6d0`/`FUN_0047a050`, `board` `FUN_004bca20`) and the counts
+(`officers_of`). The strategy's cancellation now names only its own
+types 1 and 6 (slot `+0xc` 2). `ai_planner.rs`: `movement`
+(`FUN_00478140` with the flags, `+0xe4` and the counts), `flagship`
+(`FUN_00479560` with `0x2000000`) and `station` (`FUN_004799d0` ->
+`FUN_004adde0`). `ai_module8::reset` cancels the planner's officers
+(`FUN_00477190`), and `ai_plan.rs`'s `disembark` leaves the held officers
+aboard (`FUN_00476e50`). Kind 6's report (`FUN_004b4d90`) now reads a
+planner `+0x60` `0x200000` that a General aboard the flagship with a rank
+sets. A Move to the flagship is the new `AIAction::BoardFleet`, carried
+out as the player's Move to a fleet (`MissionState::set_target_fleet`).
+`SaveState::ai_sector_links` (v130, the last field) keeps each
+planner's `+0x54`, `+0x28` and `+0x48` and the module's `+0x40`/`+0x44`,
+which `ModuleC`'s own encoding skips; v129 saves load with none (their
+planners are all the strategy's).
+
+port:
+- A character's place is its fleet, not one of the fleet's ships: the
+  port seats a fleet's people itself (`missions::seat_characters`) and a
+  Move takes a character to a fleet. A member aboard the flagship's
+  fleet stands at the flagship (bit 8), and one aboard another ship of
+  that fleet is not sent to it.
+- The member's record `+0x2c` (the owner's plan id, `FUN_004bc410`) has
+  no port counterpart.
+- The counts `+0xc8..+0xd0` are the planners naming the sector planner,
+  which is what `FUN_00476d10` and `FUN_00476de0` keep them at.
+
+Campaigns (`rebellion-playtest data/base --dual-ai --ticks 5000`, seeds 1
+to 3; before = `60d2e20a`, after = this stage):
+
+| Seed | Before: end, A/E systems, most fleets | After: end, A/E systems, most fleets | Command orders before/after | Move to a flagship |
+|---|---|---|---|---|
+| 1 | day 5000, 26/27, 35 | day 5000, 33/20, 55 | 2,644 / 306 (139 General, 94 Admiral, 65 Commander, 8 none) | 48 |
+| 2 | day 5000, 22/24, 39 | day 5000, 26/20, 43 | 1,209 / 663 (378, 201, 77, 7) | 53 |
+| 3 | day 5000, 20/22, 28 | day 3667, Alliance (Empire headquarters taken), 34/8, 38 | 2,293 / 1,294 (1,145, 85, 49, 15) | 79 |
+
+Before, every Command order was a type 1 General's (`0x263`); after,
+the sector planners post Admirals (`0x262`) and Commanders (`0x261`) as
+well, and fewer Command orders are given in all (why the type 1 counts
+fall was not traced). No run ended in a victory before; after, seed 3
+ends on day 3667.
+
+Two faults found in the campaign checks and fixed before these numbers:
+- the member queries' forbidden masks were first typed `0x04f400f1` and
+  `0x047400f1` for `0x4f4000f1` and `0x474000f1`; the first forbids
+  `0x800000` (not held), so types 3 and 5 never found an officer (no
+  Admiral or Commander order in three runs). A test of each type's
+  capability and of the reserved bit now pins the masks.
+- without the `FUN_00476e50` test in `disembark`, the plan object's
+  state 6 set the boarded General down again each day (seed 2: 1,973
+  Moves to a flagship).
+
+Mutants (`cargo mutants --in-diff` on the touched files): core 302,
+data 24; all caught but three equivalent ones: `|` -> `^` in the bits
+`officer` clears (disjoint constants), `count(5) > 0` -> `>= 0` in the
+type 5 give-up (only held type 5 planners are tested, so the count is at
+least 1), and the test helper `planners_tail` -> 1 (the legacy bincode
+decoder takes trailing bytes).

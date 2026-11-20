@@ -378,10 +378,11 @@ plan slots `+0x24..+0x30`" below; first read here as reports).
   blockaded gives Move `0x201` of the fleet to `+0x3c` and `*out`. Then a
   fleet with `0x4000000` and without 2 at a system with `+0x30` 1: the
   people aboard its ship records without `0x800` and with `0x600000`
-  (`FUN_00536da0(ship, 1)`, person records controller `+0x8c`) all go
-  into a Move `0x201` to that system, which is given when one of them
-  has `+0x30` 2 and no movement planner of this planner holds it
-  (`+0x28`, `FUN_00476e50` on planner list `+0xd4`).
+  (`FUN_00536da0(ship, 1)`, person records controller `+0x8c`) go into a
+  Move `0x201` to that system, which is given when one of them has
+  `+0x30` 2. A person with `+0x30` 2 whose record `+0x28` names a
+  movement planner of this planner (`FUN_00476e50` on planner list
+  `+0xd4`) stays aboard and is left out (re-read 2026-11-20).
 - **7, kind 3 `FUN_004b4560`:** a fleet whose attack (`values[2]`) is
   above 0 takes the first of `FUN_0041a340(sector, +0x30 0x200
   forbidding 0x100000, key 0x27, order 1)` that `FUN_004ae150` passes:
@@ -1200,10 +1201,10 @@ kind 6 that keeps the plan reporting work left while the sector has an
 opponent system not fully shielded (`0x400`) even when every such system
 has `+0x30` `0x2000`.
 
-**Port.** `SectorPlanner::report` reads the bit (2026-10-16). The port
-has no movement planners: module `0xc` is a heuristic and the sector
-planners hold none (`SectorPlanner::movement`), so nothing sets the bit
-and it reads 0. Its writer belongs with the port of module `0xc`'s
-General planner (tracker item "Moduł 0xc"): `movement()` should set
-`flags` from each held movement planner as listed above.
+**Port.** `SectorPlanner::report` reads the bit (2026-10-16), and
+`SectorPlanner::movement` sets it (2026-11-20, save v130) from each
+movement planner of module `0xc` that names the sector planner
+(`ai_module_c.rs`, types 3 to 5; `ai-command-planners.md`, "Ported ...
+the sector planners' officers"), as listed above. In seeds 1 to 3 over
+5,000 days it is set in thousands of kind 6 cycles.
 
