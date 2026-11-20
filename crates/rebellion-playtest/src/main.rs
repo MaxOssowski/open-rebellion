@@ -587,6 +587,10 @@ fn main() -> anyhow::Result<()> {
 
     eprintln!("Running {} ticks...", args.ticks);
 
+    // The most fleets each side held on any day (Alliance, Empire), and
+    // the day it first reached it: the long-campaign health check.
+    let mut max_fleets = [(0usize, 0u64); 2];
+
     for tick_num in 1..=args.ticks {
         // Generate tick events (force 1 tick per iteration in headless)
         let tick_events = vec![rebellion_core::tick::TickEvent { tick: tick_num }];
@@ -610,6 +614,18 @@ fn main() -> anyhow::Result<()> {
             }
         }
         logger.extend(events);
+
+        for (side, max) in max_fleets.iter_mut().enumerate() {
+            let alliance = side == 0;
+            let count = world
+                .fleets
+                .values()
+                .filter(|fleet| fleet.is_alliance == alliance)
+                .count();
+            if count > max.0 {
+                *max = (count, tick_num);
+            }
+        }
 
         // Check victory
         if states.victory.resolved {
@@ -642,6 +658,23 @@ fn main() -> anyhow::Result<()> {
     if args.summary || args.output.is_none() {
         logger.print_summary(&world, &states.movement);
     }
+
+    let fleets_now = |alliance: bool| {
+        world
+            .fleets
+            .values()
+            .filter(|fleet| fleet.is_alliance == alliance)
+            .count()
+    };
+    eprintln!(
+        "Fleets: Alliance {} (max {} on day {}), Empire {} (max {} on day {})",
+        fleets_now(true),
+        max_fleets[0].0,
+        max_fleets[0].1,
+        fleets_now(false),
+        max_fleets[1].0,
+        max_fleets[1].1
+    );
 
     let elapsed = start.elapsed();
     eprintln!(
