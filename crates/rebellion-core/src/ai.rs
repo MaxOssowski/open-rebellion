@@ -2057,10 +2057,12 @@ impl AISystem {
     ///   [`espionage_target`], [`abduction_target`], [`rescue_target`]);
     /// - state 6 ([`staging_point`]): the gathering place;
     /// - state 7 (`FUN_004bd570`): each free member away from it gets a
-    ///   Move order there (`0x201`, the Move pseudo-mission);
-    /// - state 8 (`FUN_0047b360`): once the team and the decoys all stand
-    ///   there, the mission order on the target. A standing planner goes
-    ///   on; another ends.
+    ///   Move order there (`0x201`, the Move pseudo-mission), and a free
+    ///   team member standing there sets `+0x20` bit 8;
+    /// - state 8 (`FUN_0047b360`): with bit 8 and a target (bit `0x10`),
+    ///   the mission order on the target with the free members, those
+    ///   still travelling left out. A standing planner goes on; another
+    ///   ends.
     ///
     /// States 3 and 4 ([`Planner::refill`]) add members up to the class's
     /// sizes after state 2.
@@ -2197,35 +2199,54 @@ impl AISystem {
         let Some(staging) = p.staging else {
             return true;
         };
-        let mut gathered = true;
-        for &member in p.team.iter().chain(&p.decoys) {
-            if standing_system(world, member) == Some(staging) {
+        // State 7 (FUN_004bd570): a free member (record without
+        // 0x74000f1) away from the place gets a Move there; a free team
+        // member standing there sets +0x20 bit 8 (at 0x4bd5ff). State 8
+        // (FUN_0047b360) then orders the mission with the free members.
+        // port: a member given a Move this cycle is taken as already en
+        // route (record 0x20 at the next refresh), so the order takes the
+        // free members standing at the place.
+        let mut there = false;
+        let mut team = Vec::new();
+        let mut decoys = Vec::new();
+        for (&member, is_team) in p
+            .team
+            .iter()
+            .map(|m| (m, true))
+            .chain(p.decoys.iter().map(|m| (m, false)))
+        {
+            if !planner.sendable(member) {
                 continue;
             }
-            gathered = false;
-            if planner.sendable(member) {
-                actions.push(AIAction::DispatchMission {
-                    kind: MissionKind::Move,
-                    team: vec![member],
-                    decoys: Vec::new(),
-                    target_system: staging,
-                    target_character: None,
-                    target_object: None,
-                });
+            if standing_system(world, member) == Some(staging) {
+                there |= is_team;
+                if is_team {
+                    team.push(member);
+                } else {
+                    decoys.push(member);
+                }
+                continue;
             }
+            actions.push(AIAction::DispatchMission {
+                kind: MissionKind::Move,
+                team: vec![member],
+                decoys: Vec::new(),
+                target_system: staging,
+                target_character: None,
+                target_object: None,
+            });
         }
-        let free = p.team.iter().chain(&p.decoys).all(|&m| planner.sendable(m));
         // port: a Recruitment ordered while the side's pool is empty
         // ends at once (code 0x10, FUN_0056b370); the planner waits.
         let side = crate::dat::Faction::of_alliance(is_alliance);
         let futile = p.kind == MissionKind::Recruitment && world.recruit_pool_empty(side);
-        if !(gathered && free) || futile {
+        if !there || futile {
             return true;
         }
         actions.push(AIAction::DispatchMission {
             kind: p.kind,
-            team: p.team.clone(),
-            decoys: p.decoys.clone(),
+            team,
+            decoys,
             target_system: target,
             target_character: p.target_character,
             target_object: p.target_object,
@@ -7665,7 +7686,10 @@ mod tests {
         assert_eq!(orders(&again, MissionKind::Move).len(), 2);
         assert_eq!(state.mission_planners.len(), 1);
 
-        // One there, one still away: no order yet.
+        // One there, one still away: the one there sets bit 8
+        // (FUN_004bd570 at 0x4bd5ff), so state 8 (FUN_0047b360) orders the
+        // mission with him while the other moves. (This test once waited
+        // for both, a misreading of bit 8 as "the team is there".)
         world.characters[a].current_system = Some(target);
         let mut actions = Vec::new();
         let mut galaxy = galaxy_of(&state, &world);
@@ -7677,10 +7701,25 @@ mod tests {
             3,
             &mut actions,
         );
-        assert!(orders(&actions, MissionKind::Rescue).is_empty());
+        assert_eq!(
+            orders(&actions, MissionKind::Rescue),
+            [(vec![team[0]], target, None)]
+        );
         assert_eq!(orders(&actions, MissionKind::Move).len(), 1);
+        assert!(state.mission_planners.is_empty());
+    }
 
+    #[test]
+    fn a_mission_planner_orders_with_every_free_member_at_the_place() {
+        // FUN_004bd570 / FUN_0047b360: with both members at the place the
+        // order takes both; a member on a mission (record 0x80) is left
+        // out and gets no Move.
+        let (mut world, [a, b], [_, _, target]) = gathering_world();
+        world.characters[a].current_system = Some(target);
         world.characters[b].current_system = Some(target);
+        let team = vec![MissionMember::Character(a), MissionMember::Character(b)];
+        let mut state = AIState::new(AiFaction::Empire);
+        adopted(&mut state, 1, &mut vec![rescue_order(team.clone(), target)]);
         let mut actions = Vec::new();
         let mut galaxy = galaxy_of(&state, &world);
         AISystem::mission_planner_cycle(
@@ -7688,14 +7727,63 @@ mod tests {
             &mut planner_for(&world, AiFaction::Empire),
             &world,
             &mut galaxy,
-            4,
+            2,
             &mut actions,
         );
         assert_eq!(
             orders(&actions, MissionKind::Rescue),
-            [(team, target, None)]
+            [(team.clone(), target, None)]
         );
-        assert!(state.mission_planners.is_empty());
+
+        // The first is busy: the order goes with the second alone.
+        world.characters[a].on_mission = true;
+        let mut state = AIState::new(AiFaction::Empire);
+        adopted(&mut state, 1, &mut vec![rescue_order(team.clone(), target)]);
+        let mut actions = Vec::new();
+        let mut galaxy = galaxy_of(&state, &world);
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&world, AiFaction::Empire),
+            &world,
+            &mut galaxy,
+            2,
+            &mut actions,
+        );
+        assert!(orders(&actions, MissionKind::Move).is_empty());
+        assert_eq!(
+            orders(&actions, MissionKind::Rescue),
+            [(vec![team[1]], target, None)]
+        );
+    }
+
+    #[test]
+    fn a_mission_planner_with_only_decoys_at_the_place_orders_nothing() {
+        // FUN_004bd570: bit 8 comes from the team list (ebp+0x3c) alone; a
+        // decoy at the place does not set it.
+        let (mut world, [a, b], [_, _, target]) = gathering_world();
+        world.characters[b].current_system = Some(target);
+        let mut state = AIState::new(AiFaction::Empire);
+        let mut order = vec![AIAction::DispatchMission {
+            kind: MissionKind::Rescue,
+            team: vec![MissionMember::Character(a)],
+            decoys: vec![MissionMember::Character(b)],
+            target_system: target,
+            target_character: None,
+            target_object: None,
+        }];
+        adopted(&mut state, 1, &mut order);
+        let mut actions = Vec::new();
+        let mut galaxy = galaxy_of(&state, &world);
+        AISystem::mission_planner_cycle(
+            &mut state,
+            &mut planner_for(&world, AiFaction::Empire),
+            &world,
+            &mut galaxy,
+            2,
+            &mut actions,
+        );
+        assert!(orders(&actions, MissionKind::Rescue).is_empty());
+        assert_eq!(orders(&actions, MissionKind::Move).len(), 1);
     }
 
     #[test]
