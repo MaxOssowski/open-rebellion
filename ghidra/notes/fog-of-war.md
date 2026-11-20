@@ -215,6 +215,11 @@ Master reads where the original reads the copy (leaks):
   `system_finder.rs:199`, `missions.rs:1024` (already tagged port).
 - AI: `ai_records.rs:1143`, `ai_strategy.rs:634`, `agent_build.rs:195`
   read the shared explored bit (the AI's own copy reads are untraced).
+- Regiment landing (`troop_transport::accept_planet`, `FUN_005073d0`'s
+  open neutral planet): reads the moving side's copy since 2026-11-20
+  (`side_explored`). The shared bit kept a Rim system unexplored, so an AI
+  landing there repeated daily (`ai-mission-planning.md`, "Repeated
+  orders"). hyp: which copy the original reads is untraced.
 
 Fixtures and debug, kept: `interface_test_fixture::reveal`
 (`main.rs:1934`), `reveal_all_systems`, `see_everything`, replay

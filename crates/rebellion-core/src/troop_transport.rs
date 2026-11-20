@@ -527,7 +527,16 @@ impl TroopTransportState {
         // FUN_005073d0 lifts FUN_00553410's refusal for a regiment when the
         // system is explored (+0x88 & 2), unpopulated (+0x88 & 1 clear) and
         // neutral (+0x24 & 0xc0 == 0xc0).
-        let open_neutral = value.exploration_status == crate::dat::ExplorationStatus::Explored
+        //
+        // hyp: the explored bit is the moving side's copy's
+        // (object_views::side_explored), which a fleet's arrival or a
+        // Reconnaissance sets (fog-of-war.md). The port's shared
+        // exploration_status stands for the master, whose bit the original
+        // sets at setup only (System_SetExplored); read as the port's shared
+        // field, a Rim system stays unexplored for good and the AI's
+        // landings there (FUN_004b1440) fall back on the regiment's own
+        // fleet day after day (ai-mission-planning.md, "Repeated orders").
+        let open_neutral = crate::object_views::side_explored(world, side(is_alliance), system)
             && !value.is_populated
             && matches!(
                 value.control,
@@ -1608,6 +1617,47 @@ mod tests {
             10,
         );
         assert_eq!(moved, Err(TroopTransportError::DestinationBlockaded));
+    }
+
+    // FUN_005073d0 reads the explored bit (+0x88 & 2) for the open neutral
+    // planet; the side's copy carries it (System_SyncExplored FUN_0050fc80,
+    // fog-of-war.md), so a Rim system the side has seen takes the landing
+    // though the shared status still says unexplored. Else the regiment
+    // stays in its fleet and the AI's landing (FUN_004b1440) repeats.
+    #[test]
+    fn a_regiment_lands_where_its_side_s_copy_is_explored() {
+        let setup = |explored: bool| {
+            let (mut world, origin, _, fleet, troops) = alliance_world(2);
+            let s = &mut world.systems[origin];
+            (s.control, s.is_populated) = (ControlKind::Uncontrolled, false);
+            s.exploration_status = ExplorationStatus::Unexplored;
+            let id = s.dat_id;
+            world.object_views.system_bits.alliance.insert(
+                id,
+                crate::object_views::SystemCopyBits {
+                    explored,
+                    destroyed: false,
+                },
+            );
+            let mut state = TroopTransportState::new();
+            state.embark(&mut world, fleet, &troops[..1]).unwrap();
+            let moved = move_to(
+                &mut state,
+                &mut world,
+                troops[0],
+                RegimentTarget::System(origin),
+            );
+            (moved, origin)
+        };
+        let (moved, origin) = setup(true);
+        assert_eq!(
+            moved,
+            Ok(RegimentMove::Placed(RegimentLeg::Surface(origin)))
+        );
+        // The side's copy unexplored: the planet refuses, and the regiment's
+        // own fleet, with room, keeps it.
+        let (moved, _) = setup(false);
+        assert_eq!(moved, Ok(RegimentMove::Unchanged));
     }
 
     // FUN_005073d0: 0x90/4 for a blockaded planet, which a regiment keeps
