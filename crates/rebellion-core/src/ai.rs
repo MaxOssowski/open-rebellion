@@ -1391,25 +1391,28 @@ fn research_kind(tech: TechType) -> MissionKind {
     }
 }
 
-/// Side `+0xa4`: the side's MNCHARSD classes (`FUN_0042dd00`, family
-/// `0x38`, counted at setup).
+/// Side `+0xa4`: the side's MNCHARSD classes, counted once at setup.
+/// `FUN_004182a0` state 1 runs `FUN_0042dd00` on the controller's
+/// sub-object `+0x138` and copies its `+0x14` (controller `+0x14c`) into
+/// `+0xa4`. `FUN_0042dd00` walks the class records of families
+/// `0x38..0x3b` and counts one for side 1 (the Alliance) when the class's
+/// `+0x44` is 0, and for side 2 (the Empire) when it is not. A class
+/// record holds the DAT fields from `+0x18` on at `+0x28` past their file
+/// offset (as `+0xa8` is `can_be_admiral` at `0x80`), so `+0x44` is
+/// `is_empire` (file `0x1c`). The shipped MNCHARSD sets exactly one of
+/// `is_alliance` and `is_empire` on each of its 54 records (26 and 28).
 ///
-/// hyp: each MNCHARSD record is one of the world's minor characters
-/// (`rebellion-data` loads one per record), and a class serves the sides
-/// its record names. The loader keeps a character's record index without
-/// its family byte, so a minor character is one that is not major.
+/// port: `rebellion-data` loads one minor character per MNCHARSD record
+/// and keeps them all (a killed one too), so the classes are counted
+/// through the characters. The loader keeps a character's record index
+/// without its family byte, so a minor character is one that is not
+/// major.
 fn minor_classes(world: &GameWorld, is_alliance: bool) -> i32 {
     let count = world
         .characters
         .values()
         .filter(|c| !c.is_major)
-        .filter(|c| {
-            if is_alliance {
-                c.is_alliance
-            } else {
-                c.is_empire
-            }
-        })
+        .filter(|c| c.is_empire != is_alliance)
         .count();
     i32::try_from(count).unwrap_or(i32::MAX)
 }
@@ -13220,9 +13223,11 @@ mod tests {
 
     #[test]
     fn a_side_s_minor_classes_are_its_minor_characters() {
-        // Side +0xa4 counts the side's MNCHARSD (family 0x38) classes.
-        // hyp: one minor character per MNCHARSD record. The loader's minor
-        // characters carry no family byte, so the last counts too.
+        // Side +0xa4 counts the side's MNCHARSD (family 0x38) classes
+        // (FUN_004182a0 -> FUN_0042dd00): a class whose +0x44 (is_empire)
+        // is 0 serves the Alliance, any other the Empire. One minor
+        // character stands for each record; the loader's minor characters
+        // carry no family byte, so the last counts too.
         let mut world = empty_world();
         for (raw, alliance) in [
             (0x3800_0001, true),
@@ -13238,6 +13243,14 @@ mod tests {
         let loaded = add_character(&mut world, false, false, 0);
         world.characters[loaded].dat_id = DatId(0x2c7);
 
+        // A class flagged for both sides counts for the Empire only.
+        assert_eq!(minor_classes(&world, true), 2);
+        assert_eq!(minor_classes(&world, false), 2);
+
+        // One flagged for neither counts for the Alliance.
+        let neither = add_character(&mut world, false, false, 0);
+        world.characters[neither].dat_id = DatId(0x3800_0004);
+        world.characters[neither].is_empire = false;
         assert_eq!(minor_classes(&world, true), 3);
         assert_eq!(minor_classes(&world, false), 2);
     }
