@@ -1926,6 +1926,21 @@ pub fn setup(world: &mut GameWorld) {
     }
 }
 
+/// A new campaign's first views, in the app and the headless runners
+/// alike: the setup push ([`setup`], `FUN_0051b990` at setup stage `0x18`)
+/// and the Empire's push of Yavin, taken at once by the day's view step.
+pub fn start(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    missions: &crate::missions::MissionState,
+    transport: &TroopTransportState,
+    uprisings: &crate::uprising::UprisingState,
+) {
+    setup(world);
+    advance_extras(world, movement, missions, transport);
+    advance_with_uprisings(world, transport, movement, uprisings);
+}
+
 /// A change to one side's views.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ViewUpdate {

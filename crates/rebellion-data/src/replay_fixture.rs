@@ -170,6 +170,16 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
     let mut fog_empire = FogState::new(Faction::Empire);
     FogSystem::seed(&mut fog_alliance, &world);
     FogSystem::seed(&mut fog_empire, &world);
+    // Each side's first views (FUN_0051b990), as a new game takes them
+    // (ghidra/notes/fog-of-war.md).
+    let mut world = world;
+    rebellion_core::object_views::start(
+        &mut world,
+        &MovementState::new(),
+        &MissionState::new(),
+        &rebellion_core::troop_transport::TroopTransportState::default(),
+        &UprisingState::new(),
+    );
     let mut events = EventState::new();
     rebellion_core::story_events::define_story_events(&mut events, &world);
     let options = seed42_seed_options();
@@ -183,6 +193,10 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         &uprising,
     );
 
+    // SaveState keeps the views apart from the world's own encoding.
+    let object_views = world.object_views.clone();
+    let system_copy_bits = world.object_views.system_bits.clone();
+    let system_copy_uprisings = world.object_views.system_uprisings.clone();
     Ok(SaveState {
         world,
         clock: GameClock::new(),
@@ -217,11 +231,11 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
-        object_views: rebellion_core::object_views::ObjectViews::default(),
+        object_views,
         products: rebellion_core::products::Products::default(),
         squadron_damage: Vec::new(),
-        system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
-        system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings::default(),
+        system_copy_bits,
+        system_copy_uprisings,
         ai_command_planners: crate::save::AiCommandPlanners::default(),
         ai_sector_links: crate::save::AiSectorLinks::default(),
     })

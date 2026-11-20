@@ -381,6 +381,10 @@ fn main() -> anyhow::Result<()> {
     // Seed fog
     FogSystem::seed(&mut states.fog, &world);
 
+    // Each side's first views (FUN_0051b990), as the app's new game takes
+    // them (ghidra/notes/fog-of-war.md).
+    rebellion_data::simulation::start_views(&mut world, &states);
+
     // Setup stage 0x17: each system's FUN_00508250, once.
     rebellion_core::economy::EconomySystem::setup(
         &mut states.economy,

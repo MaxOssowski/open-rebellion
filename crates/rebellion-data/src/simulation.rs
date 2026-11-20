@@ -193,6 +193,19 @@ fn settle_after_pass(
     VictorySystem::outcome(&states.victory, world, conditions).is_some()
 }
 
+/// A headless campaign's first views: each side's setup push
+/// (`FUN_0051b990`) and the Empire's push of Yavin, as the app's new game
+/// takes them (`object_views::start`, `ghidra/notes/fog-of-war.md`).
+pub fn start_views(world: &mut GameWorld, states: &SimulationStates) {
+    rebellion_core::object_views::start(
+        world,
+        &states.movement,
+        &states.missions,
+        &states.troop_transport,
+        &states.uprising,
+    );
+}
+
 pub fn run_simulation_tick(
     world: &mut GameWorld,
     states: &mut SimulationStates,
@@ -1139,6 +1152,45 @@ mod tests {
             campaign_config: CampaignConfig::default(),
         };
         (world, states)
+    }
+
+    // FUN_0051b990 (setup stage 0x18): each side takes a full copy of every
+    // core system it does not hold, and the headless runners take it as the
+    // app does (ghidra/notes/fog-of-war.md).
+    #[test]
+    fn a_headless_campaign_starts_with_each_sides_setup_copies() {
+        let (mut world, states) = make_test_states();
+        let core = world.sectors.insert(rebellion_core::world::Sector {
+            dat_id: DatId::new(0x8000_0001),
+            name: "Core".into(),
+            group: rebellion_core::dat::SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: world.systems.keys().collect(),
+        });
+        let keys: Vec<_> = world.systems.keys().collect();
+        for key in &keys {
+            world.systems[*key].sector = core;
+        }
+        world.systems[keys[0]].control = ControlKind::Controlled(Faction::Empire);
+        world.systems[keys[0]].total_energy = 7;
+        start_views(&mut world, &states);
+        let id = world.systems[keys[0]].dat_id;
+        let copy = world
+            .object_views
+            .system(Faction::Alliance, id)
+            .expect("the Alliance's copy of the Empire's core system");
+        assert!(!copy.live);
+        assert_eq!(copy.total_energy, 7);
+        assert!(rebellion_core::object_views::side_explored(
+            &world,
+            Faction::Alliance,
+            keys[0]
+        ));
+        for key in &keys {
+            let id = world.systems[*key].dat_id;
+            assert!(world.object_views.system(Faction::Empire, id).is_some());
+        }
     }
 
     /// An Alliance fleet with room for one regiment and one Alliance

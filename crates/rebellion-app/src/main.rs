@@ -5715,17 +5715,12 @@ async fn main() {
                                 // The setup push (FUN_0051b990): a copy of
                                 // every other system, and the Empire's
                                 // level-10 push of Yavin, taken at once.
-                                rebellion_core::object_views::setup(&mut world);
-                                rebellion_core::object_views::advance_extras(
+                                rebellion_core::object_views::start(
                                     &mut world,
                                     &movement_state,
                                     &mission_state,
                                     &troop_transport_state,
-                                );
-                                rebellion_core::object_views::advance(
-                                    &mut world,
-                                    &troop_transport_state,
-                                    &movement_state,
+                                    &uprising_state,
                                 );
                                 economy_state = EconomyState::default();
                                 // Setup stage 0x17: each system's
