@@ -1469,6 +1469,8 @@ impl PerceptionIntegrator {
             EVT_MISSION_RESOLVED,
             serde_json::json!({
                 "kind": format!("{:?}", result.kind),
+                "faction": format!("{:?}", result.faction),
+                "mission_id": result.mission_id,
                 "outcome": format!("{:?}", result.outcome),
                 "target_system": sys_name(world, result.target_system),
             }),
@@ -1484,6 +1486,8 @@ impl PerceptionIntegrator {
                 EVT_MISSION_RESOLVED,
                 serde_json::json!({
                     "kind": "Espionage",
+                    "faction": format!("{:?}", result.faction),
+                    "mission_id": result.mission_id,
                     "outcome": format!("{:?}", result.outcome),
                     "target_system": sys_name(world, result.target_system),
                     "parent_kind": format!("{:?}", result.kind),
@@ -3495,6 +3499,45 @@ mod tests {
             .events
             .iter()
             .any(|e| e.event_type == EVT_UPRISING_ENDED && e.tick == 9));
+    }
+
+    #[test]
+    fn a_mission_result_s_telemetry_names_the_side_and_the_mission() {
+        // Telemetry of our own: each mission_resolved record (and the
+        // Espionage wrapper of a covert one) carries the side and the id.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Ord Mantell");
+        let result = MissionResult {
+            mission_id: 42,
+            tick: 3,
+            kind: MissionKind::Sabotage,
+            faction: MissionFaction::Alliance,
+            character: None,
+            lead_force: None,
+            target_system: system,
+            target_character: None,
+            target_object: None,
+            returning_to: None,
+            outcome: MissionOutcome::Failure,
+            effects: Vec::new(),
+        };
+        let mut integrator = PerceptionIntegrator::new(3, 0);
+        integrator.apply_mission_result(
+            &mut world,
+            &result,
+            &mut UprisingState::new(),
+            &mut ResearchState::new(),
+        );
+        let resolved: Vec<_> = integrator
+            .events
+            .iter()
+            .filter(|e| e.event_type == EVT_MISSION_RESOLVED)
+            .collect();
+        assert_eq!(resolved.len(), 2);
+        for e in resolved {
+            assert_eq!(e.details["faction"], "Alliance");
+            assert_eq!(e.details["mission_id"], 42);
+        }
     }
 
     #[test]
