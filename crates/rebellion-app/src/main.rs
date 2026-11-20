@@ -34,8 +34,8 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use rebellion_core::ai::{AIAction, AIState, AISystem, AiFaction, FleetMoveReason};
-use rebellion_core::ai_schedule::{AiDay, AiPassHost, AiSlot};
+use rebellion_core::ai::{AIAction, AIState, AiFaction, FleetMoveReason};
+use rebellion_core::ai_schedule::AiDay;
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
 use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::CombatSide;
@@ -47,14 +47,12 @@ use rebellion_core::events::EventState;
 use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
-use rebellion_core::manufacturing::{
-    ManufacturingState, QueueItem,
-};
+use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::missions::{
     MissionEffect, MissionFaction, MissionKind, MissionMember, MissionState,
 };
 use rebellion_core::movement::{
-    begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms, fleet_move_enabled,
+    begin_faction_fleet_transit, fleet_move_confirms, fleet_move_enabled,
     fleet_transit_ticks, fleets_move_enabled, system_side_fleets, validate_fleet_dispatch,
     validate_fleets_dispatch, MovementState,
 };
@@ -3173,6 +3171,7 @@ async fn main() {
                     battle_sorties: &mut battle_sorties,
                     tactical_flags: game_options_state.tactical_flags(),
                     other_fog: &mut fog_empire_state,
+                    assault_summary: &mut assault_summary_state,
                     #[cfg(not(target_arch = "wasm32"))]
                     audio_engine: &mut audio_engine,
                     #[cfg(not(target_arch = "wasm32"))]
@@ -3180,48 +3179,30 @@ async fn main() {
                 }
             };
         }
-        // The AI's passes through the interactive host (AppPasses), until
-        // `$upto` of the day's have run; with `$close`, a day whose passes
-        // are done runs its end (close_simulation_day). Returns whether a
-        // pass ended the game.
+        // The day's AI passes, shared with the headless runner
+        // (rebellion_data::simulation::run_ai_passes), until `$upto` of the
+        // day's have run; with `$close`, a day whose passes are done runs
+        // its end (close_simulation_day). Returns whether a pass ended the
+        // game.
         macro_rules! run_ai_day {
             ($upto:expr, $close:expr) => {{
-                let alliance_hq = victory_state.alliance_hq;
-                let now = advisor_now(&clock);
-                let mut host = AppPasses {
-                    ai: &mut ai_state,
-                    ai2: &mut secondary_ai_state,
-                    world: &mut world,
-                    mfg: &mut mfg_state,
-                    deliveries: &delivery_state,
-                    missions: &mut mission_state,
-                    movement: &mut movement_state,
-                    economy: &economy_state,
-                    transport: &mut troop_transport_state,
-                    config: &game_config,
-                    research: &research_state,
-                    uprising: &uprising_state,
-                    production: &mut production_state,
-                    blockade: &mut blockade_state,
-                    log: &mut msg_log,
-                    battled: &mut battled_systems,
-                    message_texts: &message_texts,
-                    cockpit_faction: cockpit_state.faction,
-                    victory: &mut victory_state,
-                    conditions: campaign_config.victory_conditions,
-                    advisor_schedule: advisor_schedule.as_mut(),
-                    advisor_now: now,
-                    pending_ending: &mut pending_ending,
-                    player_faction,
-                    assault_summary: &mut assault_summary_state,
-                    bombard: BombardEnv::new(ai_day.bombard_state, Some(alliance_hq)),
-                    #[cfg(not(target_arch = "wasm32"))]
-                    audio_engine: &mut audio_engine,
-                    #[cfg(not(target_arch = "wasm32"))]
-                    audio_vol: &audio_vol,
-                };
-                let ended = ai_day.run_until(&mut host, $upto);
-                ai_day.bombard_state = host.bombard.rng_state();
+                let mut ended = false;
+                if ai_day.done < ai_day.passes.min($upto) {
+                    let now = advisor_now(&clock);
+                    let mut sim = sim_pack!();
+                    let mut presentation = app_presentation!(now);
+                    let mut integrator =
+                        rebellion_data::integrator::PerceptionIntegrator::new(sim.ai_day.day, 0);
+                    ended = rebellion_data::simulation::run_ai_passes(
+                        &mut world,
+                        &mut sim,
+                        &game_config,
+                        &mut integrator,
+                        &mut presentation,
+                        $upto,
+                    );
+                    sim_unpack!(sim);
+                }
                 if $close && ai_day.owes_close() {
                     macroquad::logging::info!(
                         "[ai] end day={} passes={} orders={} second_orders={}",
@@ -3267,61 +3248,43 @@ async fn main() {
             // timers. Shared with the headless runner
             // (rebellion_data::simulation::begin_day, F-012); the app shows
             // each step's events (AppDayPresentation).
-            let loyalty_before = {
+            {
                 let now = advisor_now(&clock);
                 let mut sim = sim_pack!();
                 let mut presentation = app_presentation!(now);
                 let mut integrator =
                     rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
-                let watch = rebellion_data::simulation::begin_day(
+                let mut rolls = rebellion_data::simulation::RngRolls(&mut sim_rng);
+                if let Some(loyalty_before) = rebellion_data::simulation::begin_day(
                     &mut world,
                     &mut sim,
                     &tick_events,
-                    &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
+                    &mut rolls,
                     &mut integrator,
                     &mut presentation,
-                );
+                ) {
+                    // ── AI: each day has as many passes as the speed has
+                    // sub-ticks, one a sub-tick, the Alliance's then the
+                    // Empire's, both sides' orders applied before the next
+                    // pass (FUN_0041dff0 phase 8, FUN_0041cf20 ->
+                    // FUN_004361a0; rebellion_core::ai_schedule). The day's
+                    // timers above fired in its first sub-tick, ahead of its
+                    // first pass. A frame that ran more than one day runs
+                    // the earlier days' passes at once; the passes of the
+                    // last run below as its sub-ticks begin
+                    // (ghidra/notes/ai-scheduling.md).
+                    rebellion_data::simulation::start_ai_day(
+                        &mut world,
+                        &mut sim,
+                        &tick_events,
+                        loyalty_before,
+                        &mut rolls,
+                        &game_config,
+                        &mut integrator,
+                        &mut presentation,
+                    );
+                }
                 sim_unpack!(sim);
-                watch.unwrap_or_default()
-            };
-
-            // ── AI: each day has as many passes as the speed has sub-ticks,
-            // one a sub-tick, the Alliance's then the Empire's, both sides'
-            // orders applied before the next pass (FUN_0041dff0 phase 8,
-            // FUN_0041cf20 -> FUN_004361a0; rebellion_core::ai_schedule). The
-            // day's timers above fired in its first sub-tick, ahead of its
-            // first pass; a new day clears each side's order count
-            // (FUN_00485de0). The passes run below as the day's sub-ticks
-            // begin (ghidra/notes/ai-scheduling.md).
-            let ai_days = u32::try_from(tick_events.len()).unwrap_or(u32::MAX);
-            let ai_passes = rebellion_core::ai::passes_per_day(clock.speed);
-            let mut bombard_state = sim_rng.gen::<u64>();
-            let mut ai_ended = false;
-            for (index, event) in tick_events.iter().enumerate() {
-                ai_day = AiDay::begin(event.tick, ai_passes, bombard_state, loyalty_before, ai_days);
-                macroquad::logging::info!(
-                    "[ai] day={} speed={:?} passes={}",
-                    event.tick,
-                    clock.speed,
-                    ai_passes
-                );
-                if ai_ended {
-                    // A win held the clock: no later day's pass runs.
-                    ai_day.done = ai_passes;
-                    continue;
-                }
-                for ai in std::iter::once(&mut ai_state).chain(secondary_ai_state.as_mut()) {
-                    ai.begin_day();
-                    ai.set_game_type(campaign_config.victory_conditions);
-                }
-                // The AI follows its ships by id (GameWorld::number_ships).
-                world.number_ships();
-                // A frame that ran more than one day runs the earlier days'
-                // passes at once; the last day's end closes them all.
-                if index + 1 < tick_events.len() {
-                    ai_ended = run_ai_day!(u32::MAX, false);
-                    bombard_state = ai_day.bombard_state;
-                }
             }
         }
 
@@ -14123,424 +14086,6 @@ fn destroy_planet(
     );
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Keep explicit state and UI inputs at this existing integration boundary."
-)]
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
-)]
-fn apply_ai_actions(
-    actions: &[AIAction],
-    ai_state: &mut AIState,
-    mission_state: &mut MissionState,
-    mfg_state: &mut ManufacturingState,
-    movement_state: &mut MovementState,
-    troop_transport_state: &mut TroopTransportState,
-    production_state: &mut ProductionState,
-    world: &mut GameWorld,
-    log: &mut MessageLog,
-    tick: u64,
-    bombard: &mut BombardEnv,
-    #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
-    #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
-) {
-    for action in actions {
-        match action {
-            AIAction::DispatchMission {
-                kind,
-                team,
-                decoys,
-                target_system,
-                target_character,
-                target_object,
-            } => {
-                let ai_faction = ai_state.faction.unwrap_or(AiFaction::Empire);
-                let request = rebellion_core::missions::MissionRequest {
-                    kind: *kind,
-                    faction: ai_faction.as_mission_faction(),
-                    team: team.clone(),
-                    decoys: decoys.clone(),
-                    target_system: *target_system,
-                    target_character: *target_character,
-                    target_object: *target_object,
-                    tick,
-                };
-                let Ok(id) = mission_state.dispatch_guarded(request, world) else {
-                    continue;
-                };
-                for character in team.iter().chain(decoys).filter_map(|m| m.character()) {
-                    ai_state.mark_busy(character);
-                }
-                if let Some(&lead) = team.first() {
-                    ai_state.bind_mission(*kind, lead, id);
-                }
-                let faction_name = match ai_faction {
-                    AiFaction::Alliance => "Alliance",
-                    AiFaction::Empire => "Empire",
-                };
-                log.push(GameMessage::at_system(
-                    tick,
-                    format!("{faction_name} dispatched {kind:?} mission"),
-                    MessageCategory::Ai,
-                    *target_system,
-                ));
-            }
-            AIAction::AbortMission { mission_id } => {
-                mission_state.abort(*mission_id);
-            }
-            AIAction::EnqueueProduction { system, kind, cost } => {
-                mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
-            }
-            AIAction::Scrap { team } => {
-                let Some(side) = ai_state.faction else {
-                    continue;
-                };
-                let scrapped = rebellion_core::scrap::scrap_team(
-                    world,
-                    production_state,
-                    troop_transport_state,
-                    side.as_faction(),
-                    team,
-                );
-                // A scrapped ship's regiments beyond the room left are lost.
-                troop_transport_state.destroy_untransportable_cargo(world);
-                if let Ok(done) = scrapped {
-                    for unit in done {
-                        log.push(GameMessage::at_system(
-                            tick,
-                            format!(
-                                "{} scrapped a unit (refund {})",
-                                match side {
-                                    AiFaction::Alliance => "Alliance",
-                                    AiFaction::Empire => "Empire",
-                                },
-                                unit.refund
-                            ),
-                            MessageCategory::Ai,
-                            unit.system,
-                        ));
-                    }
-                }
-            }
-            AIAction::MoveRegiments { troops, to } => {
-                let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
-                for &troop in troops {
-                    let _ = troop_transport_state.move_regiment(
-                        world,
-                        movement_state,
-                        &blockaded,
-                        troop,
-                        rebellion_core::troop_transport::RegimentTarget::System(*to),
-                        tick,
-                    );
-                }
-            }
-            AIAction::BoardRegiments { troops, fleet } => {
-                let blockaded = rebellion_core::blockade::BlockadeSystem::blockaded_now(world);
-                for &troop in troops {
-                    let _ = troop_transport_state.move_regiment(
-                        world,
-                        movement_state,
-                        &blockaded,
-                        troop,
-                        rebellion_core::troop_transport::RegimentTarget::Fleet(*fleet),
-                        tick,
-                    );
-                }
-            }
-            AIAction::MoveSquadrons {
-                class,
-                count,
-                from,
-                to,
-            } => {
-                if let Some(alliance) = rebellion_core::squadrons::is_alliance(world, *class) {
-                    let _ = troop_transport_state
-                        .squadrons
-                        .move_squadrons(world, alliance, *class, *count, *from, *to, tick);
-                }
-            }
-            AIAction::MoveSquadronTeam {
-                squadrons,
-                from,
-                to,
-            } => {
-                for &(class, count) in squadrons {
-                    if let Some(alliance) = rebellion_core::squadrons::is_alliance(world, class) {
-                        let _ = troop_transport_state
-                            .squadrons
-                            .move_squadrons(world, alliance, class, count, *from, *to, tick);
-                    }
-                }
-            }
-            AIAction::MoveCharacters { characters, to } => {
-                for &character in characters {
-                    rebellion_core::missions::move_member(
-                        world,
-                        rebellion_core::missions::MissionMember::Character(character),
-                        Some(*to),
-                    );
-                }
-            }
-            // A movement planner's Move to a flagship: the player's Move to
-            // a fleet (PanelAction::MoveCharacter).
-            AIAction::BoardFleet { character, fleet } => {
-                let ai_faction = ai_state.faction.unwrap_or(AiFaction::Empire);
-                let faction = ai_faction.as_mission_faction();
-                let Some(to) = world.fleets.get(*fleet).map(|f| f.location) else {
-                    continue;
-                };
-                if !rebellion_core::missions::move_place_allowed(world, faction, to, Some(*fleet)) {
-                    continue;
-                }
-                let Ok(id) = mission_state.dispatch_guarded(
-                    rebellion_core::missions::MissionRequest::single(
-                        MissionKind::Move,
-                        faction,
-                        *character,
-                        to,
-                        None,
-                        tick,
-                    ),
-                    world,
-                ) else {
-                    continue;
-                };
-                mission_state.set_target_fleet(id, *fleet);
-                ai_state.mark_busy(*character);
-                ai_state.bind_mission(
-                    MissionKind::Move,
-                    rebellion_core::missions::MissionMember::Character(*character),
-                    id,
-                );
-            }
-            // FUN_00561bb0, re-checked by FUN_004ed750.
-            AIAction::Command { character, kind } => {
-                if let Some(side) = ai_state.faction {
-                    let en_route = mission_state.is_en_route(
-                        rebellion_core::missions::MissionMember::Character(*character),
-                    );
-                    let _ = rebellion_core::character_command::give(
-                        world,
-                        *character,
-                        *kind,
-                        matches!(side, rebellion_core::ai::AiFaction::Alliance),
-                        en_route,
-                    );
-                }
-            }
-            AIAction::Bombard {
-                fleets,
-                system,
-                kind,
-            } => {
-                let Some(side) = ai_state.faction else {
-                    continue;
-                };
-                if world.systems.contains_key(*system) {
-                    let outcome = bombard
-                        .bombard_reported(
-                            world,
-                            troop_transport_state,
-                            side.as_faction(),
-                            fleets,
-                            *system,
-                            *kind,
-                        )
-                        .clone();
-                    log_bombardment(world, *system, &outcome, tick, log);
-                }
-            }
-            AIAction::Assault { fleets, system } => {
-                let Some(side) = ai_state.faction else {
-                    continue;
-                };
-                if world.systems.contains_key(*system) {
-                    let outcome = bombard
-                        .assault(
-                            world,
-                            troop_transport_state,
-                            side.as_faction(),
-                            fleets,
-                            *system,
-                        )
-                        .clone();
-                    log_assault(world, *system, &outcome, tick, log);
-                }
-            }
-            AIAction::JoinFleet { fleet, into } => {
-                let Some(side) = ai_state.faction else {
-                    continue;
-                };
-                let to = world.fleets.get(*into).map(|f| f.location);
-                let joined = rebellion_core::fleet_join::join_fleet(
-                    world,
-                    movement_state,
-                    troop_transport_state,
-                    &rebellion_core::fleet_join::FleetMover::Fleet(*fleet),
-                    *into,
-                    matches!(side, AiFaction::Alliance),
-                );
-                if let (Ok(_), Some(to)) = (joined, to) {
-                    log.push(GameMessage::at_system(
-                        tick,
-                        format!(
-                            "{} fleet joining a fleet",
-                            match side {
-                                AiFaction::Alliance => "Alliance",
-                                AiFaction::Empire => "Empire",
-                            }
-                        ),
-                        MessageCategory::Ai,
-                        to,
-                    ));
-                }
-            }
-            AIAction::MoveShips { fleet, ships, to }
-            | AIAction::MoveShipsIntoSpare { fleet, ships, to } => {
-                let Some(side) = ai_state.faction else {
-                    continue;
-                };
-                let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
-                    continue;
-                };
-                let carry_out = if matches!(action, AIAction::MoveShips { .. }) {
-                    rebellion_core::fleet_join::move_ships_to_system
-                } else {
-                    rebellion_core::fleet_join::move_ships_into_spare
-                };
-                let moved = carry_out(
-                    world,
-                    movement_state,
-                    troop_transport_state,
-                    *fleet,
-                    ships,
-                    roster,
-                    *to,
-                    matches!(side, AiFaction::Alliance),
-                );
-                if moved.is_ok() {
-                    log.push(GameMessage::at_system(
-                        tick,
-                        format!(
-                            "{} moving {} ship(s) to system",
-                            match side {
-                                AiFaction::Alliance => "Alliance",
-                                AiFaction::Empire => "Empire",
-                            },
-                            ships.len()
-                        ),
-                        MessageCategory::Ai,
-                        *to,
-                    ));
-                }
-            }
-            AIAction::CreateFleet { fleet, ships, to } => {
-                let Some(side) = ai_state.faction else {
-                    continue;
-                };
-                let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
-                    continue;
-                };
-                let is_alliance = matches!(side, AiFaction::Alliance);
-                if world.fleets.get(*fleet).is_some_and(|f| f.location == *to) {
-                    let _ = rebellion_core::fleet_join::create_fleet(
-                        world,
-                        movement_state,
-                        troop_transport_state,
-                        *fleet,
-                        ships,
-                        roster,
-                        is_alliance,
-                    );
-                } else {
-                    let _ = rebellion_core::fleet_join::move_ships_to_system(
-                        world,
-                        movement_state,
-                        troop_transport_state,
-                        *fleet,
-                        ships,
-                        roster,
-                        *to,
-                        is_alliance,
-                    );
-                }
-            }
-            AIAction::SetDestination {
-                system,
-                area,
-                destination,
-            } => {
-                mfg_state.set_destination(*system, *area, *destination);
-            }
-            AIAction::Build {
-                system,
-                kind,
-                cost,
-                count,
-            } => {
-                for _ in 0..*count {
-                    mfg_state.enqueue(*system, QueueItem::new(*kind, *cost));
-                }
-            }
-            AIAction::MoveFleet {
-                fleet,
-                to_system,
-                reason,
-                troops,
-            } => {
-                let transit = world.fleets.get(*fleet).and_then(|fleet| {
-                    rebellion_core::movement::fleet_transit_ticks(
-                        fleet,
-                        world,
-                        fleet.location,
-                        *to_system,
-                    )
-                    .map(|ticks| (ticks, fleet.is_alliance))
-                });
-                if let Some((transit, is_alliance)) = transit {
-                    let embarked = troops.is_empty()
-                        || troop_transport_state.embark(world, *fleet, troops).is_ok();
-                    if embarked
-                        && begin_fleet_transit(movement_state, world, *fleet, *to_system, transit)
-                    {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        {
-                            audio_engine.play_sfx(SfxKind::FleetDeparture, audio_vol);
-                        }
-                        let reason_str = match reason {
-                            FleetMoveReason::Attack => "attack",
-                            FleetMoveReason::Reinforce => "reinforce",
-                        };
-                        log.push(GameMessage::at_system(
-                            tick,
-                            format!(
-                                "{} fleet moving to system ({}){}",
-                                if is_alliance { "Alliance" } else { "Empire" },
-                                reason_str,
-                                if troops.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!(" with {} regiment(s)", troops.len())
-                                },
-                            ),
-                            MessageCategory::Ai,
-                            *to_system,
-                        ));
-                    } else if embarked && !troops.is_empty() {
-                        let origin = world.fleets.get(*fleet).map(|value| value.location);
-                        if let Some(origin) = origin {
-                            let _ = troop_transport_state.disembark_all(world, *fleet, origin);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// The 640 by 480 client the original's movie window fills
 /// (`FUN_005f6920` centres the movie in it), scaled into the screen:
 /// `(x, y, scale)`.
@@ -14685,52 +14230,6 @@ fn character_audience(world: &GameWorld, character: CharacterKey) -> Option<Rail
     }
 }
 
-/// The day's blockade events: their messages, then the support timer's
-/// shift and the regiments lost running a blockade, as the headless
-/// integrator applies them (`apply_blockade_events`).
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a blockade event reaches the world, the log and the regiments in transit"
-)]
-fn present_blockade_events(
-    world: &mut GameWorld,
-    msg_log: &mut MessageLog,
-    events: &[rebellion_core::blockade::BlockadeEvent],
-    battled: &std::collections::HashSet<rebellion_core::ids::SystemKey>,
-    player_is_alliance: bool,
-    message_texts: &std::collections::HashMap<u16, String>,
-    troop_transport_state: &mut TroopTransportState,
-    cockpit_faction: CockpitFaction,
-) {
-    blockade_messages(
-        world,
-        msg_log,
-        events,
-        battled,
-        player_is_alliance,
-        message_texts,
-        cockpit_faction,
-    );
-    for evt in events {
-        match evt {
-            rebellion_core::blockade::BlockadeEvent::SupportShifted {
-                system,
-                side,
-                support_delta,
-                ..
-            } => {
-                // Timer 0x386 only sets the support (FUN_0050c9f0).
-                rebellion_core::uprising::shift_support(world, *system, *side, *support_delta);
-            }
-            rebellion_core::blockade::BlockadeEvent::TroopDestroyed { troop, .. } => {
-                // The regiment left the system on its own.
-                troop_transport_state.destroy_travelling(world, *troop);
-            }
-            _ => {}
-        }
-    }
-}
-
 /// The messages of blockade events not yet applied: a regiment lost
 /// running a blockade is named before it goes.
 fn blockade_messages(
@@ -14846,6 +14345,7 @@ struct AppDayPresentation<'a> {
     tactical_flags: [bool; 5],
     /// The Empire's fog; the shared day advances the Alliance's.
     other_fog: &'a mut FogState,
+    assault_summary: &'a mut rebellion_render::assault_summary::AssaultSummaryState,
     #[cfg(not(target_arch = "wasm32"))]
     audio_engine: &'a mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))]
@@ -14865,6 +14365,9 @@ struct DayStash {
     force_changes: Vec<AdvanceForceChange>,
     /// Each system's holder before the economy's control changes.
     previous_control: Vec<(SystemKey, Option<Faction>)>,
+    /// Each planet a pass's Death Star destroys: its name, its holder
+    /// before the blast (FUN_004950d0 +0x64) and the characters it kills.
+    destroyed: Vec<(SystemKey, String, Option<Faction>, Vec<CharacterKey>)>,
 }
 
 impl AppDayPresentation<'_> {
@@ -16240,6 +15743,149 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
         true
     }
 
+    fn ai_actions(&mut self, world: &GameWorld, orders: &rebellion_data::simulation::AiOrders<'_>) {
+        let side = match orders.side {
+            AiFaction::Alliance => "Alliance",
+            AiFaction::Empire => "Empire",
+        };
+        let tick = orders.day;
+        let mut bombardments = orders.bombardments.iter();
+        let mut assaults = orders.assaults.iter();
+        for (action, &applied) in orders.actions.iter().zip(orders.applied) {
+            // Each Bombard or Assault that ran left its outcome, in order.
+            match action {
+                AIAction::Bombard { system, .. } if applied => {
+                    if let Some((_, outcome)) = bombardments.next() {
+                        log_bombardment(world, *system, outcome, tick, self.log);
+                    }
+                    continue;
+                }
+                AIAction::Assault { system, .. } if applied => {
+                    if let Some((_, outcome)) = assaults.next() {
+                        log_assault(world, *system, outcome, tick, self.log);
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+            if !applied {
+                continue;
+            }
+            if let AIAction::Scrap { team } = action {
+                self.log.push(GameMessage::new(
+                    tick,
+                    format!("{side} scrapped {} unit(s)", team.len()),
+                    MessageCategory::Ai,
+                ));
+                continue;
+            }
+            let line = match action {
+                AIAction::DispatchMission {
+                    kind,
+                    target_system,
+                    ..
+                } => Some((format!("{side} dispatched {kind:?} mission"), *target_system)),
+                AIAction::JoinFleet { into, .. } => world
+                    .fleets
+                    .get(*into)
+                    .map(|fleet| (format!("{side} fleet joining a fleet"), fleet.location)),
+                AIAction::MoveShips { ships, to, .. }
+                | AIAction::MoveShipsIntoSpare { ships, to, .. } => Some((
+                    format!("{side} moving {} ship(s) to system", ships.len()),
+                    *to,
+                )),
+                AIAction::MoveFleet {
+                    to_system,
+                    reason,
+                    troops,
+                    ..
+                } => {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    self.audio_engine.play_sfx(SfxKind::FleetDeparture, self.audio_vol);
+                    let reason = match reason {
+                        FleetMoveReason::Attack => "attack",
+                        FleetMoveReason::Reinforce => "reinforce",
+                    };
+                    let cargo = if troops.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" with {} regiment(s)", troops.len())
+                    };
+                    Some((format!("{side} fleet moving to system ({reason}){cargo}"), *to_system))
+                }
+                _ => None,
+            };
+            if let Some((text, system)) = line {
+                self.log
+                    .push(GameMessage::at_system(tick, text, MessageCategory::Ai, system));
+            }
+        }
+    }
+
+    fn pass_settling(
+        &mut self,
+        world: &GameWorld,
+        bombard: &rebellion_core::bombardment::BombardEnv,
+        day: u64,
+    ) {
+        present_assault_reports(
+            bombard.reports.clone(),
+            world,
+            self.player_faction,
+            self.message_texts,
+            self.assault_summary,
+            self.log,
+            day,
+        );
+        self.stash.destroyed = bombard
+            .destroyed_systems()
+            .into_iter()
+            .map(|system| {
+                let value = world.systems.get(system);
+                (
+                    system,
+                    value.map_or_else(|| "Unknown".to_string(), |s| s.name.clone()),
+                    value.and_then(|s| s.control.faction()),
+                    bombard.killed_at(system),
+                )
+            })
+            .collect();
+    }
+
+    /// A planet destroyed by a Death Star: Character Health for each
+    /// character it killed (0x106, FUN_0048fdf0), then System Destroyed by
+    /// the Death Star (0x182, FUN_004950d0), a story movie, MDATA.101.
+    fn planets_destroyed(
+        &mut self,
+        world: &GameWorld,
+        destroyed: &[rebellion_core::death_star::DeathStarEvent],
+    ) {
+        for event in destroyed {
+            let rebellion_core::death_star::DeathStarEvent::PlanetDestroyed { system, tick } = event;
+            let Some((_, name, holder, killed)) =
+                self.stash.destroyed.iter().find(|(key, ..)| key == system)
+            else {
+                continue;
+            };
+            for &character in killed {
+                push_character_health(self.log, world, character, *tick, self.message_texts);
+            }
+            self.log.queue_story_movie(
+                rebellion_render::story_messages::death_star_destroyed_movie(
+                    name,
+                    *holder,
+                    self.message_texts,
+                ),
+            );
+        }
+        self.stash.destroyed.clear();
+    }
+
+    // Bit 0x4000 holds for one pass (FUN_0050a9e0).
+    fn pass_settled(&mut self) {
+        self.battled.clear();
+    }
+
     fn ai_day_begun(&mut self, day: u64, speed: GameSpeed, passes: u32) {
         macroquad::logging::info!("[ai] day={} speed={:?} passes={}", day, speed, passes);
     }
@@ -16304,215 +15950,6 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
     }
 }
 
-/// The interactive game's host of the AI's passes
-/// (`rebellion_core::ai_schedule`): the orders post their messages, and a
-/// pass that applied any settles its bombardments, assaults, destroyed
-/// planets, blockades and the victory word before the next
-/// ([`settle_after_ai_pass`]). The day's end is the shared
-/// `close_simulation_day` ([`AppDayPresentation`]).
-struct AppPasses<'a> {
-    ai: &'a mut AIState,
-    ai2: &'a mut Option<AIState>,
-    world: &'a mut GameWorld,
-    mfg: &'a mut ManufacturingState,
-    deliveries: &'a DeliveryState,
-    missions: &'a mut MissionState,
-    movement: &'a mut MovementState,
-    economy: &'a EconomyState,
-    transport: &'a mut TroopTransportState,
-    config: &'a rebellion_core::tuning::GameConfig,
-    research: &'a ResearchState,
-    uprising: &'a UprisingState,
-    production: &'a mut ProductionState,
-    blockade: &'a mut BlockadeState,
-    log: &'a mut MessageLog,
-    battled: &'a mut std::collections::HashSet<rebellion_core::ids::SystemKey>,
-    message_texts: &'a std::collections::HashMap<u16, String>,
-    cockpit_faction: CockpitFaction,
-    victory: &'a mut VictoryState,
-    conditions: VictoryConditions,
-    advisor_schedule: Option<&'a mut rebellion_render::advisor_schedule::AdvisorSchedule>,
-    advisor_now: u32,
-    pending_ending: &'a mut Option<u32>,
-    player_faction: MissionFaction,
-    assault_summary: &'a mut rebellion_render::assault_summary::AssaultSummaryState,
-    bombard: BombardEnv,
-    #[cfg(not(target_arch = "wasm32"))]
-    audio_engine: &'a mut audio::AudioEngine,
-    #[cfg(not(target_arch = "wasm32"))]
-    audio_vol: &'a AudioVolumeState,
-}
-
-impl AiPassHost for AppPasses<'_> {
-    fn faction(&self, slot: AiSlot) -> Option<AiFaction> {
-        let ai = match slot {
-            AiSlot::Primary => Some(&*self.ai),
-            AiSlot::Secondary => self.ai2.as_ref(),
-        };
-        ai.map(|ai| ai.faction.unwrap_or(AiFaction::Empire))
-    }
-
-    fn think(&mut self, slot: AiSlot, day: u64) -> Vec<AIAction> {
-        let ai = match slot {
-            AiSlot::Primary => &mut *self.ai,
-            AiSlot::Secondary => match self.ai2.as_mut() {
-                Some(ai) => ai,
-                None => return Vec::new(),
-            },
-        };
-        AISystem::pass(
-            ai,
-            self.world,
-            self.mfg,
-            self.deliveries,
-            self.missions,
-            self.movement,
-            self.economy,
-            self.transport,
-            day,
-            self.config,
-            self.research,
-            self.uprising,
-        )
-    }
-
-    fn apply(&mut self, slot: AiSlot, actions: &[AIAction], day: u64) {
-        let ai = match slot {
-            AiSlot::Primary => &mut *self.ai,
-            AiSlot::Secondary => match self.ai2.as_mut() {
-                Some(ai) => ai,
-                None => return,
-            },
-        };
-        apply_ai_actions(
-            actions,
-            ai,
-            self.missions,
-            self.mfg,
-            self.movement,
-            self.transport,
-            self.production,
-            self.world,
-            self.log,
-            day,
-            &mut self.bombard,
-            #[cfg(not(target_arch = "wasm32"))]
-            self.audio_engine,
-            #[cfg(not(target_arch = "wasm32"))]
-            self.audio_vol,
-        );
-    }
-
-    fn settle(&mut self, day: u64) -> bool {
-        // The pass's assaults report, and a Destroy System order's Death
-        // Star destroys its planets (FUN_0058d990), as they happen.
-        present_assault_reports(
-            std::mem::take(&mut self.bombard.reports),
-            self.world,
-            self.player_faction,
-            self.message_texts,
-            self.assault_summary,
-            self.log,
-            day,
-        );
-        for system in self.bombard.destroyed_systems() {
-            destroy_planet(
-                self.world,
-                system,
-                &self.bombard.killed_at(system),
-                self.mfg,
-                self.blockade,
-                self.log,
-                day,
-                self.message_texts,
-            );
-        }
-        self.bombard.outcomes.clear();
-        self.bombard.assaults.clear();
-        settle_after_ai_pass(
-            self.world,
-            self.blockade,
-            &mut self.bombard,
-            self.log,
-            self.battled,
-            self.message_texts,
-            self.transport,
-            self.cockpit_faction,
-            self.victory,
-            self.conditions,
-            self.advisor_schedule.as_deref_mut(),
-            self.advisor_now,
-            self.pending_ending,
-            self.player_faction == MissionFaction::Alliance,
-            day,
-        )
-    }
-}
-
-/// After an AI pass whose orders were applied: the state the original's
-/// event handlers keep current within the sub-tick, so the next pass reads
-/// it (`ghidra/notes/ai-scheduling.md`). The pass's bombardment and
-/// assault losses count toward their blockades (`System_vtd0`), the
-/// blockade follows the fleets (`BlockadeSystem::detect`), an ended one
-/// settles its loyalty, and the victory word settles
-/// (`settle_victory_word_between_days`). Returns whether the game is over:
-/// the word's game-over bit holds the clock before the next sub-tick
-/// (`FUN_0041e390` -> `FUN_0051de80`), so the day's remaining passes do not
-/// run.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the pass's events reach the blockades, the log, the advisor and the ending"
-)]
-fn settle_after_ai_pass(
-    world: &mut GameWorld,
-    blockade_state: &mut BlockadeState,
-    bombard: &mut BombardEnv,
-    msg_log: &mut MessageLog,
-    battled: &mut std::collections::HashSet<rebellion_core::ids::SystemKey>,
-    message_texts: &std::collections::HashMap<u16, String>,
-    troop_transport_state: &mut TroopTransportState,
-    cockpit_faction: CockpitFaction,
-    victory_state: &mut VictoryState,
-    victory_conditions: VictoryConditions,
-    advisor_schedule: Option<&mut rebellion_render::advisor_schedule::AdvisorSchedule>,
-    advisor_now: u32,
-    pending_ending: &mut Option<u32>,
-    player_is_alliance: bool,
-    tick: u64,
-) -> bool {
-    for (system, losses) in bombard.losses.drain(..) {
-        blockade_state.record_losses(system, losses);
-    }
-    let events = BlockadeSystem::detect(blockade_state, world, tick);
-    for (system, blockade) in blockade_state.take_ended() {
-        rebellion_core::loyalty::settle_blockade(world, system, blockade);
-    }
-    present_blockade_events(
-        world,
-        msg_log,
-        &events,
-        battled,
-        player_is_alliance,
-        message_texts,
-        troop_transport_state,
-        cockpit_faction,
-    );
-    // Bit 0x4000 holds for one pass (FUN_0050a9e0).
-    battled.clear();
-    settle_victory_word_between_days(
-        victory_state,
-        world,
-        victory_conditions,
-        message_texts,
-        msg_log,
-        advisor_schedule,
-        advisor_now,
-        pending_ending,
-        player_is_alliance,
-        tick,
-    );
-    victory_state.resolved
-}
 
 /// The victory conditions word's check and the game's end.
 ///
@@ -18019,7 +17456,7 @@ mod fleet_move_tests {
             );
             manufacturing.build(
                 system,
-                &QueueItem::new(
+                &rebellion_core::manufacturing::QueueItem::new(
                     rebellion_core::manufacturing::BuildableKind::CapitalShip(class),
                     10,
                 ),

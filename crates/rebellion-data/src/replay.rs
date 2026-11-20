@@ -1781,6 +1781,7 @@ mod tests {
                         &mut runtime.states,
                         &runtime.game_config,
                         &mut integrator,
+                        &mut crate::simulation::NoPresentation,
                         upto,
                     );
                     assert_eq!(runtime.states.ai_day.done, upto);

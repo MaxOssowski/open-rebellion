@@ -1672,7 +1672,7 @@ impl PerceptionIntegrator {
         tick: u64,
         is_dual: bool,
         bombard: &mut BombardEnv,
-    ) {
+    ) -> Vec<bool> {
         let applied = apply_ai_actions_inner(
             actions,
             ai_state,
@@ -1685,7 +1685,7 @@ impl PerceptionIntegrator {
             tick,
             bombard,
         );
-        for (action, was_applied) in actions.iter().zip(applied) {
+        for (action, &was_applied) in actions.iter().zip(&applied) {
             if !was_applied {
                 continue;
             }
@@ -1720,6 +1720,7 @@ impl PerceptionIntegrator {
                 );
             }
         }
+        applied
     }
 
     // ── Step 8: Blockade ──────────────────────────────────────────────────
@@ -2558,7 +2559,14 @@ fn apply_ai_actions_inner(
                 kind,
             } => ai_state.faction.is_some_and(|side| {
                 world.systems.contains_key(*system) && {
-                    bombard.bombard(world, side.as_faction(), fleets, *system, *kind);
+                    bombard.bombard_reported(
+                        world,
+                        troop_transport,
+                        side.as_faction(),
+                        fleets,
+                        *system,
+                        *kind,
+                    );
                     true
                 }
             }),

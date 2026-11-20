@@ -146,10 +146,12 @@ fn settle_after_pass(
     states: &mut SimulationStates,
     integrator: &mut PerceptionIntegrator,
     bombard: &mut rebellion_core::bombardment::BombardEnv,
+    presentation: &mut dyn DayPresentation,
     tick: u64,
 ) -> bool {
     // ── 11. The pass's bombardments and assaults, and the planets a
     // Death Star destroyed (FUN_0058d990), are handled as they happen.
+    presentation.pass_settling(world, bombard, tick);
     for (req, outcome) in &bombard.outcomes {
         integrator.emit_bombardment(world, req, outcome);
     }
@@ -195,6 +197,7 @@ fn settle_after_pass(
             }
         }
     }
+    presentation.planets_destroyed(world, &ds_events);
     bombard.outcomes.clear();
     bombard.assaults.clear();
     bombard.reports.clear();
@@ -204,15 +207,26 @@ fn settle_after_pass(
         states.blockade.record_losses(system, losses);
     }
     let events = BlockadeSystem::detect(&mut states.blockade, world, tick);
+    presentation.blockade(world, &events);
     integrator.apply_blockade_events(world, &mut states.troop_transport, &events);
     settle_ended_blockades(world, states, integrator);
+    presentation.pass_settled();
     let conditions = states.campaign_config.victory_conditions;
     if let Some((old, new)) =
         rebellion_core::victory::advance_conditions_word(&mut states.victory, world, conditions)
     {
         integrator.record_victory_conditions(old, new, tick);
+        presentation.victory_word(world, new, tick);
     }
-    VictorySystem::outcome(&states.victory, world, conditions).is_some()
+    // The word's game-over bit decides the game as the event is handled.
+    match VictorySystem::outcome(&states.victory, world, conditions) {
+        Some(outcome) => {
+            integrator.apply_victory(&outcome, &mut states.victory, world);
+            presentation.game_decided(world, &outcome, &states.victory, tick);
+            true
+        }
+        None => states.victory.resolved,
+    }
 }
 
 /// A headless campaign's first views: each side's setup push
@@ -263,7 +277,14 @@ pub fn run_simulation_tick(
     begin_simulation_day(world, states, tick_events, rolls, config, &mut integrator);
     // The headless runner has no input between sub-ticks: the day's passes
     // run in one burst (rebellion_core::ai_schedule).
-    run_ai_passes(world, states, config, &mut integrator, u32::MAX);
+    run_ai_passes(
+        world,
+        states,
+        config,
+        &mut integrator,
+        &mut NoPresentation,
+        u32::MAX,
+    );
     let mut day_rolls = SliceRolls::at(rolls, states.ai_day.roll_cursor as usize);
     close_simulation_day(
         world,
@@ -284,6 +305,7 @@ struct HeadlessPasses<'a> {
     integrator: &'a mut PerceptionIntegrator,
     config: &'a rebellion_core::tuning::GameConfig,
     bombard: rebellion_core::bombardment::BombardEnv,
+    presentation: &'a mut dyn DayPresentation,
 }
 
 impl AiPassHost for HeadlessPasses<'_> {
@@ -329,7 +351,9 @@ impl AiPassHost for HeadlessPasses<'_> {
                 None => return,
             },
         };
-        self.integrator.apply_ai_actions(
+        let side = ai.faction.unwrap_or(AiFaction::Empire);
+        let (outcomes, assaults) = (self.bombard.outcomes.len(), self.bombard.assaults.len());
+        let applied = self.integrator.apply_ai_actions(
             actions,
             ai,
             &mut states.missions,
@@ -342,6 +366,17 @@ impl AiPassHost for HeadlessPasses<'_> {
             slot == AiSlot::Secondary,
             &mut self.bombard,
         );
+        self.presentation.ai_actions(
+            self.world,
+            &AiOrders {
+                side,
+                actions,
+                applied: &applied,
+                bombardments: &self.bombard.outcomes[outcomes..],
+                assaults: &self.bombard.assaults[assaults..],
+                day,
+            },
+        );
     }
 
     fn settle(&mut self, day: u64) -> bool {
@@ -350,6 +385,7 @@ impl AiPassHost for HeadlessPasses<'_> {
             self.states,
             self.integrator,
             &mut self.bombard,
+            self.presentation,
             day,
         )
     }
@@ -375,6 +411,7 @@ pub fn run_ai_passes(
     states: &mut SimulationStates,
     config: &rebellion_core::tuning::GameConfig,
     integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
     upto: u32,
 ) -> bool {
     let mut day = states.ai_day;
@@ -388,6 +425,7 @@ pub fn run_ai_passes(
         integrator,
         config,
         bombard,
+        presentation,
     };
     let ended = day.run_until(&mut host, upto);
     day.bombard_state = host.bombard.rng_state();
@@ -1228,7 +1266,7 @@ pub fn start_ai_day(
         }
         begin_ai_day(world, states);
         if index + 1 < tick_events.len() {
-            ended = run_ai_passes(world, states, config, integrator, u32::MAX);
+            ended = run_ai_passes(world, states, config, integrator, presentation, u32::MAX);
             bombard_state = states.ai_day.bombard_state;
         }
     }
@@ -1324,6 +1362,31 @@ pub trait DayPresentation {
     /// The AI's day `day` begins with `passes` passes at `speed`.
     fn ai_day_begun(&mut self, _day: u64, _speed: rebellion_core::tick::GameSpeed, _passes: u32) {}
 
+    /// One side's orders of a pass, applied (`applied` says which took),
+    /// with the bombardments and assaults they carried out.
+    fn ai_actions(&mut self, _world: &GameWorld, _orders: &AiOrders<'_>) {}
+
+    /// A pass that applied orders settles: its bombardments' and assaults'
+    /// reports, before the planets a Death Star destroyed go.
+    fn pass_settling(
+        &mut self,
+        _world: &GameWorld,
+        _bombard: &rebellion_core::bombardment::BombardEnv,
+        _day: u64,
+    ) {
+    }
+
+    /// The planets a pass's Death Star destroyed, cleaned up.
+    fn planets_destroyed(
+        &mut self,
+        _world: &GameWorld,
+        _destroyed: &[rebellion_core::death_star::DeathStarEvent],
+    ) {
+    }
+
+    /// A pass's blockades have followed its orders.
+    fn pass_settled(&mut self) {}
+
     /// Blockade events about to be applied.
     fn blockade(&mut self, _world: &GameWorld, _events: &[rebellion_core::blockade::BlockadeEvent]) {
     }
@@ -1340,6 +1403,23 @@ pub trait DayPresentation {
         _day: u64,
     ) {
     }
+}
+
+/// One side's orders of an AI pass, as [`DayPresentation::ai_actions`]
+/// sees them.
+pub struct AiOrders<'a> {
+    pub side: AiFaction,
+    pub actions: &'a [rebellion_core::ai::AIAction],
+    pub applied: &'a [bool],
+    pub bombardments: &'a [(
+        rebellion_core::bombardment::BombardRequest,
+        rebellion_core::bombardment::BombardmentOutcome,
+    )],
+    pub assaults: &'a [(
+        rebellion_core::assault::AssaultRequest,
+        rebellion_core::assault::AssaultOutcome,
+    )],
+    pub day: u64,
 }
 
 /// When [`DayPresentation::step`] is called.
@@ -1841,6 +1921,7 @@ mod tests {
             &mut states,
             &mut integrator,
             &mut bombard,
+            &mut NoPresentation,
             4
         ));
         assert!(states.blockade.is_blockaded(system));
@@ -1857,6 +1938,7 @@ mod tests {
             &mut states,
             &mut integrator,
             &mut bombard,
+            &mut NoPresentation,
             5
         ));
         assert!(bombard.losses.is_empty());
@@ -1868,7 +1950,14 @@ mod tests {
         // The fleet leaves: the blockade ends, and its losses settle.
         world.systems[system].fleets.clear();
         world.fleets.remove(fleet);
-        settle_after_pass(&mut world, &mut states, &mut integrator, &mut bombard, 5);
+        settle_after_pass(
+            &mut world,
+            &mut states,
+            &mut integrator,
+            &mut bombard,
+            &mut NoPresentation,
+            5,
+        );
         assert!(!states.blockade.is_blockaded(system));
         assert_eq!(states.blockade.blockade_losses(system), None);
     }
@@ -1897,6 +1986,7 @@ mod tests {
             &mut states,
             &mut integrator,
             &mut bombard,
+            &mut NoPresentation,
             4
         ));
         world.systems[coruscant].control = ControlKind::Controlled(Faction::Alliance);
@@ -1905,6 +1995,7 @@ mod tests {
             &mut states,
             &mut integrator,
             &mut bombard,
+            &mut NoPresentation,
             4
         ));
         assert_ne!(
@@ -2059,6 +2150,86 @@ mod tests {
         }
     }
 
+    /// A presentation that records the passes' hooks.
+    #[derive(Default)]
+    struct PassLog(Vec<String>);
+
+    impl DayPresentation for PassLog {
+        fn ai_actions(&mut self, _world: &GameWorld, orders: &AiOrders<'_>) {
+            self.0.push(format!("orders {:?} {:?}", orders.side, orders.applied));
+        }
+        fn pass_settling(
+            &mut self,
+            _world: &GameWorld,
+            _bombard: &rebellion_core::bombardment::BombardEnv,
+            _day: u64,
+        ) {
+            self.0.push("settling".into());
+        }
+        fn blockade(
+            &mut self,
+            _world: &GameWorld,
+            _events: &[rebellion_core::blockade::BlockadeEvent],
+        ) {
+            self.0.push("blockade".into());
+        }
+        fn pass_settled(&mut self) {
+            self.0.push("settled".into());
+        }
+    }
+
+    #[test]
+    fn a_pass_shows_each_side_s_applied_orders_then_its_settling() {
+        // FUN_004361a0's orders run in a later sub-tick, and the state their
+        // events keep up settles before the next (ghidra/notes/ai-scheduling.md).
+        let (mut world, mut states) = make_test_states();
+        let system = world.systems.keys().next().unwrap();
+        let class = world.capital_ship_classes.insert(Default::default());
+        let mut fleet = || {
+            let key = world.fleets.insert(Fleet {
+                location: system,
+                capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: false,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            });
+            world.systems[system].fleets.push(key);
+            key
+        };
+        let (a, b) = (fleet(), fleet());
+        let config = rebellion_core::tuning::GameConfig::default();
+        let mut integrator = PerceptionIntegrator::new(4, 0);
+        let mut log = PassLog::default();
+        let mut host = HeadlessPasses {
+            world: &mut world,
+            states: &mut states,
+            integrator: &mut integrator,
+            config: &config,
+            bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
+            presentation: &mut log,
+        };
+        host.apply(
+            AiSlot::Primary,
+            &[
+                rebellion_core::ai::AIAction::JoinFleet { fleet: a, into: b },
+                rebellion_core::ai::AIAction::JoinFleet { fleet: a, into: b },
+            ],
+            4,
+        );
+        assert!(!host.settle(4));
+        assert_eq!(
+            log.0,
+            [
+                "orders Empire [true, false]",
+                "settling",
+                "blockade",
+                "settled"
+            ]
+        );
+    }
+
     #[test]
     fn the_day_s_head_shows_its_steps_in_the_day_s_order() {
         // Economy before manufacturing (FUN_00508250's state feeds the
@@ -2186,6 +2357,7 @@ mod tests {
             integrator: &mut integrator,
             config: &config,
             bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
+            presentation: &mut NoPresentation,
         };
         assert_eq!(host.faction(AiSlot::Primary), Some(AiFaction::Empire));
         assert_eq!(host.faction(AiSlot::Secondary), Some(AiFaction::Alliance));
@@ -2241,6 +2413,7 @@ mod tests {
                 integrator: &mut integrator,
                 config: &config,
                 bombard: rebellion_core::bombardment::BombardEnv::new(0, None),
+                presentation: &mut NoPresentation,
             }
             .settle(4)
         };
