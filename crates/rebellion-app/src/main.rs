@@ -843,6 +843,7 @@ impl LiveCampaign<'_> {
                 &self.troop_transport.squadrons,
             ),
             system_copy_bits: self.world.object_views.system_bits.clone(),
+            system_copy_uprisings: self.world.object_views.system_uprisings.clone(),
             ai_command_planners: rebellion_data::save::command_planners(self.ai, self.ai2.as_ref()),
             ai_sector_links: rebellion_data::save::sector_links(self.ai, self.ai2.as_ref()),
         }
@@ -897,6 +898,7 @@ impl LiveCampaign<'_> {
         *self.player_agent = state.player_agent;
         self.world.object_views = state.object_views;
         self.world.object_views.system_bits = state.system_copy_bits;
+        self.world.object_views.system_uprisings = state.system_copy_uprisings;
         self.world.products = state.products;
         rebellion_core::squadrons::restore_damaged_squadrons(
             self.world,
@@ -4982,10 +4984,11 @@ async fn main() {
                 &mission_state,
                 &troop_transport_state,
             );
-            rebellion_core::object_views::advance(
+            rebellion_core::object_views::advance_with_uprisings(
                 &mut world,
                 &troop_transport_state,
                 &movement_state,
+                &uprising_state,
             );
 
             // ── Victory check ────────────────────────────────────────────────

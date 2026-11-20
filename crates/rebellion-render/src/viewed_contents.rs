@@ -148,7 +148,9 @@ pub(crate) fn see_live(world: &mut GameWorld, side: Faction, system: SystemKey) 
 /// the debug mode show the system itself; a frozen copy shows its side,
 /// support, population, resources, explored and destroyed bits and whether
 /// it holds the headquarters (families `0x20..0x21`). port: the facility
-/// lists stay the system's own.
+/// lists stay the system's own; the GID's counters read the copy's
+/// (`GidFacilities`) and the uprising mark the copy's bit
+/// (`object_views::side_uprising`).
 #[must_use]
 pub fn apparent_system<'a>(
     world: &'a GameWorld,

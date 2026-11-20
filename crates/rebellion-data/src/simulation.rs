@@ -961,7 +961,12 @@ pub fn run_simulation_tick(
         &states.missions,
         &states.troop_transport,
     );
-    rebellion_core::object_views::advance(world, &states.troop_transport, &states.movement);
+    rebellion_core::object_views::advance_with_uprisings(
+        world,
+        &states.troop_transport,
+        &states.movement,
+        &states.uprising,
+    );
 
     // ── 14. Victory check ────────────────────────────────────────────────
     // The victory conditions word (FUN_005180e0) and its 0x128.

@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 130;
+pub const SAVE_VERSION: u32 = 131;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -137,7 +137,11 @@ pub const V128: u32 = 128;
 /// (`SaveState::ai_sector_links`), its last field.
 pub const V129: u32 = 129;
 
-/// Whether a save of `version` loads (the current one, or v116 to v129
+/// v130: the save without the system copies' uprising bits
+/// (`SaveState::system_copy_uprisings`), its last field.
+pub const V130: u32 = 130;
+
+/// Whether a save of `version` loads (the current one, or v116 to v130
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -264,6 +268,13 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         // for a sector planner's request starts from the first.
         body.extend(bincode::serialize(&AiSectorLinks::default())?);
     }
+    if version <= V130 {
+        // An older save's copies held no uprising bits; decode_body seeds
+        // them from each system's own state.
+        body.extend(bincode::serialize(
+            &rebellion_core::object_views::SystemCopyUprisings::default(),
+        )?);
+    }
     Ok(body)
 }
 
@@ -302,6 +313,7 @@ pub fn decode_body(
         &state.squadron_damage,
     );
     state.world.object_views.system_bits = state.system_copy_bits.clone();
+    state.world.object_views.system_uprisings = state.system_copy_uprisings.clone();
     state.restore_command_planners();
     let fogs = [&state.fog_alliance, &state.fog_empire];
     if version == MIGRATED_VERSION {
@@ -333,6 +345,12 @@ pub fn decode_body(
         );
     } else if version == V120 {
         rebellion_core::object_views::seed_characters_from_copies(&mut state.world);
+    }
+    if version <= V130 {
+        // port: an older save's copies (and those seeded above) take each
+        // system's uprising bit now.
+        rebellion_core::object_views::seed_uprisings(&mut state.world, &state.uprising);
+        state.system_copy_uprisings = state.world.object_views.system_uprisings.clone();
     }
     state.object_views = state.world.object_views.clone();
     if version <= V123 {
@@ -453,6 +471,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V130 {
+            fields.remove("system_copy_uprisings");
+        }
         if version <= V129 {
             fields.remove("ai_sector_links");
         }
@@ -642,6 +663,13 @@ pub struct SaveState {
     /// [`SaveState::ai_command_planners`]
     /// ([`SaveState::restore_command_planners`]).
     pub ai_sector_links: AiSectorLinks,
+    // ── v131: the system copies' uprising bits ──────────────────────────
+    /// Each side's copies' uprising bit (`ObjectViews::system_uprisings`,
+    /// `ghidra/notes/fog-of-war.md`). It stays the last field: an older
+    /// body is read by appending an empty one ([`migrate_body`]) and its
+    /// copies are seeded from each system's own state. The loaders put it
+    /// back into the world's views, whose own encoding skips it.
+    pub system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings,
 }
 
 /// [`SaveState::ai_command_planners`]: module `0xc` of `ai` and of `ai2`.
@@ -1195,6 +1223,9 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V130,
+            V129,
+            V128,
             V127,
             V126,
             V125,
@@ -1325,6 +1356,12 @@ pub mod wasm_impl {
             versioned_meta_key(V126, slot),
             versioned_slot_key(V127, slot),
             versioned_meta_key(V127, slot),
+            versioned_slot_key(V128, slot),
+            versioned_meta_key(V128, slot),
+            versioned_slot_key(V129, slot),
+            versioned_meta_key(V129, slot),
+            versioned_slot_key(V130, slot),
+            versioned_meta_key(V130, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1354,6 +1391,9 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V130,
+            V129,
+            V128,
             V127,
             V126,
             V125,
@@ -1513,6 +1553,7 @@ mod tests {
             products: rebellion_core::products::Products::default(),
             squadron_damage: Vec::new(),
             system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
+            system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings::default(),
             ai_command_planners: AiCommandPlanners::default(),
             ai_sector_links: AiSectorLinks::default(),
         }
@@ -1963,9 +2004,27 @@ mod tests {
             + links_tail()
     }
 
-    /// The length of the empty sector links v130 added.
+    /// The length of the empty sector links v130 added, and what came
+    /// after.
     fn links_tail() -> usize {
-        bincode::serialize(&AiSectorLinks::default()).unwrap().len()
+        bincode::serialize(&AiSectorLinks::default()).unwrap().len() + uprisings_tail()
+    }
+
+    /// The length of the empty copy uprising bits v131 added.
+    fn uprisings_tail() -> usize {
+        bincode::serialize(&rebellion_core::object_views::SystemCopyUprisings::default())
+            .unwrap()
+            .len()
+    }
+
+    /// `state` written as a v130 file: no copy uprising bits. `state`
+    /// holds none.
+    fn write_v130(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(
+            state.system_copy_uprisings,
+            rebellion_core::object_views::SystemCopyUprisings::default()
+        );
+        write_old(saves_dir, state, V130, uprisings_tail())
     }
 
     /// `state` written as a v129 file: no sector links. `state` holds
@@ -2362,6 +2421,58 @@ mod tests {
             fingerprint_as(&state, V129).unwrap(),
             fingerprint_as(&loaded, V129).unwrap()
         );
+    }
+
+    #[test]
+    fn a_v130_save_seeds_its_copies_uprising_bits_from_each_system() {
+        // v131 keeps each copy's uprising bit (+0x88 bit 2, synced by
+        // FUN_0050e5b0 mode 1; ghidra/notes/fog-of-war.md). A v130 save
+        // held none; its copies take each system's own bit.
+        let saves_dir = tmp_dir("v130_migration");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let id = state.world.systems[system].dat_id;
+        let view =
+            rebellion_core::object_views::SystemView::of(&state.world, &state.world.systems[system], false);
+        state.object_views.alliance_systems.insert(id, view);
+        state.uprising.active_uprisings.insert(
+            system,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 1,
+                next_incident_tick: None,
+                next_support_tick: None,
+                side: None,
+            },
+        );
+        write_v130(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v130 save migrates");
+        assert_eq!(loaded.system_copy_uprisings.alliance.get(&id), Some(&true));
+        assert!(loaded.world.object_views.system_uprisings.get(Faction::Alliance, id));
+        assert!(loaded.system_copy_uprisings.empire.is_empty());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V130).unwrap(),
+            fingerprint_as(&loaded, V130).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_its_copies_uprising_bits() {
+        // SaveState::system_copy_uprisings (v131): the views' own encoding
+        // skips them.
+        let saves_dir = tmp_dir("copy_uprisings");
+        let mut state = minimal_save_state();
+        let id = state.world.systems.values().next().unwrap().dat_id;
+        state.system_copy_uprisings.empire.insert(id, true);
+        save_slot(&saves_dir, 0, "Uprisings", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.system_copy_uprisings, state.system_copy_uprisings);
+        assert!(loaded.world.object_views.system_uprisings.get(Faction::Empire, id));
     }
 
     #[test]

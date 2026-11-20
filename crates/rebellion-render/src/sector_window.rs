@@ -1039,7 +1039,7 @@ fn draw_sector_window(
                 paint_resource(ui.painter(), ctx, cache, planet_art(system), planet_rect);
                 // FUN_0045bbb0 blits a side's uprising mark (0x389 side 1,
                 // 0x38a side 2) keyed into the planet's bitmap at (0, 0).
-                if let Some(mark) = uprising_mark(world, uprisings, *system_key) {
+                if let Some(mark) = uprising_mark(world, player, uprisings, *system_key) {
                     paint_native(
                         ui.painter(),
                         ctx,
@@ -1500,14 +1500,18 @@ const HEADQUARTERS_MARK: u32 = 904;
 const UPRISING_MARKS: [u32; 2] = [905, 906];
 
 /// `FUN_0045bbb0`: a system in uprising (`+0x88` bit 2) held by side 1 or 2
-/// takes that side's mark.
+/// takes that side's mark, all read from the player's copy (`FUN_004f3220`):
+/// a frozen copy shows the uprising it was last synced with.
 fn uprising_mark(
     world: &GameWorld,
+    player: Faction,
     uprisings: &rebellion_core::uprising::UprisingState,
     system: SystemKey,
 ) -> Option<u32> {
-    let value = world.systems.get(system)?;
-    if value.is_destroyed || !uprisings.is_uprising(system) {
+    let value = crate::viewed_contents::apparent_system(world, player, system)?;
+    if value.is_destroyed
+        || !rebellion_core::object_views::side_uprising(world, player, system, uprisings)
+    {
         return None;
     }
     match crate::fleet_window::control_side(value.control) {
@@ -2082,7 +2086,7 @@ mod tests {
         let (mut world, system, _) = fixture_world();
         let mut uprisings = rebellion_core::uprising::UprisingState::default();
         world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
-        assert_eq!(uprising_mark(&world, &uprisings, system), None);
+        assert_eq!(uprising_mark(&world, Faction::Alliance, &uprisings, system), None);
         uprisings.active_uprisings.insert(
             system,
             rebellion_core::uprising::ActiveUprising {
@@ -2092,11 +2096,38 @@ mod tests {
                 side: None,
             },
         );
-        assert_eq!(uprising_mark(&world, &uprisings, system), Some(905));
+        assert_eq!(uprising_mark(&world, Faction::Alliance, &uprisings, system), Some(905));
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
-        assert_eq!(uprising_mark(&world, &uprisings, system), Some(906));
+        assert_eq!(uprising_mark(&world, Faction::Alliance, &uprisings, system), Some(906));
         world.systems[system].control = ControlKind::Uncontrolled;
-        assert_eq!(uprising_mark(&world, &uprisings, system), None);
+        assert_eq!(uprising_mark(&world, Faction::Alliance, &uprisings, system), None);
+    }
+
+    // FUN_0045bbb0 reads the player's copy (FUN_004f3220): a frozen copy
+    // synced while the system was calm shows no uprising mark
+    // (ghidra/notes/fog-of-war.md).
+    #[test]
+    fn a_frozen_copy_synced_calm_shows_no_uprising_mark() {
+        let (mut world, system, _) = fixture_world();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let view =
+            rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        let id = world.systems[system].dat_id;
+        world.object_views.alliance_systems.insert(id, view);
+        let mut uprisings = rebellion_core::uprising::UprisingState::default();
+        uprisings.active_uprisings.insert(
+            system,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 1,
+                next_incident_tick: None,
+                next_support_tick: None,
+                side: None,
+            },
+        );
+        assert_eq!(uprising_mark(&world, Faction::Alliance, &uprisings, system), None);
+        assert_eq!(uprising_mark(&world, Faction::Empire, &uprisings, system), Some(906));
+        world.object_views.system_uprisings.alliance.insert(id, true);
+        assert_eq!(uprising_mark(&world, Faction::Alliance, &uprisings, system), Some(906));
     }
 
     // FUN_0045bbb0 state bit 8: the headquarters (families 0x20..0x21, the

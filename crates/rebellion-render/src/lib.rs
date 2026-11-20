@@ -1209,7 +1209,16 @@ fn gid_metric(
         // families 0x10..0x13), armed defenses (FUN_00526e90, 0x22..0x27)
         // and squadrons (FUN_00503550).
         GidMode::AllDefenses => gid_all_defenses(world, system_key, system, &facilities),
-        GidMode::Uprisings => u32::from(system_in_revolt(system_key, system, gid.uprisings)),
+        // FUN_0042b330 0x12: the copy's uprising bit (+0x88 bit 2).
+        GidMode::Uprisings => u32::from(
+            matches!(system.control, ControlKind::Uprising(_))
+                || rebellion_core::object_views::side_uprising(
+                    world,
+                    viewer,
+                    system_key,
+                    gid.uprisings,
+                ),
+        ),
         GidMode::IdleFleets | GidMode::FleetsEnRoute | GidMode::BriefingFleets => {
             gid_fleets(
                 world,

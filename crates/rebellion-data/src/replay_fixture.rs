@@ -221,6 +221,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         products: rebellion_core::products::Products::default(),
         squadron_damage: Vec::new(),
         system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
+        system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings::default(),
         ai_command_planners: crate::save::AiCommandPlanners::default(),
         ai_sector_links: crate::save::AiSectorLinks::default(),
     })

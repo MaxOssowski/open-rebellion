@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v128, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits, and the v116 to v127 migrations"
+description: "Native and browser save v131, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v130 migrations"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-10-29
+updated: 2026-11-20
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v128. v116 to v127 still load
+serializable snapshot. The current format is v131. v116 to v130 still load
 through their migrations (below); no other version does.
 
-## Native format (v128)
+## Native format (v131)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -78,6 +78,8 @@ Every mutable campaign subsystem required by the app is serialized:
 | `products` | `Products` (v124, the last field): each ordered unit not yet finished, in its container (`rebellion_core::products`; `FUN_0052a140` creates it at the order, Existing and not Completed): a capital ship in the target's spare fleet, a regiment, squadron or special force in the target system. v125 adds the products' trips as their last field (`Products::trips`: a finished product travelling from its yard to its container, by id, with its arrival day). The loaders copy it into `GameWorld::products`, which the world's own encoding skips |
 | `squadron_damage` | `Vec<DamagedSquadron>` (v126): each squadron below full strength, its losses (`+0x60`) and repair timer `0x380`, by its place (a fleet's or a planet's entry index, or a transit's index; `squadrons::damaged_squadrons`, `ghidra/notes/squadron-strength.md`). `FighterEntry::damage` and `SquadronTransit::lost` are skipped by their own encodings; the loaders put them back (`squadrons::restore_damaged_squadrons`). An older save has none, so its squadrons load whole |
 | `system_copy_bits` | `SystemCopyBitsMap` (v127, the last field): each side's copies' explored and destroyed bits by the system's id (`ObjectViews::system_bits`, `ghidra/notes/fog-of-war.md`). The views' own encoding skips it; the loaders put it back. An older save has none: each side then reads the system's own `exploration_status` (`object_views::side_explored`) |
+| `ai_command_planners`, `ai_sector_links` | module `0xc` of each AI player (v129, v130); see `save.rs` |
+| `system_copy_uprisings` | `SystemCopyUprisings` (v131, the last field): each side's copies' uprising bit (`+0x88` bit 2) by the system's id (`ObjectViews::system_uprisings`, `ghidra/notes/fog-of-war.md`). The views' own encoding skips it; the loaders put it back. A v130 or older save's copies take each system's own bit at load (`object_views::seed_uprisings`) |
 
 Loading restores the RNG, dual-AI state, repair episodes, and combat memory
 instead of reseeding or clearing them. `campaign_config` keeps the selected
@@ -106,9 +108,9 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## The v116 to v127 migrations
+## The v116 to v130 migrations
 
-The loader reads `SAVE_VERSION` (128), `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
+The loader reads `SAVE_VERSION` (131), `V130`, `V129`, `V128`, `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
 `MIGRATED_VERSION` (116). Any other version is rejected with a message to
 start a new game.
 
@@ -134,8 +136,8 @@ A v127 body has v128's layout, but its blockade map tracked regiments
 aboard fleets, which the original never rolls
 (`ghidra/notes/move-order.md`, "Re-traced 2026-11-19"), so a v127 or
 older save drops it (`BlockadeState::forget_fleet_borne_percents`).
-The browser reads a slot's v127, v126, v125, v124, v123, v122, v121, v120, v119,
-v118, v117, then v116 keys when it has no v128 ones; Delete removes all.
+The browser reads a slot's v130, v129, v128, v127, v126, v125, v124, v123, v122, v121, v120, v119,
+v118, v117, then v116 keys when it has no v131 ones; Delete removes all.
 
 Changing `SaveState`, or any type it holds, including `GameWorld`, changes the
 bincode layout. Bincode is positional, so `#[serde(default)]` does not keep old

@@ -2172,3 +2172,63 @@ fn a_new_game_finds_a_loaded_galaxys_core_systems_and_yavin() {
     assert_eq!(copy(kabal), SystemView::bare());
     assert!(!side_explored(&world, Faction::Empire, kabal));
 }
+
+fn revolt(uprisings: &mut crate::uprising::UprisingState, at: SystemKey) {
+    uprisings.active_uprisings.insert(
+        at,
+        crate::uprising::ActiveUprising {
+            started_tick: 1,
+            next_incident_tick: None,
+            next_support_tick: None,
+            side: None,
+        },
+    );
+}
+
+// The mode-1 sync (FUN_0050e5b0 through CoreSystem_vt24 FUN_00566d00 ->
+// FUN_00566f80) copies the uprising bit (+0x88 bit 2) with the other fields;
+// a frozen copy (FUN_005404d0) keeps it, and the sector window's planet
+// (FUN_0045bbb0, marks 905/906) reads the viewer's copy
+// (ghidra/notes/fog-of-war.md).
+#[test]
+fn a_frozen_copy_keeps_the_uprising_it_was_last_synced_with() {
+    let mut setup = setup();
+    let chandrila = setup.chandrila;
+    let mut uprisings = crate::uprising::UprisingState::default();
+    revolt(&mut uprisings, chandrila);
+    let watcher = fleet(&mut setup.world, chandrila, true);
+    let day = |setup: &mut Setup, uprisings: &crate::uprising::UprisingState| {
+        advance_with_uprisings(&mut setup.world, &setup.transport, &setup.movement, uprisings);
+    };
+    day(&mut setup, &uprisings);
+    // Live: the system's own bit.
+    assert!(side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+    setup.world.fleets.remove(watcher);
+    day(&mut setup, &uprisings);
+    // The revolt ends out of sight: the frozen copy still shows it.
+    uprisings.active_uprisings.clear();
+    day(&mut setup, &uprisings);
+    assert!(side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+    // The holder sees its own system calm.
+    assert!(!side_uprising(&setup.world, Faction::Empire, chandrila, &uprisings));
+    // A push syncs the copy again.
+    setup.world.object_views.queue_push(Faction::Alliance, chandrila);
+    day(&mut setup, &uprisings);
+    assert!(!side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+    // A revolt that starts out of sight stays unseen.
+    revolt(&mut uprisings, chandrila);
+    day(&mut setup, &uprisings);
+    assert!(!side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+}
+
+#[test]
+fn seeding_uprisings_gives_each_copy_its_systems_bit() {
+    let mut setup = setup();
+    let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
+    let mut uprisings = crate::uprising::UprisingState::default();
+    revolt(&mut uprisings, chandrila);
+    super::setup(&mut setup.world);
+    seed_uprisings(&mut setup.world, &uprisings);
+    assert!(side_uprising(&setup.world, Faction::Alliance, chandrila, &uprisings));
+    assert!(!side_uprising(&setup.world, Faction::Alliance, coruscant, &uprisings));
+}

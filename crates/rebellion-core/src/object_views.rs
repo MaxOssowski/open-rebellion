@@ -202,6 +202,55 @@ pub struct ObjectViews {
     /// field), so the views' own encoding skips it.
     #[serde(skip)]
     pub system_bits: SystemCopyBitsMap,
+    /// Each side's copies' uprising bit, by the system's id (v131). Saved
+    /// apart (`SaveState::system_copy_uprisings`), so the views' own
+    /// encoding skips it.
+    #[serde(skip)]
+    pub system_uprisings: SystemCopyUprisings,
+}
+
+/// Each side's copies' uprising bit (`+0x88` bit 2), which the mode-1 sync
+/// (`FUN_0050e5b0`) copies with explored and the sector window's planet
+/// (`FUN_0045bbb0`, marks 905/906) and the GID read from the viewer's copy
+/// (`ghidra/notes/fog-of-war.md`). A copy absent here is calm.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemCopyUprisings {
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub alliance: HashMap<DatId, bool>,
+    #[serde(
+        serialize_with = "crate::serde_ordered::serialize_hash_map",
+        deserialize_with = "crate::serde_ordered::deserialize_hash_map"
+    )]
+    pub empire: HashMap<DatId, bool>,
+}
+
+impl SystemCopyUprisings {
+    /// Whether `side`'s copy of the system `id` is in uprising.
+    #[must_use]
+    pub fn get(&self, side: Faction, id: DatId) -> bool {
+        match side {
+            Faction::Alliance => self.alliance.get(&id).copied(),
+            Faction::Empire => self.empire.get(&id).copied(),
+            Faction::Neutral => None,
+        }
+        .unwrap_or(false)
+    }
+
+    fn set(&mut self, side: Faction, id: DatId, uprising: bool) {
+        let map = match side {
+            Faction::Alliance => &mut self.alliance,
+            Faction::Empire => &mut self.empire,
+            Faction::Neutral => return,
+        };
+        if uprising {
+            map.insert(id, true);
+        } else {
+            map.remove(&id);
+        }
+    }
 }
 
 /// A side's copy's explored bit (`+0x88` bit 1, `System_SyncExplored`
@@ -2022,7 +2071,14 @@ pub fn apply(world: &mut GameWorld, updates: &[ViewUpdate]) {
 /// The daily step, after movement, control and missions: number new
 /// regiments, refresh both sides' views, then take the day's intelligence
 /// pushes.
-pub fn advance(world: &mut GameWorld, transport: &TroopTransportState, movement: &MovementState) {
+///
+/// Returns each system copy the step synced (a live copy that changed, one
+/// that froze, each push), for [`sync_uprisings`].
+pub fn advance(
+    world: &mut GameWorld,
+    transport: &TroopTransportState,
+    movement: &MovementState,
+) -> Vec<(Faction, DatId)> {
     number_regiments(world);
     let mut updates = compute(world, transport, movement);
     let mut systems = compute_systems(world, movement);
@@ -2037,6 +2093,8 @@ pub fn advance(world: &mut GameWorld, transport: &TroopTransportState, movement:
         }
     }
     apply(world, &updates);
+    let mut synced: Vec<(Faction, DatId)> =
+        systems.iter().map(|(side, id, _)| (*side, *id)).collect();
     apply_systems(world, systems);
     // Every push level syncs explored (System_SyncExplored FUN_0050fc80).
     for (side, id) in pushed {
@@ -2044,6 +2102,76 @@ pub fn advance(world: &mut GameWorld, transport: &TroopTransportState, movement:
             bits.explored = true;
             world.object_views.system_bits.set(side, id, bits);
         }
+    }
+    synced.dedup();
+    synced
+}
+
+/// The day's step ([`advance`]) and the uprising bit of each copy it
+/// synced ([`sync_uprisings`]).
+pub fn advance_with_uprisings(
+    world: &mut GameWorld,
+    transport: &TroopTransportState,
+    movement: &MovementState,
+    uprisings: &crate::uprising::UprisingState,
+) {
+    let synced = advance(world, transport, movement);
+    sync_uprisings(world, uprisings, &synced);
+}
+
+/// Each of `synced`'s copies takes the system's uprising bit (`+0x88` bit
+/// 2): the mode-1 sync (`FUN_0050e5b0` through `CoreSystem_vt24` /
+/// `RimSystem_vt24`) copies it with the other fields. A frozen copy keeps
+/// the bit it had.
+pub fn sync_uprisings(
+    world: &mut GameWorld,
+    uprisings: &crate::uprising::UprisingState,
+    synced: &[(Faction, DatId)],
+) {
+    for &(side, id) in synced {
+        let Some((key, _)) = world.systems.iter().find(|(_, value)| value.dat_id == id) else {
+            continue;
+        };
+        let uprising = uprisings.is_uprising(key);
+        world.object_views.system_uprisings.set(side, id, uprising);
+    }
+}
+
+/// Seeds every copy `side` holds with the system's uprising bit now (the
+/// v130 migration: such a save kept no uprising bits). port: a frozen copy
+/// of an older save takes today's state.
+pub fn seed_uprisings(world: &mut GameWorld, uprisings: &crate::uprising::UprisingState) {
+    let mut synced = Vec::new();
+    for side in [Faction::Alliance, Faction::Empire] {
+        if let Some(views) = world.object_views.systems(side) {
+            synced.extend(views.keys().map(|id| (side, *id)));
+        }
+    }
+    sync_uprisings(world, uprisings, &synced);
+}
+
+/// Whether `side` sees `system` in uprising (`+0x88` bit 2 of the viewer's
+/// copy: `FUN_0045bbb0`'s marks 905/906, `FUN_0042b330`). Its own system, a
+/// live copy and the debug mode show the system's own bit; a frozen copy
+/// its own. port: a system the side holds no copy of (a test's or a
+/// fixture's world) shows the system's own.
+#[must_use]
+pub fn side_uprising(
+    world: &GameWorld,
+    side: Faction,
+    system: SystemKey,
+    uprisings: &crate::uprising::UprisingState,
+) -> bool {
+    let Some(value) = world.systems.get(system) else {
+        return false;
+    };
+    let own = uprisings.is_uprising(system);
+    if value.control.is_controlled_by(side) || world.object_views.see_everything {
+        return own;
+    }
+    match world.object_views.system(side, value.dat_id) {
+        Some(view) if !view.live => world.object_views.system_uprisings.get(side, value.dat_id),
+        _ => own,
     }
 }
 
