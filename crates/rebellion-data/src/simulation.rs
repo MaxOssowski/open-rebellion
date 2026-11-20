@@ -407,12 +407,13 @@ pub fn run_ai_passes(
     clippy::cast_possible_truncation,
     reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
 )]
-fn day_head(
+pub fn day_head(
     world: &mut GameWorld,
     states: &mut SimulationStates,
     tick_events: &[TickEvent],
     rolls: &mut dyn RollSource,
     integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
 ) -> Option<(
     rebellion_core::loyalty::LoyaltyWatch,
     Vec<rebellion_core::blockade::RunningRegiment>,
@@ -635,6 +636,29 @@ fn day_head(
     let reveals = FogSystem::advance(&mut states.fog, world, &states.movement);
     integrator.emit_fog_reveals(&reveals, world);
 
+    run_day_missions(world, states, tick_events, rolls, integrator, presentation);
+    Some((loyalty_before, running_regiments))
+}
+
+/// The day's missions, the story systems (Dagobah, the Final Battle, the
+/// bounty hunters, `SeatOfPower`), the missions' results, the captives'
+/// escapes and the fired events. Both the headless runner and the
+/// interactive app run it; `presentation` sees each step.
+#[expect(
+    clippy::too_many_lines,
+    reason = "Keep the missions' ordered steps together."
+)]
+pub fn run_day_missions(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    tick_events: &[TickEvent],
+    rolls: &mut dyn RollSource,
+    integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
+) {
+    let Some(current_tick) = tick_events.last().map(|event| event.tick) else {
+        return;
+    };
     // ── 5. Missions ──────────────────────────────────────────────────────
     let mission_rolls = rolls.take(
         states.missions.len() * tick_events.len() * rebellion_core::missions::ROLLS_PER_MISSION,
@@ -647,7 +671,10 @@ fn day_head(
         tick_events,
         &mission_rolls,
     );
+    let step = DayStep::MissionAdvance(&mission_advance);
+    present(presentation, world, states, &step, StepPhase::Before);
     rebellion_core::missions::apply_advance_effects(world, &mission_advance.effects);
+    present(presentation, world, states, &step, StepPhase::After);
     integrator.record_advance_character_effects(
         world,
         &mission_advance.effects,
@@ -670,7 +697,13 @@ fn day_head(
     ) {
         let mission = rebellion_core::dagobah::dispatch(&mut states.missions, world, &pulse);
         integrator.record_luke_dagobah(world, &pulse, mission.is_some());
+        if mission.is_some() {
+            let step = DayStep::LukeToDagobah(pulse.tick);
+            present(presentation, world, states, &step, StepPhase::After);
+        }
     }
+    let step = DayStep::DagobahCompleted(&mission_advance.effects);
+    present(presentation, world, states, &step, StepPhase::After);
 
     // ── 5c. The Final Battle: FUN_00544da0 .. FUN_00544fc0 ───────────────
     let final_battle_rolls =
@@ -684,6 +717,8 @@ fn day_head(
     ) {
         let mission = rebellion_core::final_battle::perform(&step, &mut states.missions, world);
         integrator.record_final_battle_step(world, &step, mission.is_some());
+        let shown = DayStep::FinalBattle(&step);
+        present(presentation, world, states, &shown, StepPhase::After);
     }
 
     // ── 5d. The bounty hunters: timer 0x393 (FUN_00546fa0) ───────────────
@@ -697,6 +732,8 @@ fn day_head(
     ) {
         let mission = rebellion_core::jabba::perform(&step, &mut states.missions, world);
         integrator.record_jabba_step(world, &step, mission.is_some());
+        let shown = DayStep::Jabba(&step, mission.is_some());
+        present(presentation, world, states, &shown, StepPhase::After);
     }
 
     // ── 5e. `SeatOfPower` (FUN_005617b0, notification 0x230) ───────────────
@@ -706,6 +743,7 @@ fn day_head(
         if let Some(tick) = tick_events.last().map(|event| event.tick) {
             integrator.record_seat_of_power(held, tick);
         }
+        present(presentation, world, states, &DayStep::SeatOfPower(held), StepPhase::After);
     }
     states.ai.free_mission_members(&mission_advance.effects);
     if let Some(ref mut ai2) = states.ai2 {
@@ -716,7 +754,6 @@ fn day_head(
         ai2.note_mission_results(&mission_advance.results);
     }
     for result in &mission_advance.results {
-        integrator.apply_mission_result(world, result, &mut states.uprising, &mut states.research);
         // FUN_00592c80: a mission's end gives its side level 6 of its
         // target system (Event319_Handle).
         let continuing = states
@@ -724,6 +761,34 @@ fn day_head(
             .missions()
             .iter()
             .any(|mission| mission.id == result.mission_id && mission.end_code == 0);
+        present(
+            presentation,
+            world,
+            states,
+            &DayStep::MissionResult {
+                result,
+                continuing,
+                ended: &[],
+            },
+            StepPhase::Before,
+        );
+        let ended = integrator.apply_mission_result(
+            world,
+            result,
+            &mut states.uprising,
+            &mut states.research,
+        );
+        present(
+            presentation,
+            world,
+            states,
+            &DayStep::MissionResult {
+                result,
+                continuing,
+                ended: &ended,
+            },
+            StepPhase::After,
+        );
         if !continuing {
             world
                 .object_views
@@ -826,14 +891,27 @@ fn day_head(
     let escape_rolls = rolls.take(2 * world.characters.len());
     let escape_effects =
         MissionSystem::advance_escapes(&mut states.missions, world, current_tick, &escape_rolls);
+    let step = DayStep::Escapes(&escape_effects);
+    present(presentation, world, states, &step, StepPhase::Before);
     integrator.apply_escape_effects(world, &escape_effects);
 
     // ── 6. Events ────────────────────────────────────────────────────────
     let event_rolls: Vec<f32> = rolls.take(16).iter().map(|&r| r as f32).collect();
     let fired_events = EventSystem::advance(&mut states.events, world, tick_events, &event_rolls);
-    integrator.apply_fired_events(world, &fired_events, current_tick, &states.movement);
+    // One event at a time, so each one's story effects (its messages and
+    // special forces) are shown with it.
+    for fired in &fired_events {
+        integrator.apply_fired_events(
+            world,
+            std::slice::from_ref(fired),
+            current_tick,
+            &states.movement,
+        );
+        let effects = integrator.drain_story_effects();
+        let step = DayStep::EventFired(fired, &effects);
+        present(presentation, world, states, &step, StepPhase::After);
+    }
 
-    Some((loyalty_before, running_regiments))
 }
 
 /// The start of a day: every system up to and including the day's timers,
@@ -850,7 +928,14 @@ pub fn begin_simulation_day(
 ) {
     let mut day_rolls = SliceRolls::at(rolls, 0);
     let Some((loyalty_before, running)) =
-        day_head(world, states, tick_events, &mut day_rolls, integrator)
+        day_head(
+            world,
+            states,
+            tick_events,
+            &mut day_rolls,
+            integrator,
+            &mut NoPresentation,
+        )
     else {
         return;
     };
@@ -1228,6 +1313,32 @@ pub enum DayStep<'a> {
     ResearchTally(&'a [rebellion_core::research::ResearchTally]),
     /// The regiments that set out since the last day, running a blockade.
     RunningRegiments(&'a [rebellion_core::blockade::BlockadeEvent]),
+    /// The missions' day: member moves, releases, arrivals and detections.
+    MissionAdvance(&'a rebellion_core::missions::MissionAdvance),
+    /// Luke sent to Dagobah (`FUN_00544030`), on this day.
+    LukeToDagobah(u64),
+    /// The missions' effects, for the Dagobah missions that completed.
+    DagobahCompleted(&'a [rebellion_core::missions::MissionEffect]),
+    /// A Final Battle step, performed.
+    FinalBattle(&'a rebellion_core::final_battle::FinalBattleStep),
+    /// A bounty hunters' step, performed, and whether it sent a mission.
+    Jabba(&'a rebellion_core::jabba::JabbaStep, bool),
+    /// `SeatOfPower` changed to this.
+    SeatOfPower(bool),
+    /// A mission's result: whether the mission goes on, and (`After`) the
+    /// uprisings its effects ended.
+    MissionResult {
+        result: &'a rebellion_core::missions::MissionResult,
+        continuing: bool,
+        ended: &'a [rebellion_core::uprising::UprisingEvent],
+    },
+    /// The captives' escapes and their trips.
+    Escapes(&'a [rebellion_core::missions::MissionEffect]),
+    /// A story or notification event fired, with its story effects.
+    EventFired(
+        &'a rebellion_core::events::FiredEvent,
+        &'a [rebellion_core::effects::GameEffect],
+    ),
 }
 
 fn present(
@@ -1781,6 +1892,47 @@ mod tests {
             &mut world,
             &mut states,
             &[],
+            &[],
+            &mut SliceRolls::at(&[], 0),
+            &mut PerceptionIntegrator::new(1, 0),
+            &mut none,
+        );
+        assert!(none.0.is_empty());
+    }
+
+    #[test]
+    fn the_day_s_missions_show_the_advance_before_and_after_it_is_applied() {
+        // port: the shared missions step (F-012); the runner's presentation
+        // sees the advance, the Dagobah check and the escapes in order.
+        let (mut world, mut states) = make_test_states();
+        let mut log = StepLog::default();
+        run_day_missions(
+            &mut world,
+            &mut states,
+            &[TickEvent { tick: 1 }],
+            &mut SliceRolls::at(&[], 0),
+            &mut PerceptionIntegrator::new(1, 0),
+            &mut log,
+        );
+        let shown: Vec<&str> = log
+            .0
+            .iter()
+            .map(String::as_str)
+            .filter(|step| !step.starts_with("SeatOfPower") && !step.starts_with("EventFired"))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                "MissionAdvance Before",
+                "MissionAdvance After",
+                "DagobahCompleted After",
+                "Escapes Before",
+            ]
+        );
+        let mut none = StepLog::default();
+        run_day_missions(
+            &mut world,
+            &mut states,
             &[],
             &mut SliceRolls::at(&[], 0),
             &mut PerceptionIntegrator::new(1, 0),

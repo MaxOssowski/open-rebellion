@@ -1429,7 +1429,7 @@ impl PerceptionIntegrator {
         result: &MissionResult,
         uprising_state: &mut UprisingState,
         research_state: &mut ResearchState,
-    ) {
+    ) -> Vec<UprisingEvent> {
         let ended =
             apply_mission_effects_inner(&result.effects, world, result.tick, uprising_state);
         for effect in &result.effects {
@@ -1547,6 +1547,7 @@ impl PerceptionIntegrator {
                 _ => {}
             }
         }
+        ended
     }
 
     /// Apply escape effects in order: the escapee's home side, fleet removal

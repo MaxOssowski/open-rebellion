@@ -43,7 +43,7 @@ use rebellion_core::agent_automation::{AutomationModule, PlayerAgent};
 use rebellion_core::dat::Faction;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::{EconomyEvent, EconomyState, EconomySystem};
-use rebellion_core::events::{EventState, EventSystem};
+use rebellion_core::events::EventState;
 use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::fog::{FogState, FogSystem};
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey};
@@ -51,7 +51,7 @@ use rebellion_core::manufacturing::{
     ManufacturingState, QueueItem,
 };
 use rebellion_core::missions::{
-    MissionEffect, MissionFaction, MissionKind, MissionMember, MissionState, MissionSystem,
+    MissionEffect, MissionFaction, MissionKind, MissionMember, MissionState,
 };
 use rebellion_core::movement::{
     apply_fleet_arrival, begin_faction_fleet_transit, begin_fleet_transit, fleet_move_confirms,
@@ -3155,6 +3155,29 @@ async fn main() {
                 ai_day = sim.ai_day;
             }};
         }
+        // The app's side of the shared day functions (AppDayPresentation);
+        // `$now` is the advisor's clock, read before the states are packed.
+        macro_rules! app_presentation {
+            ($now:expr) => {
+                AppDayPresentation {
+                    log: &mut msg_log,
+                    battled: &mut battled_systems,
+                    message_texts: &message_texts,
+                    cockpit_faction: cockpit_state.faction,
+                    advisor_schedule: advisor_schedule.as_mut(),
+                    advisor_now: $now,
+                    pending_ending: &mut pending_ending,
+                    player_faction,
+                    player_agent: &mut player_agent,
+                    advisor: &mut advisor_state,
+                    stash: DayStash::default(),
+                    #[cfg(not(target_arch = "wasm32"))]
+                    audio_engine: &mut audio_engine,
+                    #[cfg(not(target_arch = "wasm32"))]
+                    audio_vol: &audio_vol,
+                }
+            };
+        }
         // The AI's passes through the interactive host (AppPasses), until
         // `$upto` of the day's have run; with `$close`, a day whose passes
         // are done runs its end (close_simulation_day). Returns whether a
@@ -3209,19 +3232,7 @@ async fn main() {
                     // (rebellion_data::simulation::close_simulation_day).
                     let now = advisor_now(&clock);
                     let mut sim = sim_pack!();
-                    let mut presentation = AppDayPresentation {
-                        log: &mut msg_log,
-                        battled: &mut battled_systems,
-                        message_texts: &message_texts,
-                        cockpit_faction: cockpit_state.faction,
-                        advisor_schedule: advisor_schedule.as_mut(),
-                        advisor_now: now,
-                        pending_ending: &mut pending_ending,
-                        player_faction,
-                        player_agent: &mut player_agent,
-                        advisor: &mut advisor_state,
-                        stash: DayStash::default(),
-                    };
+                    let mut presentation = app_presentation!(now);
                     let mut integrator =
                         rebellion_data::integrator::PerceptionIntegrator::new(sim.ai_day.day, 0);
                     rebellion_data::simulation::close_simulation_day(
@@ -3954,485 +3965,24 @@ async fn main() {
             FogSystem::advance(&mut fog_alliance_state, &world, &movement_state);
             FogSystem::advance(&mut fog_empire_state, &world, &movement_state);
 
-            // ── Missions ────────────────────────────────────────────────────
-            let mission_rolls: Vec<f64> = (0..mission_state.len()
-                * tick_events.len()
-                * rebellion_core::missions::ROLLS_PER_MISSION)
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            let mission_advance = MissionSystem::advance(
-                &mut mission_state,
-                &world,
-                &uprising_state,
-                &research_state,
-                &tick_events,
-                &mission_rolls,
-            );
-            // Member moves and releases come before the results.
-            let force_changes = advance_force_changes(&world, &mission_advance.effects);
-            rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
-            push_advance_messages(
-                &mut msg_log,
-                &world,
-                &mission_advance.effects,
-                &force_changes,
-                current_tick,
-                &message_texts,
-            );
-            // Notification 0x361 (FUN_0048c9c0): a member learned the traitor.
-            for effect in &mission_advance.effects {
-                if let MissionEffect::TraitorIdentified { character, traitor } = effect {
-                    if let (Some(discoverer), Some(traitor)) =
-                        (world.characters.get(*character), world.characters.get(*traitor))
-                    {
-                        if let Some(message) =
-                            rebellion_render::story_messages::discovers_traitor_message(
-                                discoverer,
-                                traitor,
-                                current_tick,
-                                &message_texts,
-                            )
-                        {
-                            msg_log.push(message);
-                        }
-                    }
-                }
-            }
-            push_foiled_missions(&mut msg_log, &world, &mission_advance.ended, &message_texts);
-            push_personnel_arrivals(&mut msg_log, &world, &mission_advance.arrivals, &message_texts);
-            // The encounter class (vtable 0x65b408): Force detection and the
-            // confrontation's 0x360 and Luke's 0x211.
-            for message in rebellion_render::story_messages::EncounterNotes::gather(
-                &world,
-                &mission_advance.effects,
-            )
-            .messages(&world, &mission_state, current_tick, &message_texts)
+            // ── The missions, the story systems, the results, escapes and
+            // events: shared with the headless runner
+            // (rebellion_data::simulation::run_day_missions).
             {
-                msg_log.push(message);
-            }
-            // ── Dagobah: timer 0x392 and the check FUN_00544030 ─────────────
-            let dagobah_rolls: Vec<f64> =
-                (0..rebellion_core::dagobah::DagobahSystem::roll_budget())
-                    .map(|_| sim_rng.gen::<f64>())
-                    .collect();
-            if let Some(pulse) = rebellion_core::dagobah::DagobahSystem::advance(
-                &mut dagobah_state,
-                &world,
-                &mission_state,
-                &tick_events,
-                &dagobah_rolls,
-            ) {
-                if rebellion_core::dagobah::dispatch(&mut mission_state, &mut world, &pulse)
-                    .is_some()
-                {
-                    if let Some(message) = rebellion_render::story_messages::luke_goes_to_dagobah(
-                        pulse.tick,
-                        &message_texts,
-                    ) {
-                        msg_log.push(message);
-                    }
-                }
-            }
-            // Notification 0x210 when the Dagobah mission sets
-            // DagobahCompleted (FUN_005751d0).
-            for effect in &mission_advance.effects {
-                if let MissionEffect::DagobahCompleted { character, .. } = effect {
-                    if let Some(message) = rebellion_render::story_messages::luke_leaves_dagobah(
-                        &world,
-                        *character,
-                        current_tick,
-                        &message_texts,
-                    ) {
-                        msg_log.push(message);
-                    }
-                }
-            }
-            // ── The Final Battle: FUN_00544da0 .. FUN_00544fc0 ──────────────
-            let final_battle_rolls: Vec<f64> =
-                (0..rebellion_core::final_battle::FinalBattleSystem::roll_budget())
-                    .map(|_| sim_rng.gen::<f64>())
-                    .collect();
-            for step in rebellion_core::final_battle::FinalBattleSystem::advance(
-                &mut final_battle_state,
-                &world,
-                &mission_state,
-                &tick_events,
-                &final_battle_rolls,
-            ) {
-                rebellion_core::final_battle::perform(&step, &mut mission_state, &mut world);
-                // FUN_0048e3c0 on 0x220.
-                if let rebellion_core::final_battle::FinalBattleStep::Battle(battle) = step {
-                    if let Some(message) = rebellion_render::story_messages::final_battle_message(
-                        &world,
-                        battle.luke,
-                        battle.tick,
-                        &message_texts,
-                    ) {
-                        msg_log.push(message);
-                    }
-                }
-            }
-            // ── The bounty hunters: timer 0x393 (FUN_00546fa0) ─────────────
-            let jabba_rolls: Vec<f64> = (0..rebellion_core::jabba::JabbaSystem::roll_budget())
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            for step in rebellion_core::jabba::JabbaSystem::advance(
-                &mut jabba_state,
-                &world,
-                &mission_state,
-                &tick_events,
-                &jabba_rolls,
-            ) {
-                let dispatched =
-                    rebellion_core::jabba::perform(&step, &mut mission_state, &mut world);
-                // Notification 0x200 (FUN_0048c4c0), Rescue Attempt.
-                // port: posted as the Palace mission is dispatched; the
-                // original posts it as the rescuer sets out (EnrouteActive).
-                if let (rebellion_core::jabba::JabbaStep::Rescue { rescuer, .. }, Some(_)) =
-                    (step, dispatched)
-                {
-                    if let Some(message) = world.characters.get(rescuer).and_then(|c| {
-                        rebellion_render::story_messages::rescue_attempt_message(
-                            c,
-                            current_tick,
-                            &message_texts,
-                        )
-                    }) {
-                        msg_log.push(message);
-                    }
-                }
-            }
-            // ── SeatOfPower (FUN_005617b0): notification 0x230, Emperor
-            // Arrives at Coruscant (FUN_0048ce80) when set ──────────────
-            if rebellion_core::seat_of_power::SeatOfPowerSystem::advance(
-                &mut seat_of_power_state,
-                &world,
-            ) == Some(true)
-            {
-                if let Some(message) = rebellion_render::story_messages::emperor_arrives_message(
-                    current_tick,
-                    &message_texts,
-                ) {
-                    msg_log.push(message);
-                }
-            }
-            ai_state.free_mission_members(&mission_advance.effects);
-            if let Some(second_ai) = secondary_ai_state.as_mut() {
-                second_ai.free_mission_members(&mission_advance.effects);
-            }
-            ai_state.note_mission_results(&mission_advance.results);
-            if let Some(second_ai) = secondary_ai_state.as_mut() {
-                second_ai.note_mission_results(&mission_advance.results);
-            }
-
-            for result in &mission_advance.results {
-                let continuing = mission_state
-                    .missions()
-                    .iter()
-                    .any(|mission| mission.id == result.mission_id && mission.end_code == 0);
-                // FUN_00592c80: a mission's end gives its side level 6 of
-                // its target system (Event319_Handle).
-                if !continuing {
-                    world
-                        .object_views
-                        .queue_push(result.faction.into(), result.target_system);
-                }
-                apply_mission_result(
-                    result,
-                    continuing,
-                    uprising_state.is_uprising(result.target_system),
+                let now = advisor_now(&clock);
+                let mut sim = sim_pack!();
+                let mut presentation = app_presentation!(now);
+                let mut integrator =
+                    rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
+                rebellion_data::simulation::run_day_missions(
                     &mut world,
-                    &mut research_state,
-                    &mut msg_log,
-                    &message_texts,
-                    #[cfg(not(target_arch = "wasm32"))]
-                    &mut audio_engine,
-                    #[cfg(not(target_arch = "wasm32"))]
-                    &audio_vol,
+                    &mut sim,
+                    &tick_events,
+                    &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
+                    &mut integrator,
+                    &mut presentation,
                 );
-                // Notification 0x212 (FUN_0048fa00), after Han's capture;
-                // notification 0x1e0 case 5 (FUN_00490340) for a rescuer
-                // the Palace mission's failure leaves with Jabba.
-                for effect in &result.effects {
-                    if let MissionEffect::BountyAttack { character, .. } = effect {
-                        for message in rebellion_render::story_messages::bounty_messages(
-                            &world,
-                            *character,
-                            current_tick,
-                            &message_texts,
-                        ) {
-                            msg_log.push(message);
-                        }
-                    }
-                    // FUN_004fc080: an object destroyed by an assassination
-                    // (reason 7) posts 0x306, Killed by Imperial Assassins
-                    // (FUN_0048b050); one destroyed by sabotage (reason 6)
-                    // posts 0x305, Death Star Sabotaged for the Death Star
-                    // (FUN_0048d470).
-                    let system_name = world
-                        .systems
-                        .get(result.target_system)
-                        .map(|s| s.name.clone())
-                        .unwrap_or_default();
-                    if let MissionEffect::CharacterKilled { character, .. } = effect {
-                        if result.kind == MissionKind::Assassination {
-                            if let Some(message) = world.characters.get(*character).and_then(|c| {
-                                rebellion_render::story_messages::assassins_message(
-                                    c,
-                                    &system_name,
-                                    current_tick,
-                                    &message_texts,
-                                )
-                            }) {
-                                msg_log.push(message);
-                            }
-                        }
-                    }
-                    if let MissionEffect::TargetSabotaged {
-                        target: rebellion_core::missions::MissionTarget::DeathStar(_),
-                        system,
-                    } = effect
-                    {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map(|s| s.name.clone())
-                            .unwrap_or_default();
-                        // FUN_0048d470: a story movie, MDATA.104.
-                        if let Some(movie) =
-                            rebellion_render::story_messages::death_star_sabotaged_movie(
-                                &name,
-                                &message_texts,
-                            )
-                        {
-                            msg_log.queue_story_movie(movie);
-                        }
-                    }
-                    // Notification 0x231 (FUN_0048b6e0) as the Pickup sets
-                    // PickupInProgress.
-                    if matches!(effect, MissionEffect::PickupInProgress) {
-                        if let Some(message) =
-                            jabba_delivers_message(&world, current_tick, &message_texts)
-                        {
-                            msg_log.push(message);
-                        }
-                    }
-                    if let MissionEffect::CharacterCaptured {
-                        character,
-                        captured_by,
-                        at_system,
-                    } = effect
-                    {
-                        if rebellion_core::jabba::held_at_palace(&world, *character) {
-                            if let Some(message) =
-                                rebellion_render::story_messages::jabba_captures_message(
-                                    &world.characters[*character],
-                                    current_tick,
-                                    &message_texts,
-                                )
-                            {
-                                msg_log.push(message);
-                            }
-                        } else if let Some(captive) = world.characters.get(*character) {
-                            // Notification 0x1e0 (FUN_00490340), each
-                            // side's message.
-                            let place = world
-                                .systems
-                                .get(*at_system)
-                                .map_or("", |system| system.name.as_str());
-                            for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
-                                if let Some(message) =
-                                    rebellion_render::story_messages::captured_message(
-                                        Some(*at_system),
-                                        captive,
-                                        *captured_by == MissionFaction::Alliance,
-                                        place,
-                                        reader,
-                                        current_tick,
-                                        &message_texts,
-                                    )
-                                {
-                                    msg_log.push(message);
-                                }
-                            }
-                        }
-                    }
-                }
-                for ended in rebellion_data::integrator::apply_mission_state_effects(
-                    &result.effects,
-                    &world,
-                    result.tick,
-                    &mut uprising_state,
-                ) {
-                    if let rebellion_core::uprising::UprisingEvent::UprisingEnded { system, tick } =
-                        ended
-                    {
-                        let name = world
-                            .systems
-                            .get(system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        macroquad::logging::info!(
-                            "[interface] uprising_subdued system={} tick={}",
-                            name,
-                            tick
-                        );
-                        // Notification 0x14b, Uprising Ends (FUN_00499460),
-                        // for both sides of the held system.
-                        let holder = world.systems.get(system).and_then(|s| s.control.faction());
-                        let (title, text, audience) =
-                            match rebellion_render::story_messages::uprising_texts(
-                                &name,
-                                holder,
-                                false,
-                                &message_texts,
-                            ) {
-                                Some((title, body)) => {
-                                    (Some(title), body, Some(RailAudience::Both))
-                                }
-                                None => (
-                                    None,
-                                    format!("Uprising subdued at {name}"),
-                                    system_audience(&world, system),
-                                ),
-                            };
-                        let mut message = GameMessage::at_system(
-                            tick,
-                            text,
-                            MessageCategory::Diplomacy,
-                            system,
-                        )
-                        .with_picture_if(pictures::uprising_ends(pictures::system_side(
-                            &world, system,
-                        )))
-                        .with_sounds(MessageSounds::uprising(false))
-                        .with_advisor_events(
-                            uprising_event(holder, Faction::Alliance, false),
-                            uprising_event(holder, Faction::Empire, false),
-                        );
-                        if let Some(title) = title {
-                            message = message.with_title(title);
-                        }
-                        msg_log.push(filed(message, MessageRail::PopularSupport, audience));
-                    }
-                }
-
-                // Advisor trigger for player faction missions.
-                if result.faction == player_faction {
-                    let kind_name = format!("{:?}", result.kind);
-                    let success =
-                        result.outcome == rebellion_core::missions::MissionOutcome::Success;
-                    advisor_mission_result(&mut advisor_state, &kind_name, success);
-                }
-            }
-            // Destroyed 0x302 after the reports and their
-            // effects (FUN_0047ae50).
-            ai_state.note_missions_ended(&mission_advance.ended, &world);
-            if let Some(second_ai) = secondary_ai_state.as_mut() {
-                second_ai.note_missions_ended(&mission_advance.ended, &world);
-            }
-
-            // ── Character escapes ────────────────────────────────────────────
-            // Each captive draws at most an attempt and its next delay.
-            let escape_rolls: Vec<f64> = (0..2 * world.characters.len())
-                .map(|_| sim_rng.gen::<f64>())
-                .collect();
-            let escape_effects = MissionSystem::advance_escapes(
-                &mut mission_state,
-                &world,
-                current_tick,
-                &escape_rolls,
-            );
-            for effect in &escape_effects {
-                if let MissionEffect::MemberMoved { member, to } = effect {
-                    rebellion_core::missions::move_member(&mut world, *member, *to);
-                } else if let MissionEffect::MemberEnteredAbode { member, abode } = effect {
-                    rebellion_core::missions::enter_abode(&mut world, *member, *abode);
-                } else if matches!(
-                    effect,
-                    MissionEffect::MemberBoarded { .. } | MissionEffect::MemberSeated { .. }
-                ) {
-                    // A Pickup's prisoner lands aboard Vader's ship.
-                    rebellion_core::missions::apply_advance_effects(
-                        &mut world,
-                        std::slice::from_ref(effect),
-                    );
-                } else if let MissionEffect::CharacterEscaped {
-                    character,
-                    escaped_to_alliance,
-                } = effect
-                {
-                    escape_character(
-                        &mut world,
-                        *character,
-                        *escaped_to_alliance,
-                        current_tick,
-                        &mut msg_log,
-                        &message_texts,
-                    );
-                    for (_, fleet) in &mut world.fleets {
-                        fleet.characters.retain(|&k| k != *character);
-                    }
-                }
-            }
-
-            // ── Events ──────────────────────────────────────────────────────
-            let event_rolls: Vec<f32> = (0..16).map(|_| sim_rng.gen::<f32>()).collect();
-            let fired_events =
-                EventSystem::advance(&mut event_state, &world, &tick_events, &event_rolls);
-
-            // #F7 + #A3: call the pub'd integrator helper. DisplayMessage
-            // routes through `GameEffect::StoryMessageDisplayed` and
-            // `SpawnSpecialForce` resolves via `current_system` + fallback
-            // to `MovementState::orders()`. The effect buffer drains into
-            // `msg_log` immediately below.
-            for fired in &fired_events {
-                let mut story_effects_out: Vec<rebellion_core::effects::GameEffect> = Vec::new();
-                rebellion_data::integrator::apply_event_action_to_world(
-                    &fired.actions,
-                    &mut world,
-                    &mut story_effects_out,
-                    fired.tick,
-                    &movement_state,
-                );
-                // Drain StoryMessageDisplayed + SpecialForceSpawned effects into
-                // the interactive message log. SpecialForceUnit arena wiring is
-                // handled in apply_event_action_to_world; here we just log.
-                for eff in story_effects_out {
-                    use rebellion_core::effects::GameEffect;
-                    match eff {
-                        GameEffect::StoryMessageDisplayed { text, .. } => {
-                            // A story event is a message the player reads in
-                            // the Message window (DEV-UI-019 retired).
-                            msg_log.push(rebellion_render::story_messages::story_message(
-                                &world,
-                                fired.event_id,
-                                &fired.actions,
-                                text,
-                                current_tick,
-                                cockpit_state.faction,
-                                &message_texts,
-                                MessageCategory::Event,
-                            ));
-                        }
-                        GameEffect::SpecialForceSpawned {
-                            at_system,
-                            is_alliance,
-                        } => {
-                            let name = world
-                                .systems
-                                .get(at_system)
-                                .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                            let side = if is_alliance { "Alliance" } else { "Imperial" };
-                            msg_log.push(GameMessage::at_system(
-                                current_tick,
-                                format!("{side} special force lands at {name}"),
-                                MessageCategory::Event,
-                                at_system,
-                            ));
-                        }
-                        _ => {}
-                    }
-                }
+                sim_unpack!(sim);
             }
 
             // ── The day's timers, then the regiments that set out since the
@@ -4443,19 +3993,7 @@ async fn main() {
             {
                 let now = advisor_now(&clock);
                 let mut sim = sim_pack!();
-                let mut presentation = AppDayPresentation {
-                    log: &mut msg_log,
-                    battled: &mut battled_systems,
-                    message_texts: &message_texts,
-                    cockpit_faction: cockpit_state.faction,
-                    advisor_schedule: advisor_schedule.as_mut(),
-                    advisor_now: now,
-                    pending_ending: &mut pending_ending,
-                    player_faction,
-                    player_agent: &mut player_agent,
-                    advisor: &mut advisor_state,
-                    stash: DayStash::default(),
-                };
+                let mut presentation = app_presentation!(now);
                 let mut integrator =
                     rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
                 rebellion_data::simulation::run_day_timers(
@@ -14076,11 +13614,57 @@ fn escape_character(
         .and_then(|system| world.systems.get(system))
         .map_or_else(String::new, |system| system.name.clone());
     let before = captive.clone();
+    escape_messages_of(&before, captor_is_alliance, at, &place, tick, log, texts);
+    if let Some(c) = world.characters.get_mut(character) {
+        c.is_alliance = escaped_to_alliance;
+        c.is_empire = !escaped_to_alliance;
+        c.is_captive = false;
+        c.captured_by = None;
+        c.capture_tick = None;
+    }
+}
+
+/// The messages of a captive's escape, from the world before it.
+fn escape_messages(
+    world: &GameWorld,
+    character: CharacterKey,
+    escaped_to_alliance: bool,
+    tick: u64,
+    log: &mut MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    let Some(captive) = world.characters.get(character) else {
+        return;
+    };
+    let captor_is_alliance = captive
+        .captured_by
+        .map_or(!escaped_to_alliance, |side| side == Faction::Alliance);
+    let at = captive
+        .current_fleet
+        .and_then(|fleet| world.fleets.get(fleet))
+        .map(|fleet| fleet.location)
+        .or(captive.current_system);
+    let place = at
+        .and_then(|system| world.systems.get(system))
+        .map_or_else(String::new, |system| system.name.clone());
+    escape_messages_of(captive, captor_is_alliance, at, &place, tick, log, texts);
+}
+
+/// Notification 0x1e0's escape messages (FUN_00490340), one for each side.
+fn escape_messages_of(
+    before: &rebellion_core::world::Character,
+    captor_is_alliance: bool,
+    at: Option<SystemKey>,
+    place: &str,
+    tick: u64,
+    log: &mut MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
     for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
         if let Some(mut message) = rebellion_render::story_messages::escaped_message(
-            &before,
+            before,
             captor_is_alliance,
-            &place,
+            place,
             reader,
             tick,
             texts,
@@ -14091,13 +13675,6 @@ fn escape_character(
             message.system = at;
             log.push(message);
         }
-    }
-    if let Some(c) = world.characters.get_mut(character) {
-        c.is_alliance = escaped_to_alliance;
-        c.is_empire = !escaped_to_alliance;
-        c.is_captive = false;
-        c.captured_by = None;
-        c.capture_tick = None;
     }
 }
 
@@ -15985,6 +15562,10 @@ struct AppDayPresentation<'a> {
     player_agent: &'a mut PlayerAgent,
     advisor: &'a mut AdvisorState,
     stash: DayStash,
+    #[cfg(not(target_arch = "wasm32"))]
+    audio_engine: &'a mut audio::AudioEngine,
+    #[cfg(not(target_arch = "wasm32"))]
+    audio_vol: &'a AudioVolumeState,
 }
 
 /// What a step's messages need from before it was applied.
@@ -15995,6 +15576,9 @@ struct DayStash {
     /// Each side's and tree's Done flag before the tally (FUN_0052f440
     /// posts 0x129..0x12b when it turns on).
     research_done: Vec<(bool, rebellion_core::research::TechType, bool)>,
+    /// The Force each member had before the missions' day
+    /// (`advance_force_changes`).
+    force_changes: Vec<AdvanceForceChange>,
 }
 
 impl AppDayPresentation<'_> {
@@ -16175,6 +15759,190 @@ impl AppDayPresentation<'_> {
             message = message.with_title(title);
         }
         self.log.push(filed(message, uprising_message_rail(evt), audience));
+    }
+}
+
+impl AppDayPresentation<'_> {
+    /// A mission's report and the messages of its effects, from the world
+    /// before the result is applied: the app's own report code runs on a
+    /// copy of the world and research, so it reads each effect's state as
+    /// it posts (`apply_mission_result`), while the shared integrator
+    /// applies the result to the campaign.
+    fn mission_result_messages(
+        &mut self,
+        world: &GameWorld,
+        states: &rebellion_data::simulation::SimulationStates,
+        result: &rebellion_core::missions::MissionResult,
+        continuing: bool,
+    ) {
+        let message_texts = self.message_texts;
+        let current_tick = states.clock.tick;
+        let mut world = world.clone();
+        let mut research = states.research.clone();
+        apply_mission_result(
+            result,
+            continuing,
+            states.uprising.is_uprising(result.target_system),
+            &mut world,
+            &mut research,
+            self.log,
+            message_texts,
+            #[cfg(not(target_arch = "wasm32"))]
+            self.audio_engine,
+            #[cfg(not(target_arch = "wasm32"))]
+            self.audio_vol,
+        );
+        let world = &world;
+        // Notification 0x212 (FUN_0048fa00), after Han's capture;
+        // notification 0x1e0 case 5 (FUN_00490340) for a rescuer the Palace
+        // mission's failure leaves with Jabba.
+        for effect in &result.effects {
+            if let MissionEffect::BountyAttack { character, .. } = effect {
+                for message in rebellion_render::story_messages::bounty_messages(
+                    world,
+                    *character,
+                    current_tick,
+                    message_texts,
+                ) {
+                    self.log.push(message);
+                }
+            }
+            // FUN_004fc080: an object destroyed by an assassination (reason
+            // 7) posts 0x306, Killed by Imperial Assassins (FUN_0048b050);
+            // one destroyed by sabotage (reason 6) posts 0x305, Death Star
+            // Sabotaged for the Death Star (FUN_0048d470).
+            let system_name = world
+                .systems
+                .get(result.target_system)
+                .map(|s| s.name.clone())
+                .unwrap_or_default();
+            if let MissionEffect::CharacterKilled { character, .. } = effect {
+                if result.kind == MissionKind::Assassination {
+                    if let Some(message) = world.characters.get(*character).and_then(|c| {
+                        rebellion_render::story_messages::assassins_message(
+                            c,
+                            &system_name,
+                            current_tick,
+                            message_texts,
+                        )
+                    }) {
+                        self.log.push(message);
+                    }
+                }
+            }
+            if let MissionEffect::TargetSabotaged {
+                target: rebellion_core::missions::MissionTarget::DeathStar(_),
+                system,
+            } = effect
+            {
+                let name = world
+                    .systems
+                    .get(*system)
+                    .map(|s| s.name.clone())
+                    .unwrap_or_default();
+                // FUN_0048d470: a story movie, MDATA.104.
+                if let Some(movie) =
+                    rebellion_render::story_messages::death_star_sabotaged_movie(&name, message_texts)
+                {
+                    self.log.queue_story_movie(movie);
+                }
+            }
+            // Notification 0x231 (FUN_0048b6e0) as the Pickup sets
+            // PickupInProgress.
+            if matches!(effect, MissionEffect::PickupInProgress) {
+                if let Some(message) = jabba_delivers_message(world, current_tick, message_texts) {
+                    self.log.push(message);
+                }
+            }
+            if let MissionEffect::CharacterCaptured {
+                character,
+                captured_by,
+                at_system,
+            } = effect
+            {
+                if rebellion_core::jabba::held_at_palace(world, *character) {
+                    if let Some(message) = rebellion_render::story_messages::jabba_captures_message(
+                        &world.characters[*character],
+                        current_tick,
+                        message_texts,
+                    ) {
+                        self.log.push(message);
+                    }
+                } else if let Some(captive) = world.characters.get(*character) {
+                    // Notification 0x1e0 (FUN_00490340), each side's message.
+                    let place = world
+                        .systems
+                        .get(*at_system)
+                        .map_or("", |system| system.name.as_str());
+                    for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+                        if let Some(message) = rebellion_render::story_messages::captured_message(
+                            Some(*at_system),
+                            captive,
+                            *captured_by == MissionFaction::Alliance,
+                            place,
+                            reader,
+                            current_tick,
+                            message_texts,
+                        ) {
+                            self.log.push(message);
+                        }
+                    }
+                }
+            }
+        }
+        // Advisor trigger for player faction missions.
+        if result.faction == self.player_faction {
+            let kind_name = format!("{:?}", result.kind);
+            let success = result.outcome == rebellion_core::missions::MissionOutcome::Success;
+            advisor_mission_result(self.advisor, &kind_name, success);
+        }
+    }
+
+    /// Notification 0x14b, Uprising Ends (FUN_00499460), for both sides of
+    /// the held system, when a Subdue Uprising's success ends the revolt.
+    fn uprising_subdued_message(
+        &mut self,
+        world: &GameWorld,
+        ended: &rebellion_core::uprising::UprisingEvent,
+    ) {
+        let rebellion_core::uprising::UprisingEvent::UprisingEnded { system, tick } = *ended else {
+            return;
+        };
+        let name = world
+            .systems
+            .get(system)
+            .map_or_else(|| "unknown".into(), |s| s.name.clone());
+        macroquad::logging::info!(
+            "[interface] uprising_subdued system={} tick={}",
+            name,
+            tick
+        );
+        let holder = world.systems.get(system).and_then(|s| s.control.faction());
+        let (title, text, audience) =
+            match rebellion_render::story_messages::uprising_texts(
+                &name,
+                holder,
+                false,
+                self.message_texts,
+            ) {
+                Some((title, body)) => (Some(title), body, Some(RailAudience::Both)),
+                None => (
+                    None,
+                    format!("Uprising subdued at {name}"),
+                    system_audience(world, system),
+                ),
+            };
+        let mut message = GameMessage::at_system(tick, text, MessageCategory::Diplomacy, system)
+            .with_picture_if(pictures::uprising_ends(pictures::system_side(world, system)))
+            .with_sounds(MessageSounds::uprising(false))
+            .with_advisor_events(
+                uprising_event(holder, Faction::Alliance, false),
+                uprising_event(holder, Faction::Empire, false),
+            );
+        if let Some(title) = title {
+            message = message.with_title(title);
+        }
+        self.log.push(filed(message, MessageRail::PopularSupport, audience));
     }
 }
 
@@ -16399,6 +16167,184 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
                                 );
                             }
                         }
+                    }
+                }
+            }
+            (DayStep::MissionAdvance(advance), StepPhase::Before) => {
+                self.stash.force_changes = advance_force_changes(world, &advance.effects);
+            }
+            (DayStep::MissionAdvance(advance), StepPhase::After) => {
+                let current_tick = states.clock.tick;
+                // Member moves and releases come before the results.
+                let force_changes = std::mem::take(&mut self.stash.force_changes);
+                push_advance_messages(
+                    self.log,
+                    world,
+                    &advance.effects,
+                    &force_changes,
+                    current_tick,
+                    message_texts,
+                );
+                // Notification 0x361 (FUN_0048c9c0): a member learned the
+                // traitor.
+                for effect in &advance.effects {
+                    if let MissionEffect::TraitorIdentified { character, traitor } = effect {
+                        if let (Some(discoverer), Some(traitor)) =
+                            (world.characters.get(*character), world.characters.get(*traitor))
+                        {
+                            if let Some(message) =
+                                rebellion_render::story_messages::discovers_traitor_message(
+                                    discoverer,
+                                    traitor,
+                                    current_tick,
+                                    message_texts,
+                                )
+                            {
+                                self.log.push(message);
+                            }
+                        }
+                    }
+                }
+                push_foiled_missions(self.log, world, &advance.ended, message_texts);
+                push_personnel_arrivals(self.log, world, &advance.arrivals, message_texts);
+                // The encounter class (vtable 0x65b408): Force detection and
+                // the confrontation's 0x360 and Luke's 0x211.
+                for message in
+                    rebellion_render::story_messages::EncounterNotes::gather(world, &advance.effects)
+                        .messages(world, &states.missions, current_tick, message_texts)
+                {
+                    self.log.push(message);
+                }
+            }
+            (DayStep::LukeToDagobah(tick), StepPhase::After) => {
+                if let Some(message) =
+                    rebellion_render::story_messages::luke_goes_to_dagobah(*tick, message_texts)
+                {
+                    self.log.push(message);
+                }
+            }
+            // Notification 0x210 when the Dagobah mission sets
+            // DagobahCompleted (FUN_005751d0).
+            (DayStep::DagobahCompleted(effects), StepPhase::After) => {
+                for effect in *effects {
+                    if let MissionEffect::DagobahCompleted { character, .. } = effect {
+                        if let Some(message) = rebellion_render::story_messages::luke_leaves_dagobah(
+                            world,
+                            *character,
+                            states.clock.tick,
+                            message_texts,
+                        ) {
+                            self.log.push(message);
+                        }
+                    }
+                }
+            }
+            // FUN_0048e3c0 on 0x220.
+            (DayStep::FinalBattle(step), StepPhase::After) => {
+                if let rebellion_core::final_battle::FinalBattleStep::Battle(battle) = step {
+                    if let Some(message) = rebellion_render::story_messages::final_battle_message(
+                        world,
+                        battle.luke,
+                        battle.tick,
+                        message_texts,
+                    ) {
+                        self.log.push(message);
+                    }
+                }
+            }
+            // Notification 0x200 (FUN_0048c4c0), Rescue Attempt. port: posted
+            // as the Palace mission is dispatched; the original posts it as
+            // the rescuer sets out (EnrouteActive).
+            (DayStep::Jabba(step, true), StepPhase::After) => {
+                if let rebellion_core::jabba::JabbaStep::Rescue { rescuer, .. } = step {
+                    if let Some(message) = world.characters.get(*rescuer).and_then(|c| {
+                        rebellion_render::story_messages::rescue_attempt_message(
+                            c,
+                            states.clock.tick,
+                            message_texts,
+                        )
+                    }) {
+                        self.log.push(message);
+                    }
+                }
+            }
+            // Notification 0x230, Emperor Arrives at Coruscant (FUN_0048ce80),
+            // when SeatOfPower is set.
+            (DayStep::SeatOfPower(true), StepPhase::After) => {
+                if let Some(message) = rebellion_render::story_messages::emperor_arrives_message(
+                    states.clock.tick,
+                    message_texts,
+                ) {
+                    self.log.push(message);
+                }
+            }
+            (
+                DayStep::MissionResult {
+                    result, continuing, ..
+                },
+                StepPhase::Before,
+            ) => {
+                self.mission_result_messages(world, states, result, *continuing);
+            }
+            (DayStep::MissionResult { ended, .. }, StepPhase::After) => {
+                for ended in *ended {
+                    self.uprising_subdued_message(world, ended);
+                }
+            }
+            (DayStep::Escapes(effects), StepPhase::Before) => {
+                for effect in *effects {
+                    if let MissionEffect::CharacterEscaped {
+                        character,
+                        escaped_to_alliance,
+                    } = effect
+                    {
+                        escape_messages(
+                            world,
+                            *character,
+                            *escaped_to_alliance,
+                            states.clock.tick,
+                            self.log,
+                            message_texts,
+                        );
+                    }
+                }
+            }
+            (DayStep::EventFired(fired, effects), StepPhase::After) => {
+                let current_tick = states.clock.tick;
+                for eff in *effects {
+                    use rebellion_core::effects::GameEffect;
+                    match eff {
+                        GameEffect::StoryMessageDisplayed { text, .. } => {
+                            // A story event is a message the player reads in
+                            // the Message window (DEV-UI-019 retired).
+                            self.log.push(rebellion_render::story_messages::story_message(
+                                world,
+                                fired.event_id,
+                                &fired.actions,
+                                text.clone(),
+                                current_tick,
+                                self.cockpit_faction,
+                                message_texts,
+                                MessageCategory::Event,
+                            ));
+                        }
+                        GameEffect::SpecialForceSpawned {
+                            at_system,
+                            is_alliance,
+                        } => {
+                            let name = world
+                                .systems
+                                .get(*at_system)
+                                .map_or_else(|| "unknown".into(), |s| s.name.clone());
+                            let side = if *is_alliance { "Alliance" } else { "Imperial" };
+                            self.log.push(GameMessage::at_system(
+                                current_tick,
+                                format!("{side} special force lands at {name}"),
+                                MessageCategory::Event,
+                                *at_system,
+                            ));
+                        }
+                        _ => {}
                     }
                 }
             }
