@@ -622,6 +622,244 @@ function mouse_relative_position(clientX, clientY) {
 
 var emscripten_shaders_hack = false;
 
+// Open Rebellion's save slots (rebellion-data `browser_saves`). They live
+// in IndexedDB, which answers asynchronously while the game reads its slots
+// synchronously, so `load` waits for `open`, which copies every entry into
+// memory; reads come from that copy. A commit changes the copy at once and
+// writes one IndexedDB transaction in the background; the game polls its
+// ticket. A failed transaction puts the copy back as it was, so the slots
+// show what the disk holds. Saves an older build kept in localStorage move
+// into IndexedDB on the first load. Where IndexedDB cannot be opened the
+// slots stay in localStorage, written synchronously.
+var rebellionSaveStore = (function () {
+    "use strict";
+
+    var DB_NAME = "open-rebellion";
+    var STORE_NAME = "saves";
+    var SAVE_KEY = /^rebellion_(save|meta)_v\d+_\d+$/;
+    var PENDING = 0, COMMITTED = 1, QUOTA = 2, FAILED = 3;
+
+    var entries = new Map();
+    // Keys whose stored value is not a string: reading them fails.
+    var unreadable = new Set();
+    var staged = [];
+    var tickets = [];
+    var db = null;
+    var opening = null;
+
+    function failure(error) {
+        return error && error.name === "QuotaExceededError" ? QUOTA : FAILED;
+    }
+
+    function legacyKeys() {
+        var keys = [];
+        try {
+            for (var i = 0; i < window.localStorage.length; i++) {
+                var key = window.localStorage.key(i);
+                if (SAVE_KEY.test(key)) keys.push(key);
+            }
+        } catch (error) {
+            console.error("Open Rebellion could not read localStorage saves:", error);
+        }
+        return keys;
+    }
+
+    function useLocalStorage(error) {
+        console.warn("Open Rebellion saves use localStorage; IndexedDB is unavailable:", error);
+        db = null;
+        legacyKeys().forEach(function (key) {
+            entries.set(key, window.localStorage.getItem(key));
+        });
+    }
+
+    function removeLegacy(keys) {
+        keys.forEach(function (key) {
+            try {
+                window.localStorage.removeItem(key);
+            } catch (error) {
+                console.error("Open Rebellion could not remove a migrated save:", error);
+            }
+        });
+    }
+
+    // Copy the localStorage saves IndexedDB lacks, then drop them from
+    // localStorage. On a failure they stay there (and in memory) for the
+    // next load to try again.
+    function migrate(resolve) {
+        var keys = legacyKeys();
+        var copy = keys.filter(function (key) { return !entries.has(key) && !unreadable.has(key); });
+        if (copy.length === 0) {
+            removeLegacy(keys);
+            resolve();
+            return;
+        }
+        var values = copy.map(function (key) { return window.localStorage.getItem(key); });
+        copy.forEach(function (key, i) { entries.set(key, values[i]); });
+        try {
+            var tx = db.transaction(STORE_NAME, "readwrite");
+            var store = tx.objectStore(STORE_NAME);
+            copy.forEach(function (key, i) { store.put(values[i], key); });
+            tx.oncomplete = function () {
+                console.info("Open Rebellion moved " + copy.length + " localStorage save entries to IndexedDB");
+                removeLegacy(keys);
+                resolve();
+            };
+            tx.onabort = function () {
+                console.error("Open Rebellion could not move localStorage saves to IndexedDB:", tx.error);
+                resolve();
+            };
+        } catch (error) {
+            console.error("Open Rebellion could not move localStorage saves to IndexedDB:", error);
+            resolve();
+        }
+    }
+
+    function open() {
+        if (opening) return opening;
+        opening = new Promise(function (resolve) {
+            var request;
+            try {
+                request = window.indexedDB.open(DB_NAME, 1);
+            } catch (error) {
+                useLocalStorage(error);
+                resolve();
+                return;
+            }
+            request.onupgradeneeded = function () {
+                request.result.createObjectStore(STORE_NAME);
+            };
+            request.onerror = function () {
+                useLocalStorage(request.error);
+                resolve();
+            };
+            request.onsuccess = function () {
+                db = request.result;
+                try {
+                    var tx = db.transaction(STORE_NAME, "readonly");
+                    var store = tx.objectStore(STORE_NAME);
+                    var keys = store.getAllKeys();
+                    var values = store.getAll();
+                    tx.oncomplete = function () {
+                        keys.result.forEach(function (key, i) {
+                            if (typeof key !== "string") return;
+                            if (typeof values.result[i] === "string") entries.set(key, values.result[i]);
+                            else unreadable.add(key);
+                        });
+                        migrate(resolve);
+                    };
+                    tx.onabort = function () {
+                        console.error("Open Rebellion could not read its saves:", tx.error);
+                        useLocalStorage(tx.error);
+                        resolve();
+                    };
+                } catch (error) {
+                    useLocalStorage(error);
+                    resolve();
+                }
+            };
+        });
+        return opening;
+    }
+
+    // Undo a failed commit's changes to the copy, keeping any a later
+    // commit made since.
+    function rollBack(ticket, changes, error) {
+        tickets[ticket - 1] = failure(error);
+        console.error("Open Rebellion save failed:", error);
+        for (var i = changes.length - 1; i >= 0; i--) {
+            var change = changes[i];
+            if (entries.get(change.key) !== change.value) continue;
+            if (change.previous === undefined) entries.delete(change.key);
+            else entries.set(change.key, change.previous);
+            if (change.unreadable) unreadable.add(change.key);
+        }
+    }
+
+    function commit() {
+        var ops = staged;
+        staged = [];
+        tickets.push(PENDING);
+        var ticket = tickets.length;
+        var changes = ops.map(function (op) {
+            var change = {
+                key: op.key,
+                value: op.value,
+                previous: entries.get(op.key),
+                unreadable: unreadable.has(op.key),
+            };
+            unreadable.delete(op.key);
+            if (op.value === undefined) entries.delete(op.key);
+            else entries.set(op.key, op.value);
+            return change;
+        });
+        if (db === null) {
+            var done = 0;
+            try {
+                ops.forEach(function (op) {
+                    if (op.value === undefined) window.localStorage.removeItem(op.key);
+                    else window.localStorage.setItem(op.key, op.value);
+                    done++;
+                });
+                tickets[ticket - 1] = COMMITTED;
+            } catch (error) {
+                for (var i = done - 1; i >= 0; i--) {
+                    try {
+                        if (changes[i].previous === undefined) window.localStorage.removeItem(changes[i].key);
+                        else window.localStorage.setItem(changes[i].key, changes[i].previous);
+                    } catch (ignored) { /* the copy still rolls back */ }
+                }
+                rollBack(ticket, changes, error);
+            }
+            return ticket;
+        }
+        try {
+            var tx = db.transaction(STORE_NAME, "readwrite");
+            var store = tx.objectStore(STORE_NAME);
+            ops.forEach(function (op) {
+                if (op.value === undefined) store.delete(op.key);
+                else store.put(op.value, op.key);
+            });
+            tx.oncomplete = function () { tickets[ticket - 1] = COMMITTED; };
+            tx.onabort = function () { rollBack(ticket, changes, tx.error); };
+        } catch (error) {
+            rollBack(ticket, changes, error);
+        }
+        return ticket;
+    }
+
+    return {
+        open: open,
+        // Wasm imports (`save::wasm_impl::PageStore`).
+        get: function (key) {
+            if (unreadable.has(key)) return null;
+            return entries.has(key) ? entries.get(key) : undefined;
+        },
+        put: function (key, value) { staged.push({ key: key, value: value }); },
+        remove: function (key) { staged.push({ key: key, value: undefined }); },
+        commit: commit,
+        status: function (ticket) {
+            return ticket >= 1 && ticket <= tickets.length ? tickets[ticket - 1] : FAILED;
+        },
+        // For the page and its checks: every readable slot entry, and
+        // writes that settle as a Promise of the status.
+        entries: function () { return Object.fromEntries(entries); },
+        backend: function () { return db === null ? "localStorage" : "indexedDB"; },
+        write: function (values) {
+            Object.keys(values).forEach(function (key) {
+                staged.push({ key: key, value: values[key] === null ? undefined : values[key] });
+            });
+            var ticket = commit();
+            return new Promise(function (resolve) {
+                (function poll() {
+                    var status = tickets[ticket - 1];
+                    if (status === PENDING) setTimeout(poll, 10);
+                    else resolve(status);
+                })();
+            });
+        },
+    };
+}());
+
 var importObject = {
     env: {
         console_debug: function (ptr) {
@@ -695,6 +933,58 @@ var importObject = {
                 console.error("Open Rebellion save deletion failed:", error);
                 return -1;
             }
+        },
+        rebellion_saves_get: function (key_ptr, key_len, output_ptr, output_capacity) {
+            try {
+                const value = rebellionSaveStore.get(UTF8ToString(key_ptr, key_len));
+                if (value === undefined) {
+                    return -1;
+                }
+                if (value === null) {
+                    return -2;
+                }
+                const encoded = new TextEncoder().encode(value);
+                if (output_capacity === 0) {
+                    return encoded.length;
+                }
+                if (output_capacity < encoded.length) {
+                    return -2;
+                }
+                new Uint8Array(wasm_memory.buffer, output_ptr, output_capacity).set(encoded);
+                return encoded.length;
+            } catch (error) {
+                console.error("Open Rebellion load failed:", error);
+                return -2;
+            }
+        },
+        rebellion_saves_put: function (key_ptr, key_len, value_ptr, value_len) {
+            try {
+                rebellionSaveStore.put(UTF8ToString(key_ptr, key_len), UTF8ToString(value_ptr, value_len));
+                return 0;
+            } catch (error) {
+                console.error("Open Rebellion save failed:", error);
+                return -1;
+            }
+        },
+        rebellion_saves_remove: function (key_ptr, key_len) {
+            try {
+                rebellionSaveStore.remove(UTF8ToString(key_ptr, key_len));
+                return 0;
+            } catch (error) {
+                console.error("Open Rebellion save deletion failed:", error);
+                return -1;
+            }
+        },
+        rebellion_saves_commit: function () {
+            try {
+                return rebellionSaveStore.commit();
+            } catch (error) {
+                console.error("Open Rebellion save failed:", error);
+                return -1;
+            }
+        },
+        rebellion_saves_status: function (ticket) {
+            return rebellionSaveStore.status(ticket);
         },
         canvas_width: function () {
             return Math.floor(canvas.width);
@@ -1583,6 +1873,7 @@ function load(wasm_path) {
 
     if (typeof WebAssembly.compileStreaming === 'function') {
         WebAssembly.compileStreaming(req)
+            .then(obj => rebellionSaveStore.open().then(() => obj))
             .then(obj => {
                 add_missing_functions_stabs(obj);
                 return WebAssembly.instantiate(obj, importObject);
@@ -1608,6 +1899,7 @@ function load(wasm_path) {
         req
             .then(function (x) { return x.arrayBuffer(); })
             .then(function (bytes) { return WebAssembly.compile(bytes); })
+            .then(function (obj) { return rebellionSaveStore.open().then(function () { return obj; }); })
             .then(function (obj) {
                 add_missing_functions_stabs(obj);
                 return WebAssembly.instantiate(obj, importObject);

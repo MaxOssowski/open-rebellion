@@ -36,6 +36,7 @@ use rebellion_core::world::{
     SkillPair, SpecialForceClassDef, System, TroopClassDef,
 };
 
+pub mod browser_saves;
 pub mod encyclopedia_catalog;
 pub mod encyclopedia_topics;
 pub mod integrator;

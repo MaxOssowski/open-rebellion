@@ -1064,6 +1064,17 @@ pub use native::{
     slot_occupied, slot_path,
 };
 
+pub use crate::browser_saves::WriteStatus;
+
+/// What became of the last `save_slot` that returned `Ok`. A native save
+/// is written before `save_slot` returns; a browser save commits in the
+/// background (`browser_saves`).
+#[cfg(not(target_arch = "wasm32"))]
+#[must_use]
+pub fn save_write_status() -> WriteStatus {
+    WriteStatus::Committed
+}
+
 // ---------------------------------------------------------------------------
 // WASM browser storage
 // ---------------------------------------------------------------------------
@@ -1071,48 +1082,9 @@ pub use native::{
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_impl {
     use super::*;
+    use crate::browser_saves::{self, SaveStore, WriteStatus};
+    use std::cell::Cell;
     use std::path::{Path, PathBuf};
-
-    const BROWSER_META_VERSION: u32 = 1;
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct BrowserStateFingerprint {
-        version: u16,
-        /// Decimal string avoids JavaScript's 53-bit safe-integer limit.
-        value: String,
-    }
-
-    impl BrowserStateFingerprint {
-        fn from_fingerprint(fingerprint: StateFingerprint) -> Self {
-            Self {
-                version: fingerprint.version,
-                value: fingerprint.value.to_string(),
-            }
-        }
-
-        fn to_fingerprint(&self) -> anyhow::Result<StateFingerprint> {
-            anyhow::ensure!(
-                self.version == STATE_FINGERPRINT_VERSION,
-                "unsupported state fingerprint version {}",
-                self.version
-            );
-            Ok(StateFingerprint {
-                version: self.version,
-                value: self.value.parse()?,
-            })
-        }
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct BrowserSaveMeta {
-        schema_version: u32,
-        name: String,
-        game_tick: u64,
-        state_fingerprint: BrowserStateFingerprint,
-        /// Absent in metadata written before 2026-10-31.
-        #[serde(default)]
-        player_is_alliance: Option<bool>,
-    }
 
     #[link(wasm_import_module = "env")]
     extern "C" {
@@ -1128,73 +1100,50 @@ pub mod wasm_impl {
             output_ptr: *mut u8,
             output_capacity: usize,
         ) -> i32;
-        fn rebellion_storage_remove(key_ptr: *const u8, key_len: usize) -> i32;
+        fn rebellion_saves_get(
+            key_ptr: *const u8,
+            key_len: usize,
+            output_ptr: *mut u8,
+            output_capacity: usize,
+        ) -> i32;
+        fn rebellion_saves_put(
+            key_ptr: *const u8,
+            key_len: usize,
+            value_ptr: *const u8,
+            value_len: usize,
+        ) -> i32;
+        fn rebellion_saves_remove(key_ptr: *const u8, key_len: usize) -> i32;
+        fn rebellion_saves_commit() -> i32;
+        fn rebellion_saves_status(ticket: u32) -> i32;
     }
 
-    /// Base64 encode (standard alphabet, no padding).
-    fn b64_encode(data: &[u8]) -> String {
-        const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
-        for chunk in data.chunks(3) {
-            let b0 = chunk[0] as u32;
-            let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
-            let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
-            let triple = (b0 << 16) | (b1 << 8) | b2;
-            out.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
-            out.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-            if chunk.len() > 1 {
-                out.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
-            }
-            if chunk.len() > 2 {
-                out.push(CHARS[(triple & 0x3F) as usize] as char);
-            }
-        }
-        out
+    thread_local! {
+        /// The ticket of the last save's commit.
+        static LAST_SAVE: Cell<Option<u32>> = const { Cell::new(None) };
     }
 
-    /// Base64 decode (standard alphabet, tolerates missing padding).
-    fn b64_decode(s: &str) -> anyhow::Result<Vec<u8>> {
-        fn val(c: u8) -> anyhow::Result<u8> {
-            match c {
-                b'A'..=b'Z' => Ok(c - b'A'),
-                b'a'..=b'z' => Ok(c - b'a' + 26),
-                b'0'..=b'9' => Ok(c - b'0' + 52),
-                b'+' => Ok(62),
-                b'/' => Ok(63),
-                b'=' => Ok(0),
-                _ => anyhow::bail!("invalid base64 character: {}", c as char),
-            }
+    /// Reads a string through a bridge `get`: -1 absent, below that an
+    /// error, else the value's UTF-8 length (asked with capacity 0 first).
+    fn bridge_get(
+        key: &str,
+        get: unsafe extern "C" fn(*const u8, usize, *mut u8, usize) -> i32,
+        what: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let required = unsafe { get(key.as_ptr(), key.len(), std::ptr::null_mut(), 0) };
+        match required {
+            -1 => return Ok(None),
+            n if n < 0 => anyhow::bail!("{what} could not be read"),
+            _ => {}
         }
-        let bytes: Vec<u8> = s.bytes().filter(|b| *b != b'\n' && *b != b'\r').collect();
-        let mut out = Vec::with_capacity(bytes.len() * 3 / 4);
-        for chunk in bytes.chunks(4) {
-            if chunk.len() < 2 {
-                break;
-            }
-            let a = val(chunk[0])? as u32;
-            let b = val(chunk[1])? as u32;
-            let c = if chunk.len() > 2 {
-                val(chunk[2])? as u32
-            } else {
-                0
-            };
-            let d = if chunk.len() > 3 {
-                val(chunk[3])? as u32
-            } else {
-                0
-            };
-            let triple = (a << 18) | (b << 12) | (c << 6) | d;
-            out.push((triple >> 16) as u8);
-            if chunk.len() > 2 && chunk[2] != b'=' {
-                out.push((triple >> 8) as u8);
-            }
-            if chunk.len() > 3 && chunk[3] != b'=' {
-                out.push(triple as u8);
-            }
+        let mut bytes = vec![0; required as usize];
+        let written = unsafe { get(key.as_ptr(), key.len(), bytes.as_mut_ptr(), bytes.len()) };
+        if written < 0 || written as usize != bytes.len() {
+            anyhow::bail!("{what} changed while being read")
         }
-        Ok(out)
+        Ok(Some(String::from_utf8(bytes)?))
     }
 
+    /// The settings' `localStorage` (`rebellion_settings_v1`).
     pub(crate) fn storage_set(key: &str, value: &str) -> anyhow::Result<()> {
         let status =
             unsafe { rebellion_storage_set(key.as_ptr(), key.len(), value.as_ptr(), value.len()) };
@@ -1206,104 +1155,49 @@ pub mod wasm_impl {
     }
 
     pub(crate) fn storage_get(key: &str) -> anyhow::Result<Option<String>> {
-        let required =
-            unsafe { rebellion_storage_get(key.as_ptr(), key.len(), std::ptr::null_mut(), 0) };
-        match required {
-            -1 => return Ok(None),
-            n if n < 0 => anyhow::bail!("localStorage.getItem failed"),
-            _ => {}
-        }
-
-        let mut bytes = vec![0; required as usize];
-        let written = unsafe {
-            rebellion_storage_get(key.as_ptr(), key.len(), bytes.as_mut_ptr(), bytes.len())
-        };
-        if written < 0 || written as usize != bytes.len() {
-            anyhow::bail!("localStorage value changed while being read")
-        }
-        Ok(Some(String::from_utf8(bytes)?))
+        bridge_get(key, rebellion_storage_get, "localStorage")
     }
 
-    fn storage_remove(key: &str) -> anyhow::Result<()> {
-        let status = unsafe { rebellion_storage_remove(key.as_ptr(), key.len()) };
-        if status == 0 {
+    /// The page's save store (`web/gl.js`, `rebellionSaveStore`): IndexedDB
+    /// behind an in-memory copy, or `localStorage` where IndexedDB is
+    /// unavailable.
+    struct PageStore;
+
+    impl SaveStore for PageStore {
+        fn get(&self, key: &str) -> anyhow::Result<Option<String>> {
+            bridge_get(key, rebellion_saves_get, "save storage")
+        }
+
+        fn put(&mut self, key: &str, value: &str) -> anyhow::Result<()> {
+            let status = unsafe {
+                rebellion_saves_put(key.as_ptr(), key.len(), value.as_ptr(), value.len())
+            };
+            anyhow::ensure!(status == 0, "save storage refused a write");
             Ok(())
-        } else {
-            anyhow::bail!("localStorage.removeItem failed")
         }
-    }
 
-    /// localStorage key for a save slot.
-    ///
-    /// The prefix carries the save format version, so entries from older
-    /// builds are ignored instead of failing a bincode deserialize.
-    fn slot_key(slot: usize) -> String {
-        versioned_slot_key(SAVE_VERSION, slot)
-    }
-
-    fn versioned_slot_key(version: u32, slot: usize) -> String {
-        format!("rebellion_save_v{version}_{slot}")
-    }
-
-    /// localStorage key for versioned JSON save metadata (see [`slot_key`]).
-    fn meta_key(slot: usize) -> String {
-        versioned_meta_key(SAVE_VERSION, slot)
-    }
-
-    fn versioned_meta_key(version: u32, slot: usize) -> String {
-        format!("rebellion_meta_v{version}_{slot}")
-    }
-
-    /// The stored version, body and metadata of a slot, when both are
-    /// present: the current version's, else a v116 save's (migrated on
-    /// load).
-    ///
-    /// A body without its metadata (an interrupted write) counts as no save.
-    fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
-        for version in [
-            SAVE_VERSION,
-            V132,
-            V131,
-            V130,
-            V129,
-            V128,
-            V127,
-            V126,
-            V125,
-            V124,
-            V123,
-            V122,
-            V121,
-            V120,
-            V119,
-            V118,
-            V117,
-            MIGRATED_VERSION,
-        ] {
-            if let (Some(body), Some(meta)) = (
-                storage_get(&versioned_slot_key(version, slot))?,
-                storage_get(&versioned_meta_key(version, slot))?,
-            ) {
-                return Ok(Some((version, body, meta)));
-            }
+        fn remove(&mut self, key: &str) -> anyhow::Result<()> {
+            let status = unsafe { rebellion_saves_remove(key.as_ptr(), key.len()) };
+            anyhow::ensure!(status == 0, "save storage refused a removal");
+            Ok(())
         }
-        Ok(None)
-    }
 
-    fn parse_meta(encoded: &str) -> anyhow::Result<BrowserSaveMeta> {
-        let meta: BrowserSaveMeta = serde_json::from_str(encoded)?;
-        anyhow::ensure!(
-            meta.schema_version == BROWSER_META_VERSION,
-            "unsupported browser save metadata version {}",
-            meta.schema_version
-        );
-        Ok(meta)
+        fn commit(&mut self) -> anyhow::Result<u32> {
+            let ticket = unsafe { rebellion_saves_commit() };
+            anyhow::ensure!(ticket > 0, "save storage refused the commit");
+            Ok(ticket as u32)
+        }
+
+        fn status(&self, ticket: u32) -> WriteStatus {
+            WriteStatus::from_code(unsafe { rebellion_saves_status(ticket) })
+        }
     }
 
     pub fn default_saves_dir() -> PathBuf {
         PathBuf::from("saves")
     }
 
+    /// Start writing the save; [`save_write_status`] says when it is done.
     pub fn save_slot(
         _saves_dir: &Path,
         slot: usize,
@@ -1311,28 +1205,10 @@ pub mod wasm_impl {
         state: &SaveState,
         _active_mods: &[(String, String)],
     ) -> anyhow::Result<StateFingerprint> {
-        let encoded = bincode::serialize(state)?;
-        let state_fingerprint = compute_state_fingerprint(state)?;
-        let b64 = b64_encode(&encoded);
-
-        storage_set(&slot_key(slot), &b64)?;
-
-        // Store metadata separately (lightweight, for list_saves). JSON keeps
-        // player-provided names lossless and makes the schema explicit.
-        let meta = serde_json::to_string(&BrowserSaveMeta {
-            schema_version: BROWSER_META_VERSION,
-            name: name.to_string(),
-            game_tick: state.clock.tick,
-            state_fingerprint: BrowserStateFingerprint::from_fingerprint(state_fingerprint),
-            player_is_alliance: Some(state.player_is_alliance),
-        })?;
-        if let Err(error) = storage_set(&meta_key(slot), &meta) {
-            // Drop the orphaned body so it is never paired with stale metadata.
-            let _ = storage_remove(&slot_key(slot));
-            return Err(error);
-        }
-
-        Ok(state_fingerprint)
+        LAST_SAVE.set(None);
+        let (fingerprint, ticket) = browser_saves::save_slot(&mut PageStore, slot, name, state)?;
+        LAST_SAVE.set(Some(ticket));
+        Ok(fingerprint)
     }
 
     pub fn save_slot_no_mods(
@@ -1344,127 +1220,34 @@ pub mod wasm_impl {
         save_slot(saves_dir, slot, name, state, &[])
     }
 
-    pub fn load_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<(SaveMeta, SaveState)> {
-        let Some((version, b64, meta_encoded)) = stored_save(slot)? else {
-            anyhow::bail!("no save in slot {}", slot);
-        };
-        let bytes = b64_decode(&b64)?;
-        let browser_meta = parse_meta(&meta_encoded)?;
-        let expected = browser_meta.state_fingerprint.to_fingerprint()?;
-        let (state, state_fingerprint) = decode_body(version, bytes, expected)?;
-
-        let meta = SaveMeta {
-            slot,
-            name: browser_meta.name,
-            timestamp_secs: 0, // no reliable clock in WASM
-            game_tick: state.clock.tick,
-            mod_names: vec![],
-            mod_hash: compute_mod_hash(&[]),
-            state_fingerprint,
-            player_is_alliance: Some(state.player_is_alliance),
-        };
-
-        Ok((meta, state))
+    /// What became of the last [`save_slot`] that returned `Ok`.
+    pub fn save_write_status() -> WriteStatus {
+        LAST_SAVE
+            .get()
+            .map_or(WriteStatus::Committed, |ticket| PageStore.status(ticket))
     }
 
-    /// Metadata and payload keys both count as occupied, including partially
-    /// written saves. Storage access errors fail closed.
+    pub fn load_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<(SaveMeta, SaveState)> {
+        browser_saves::load_slot(&PageStore, slot)
+    }
+
     pub fn slot_occupied(_saves_dir: &Path, slot: usize) -> bool {
-        [
-            slot_key(slot),
-            meta_key(slot),
-            versioned_slot_key(MIGRATED_VERSION, slot),
-            versioned_meta_key(MIGRATED_VERSION, slot),
-            versioned_slot_key(V117, slot),
-            versioned_meta_key(V117, slot),
-            versioned_slot_key(V118, slot),
-            versioned_meta_key(V118, slot),
-            versioned_slot_key(V119, slot),
-            versioned_meta_key(V119, slot),
-            versioned_slot_key(V120, slot),
-            versioned_meta_key(V120, slot),
-            versioned_slot_key(V121, slot),
-            versioned_meta_key(V121, slot),
-            versioned_slot_key(V122, slot),
-            versioned_meta_key(V122, slot),
-            versioned_slot_key(V123, slot),
-            versioned_meta_key(V123, slot),
-            versioned_slot_key(V124, slot),
-            versioned_meta_key(V124, slot),
-            versioned_slot_key(V125, slot),
-            versioned_meta_key(V125, slot),
-            versioned_slot_key(V126, slot),
-            versioned_meta_key(V126, slot),
-            versioned_slot_key(V127, slot),
-            versioned_meta_key(V127, slot),
-            versioned_slot_key(V128, slot),
-            versioned_meta_key(V128, slot),
-            versioned_slot_key(V129, slot),
-            versioned_meta_key(V129, slot),
-            versioned_slot_key(V130, slot),
-            versioned_meta_key(V130, slot),
-            versioned_slot_key(V131, slot),
-            versioned_meta_key(V131, slot),
-            versioned_slot_key(V132, slot),
-            versioned_meta_key(V132, slot),
-        ]
-        .iter()
-        .any(|key| !matches!(storage_get(key), Ok(None)))
+        browser_saves::slot_occupied(&PageStore, slot)
     }
 
     pub fn list_saves(_saves_dir: &Path) -> Vec<anyhow::Result<SaveMeta>> {
-        (0..MAX_SAVE_SLOTS)
-            .filter_map(|slot| match stored_save(slot) {
-                Ok(None) => None,
-                Ok(Some((_, _, encoded))) => Some(parse_meta(&encoded).and_then(|meta| {
-                    Ok(SaveMeta {
-                        slot,
-                        name: meta.name,
-                        timestamp_secs: 0,
-                        game_tick: meta.game_tick,
-                        mod_names: vec![],
-                        mod_hash: compute_mod_hash(&[]),
-                        state_fingerprint: meta.state_fingerprint.to_fingerprint()?,
-                        player_is_alliance: meta.player_is_alliance,
-                    })
-                })),
-                Err(error) => Some(Err(error)),
-            })
-            .collect()
+        browser_saves::list_saves(&PageStore)
     }
 
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
-        for version in [
-            SAVE_VERSION,
-            V132,
-            V131,
-            V130,
-            V129,
-            V128,
-            V127,
-            V126,
-            V125,
-            V124,
-            V123,
-            V122,
-            V121,
-            V120,
-            V119,
-            V118,
-            V117,
-            MIGRATED_VERSION,
-        ] {
-            storage_remove(&versioned_slot_key(version, slot))?;
-            storage_remove(&versioned_meta_key(version, slot))?;
-        }
-        Ok(())
+        browser_saves::delete_slot(&mut PageStore, slot).map(|_| ())
     }
 }
 
 #[cfg(target_arch = "wasm32")]
 pub use wasm_impl::{
     default_saves_dir, delete_slot, list_saves, load_slot, save_slot, save_slot_no_mods,
-    slot_occupied,
+    save_write_status, slot_occupied,
 };
 
 /// The saves the Game Options window lists in its first `rows` rows, in
@@ -1494,14 +1277,14 @@ pub fn game_options_saves(saves_dir: &std::path::Path, rows: usize) -> Vec<SaveM
 // ---------------------------------------------------------------------------
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use rand::{RngCore, SeedableRng};
     use rebellion_core::ai::{AIState, AiFaction};
     use rebellion_core::dat::Faction;
     use rebellion_core::world::ControlKind;
 
-    fn minimal_save_state() -> SaveState {
+    pub(crate) fn minimal_save_state() -> SaveState {
         // Create a minimal world with two systems for VictoryState
         let mut world = GameWorld::default();
         let sector_key = world.sectors.insert(rebellion_core::world::Sector {
