@@ -790,8 +790,18 @@ mod tests {
         });
         m.strategy_requests(1, 0, true, false);
         assert_eq!(m.cancel, 0);
+        m.strategy_requests(1, 1, true, false);
+        assert_eq!(m.cancel, 9, "minors cancel it");
+        m.cancel = 0;
         m.strategy_requests(1, 0, false, false);
         assert_eq!(m.cancel, 9);
+        // FUN_0041b5d0: a type 6 counts at +0x360 (slot +0x28 returns 1).
+        let mut m = ModuleC {
+            wanted: 6,
+            ..ModuleC::default()
+        };
+        m.take_requests();
+        assert_eq!(m.made, [0, 1]);
     }
 
     #[test]
@@ -811,6 +821,21 @@ mod tests {
         assert_eq!(fx.kinds.get(&fx.systems[3]), Some(&GUARDED));
         rebuild(&mut fx);
         assert_eq!(guarded(&fx.galaxy), 2);
+        // FUN_0041b7e0: controller +4 0x80 while Coruscant is held.
+        assert!(holds_coruscant(&fx.galaxy));
+        // Kept while it holds; the bits are set once.
+        with(&mut fx, |io| m.guard(io));
+        assert_eq!(fx.kinds.get(&fx.systems[3]), Some(&GUARDED));
+        assert_eq!(fx.kinds.get(&fx.systems[0]), Some(&GUARDED));
+        // A headquarters lost to the other side is dropped.
+        fx.world.systems[fx.systems[3]].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        rebuild(&mut fx);
+        with(&mut fx, |io| m.guard(io));
+        assert_eq!(m.headquarters, None);
+        assert_eq!(fx.kinds.get(&fx.systems[3]), None);
+        fx.world.systems[fx.systems[3]].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
         fx.world.systems[fx.systems[3]].is_headquarters = false;
         fx.world.systems[fx.systems[0]].control =
             crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
@@ -818,6 +843,8 @@ mod tests {
         with(&mut fx, |io| m.guard(io));
         assert_eq!(m.headquarters, None);
         assert!(fx.kinds.is_empty());
+        rebuild(&mut fx);
+        assert!(!holds_coruscant(&fx.galaxy));
     }
 
     #[test]
@@ -941,6 +968,156 @@ mod tests {
     }
 
     #[test]
+    fn a_cancelled_post_orders_nothing_for_a_general_without_a_command_or_away() {
+        // FUN_004bbba0: 0x260 only for +0x30 0x7000000 without 0xa0.
+        let mut fx = fixture();
+        let c = general(&mut fx, 1, 60);
+        let p = CommandPlanner {
+            id: 4,
+            kind: 1,
+            flags: CANCELLED,
+            target: Some(fx.systems[1]),
+            member: Some(c),
+            ..CommandPlanner::default()
+        };
+        assert_eq!(with(&mut fx, |io| release(&p, io)), None);
+        fx.world.characters[c].command = CommandKind::General;
+        fx.world.characters[c].on_mission = true;
+        assert_eq!(with(&mut fx, |io| release(&p, io)), None);
+    }
+
+    #[test]
+    fn a_post_keeps_its_target_while_the_target_still_qualifies() {
+        // FUN_0047a480: kept (bit 2) while the record has 0x10000000, even
+        // when this planner posted it; FUN_00479ad0: kept while it has
+        // 0x40000000 and is the side's.
+        let mut fx = fixture();
+        fx.kinds.insert(fx.systems[1], GUARDED | POSTED);
+        fx.world.systems[fx.systems[2]].dat_id = crate::ids::DatId::new(0x9000_0109);
+        rebuild(&mut fx);
+        let mut one = CommandPlanner {
+            id: 1,
+            kind: 1,
+            target: Some(fx.systems[1]),
+            ..CommandPlanner::default()
+        };
+        let mut six = CommandPlanner {
+            id: 2,
+            kind: 6,
+            target: Some(fx.systems[2]),
+            ..CommandPlanner::default()
+        };
+        with(&mut fx, |io| {
+            target(&mut one, io);
+            target(&mut six, io);
+        });
+        assert_eq!((one.target, one.flags), (Some(fx.systems[1]), KEPT));
+        assert_eq!((six.target, six.flags), (Some(fx.systems[2]), KEPT));
+        assert_eq!(fx.kinds[&fx.systems[1]], GUARDED | POSTED);
+        // A type 6 target that is not Coruscant is given up.
+        let mut wrong = CommandPlanner {
+            id: 3,
+            kind: 6,
+            target: Some(fx.systems[1]),
+            ..CommandPlanner::default()
+        };
+        with(&mut fx, |io| target(&mut wrong, io));
+        assert_eq!(wrong.target, Some(fx.systems[2]));
+        // A type 1 target that lost the guard bit is given up (slot +0x2c
+        // clears its 0x20000000) and none other is found.
+        fx.kinds.insert(fx.systems[1], POSTED);
+        rebuild(&mut fx);
+        with(&mut fx, |io| target(&mut one, io));
+        assert_eq!((one.target, one.flags), (None, 0));
+        assert_eq!(fx.kinds.get(&fx.systems[1]), None);
+    }
+
+    #[test]
+    fn a_fit_member_is_kept_even_holding_its_command() {
+        // FUN_0047a5b0: a member whose record lacks 0x50 stays held; the
+        // query (forbidding 0x7000000) would not take him again.
+        let mut fx = fixture();
+        fx.kinds.insert(fx.systems[1], GUARDED | POSTED);
+        rebuild(&mut fx);
+        let c = general(&mut fx, 1, 60);
+        fx.world.characters[c].command = CommandKind::General;
+        let mut p = CommandPlanner {
+            id: 1,
+            kind: 1,
+            target: Some(fx.systems[1]),
+            member: Some(c),
+            ..CommandPlanner::default()
+        };
+        assert!(with(&mut fx, |io| member(&mut p, io)));
+        assert_eq!((p.member, p.flags), (Some(c), HELD));
+        assert_eq!(fx.kinds[&fx.systems[1]], GUARDED | POSTED);
+    }
+
+    #[test]
+    fn the_emperor_s_post_holds_only_the_emperor_at_a_coruscant_of_the_side() {
+        // FUN_00479c00: a member without 0x400 is let go; a target that is
+        // not the side's (+0x30 bit 1) is dropped before any pick.
+        let mut fx = fixture();
+        fx.world.systems[fx.systems[2]].dat_id = crate::ids::DatId::new(0x9000_0109);
+        rebuild(&mut fx);
+        let c = general(&mut fx, 2, 90);
+        let mut p = CommandPlanner {
+            id: 1,
+            kind: 6,
+            target: Some(fx.systems[2]),
+            member: Some(c),
+            ..CommandPlanner::default()
+        };
+        assert!(!with(&mut fx, |io| member(&mut p, io)));
+        assert_eq!((p.member, p.target), (None, Some(fx.systems[2])));
+        // The Emperor himself is let go once a prisoner (0x40).
+        let emperor = fx.world.characters.insert(Character {
+            dat_id: crate::ids::DatId::new(0x280),
+            is_major: true,
+            is_alliance: true,
+            recruited: true,
+            is_captive: true,
+            current_system: Some(fx.systems[2]),
+            ..Default::default()
+        });
+        p.member = Some(emperor);
+        assert!(!with(&mut fx, |io| member(&mut p, io)));
+        assert_eq!(p.member, None);
+        // Free, he is kept even where the query (0x74000f1) would not
+        // take him again.
+        fx.world.characters[emperor].is_captive = false;
+        fx.world.characters[emperor].command = CommandKind::General;
+        p.member = Some(emperor);
+        assert!(with(&mut fx, |io| member(&mut p, io)));
+        assert_eq!(p.member, Some(emperor));
+        fx.world.characters.remove(emperor);
+        fx.world.characters.insert(Character {
+            dat_id: crate::ids::DatId::new(0x280),
+            is_major: true,
+            is_alliance: true,
+            recruited: true,
+            current_system: Some(fx.systems[0]),
+            ..Default::default()
+        });
+        fx.world.systems[fx.systems[2]].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
+        rebuild(&mut fx);
+        assert!(!with(&mut fx, |io| member(&mut p, io)));
+        assert_eq!((p.member, p.target), (None, None));
+    }
+
+    #[test]
+    fn a_refused_order_ends_the_cycle() {
+        // The module's slot +0x18 (FUN_004dd810) after a refused order.
+        let mut m = ModuleC {
+            state: 5,
+            ..ModuleC::default()
+        };
+        m.refused();
+        assert_eq!(m.state, 0);
+    }
+
+    #[test]
     fn a_member_captured_is_let_go_and_its_post_reopened() {
         // FUN_0047a5b0: a held member whose record has 0x50 (here the
         // prisoner's 0x40) is released and slot +0x2c clears the target's
@@ -960,7 +1137,7 @@ mod tests {
         let held = with(&mut fx, |io| member(&mut p, io));
         // The post reopens and no other General is at hand.
         assert!(!held);
-        assert_eq!(p.member, None);
+        assert_eq!((p.member, p.flags), (None, 0));
         assert_eq!(fx.kinds[&fx.systems[1]], GUARDED);
     }
 
@@ -1050,7 +1227,25 @@ mod tests {
                 ..
             }) if target_system == fx.systems[2]
         ));
-        // Lost Coruscant: the target goes and no other is found.
+        // The sector's headquarters (+0x28 0x80000000 without +0x30
+        // 0x40000000) never passes FUN_00479e30's masks, whatever the draws.
+        fx.world.systems[fx.systems[3]].is_headquarters = true;
+        rebuild(&mut fx);
+        let missions = MissionState::new();
+        for tick in 0..16 {
+            let mut planner = Planner::new(&fx.world, &missions, &HashSet::new(), true, tick);
+            let mut io = InputsC {
+                world: &fx.world,
+                galaxy: &mut fx.galaxy,
+                kinds: &mut fx.kinds,
+                planner: &mut planner,
+                is_alliance: true,
+            };
+            assert_eq!(capital(&mut io), Some(fx.systems[2]), "tick {tick}");
+        }
+        // Lost Coruscant, in a sector with nothing else of the side's: the
+        // target goes and no other is found.
+        fx.world.systems[fx.systems[3]].is_headquarters = false;
         fx.world.systems[fx.systems[2]].control =
             crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
         rebuild(&mut fx);
@@ -1077,5 +1272,71 @@ mod tests {
         fx.world.characters[c].on_mission = false;
         assert!(with(&mut fx, |io| m.choose(io)));
         assert_eq!(m.current, 1);
+    }
+
+    #[test]
+    fn the_planners_members_are_the_ones_held_out_of_other_queries() {
+        // FUN_0047a5b0 clears a pick's 0x800000, so no query requiring it
+        // (the mission planners', FUN_00403460) takes a member; the pass
+        // holds what this lists.
+        let mut fx = fixture();
+        let c = general(&mut fx, 0, 60);
+        let m = ModuleC {
+            planners: vec![
+                CommandPlanner {
+                    id: 1,
+                    member: Some(c),
+                    ..CommandPlanner::default()
+                },
+                CommandPlanner {
+                    id: 2,
+                    ..CommandPlanner::default()
+                },
+            ],
+            ..ModuleC::default()
+        };
+        assert_eq!(m.members().collect::<Vec<_>>(), [c]);
+    }
+
+    #[test]
+    fn the_cycle_starts_from_the_planner_after_the_last_one_run() {
+        // FUN_004c8740: the walk starts at the planner +0x4c names, and
+        // +0x4c takes the one after the planner found.
+        let mut fx = fixture();
+        let mut m = ModuleC::default();
+        for id in 1..=3 {
+            m.planners.push(CommandPlanner {
+                id,
+                kind: 1,
+                ..CommandPlanner::default()
+            });
+        }
+        m.next = 2;
+        assert!(with(&mut fx, |io| m.choose(io)));
+        assert_eq!((m.current, m.next), (2, 3));
+        assert!(with(&mut fx, |io| m.choose(io)));
+        assert_eq!((m.current, m.next), (3, 0));
+    }
+
+    #[test]
+    fn a_planner_with_no_post_to_fill_ends_the_cycle_without_an_order() {
+        // FUN_004bbb00 state 2: slot +0x38 finds no member, the step ends
+        // (out 1) and FUN_004c84d0 completes the module with no order.
+        let mut fx = fixture();
+        let mut m = ModuleC {
+            wanted: 1,
+            ..ModuleC::default()
+        };
+        let mut last = None;
+        for _ in 0..12 {
+            let s = with(&mut fx, |io| m.step(io));
+            if s.complete {
+                last = Some(s);
+                break;
+            }
+        }
+        let last = last.expect("the cycle ends");
+        assert_eq!((last.order, last.raise, m.state), (None, false, 0));
+        assert_eq!(m.planners[0].state, 0);
     }
 }

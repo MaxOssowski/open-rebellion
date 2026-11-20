@@ -1048,6 +1048,30 @@ mod tests {
     }
 
     #[test]
+    fn a_held_record_is_passed_over_only_by_queries_that_require_0x800000() {
+        // FUN_0047b610 clears a held record's 0x800000; module 0xc's type
+        // 1 query (FUN_0047a5b0, 0x800002) then passes it over, its type 6
+        // query (FUN_00479c00, 0x402) does not.
+        let mut world = world();
+        let emperor = agent(&mut world, 0x280, |c| c.is_major = true);
+        let general = agent(&mut world, 0x300, |c| {
+            c.can_be_general = true;
+            c.leadership = pair(80);
+        });
+        let mut p = planner(&world);
+        p.hold(emperor);
+        p.hold(general);
+        assert_eq!(
+            p.pick_officer((0x80_0002, 0x400_0000, 0x4f40_00f1, 50), None),
+            None
+        );
+        assert_eq!(
+            p.pick_officer((0x402, 0, 0x0740_00f1, 0), None),
+            emperor.character()
+        );
+    }
+
+    #[test]
     fn in_a_headquarters_game_no_record_is_a_leader() {
         // FUN_00401d20 marks Mon Mothma, Luke, the Emperor and Vader
         // (0x40000000) while controller +4 bit 0 is clear; a Headquarters
