@@ -25,7 +25,7 @@ it does not yet make the app and playtest simulation loops equivalent.
 | Gap-free command ordering | F-011B2 complete | `{tick, sequence, actor}` validation |
 | Replay executor and recorder | F-011B3 complete | Per-command state checkpoints |
 | Fresh-process native replay | F-011B3 complete | Stable 25-tick original-data golden |
-| App/playtest tick convergence | Partial | One AI pass driver and three-part day (`ai_schedule`); the day's systems are still written twice (F-012) |
+| App/playtest tick convergence | Partial | One implementation of the day (`begin_day`, `start_ai_day`, `run_ai_passes`, `close_simulation_day`; F-012); the roll sources and the app's tactical battles still differ |
 | Native/WASM checkpoint equality | F-011B4 complete | Exact seed-42 artifact, nine checkpoints |
 | Automatic/tactical combat equality | Open | M2 |
 

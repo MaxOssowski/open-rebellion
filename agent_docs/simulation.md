@@ -121,7 +121,7 @@ day's end after the last pass (`ghidra/notes/ai-scheduling.md`). Burst and
 spread give the same campaign when no input comes between sub-ticks
 (`replay.rs`, `spreading_a_day_s_ai_passes_over_its_sub_ticks_matches_the_burst`).
 
-Order matters: economy runs before manufacturing (production modifiers); combat needs fleet positions from movement; every timer due on a day fires before the day's first AI tick, as in the original's frame loop (`FUN_0041dff0` phase 5 before phase 8; `ghidra/notes/ai-scheduling.md`); the AI reads mission and manufacturing state that earlier systems may have modified. The app's day path (`rebellion-app/src/main.rs`) shares the pass driver (`rebellion_core::ai_schedule`) and the three-part day; F-012 still duplicates the start's and end's systems, the app's with their messages.
+Order matters: economy runs before manufacturing (production modifiers); combat needs fleet positions from movement; every timer due on a day fires before the day's first AI tick, as in the original's frame loop (`FUN_0041dff0` phase 5 before phase 8; `ghidra/notes/ai-scheduling.md`); the AI reads mission and manufacturing state that earlier systems may have modified. The app's day path (`rebellion-app/src/main.rs`) runs the same functions on its states, packed into `SimulationStates` (`sim_pack!`/`sim_unpack!`), with its generator's rolls (`RngRolls`) and its `AppDayPresentation`.
 
 ## Shared Simulation Tick (v0.8.0) + PerceptionIntegrator (v0.19.0)
 
@@ -141,9 +141,19 @@ impl PerceptionIntegrator {
 }
 ```
 
-`rebellion-playtest` calls `run_simulation_tick`; the interactive
-`rebellion-app` still duplicates this sequence. That divergence is tracked as
-F-012 and must close before native/WASM replay equivalence can pass.
+`rebellion-playtest` calls `run_simulation_tick`, which runs
+`begin_simulation_day` (`begin_day`: `day_head` with `run_day_missions`, then
+`run_day_timers`; then `start_ai_day`), the day's AI passes
+(`run_ai_passes`) and `close_simulation_day`. The interactive `rebellion-app`
+calls the same functions (F-012): the start at the day's event, one pass as
+each sub-tick begins, the end after the last pass. What only a runner shows
+goes through `DayPresentation`: each step's events before and after they are
+applied (`DayStep`, `StepPhase`), the AI's orders (`AiOrders`), the passes'
+settling, the victory word, the player's agent, and `take_battle`, by which
+the app fights a battle as a tactical battle. The headless runner shows
+nothing (`NoPresentation`). The rolls come from a `RollSource`: the runner's
+day slice (`SliceRolls`, padded with 1.0) or the app's generator
+(`RngRolls`), so the same seed still gives the two runners different rolls.
 `SimulationStates` bundles all 15 state types plus combat cooldowns and economy
 state. `GameEventRecord` (in `rebellion-core/src/game_events.rs`) is structured
 telemetry with no IO. The `config` parameter (`&GameConfig` from `tuning.rs`)

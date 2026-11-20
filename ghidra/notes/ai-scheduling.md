@@ -293,7 +293,8 @@ plan" for what is done.
    No case where the AI decides differently has been found; it needs a
    field-by-field audit.
 6. **The app and the playtest order the after-AI systems differently.**
-   This is F-012. For example, the app runs mines and refineries,
+   This was F-012 (closed for the order 2026-11-20, see "Status"). For
+   example, the app ran mines and refineries,
    research and autoscrap before uprising, healing and informants; the
    playtest runs them after. Either way, all of them come after the AI.
 
@@ -306,14 +307,23 @@ state they keep is the `seen` dates of record `+0x44`.
 Each stage is gated and committed on its own. A new or changed rule
 carries its source (the `FUN_` addresses above).
 
+Status 2026-11-20 (afternoon): the day has one implementation. The app
+packs its states into `SimulationStates` and runs the same functions as
+the headless runner: `begin_day` (`day_head` with `run_day_missions`,
+then `run_day_timers`), `start_ai_day`, `run_ai_passes` and
+`close_simulation_day`. Its messages, movies, sounds, advisor lines and
+the tactical battle come from `DayPresentation` hooks, which see each
+step's events before and after they are applied (`AppDayPresentation`).
+The runners still differ in two ways the audit's F-012 acceptance names:
+the app draws its rolls from its generator as asked (`RngRolls`), the
+runner from a 1024-roll slice a day padded with 1.0 (`SliceRolls`); and
+the app fights a battle with both sides' fleets as a tactical battle
+(`take_battle`) while the galaxy shows.
+
 Status 2026-11-20 (later): stages 3 and 4 are done
-(`rebellion-core/src/ai_schedule.rs`, save v132). F-012 is done for the
-AI's part of the day: one pass driver, one order of the passes and the
-same three-part day in both paths. The systems of the day's start and
-end are still written twice, the app's with its messages; the order of
-the end now matches. Stage 5 is not done: no case where a stale record
-changes a decision a player can see has been found, and the field audit
-it needs is still open.
+(`rebellion-core/src/ai_schedule.rs`, save v132). Stage 5 is not done: no
+case where a stale record changes a decision a player can see has been
+found, and the field audit it needs is still open.
 
 Status earlier on 2026-11-20: stages 1, 2 and 6 are done in both day paths
 (`rebellion-data/src/simulation.rs` and the app), without the F-012
