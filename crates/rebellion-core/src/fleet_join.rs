@@ -642,6 +642,47 @@ pub fn move_ships_to_system(
     .map(FleetOrderOutcome::Departed)
 }
 
+/// The ships' own Move (`0x201`) to a system, whose objects are the ships
+/// rather than their fleet (module `0xb`'s damaged ships, `FUN_004c8e90`):
+/// the leg puts each in the side's bit-1 spare at the destination
+/// (`FUN_00552300` -> `FUN_005097d0`), which every ship moved there joins.
+/// In their own system that is [`move_ships_to_system`]'s; elsewhere they
+/// leave as a fleet that joins the spare on arrival, or becomes it
+/// ([`MovementState::set_join_spare`]). Every ship leaving empties the old
+/// fleet, which disbands (`FUN_004fe630`); port: the whole fleet travels.
+///
+/// # Errors
+/// As [`move_ships_to_system`].
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The order's state, its ships with their roster, and its destination and side."
+)]
+pub fn move_ships_into_spare(
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+    fleet: FleetKey,
+    ships: &[usize],
+    chosen: u64,
+    system: SystemKey,
+    expected_is_alliance: bool,
+) -> Result<FleetOrderOutcome, FleetOrderError> {
+    let outcome = move_ships_to_system(
+        world,
+        movement,
+        troop_transport,
+        fleet,
+        ships,
+        chosen,
+        system,
+        expected_is_alliance,
+    )?;
+    if let FleetOrderOutcome::Departed(departing) = outcome {
+        movement.set_join_spare(departing);
+    }
+    Ok(outcome)
+}
+
 /// Put a split's ships and cargo back where they were in `fleet` and
 /// remove the split.
 fn undo_split(
@@ -2000,6 +2041,128 @@ mod tests {
         assert_eq!(hulls(&setup.world, source), [20]);
         let order = movement.get(departing).unwrap();
         assert_eq!((order.destination, order.join), (there, None));
+    }
+
+    /// Run `movement` until its orders arrive, applying each arrival.
+    fn arrive_all(world: &mut GameWorld, movement: &mut MovementState) {
+        let mut transport = TroopTransportState::default();
+        for tick in 1..=1000 {
+            let events = [crate::tick::TickEvent { tick }];
+            for arrival in crate::movement::MovementSystem::advance(movement, &events) {
+                crate::movement::apply_fleet_arrival(world, movement, &mut transport, &arrival);
+            }
+            if movement.is_empty() {
+                return;
+            }
+        }
+        panic!("the orders never arrive");
+    }
+
+    fn move_into_spare(
+        world: &mut GameWorld,
+        movement: &mut MovementState,
+        fleet: FleetKey,
+        ships: &[usize],
+        to: SystemKey,
+    ) -> Result<FleetOrderOutcome, FleetOrderError> {
+        let chosen = roster(world, fleet).unwrap();
+        move_ships_into_spare(
+            world,
+            movement,
+            &mut TroopTransportState::default(),
+            fleet,
+            ships,
+            chosen,
+            to,
+            true,
+        )
+    }
+
+    #[test]
+    fn ships_moved_on_their_own_join_the_side_s_spare_where_they_arrive() {
+        // FUN_00552300: a capital ship's Move 0x201 to a system lands in
+        // the side's bit-1 spare there (FUN_005097d0), which keeps taking
+        // the ships moved to it (FUN_0050bc60 leaves a spare holding ships
+        // its bit).
+        let mut setup = setup();
+        let (here, there) = (setup.here, setup.there);
+        let spare = fleet(&mut setup, there, &[50], true);
+        setup.world.set_ship_spare(there, true, spare);
+        let source = fleet(&mut setup, here, &[10, 20], true);
+        let mut movement = MovementState::new();
+
+        let outcome = move_into_spare(&mut setup.world, &mut movement, source, &[0], there);
+        let Ok(FleetOrderOutcome::Departed(departing)) = outcome else {
+            panic!("the ship departs: {outcome:?}");
+        };
+        assert_eq!(movement.get(departing).unwrap().join, Some(departing));
+        arrive_all(&mut setup.world, &mut movement);
+
+        assert_eq!(hulls(&setup.world, spare), [50, 10]);
+        assert!(!setup.world.fleets.contains_key(departing));
+        assert_eq!(hulls(&setup.world, source), [20]);
+        assert_eq!(setup.world.ship_spare(there, true), Some(spare));
+    }
+
+    #[test]
+    fn ships_moved_on_their_own_where_no_spare_is_become_the_spare_the_next_ones_join() {
+        // FUN_00552300 -> FUN_005097d0: with no spare holding ships the
+        // first ships make the system's spare (the port has no empty
+        // spare); the next ships moved there join them.
+        let mut setup = setup();
+        let (here, there) = (setup.here, setup.there);
+        let source = fleet(&mut setup, here, &[10, 20, 30], true);
+        let mut movement = MovementState::new();
+
+        let Ok(FleetOrderOutcome::Departed(first)) =
+            move_into_spare(&mut setup.world, &mut movement, source, &[0], there)
+        else {
+            panic!("the first ship departs");
+        };
+        arrive_all(&mut setup.world, &mut movement);
+        assert_eq!(setup.world.ship_spare(there, true), Some(first));
+
+        // Every ship left: the fleet travels whole and joins the spare.
+        let Ok(FleetOrderOutcome::Departed(second)) =
+            move_into_spare(&mut setup.world, &mut movement, source, &[0, 1], there)
+        else {
+            panic!("the other ships depart");
+        };
+        assert_eq!(second, source);
+        arrive_all(&mut setup.world, &mut movement);
+        assert_eq!(hulls(&setup.world, first), [10, 20, 30]);
+        assert!(!setup.world.fleets.contains_key(source));
+        let fleets_there = setup.world.systems[there].fleets.clone();
+        assert_eq!(fleets_there, [first]);
+    }
+
+    #[test]
+    fn a_fleet_moved_as_a_fleet_stays_apart_from_the_spare_where_it_arrives() {
+        // The fleet as the Move's object (FUN_004b0f90, FUN_004c94c0
+        // +0x54) goes into the system itself (FUN_00556390), not into the
+        // spare.
+        let mut setup = setup();
+        let (here, there) = (setup.here, setup.there);
+        let spare = fleet(&mut setup, there, &[50], true);
+        setup.world.set_ship_spare(there, true, spare);
+        let source = fleet(&mut setup, here, &[10, 20], true);
+        let mut movement = MovementState::new();
+        let chosen = roster(&setup.world, source).unwrap();
+        move_ships_to_system(
+            &mut setup.world,
+            &mut movement,
+            &mut TroopTransportState::default(),
+            source,
+            &[0, 1],
+            chosen,
+            there,
+            true,
+        )
+        .unwrap();
+        arrive_all(&mut setup.world, &mut movement);
+        assert_eq!(hulls(&setup.world, spare), [50]);
+        assert_eq!(hulls(&setup.world, source), [10, 20]);
+        assert_eq!(setup.world.ship_spare(there, true), Some(spare));
     }
 
     #[test]

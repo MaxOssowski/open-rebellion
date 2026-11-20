@@ -231,7 +231,8 @@ fn accepts(
         // fleet, out of hyperspace, with living ships, to a system it can
         // reach. port: a part of a fleet is checked as the whole fleet, so
         // a move to the fleet's own system is refused.
-        AIAction::MoveShips { fleet, ships, to } => {
+        AIAction::MoveShips { fleet, ships, to }
+        | AIAction::MoveShipsIntoSpare { fleet, ships, to } => {
             !ships.is_empty()
                 && world.fleets.get(*fleet).is_some_and(|f| {
                     ships
@@ -1179,12 +1180,24 @@ pub enum AIAction {
         to: SystemKey,
     },
 
-    /// Move capital ships of one of the side's fleets (`0x201`) to a
-    /// system: module `0xb`'s damaged ships (`FUN_004c8e90`) or whole
-    /// fleet (`FUN_004c94c0`), carried out by
-    /// [`crate::fleet_join::move_ships_to_system`]. The ships are their
-    /// places in the fleet.
+    /// Move a fleet (`0x201` whose object is the fleet) to a system: module
+    /// `0xb`'s Death Star fleet (`FUN_004c94c0`) or a sector plan object's
+    /// fleet (`FUN_004b0f90`, `FUN_004b06b0`), carried out with its living
+    /// ships by [`crate::fleet_join::move_ships_to_system`]. The ships are
+    /// their places in the fleet.
     MoveShips {
+        fleet: FleetKey,
+        ships: Vec<usize>,
+        to: SystemKey,
+    },
+
+    /// Move capital ships (`0x201` whose objects are the ships) of one of
+    /// the side's fleets to a system: module `0xb`'s damaged ships
+    /// (`FUN_004c8e90`). They land in the side's bit-1 spare there
+    /// (`FUN_00552300` -> `FUN_005097d0`), carried out by
+    /// [`crate::fleet_join::move_ships_into_spare`]. The ships are their
+    /// places in the fleet.
+    MoveShipsIntoSpare {
         fleet: FleetKey,
         ships: Vec<usize>,
         to: SystemKey,

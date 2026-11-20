@@ -16025,14 +16025,20 @@ fn apply_ai_actions(
                     ));
                 }
             }
-            AIAction::MoveShips { fleet, ships, to } => {
+            AIAction::MoveShips { fleet, ships, to }
+            | AIAction::MoveShipsIntoSpare { fleet, ships, to } => {
                 let Some(side) = ai_state.faction else {
                     continue;
                 };
                 let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
                     continue;
                 };
-                let moved = rebellion_core::fleet_join::move_ships_to_system(
+                let carry_out = if matches!(action, AIAction::MoveShips { .. }) {
+                    rebellion_core::fleet_join::move_ships_to_system
+                } else {
+                    rebellion_core::fleet_join::move_ships_into_spare
+                };
+                let moved = carry_out(
                     world,
                     movement_state,
                     troop_transport_state,

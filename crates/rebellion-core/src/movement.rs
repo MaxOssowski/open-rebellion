@@ -229,7 +229,10 @@ pub struct MovementOrder {
     /// Ticks elapsed since departure.
     pub ticks_elapsed: u32,
     /// The fleet this one joins on arrival, when it was sent onto a fleet
-    /// (`ghidra/notes/fleet-join-split.md`).
+    /// (`ghidra/notes/fleet-join-split.md`). The fleet itself when its
+    /// ships were moved to the system on their own (`0x201`): they belong
+    /// to the side's bit-1 spare there, which the fleet joins on arrival
+    /// or, with none, becomes ([`MovementState::set_join_spare`]).
     pub join: Option<FleetKey>,
 }
 
@@ -331,6 +334,16 @@ impl MovementState {
         if let Some(order) = self.orders.get_mut(&fleet) {
             order.join = Some(target);
         }
+    }
+
+    /// Mark a fleet in transit as ships moved to its destination on their
+    /// own: a capital ship's Move (`0x201`) to a system lands in the
+    /// side's bit-1 spare there (`FUN_00552300` -> `FUN_005097d0`), which
+    /// the fleet joins on arrival or, with none there, becomes
+    /// ([`apply_fleet_arrival`]). port: the original makes the ships the
+    /// spare's at once, in hyperspace until they arrive.
+    pub fn set_join_spare(&mut self, fleet: FleetKey) {
+        self.set_join(fleet, fleet);
     }
 
     /// Cancel a movement order (fleet stays at current location).
@@ -779,8 +792,10 @@ pub fn reconcile_fleet_orbits(state: &MovementState, world: &mut GameWorld) {
 /// Apply one arrival: the fleet enters its destination's orbit. A fleet sent
 /// onto another fleet joins it when that fleet is still there, of its side
 /// and not en route (`ghidra/notes/fleet-join-split.md`); otherwise it stays
-/// a fleet of its own. Fleets that merely meet stay apart: the original has
-/// no rule that merges them.
+/// a fleet of its own. Ships moved to the system on their own
+/// ([`MovementState::set_join_spare`]) join the side's bit-1 spare there,
+/// or make their fleet the spare. Fleets that merely meet stay apart: the
+/// original has no rule that merges them.
 pub fn apply_fleet_arrival(
     world: &mut GameWorld,
     movement: &MovementState,
@@ -800,7 +815,21 @@ pub fn apply_fleet_arrival(
         destination.fleets.sort_unstable();
         destination.fleets.dedup();
     }
-    let target = arrival.join.filter(|&target| {
+    let spare = (arrival.join == Some(arrival.fleet))
+        .then(|| world.ship_spare(arrival.system, is_alliance))
+        .map(|spare| spare.filter(|&spare| spare != arrival.fleet));
+    let target = match spare {
+        // Ships moved on their own join the side's spare there; with none,
+        // their fleet is the spare from now on (the original's spare
+        // stays one once it holds ships, `FUN_0050bc60`).
+        Some(None) => {
+            world.set_ship_spare(arrival.system, is_alliance, arrival.fleet);
+            None
+        }
+        Some(spare) => spare,
+        None => arrival.join,
+    };
+    let target = target.filter(|&target| {
         target != arrival.fleet
             && crate::fleet_join::joins_on_arrival(
                 world,

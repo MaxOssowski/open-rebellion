@@ -225,7 +225,8 @@ impl ModuleB {
         (!troops.is_empty()).then_some(AIAction::MoveRegiments { troops, to: base })
     }
 
-    /// `FUN_004c8e90`: the damaged ships of a fleet go to the nearest
+    /// `FUN_004c8e90`: the damaged ships of a fleet (the Move's objects are
+    /// the ships, `0x4c91c9`: ship records with `0x1000`) go to the nearest
     /// shipyard site (`+0x28` `0x200000`) without a blockade, else to the
     /// nearest own system without one. The fleet is the side's with a
     /// damaged ship that can move (`0x1005`), not en route (`0x802`), by
@@ -270,7 +271,7 @@ impl ModuleB {
                 [Mask::new(0, 2), ANY, Mask::new(1, 0)],
             );
         }
-        Some(AIAction::MoveShips {
+        Some(AIAction::MoveShipsIntoSpare {
             fleet,
             ships,
             to: to?,
@@ -908,7 +909,8 @@ mod tests {
         // (record 0x1005: FUN_00484630 sets 0x1000 for object +0x50 bit
         // 0x200 with a speed) at a system that is no site; its ships with
         // 0x1000 go to the site nearest it (+0x28 0x200000, no blockade),
-        // Move 0x201, complete and raise.
+        // Move 0x201 of the ships (into the site's bit-1 spare,
+        // FUN_00552300), complete and raise.
         let (mut f, h) = ship_fixture();
         let here = f.empty;
         let damaged = fleet(&mut f, here, &[(h.gunship, 100), (h.gunship, 40)]);
@@ -918,7 +920,7 @@ mod tests {
         let s = step(&f, &mut state, ROOMY);
         assert_eq!(
             s.order,
-            Some(AIAction::MoveShips {
+            Some(AIAction::MoveShipsIntoSpare {
                 fleet: damaged,
                 ships: vec![1],
                 to: f.yard,
@@ -957,7 +959,7 @@ mod tests {
         at(&mut state, FLEET_CYCLE, 2);
         assert_eq!(
             step(&f, &mut state, ROOMY).order,
-            Some(AIAction::MoveShips {
+            Some(AIAction::MoveShipsIntoSpare {
                 fleet: raider,
                 ships: vec![0],
                 to: f.empty,

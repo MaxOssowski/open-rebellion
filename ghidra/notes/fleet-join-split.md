@@ -166,6 +166,19 @@ Fleet 2, etc."); untraced.
   (`GameWorld::ship_spare`), or, with none, makes its new fleet the spare;
   a ship of the spare stays put (A0 2026-11-13-drag/05-06, 20-23;
   `drag-list.md`).
+- A ship's Move to another system (2026-11-20): the leg's container is the
+  destination's bit-1 spare as well (`FUN_00552300` reads the order's
+  `+0x18`), so every ship moved there joins one fleet. The AI's module
+  `0xb` moves damaged ships this way: `FUN_004c8e90` lists ship records
+  (`0x4c91c9`, `+0x24` `0x1000`) as the Move's objects
+  (`AIAction::MoveShipsIntoSpare`, `fleet_join::move_ships_into_spare`).
+  port: the ships leave as a fleet whose order names itself as its join
+  target (`MovementState::set_join_spare`); on arrival it joins the
+  side's spare there or, with none, becomes it (`apply_fleet_arrival`).
+  The fleet moves (`FUN_004b0f90` and `FUN_004b06b0` list the fleet
+  `+0x28`, `FUN_004c94c0` its `+0x54`) go into the system itself
+  (`FUN_00556390`) and stay apart. Still open: the player's ship drag to
+  another system (`move_ships_to_system`) keeps its own fleet.
 - Fleets are runtime objects in the saved `GameWorld` slotmap; no DAT
   identity or id allocator is involved.
 - The port's `apply_fleet_arrival` merged same-side fleets without

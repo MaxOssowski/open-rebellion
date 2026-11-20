@@ -251,13 +251,18 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": at(*into),
             })
         }
-        AIAction::MoveShips { fleet, ships, to } => {
+        AIAction::MoveShips { fleet, ships, to }
+        | AIAction::MoveShipsIntoSpare { fleet, ships, to } => {
             let from = world
                 .fleets
                 .get(*fleet)
                 .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location));
             serde_json::json!({
-                "type": "MoveShips",
+                "type": if matches!(action, AIAction::MoveShips { .. }) {
+                    "MoveShips"
+                } else {
+                    "MoveShipsIntoSpare"
+                },
                 "ships": ships.len(),
                 "from": from,
                 "to": sys_name(world, *to),
@@ -2589,6 +2594,24 @@ fn apply_ai_actions_inner(
                     .is_ok()
                 })
             }),
+            AIAction::MoveShipsIntoSpare { fleet, ships, to } => {
+                ai_state.faction.is_some_and(|side| {
+                    let roster = rebellion_core::fleet_join::roster(world, *fleet);
+                    roster.is_some_and(|roster| {
+                        rebellion_core::fleet_join::move_ships_into_spare(
+                            world,
+                            movement_state,
+                            troop_transport,
+                            *fleet,
+                            ships,
+                            roster,
+                            *to,
+                            matches!(side, AiFaction::Alliance),
+                        )
+                        .is_ok()
+                    })
+                })
+            }
             AIAction::CreateFleet { fleet, ships, to } => ai_state.faction.is_some_and(|side| {
                 let is_alliance = matches!(side, AiFaction::Alliance);
                 let Some(roster) = rebellion_core::fleet_join::roster(world, *fleet) else {
