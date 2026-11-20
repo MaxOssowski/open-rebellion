@@ -2535,6 +2535,11 @@ impl AISystem {
     /// `0x8000000`); the weakest by the tree's skill goes first
     /// (`FUN_0047bc30`).
     ///
+    /// Every class's slot `+0x18` returns 0 while planner `+0x20` has bit
+    /// `0x20`. No code of REBEXE sets that bit (the constructor
+    /// `FUN_0047aae0` zeroes `+0x20`; the 2026-11-20 trace of every write
+    /// to `+0x20`), so the port leaves the test out.
+    ///
     /// Each call asks for at most one planner and cancels at most one:
     /// `FUN_004e8290` fills each output once, from the first row that wants
     /// it; `FUN_004e5710` stores them in `+0x318`/`+0x31c` and `+0x314`; and
@@ -4837,7 +4842,8 @@ fn requested_kind(code: u32) -> Option<MissionKind> {
 /// the team's espionage for Recon (`FUN_0047f220`) and Espionage
 /// (`FUN_004807c0`), espionage and combat halved for Sabotage
 /// (`FUN_0047d430`), combat for Abduction and Assassination
-/// (`FUN_00482c40`).
+/// (`FUN_00482c40`). Their 0 for planner `+0x20` bit `0x20` is left out:
+/// nothing sets the bit (see [`AISystem::mission_strategy`]).
 fn sector_cancel_key(world: &GameWorld, p: &MissionPlanner) -> u32 {
     use crate::world::Skill;
     let skill = |m, s| crate::missions::member_skill(world, m, s).unwrap_or(0);

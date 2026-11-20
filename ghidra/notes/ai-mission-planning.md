@@ -908,7 +908,7 @@ The Diplomacy planner class has vtable `0x0065a900`:
 
 | Slot | Function | Meaning |
 |---|---|---|
-| `+0x18` | `FUN_00481500` | the cancel key: the team's records' `+0x40` summed (diplomacy), 0 with `+0x20` bit `0x20` |
+| `+0x18` | `FUN_00481500` | the cancel key: the team's records' `+0x40` summed (diplomacy), 0 with `+0x20` bit `0x20` (never set: "The cancel key's bit `0x20`") |
 | `+0x30` | `FUN_0047c890` | the Mission Report, shared with the research planners |
 | `+0x34` | `FUN_00481eb0` | the abort test: the target record still has `+0x2c` bit `0x40`; it also makes an own target with no enemy fleet the gathering place `+0x38` |
 | `+0x38` | `FUN_00481fe0` | release: clear the claim `0x20000000` on the record of `+0x30` |
@@ -2402,7 +2402,7 @@ ported (sections above).
 |---|---|
 | S1 Recruitment `0x55` | matches (`FUN_004e8290` row 1, `FUN_0047dcc0`, `FUN_0047dad0`); `+0xa4` fixed; fixed: bit 8; port: no order while the pool is empty |
 | S2-4 Research `0x53`/1-3 | matches; bit 8 is the same rule for one member; the `0x80` release belongs to the other stage |
-| S5 Diplomacy `0x51` | matches (`FUN_00481720`, `FUN_00481ef0`); fixed: bit 8; open: slot `+0x18` returns 0 with `+0x20` bit `0x20`, whose writer is not traced |
+| S5 Diplomacy `0x51` | matches (`FUN_00481720`, `FUN_00481ef0`); fixed: bit 8; slot `+0x18`'s `+0x20` bit `0x20` has no writer ("The cancel key's bit `0x20`") |
 | S6 Subdue `0x57` | matches (`FUN_0047d060`, `FUN_0047d320`); fixed: bit 8 |
 | S7 Incite `0x56` | matches (`FUN_00480370`, `FUN_004806d0`); fixed: bit 8 and the decoys' nearness |
 | S8 DS Sabotage `0x6a` | not built: row 8 stays dead ("The controller's Death Star bit") |
@@ -2428,6 +2428,36 @@ with every fix. Rebased on the stage-2 commit `6b7cb77f`: 8,053 before,
 6,819 after, where seeds 1 and 4 end early (Death Star victory day 3,669,
 Alliance headquarters destroyed day 1,516; before, only seed 5 ended,
 day 3,320).
+
+## The cancel key's bit `0x20` (traced 2026-11-20)
+
+Every mission class's slot `+0x18` (`FUN_00481500` Diplomacy, and
+`FUN_0047bc30`, `FUN_0047c210`, `FUN_0047c7f0`, `FUN_0047ce40`,
+`FUN_0047d430`, `FUN_0047da30`, `FUN_0047e1d0`, `FUN_0047f220`,
+`FUN_0047f680`, `FUN_0047fef0`, `FUN_004807c0`, `FUN_00480e10`,
+`FUN_004820e0`, `FUN_00482c40`, `FUN_004831f0`) returns 0 while planner
+`+0x20` has bit `0x20`. Nothing sets that bit:
+- the base constructor `FUN_0047aae0` stores 0 at `+0x20`
+  (`FUN_005f4950(0)` at `0x47ab0f`, a plain int store);
+- the decompile has no write to `+0x20` (or `[8]`) that sets `0x20`; the
+  masks it ors in are 1, 2, 4, 8, `0xc`, `0x10`, `0x44`, `0x80`,
+  `0x100`, `0x20000000`, `0x40000000` and `0x80000000`;
+- `objdump` of REBEXE.EXE: no `or`/`and`/`mov` on `[reg+0x20]` with an
+  immediate holding `0x20` (only `0x80000000` and `0x9fffffff`), no
+  `[reg+0x20]` store within eight instructions of an `or reg,0x20` or an
+  `and` that clears it (the hits are other objects' 2-bit fields and
+  stack slots), and no `bts`/`btr` on `+0x20`;
+- the save code (`FUN_0047acb0`, `FUN_0047ad50`, `FUN_004bbe90`,
+  `FUN_004bbef0`) only copies `+0x20`.
+
+So the bit stays 0 and the test is dead code. The port leaves it out
+(`AISystem::mission_strategy`'s doc, `sector_cancel_key`); no save
+change.
+
+**Step 4 of the gathering place** (`FUN_004bd0a0`, a member aboard a
+fleet gathers at the fleet's system) has its own test since 2026-11-20,
+`a_mission_planner_member_aboard_a_fleet_gathers_at_the_fleet_s_system`;
+cargo mutants on `staging_point` and `ai_module_c::located`: 11 caught.
 
 ## Still open
 
