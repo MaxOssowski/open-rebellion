@@ -895,8 +895,10 @@ impl MissionPlanner {
 /// The queries are those of the sector planners' state 3
 /// ([`sector_staging`], `FUN_004bdcd0`), from the target's sector.
 ///
-/// port: a member aboard a fleet gives no system in step 4, as in
-/// [`sector_staging`].
+/// Step 4 walks the member's location up its containers to a system
+/// (`FUN_004f2d10`, `+0x1c`), so a member aboard a fleet gives the fleet's
+/// system ([`crate::ai_module_c::located`]). hyp: a fleet in transit gives
+/// the system it left, as in module `0xc`.
 fn staging_point(
     previous: Option<SystemKey>,
     target: SystemKey,
@@ -940,7 +942,7 @@ fn staging_point(
         }
     }
     team.iter()
-        .filter_map(|&m| crate::mission_planning::standing_system(world, m))
+        .filter_map(|&m| crate::ai_module_c::located(world, m))
         .find(|&s| fit(s))
 }
 
@@ -4429,7 +4431,10 @@ fn nearness<'g>(
 ///    which for these planners it always was;
 /// 2. the system of the first team member standing in the planner's
 ///    sector `+0x74` (the owner's `+0x34`, `FUN_00476ba0`) where the
-///    record qualifies (`FUN_004bd7d0` gives the record's sector);
+///    record qualifies (`FUN_004bd7d0` gives the record's sector). The
+///    member's location is walked up its containers to a system
+///    (`FUN_004f2d10`, `+0x1c`), so one aboard a fleet gives the fleet's
+///    system ([`crate::ai_module_c::located`]);
 /// 3. a random qualifying system of the sector (`FUN_0041a460`, order 1);
 /// 4. in the nearest other sector with one, a random system of the side
 ///    with no enemy fleet (`+0x30` 1 forbidding `0x200`, `FUN_0041b2b0`),
@@ -4456,7 +4461,7 @@ fn sector_staging(
     }
     if let Some(at) = team
         .iter()
-        .filter_map(|&m| crate::mission_planning::standing_system(world, m))
+        .filter_map(|&m| crate::ai_module_c::located(world, m))
         .find(|&s| in_sector(s) && fit(s))
     {
         return Some(at);
@@ -10083,6 +10088,35 @@ mod tests {
         assert_eq!(stage(None, Some(far), &[away, spy]), Some(second));
         assert!([first, second].contains(&stage(None, Some(far), &[]).unwrap()));
         assert_eq!(stage(None, None, &[spy]), None);
+        drop(stage);
+        // A member aboard a fleet: its location walked up to a system
+        // (FUN_004f2d10, +0x1c) is the fleet's, so it comes before the
+        // spy at the second.
+        let fleet = world.fleets.insert(Fleet {
+            location: first,
+            capital_ships: Vec::new(),
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[first].fleets.push(fleet);
+        let captain = add_character(&mut world, false, false, 0);
+        world.characters[captain].current_fleet = Some(fleet);
+        world.characters[captain].current_system = Some(first);
+        world.fleets[fleet].characters.push(captain);
+        let mut planner = Planner::new(&world, &missions, &busy, false, 7);
+        assert_eq!(
+            sector_staging(
+                None,
+                Some(far),
+                &[MissionMember::Character(captain), spy],
+                &mut planner,
+                (&world, &galaxy)
+            ),
+            Some(first)
+        );
         // No system of the side in the sector: the nearest other sector's.
         for s in [first, second] {
             world.systems[s].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
