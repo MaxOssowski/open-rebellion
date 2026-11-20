@@ -1959,12 +1959,50 @@ gathering-place commit:
 - Subdue orders 138 and 165, Incite 39 and 57, Espionage 845 and 708,
   research 147 and 174.
 
+## The mission module's planner list (read 2026-11-20, not ported)
+
+`FUN_004d2490` runs one state per module step:
+- 1, `FUN_004d2580`: cancel the planner `+0x314` names (`FUN_0042f690`),
+  build the request `+0x318`/`+0x31c` (`FUN_0042f640`);
+- 2, `FUN_004d2610`: from the sector-planner cursor `+0x44`, the first
+  sector planner with a request or cancellation; 3 (`FUN_004d2690`)
+  takes it;
+- 5, `FUN_004d2730`: from the list entry `+0x4c` names (else the list's
+  head), the first planner whose slot `+0x28` holds. `+0x48` takes it,
+  `+0x4c` the one after it. With none from there to the list's end,
+  both clear and the module completes (`+0x20` = 1): the walk does not
+  wrap;
+- 6, `FUN_004d27b0`: one step of `+0x48`'s cycle (slot `+0x2c`:
+  `FUN_004bced0` for the strategy's classes, `FUN_004bda60` for a sector
+  planner's). An order completes the module step and raises `+0x34`
+  while the cycle goes on; the cycle's end returns to state 0.
+
+Slot `+0x28` is `FUN_004bda40` in every mission planner class read
+(`0x65a900`, `0x65a6b8`, `0x65a768`, `0x65a670`): ready while `+0x20`
+lacks `0x80000000` (the order's mission reported result 0, cleared by
+`FUN_0047b950` at its end).
+
+So one module-4 cycle advances one planner through one whole cycle.
+The port's `mission_step` runs one research planner per call and every
+other planner's cycle once a day (`mission_planner_cycle`). A count in
+seed 42 (300 days, both sides AI, against the strategy-rows commit)
+gives about four `mission_step` calls a day per side, with 27 (Empire)
+and 17 (Alliance) mission planners and 9 research planners at day 200.
+With one planner per call each would cycle every 7 to 9 days, not daily.
+
+Not ported: the change depends on how many module-4 steps the cadence
+gives a day, which the scheduling work (`ai-scheduling.md`) is
+settling. The port should then list every planner in creation order
+(`MissionEntry` by planner id), skip those whose mission reported
+result 0, stop at the list's end, and drop the once-a-day guard.
+
 ## The planner's `+0x20` bit `0x80` (traced 2026-11-20)
 
 `FUN_0047ae20` sets `0x80` when a failure passes slot `+0x24`. Its
 reader is `FUN_0047ae50`, reached from the AI player's slot `+0x16c`
-(`Class_0065abf0_vt16c` -> `FUN_00418db0`). That slot walks the changed
-object's containers. For a mission (family `0x40..0x7f`) it calls
+(`Class_0065abf0_vt16c` -> `FUN_00418db0`), the Destroyed notification
+`0x302` (`ai-scheduling.md`). It runs when the mission object goes, that
+is when the mission ends. `FUN_00418db0` walks the object's containers. For a mission (family `0x40..0x7f`) it calls
 `FUN_0042f7d0`, which finds the mission planner whose `+0x28` is that
 mission (`FUN_0042f700`) and runs `FUN_0047ae50`:
 - clear `+0x20 & 0xe0000000`;
@@ -1976,8 +2014,8 @@ mission (`FUN_0042f700`) and runs `FUN_0047ae50`:
 - refresh the decoys the same way. Let a decoy go (`FUN_0047b8e0`) when
   its record has `0x50`.
 
-So after too many failures the planner frees its whole team once the
-mission next changes. It also drops a captured or injured member at
+So after too many failures the planner frees its whole team when the
+mission ends. It also drops a captured or injured member at
 once, without waiting for state 2.
 
 port: not ported. It is driven by a notification (slot `+0x16c`), which
