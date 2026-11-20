@@ -83,8 +83,10 @@ State 0 sets 1; then 1 to 6 one a call; state 6 returns 1 and leaves 1.
 3. `FUN_004e5710`: the missions (`ai-mission-planning.md`).
 4. `FUN_004e57e0`: slot `+0x1c` (`FUN_004eaaa0`) sets module `0xc`'s
    requests `+0x358`/`+0x354`.
-5. Slot `+0x20` (`FUN_004e69d0`): adds or removes module `0xc` planners
-   toward `S+0x224`.
+5. Slot `+0x20` (`FUN_004e69d0`): adds or removes planners toward
+   `S+0x224` (`FUN_00474070`, vtable `0x65a3a0`), not module `0xc`'s movement
+   planners (corrected 2026-11-20, `ai-command-planners.md`; hyp: module
+   9's).
 6. `FUN_004e5870`: system `0x90000109`'s record `+0x30` bit `0x10000000`
    follows its bit 1; for the Alliance the same on controller `+0x28`'s
    system, else on a system found by `FUN_00419a00(0,0,0x80000000,...)`.
