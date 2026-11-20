@@ -7913,6 +7913,53 @@ mod tests {
     }
 
     #[test]
+    fn a_mission_planner_member_aboard_a_fleet_gathers_at_the_fleet_s_system() {
+        // FUN_004bd0a0's last step walks the first member's location up
+        // its containers (FUN_004f2d10, +0x1c) to a system, so a member
+        // aboard a fleet gives the fleet's system, not the one it last
+        // stood on.
+        let (mut world, [a, b], [here, there, target]) = gathering_world();
+        let empire = ControlKind::Controlled(crate::dat::Faction::Empire);
+        world.systems[here].control = empire;
+        world.systems[there].control = empire;
+        // A target with no record leaves only the team's systems (step 4).
+        world.systems.remove(target);
+        let fleet = world.fleets.insert(Fleet {
+            location: here,
+            capital_ships: Vec::new(),
+            fighters: vec![],
+            characters: vec![a],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[here].fleets.push(fleet);
+        world.characters[a].current_fleet = Some(fleet);
+        world.characters[a].current_system = Some(there);
+        let state = AIState::new(AiFaction::Empire);
+        let place = |world: &GameWorld, team: &[MissionMember]| {
+            let galaxy = galaxy_of(&state, world);
+            let mut planner = planner_for(world, AiFaction::Empire);
+            staging_point(None, target, team, &mut planner, (world, &galaxy))
+        };
+        let aboard = MissionMember::Character(a);
+        let ashore = MissionMember::Character(b);
+        assert_eq!(
+            place(&world, &[aboard, ashore]),
+            Some(here),
+            "the fleet's system"
+        );
+        world.systems[here].control = ControlKind::Uncontrolled;
+        assert_eq!(
+            place(&world, &[aboard, ashore]),
+            Some(there),
+            "the next member's, past an unfit fleet system"
+        );
+        world.systems[there].control = ControlKind::Uncontrolled;
+        assert_eq!(place(&world, &[aboard, ashore]), None, "no fit system");
+    }
+
+    #[test]
     fn a_mission_planner_drops_members_it_cannot_keep_and_ends_when_empty_or_old() {
         // State 2 (FUN_0047b110 -> FUN_0047ba40) drops a member that is no
         // longer the side's live record; an empty team ends the planner
