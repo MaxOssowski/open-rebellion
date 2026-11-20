@@ -1208,3 +1208,38 @@ movement planner of module `0xc` that names the sector planner
 the sector planners' officers"), as listed above. In seeds 1 to 3 over
 5,000 days it is set in thousands of kind 6 cycles.
 
+
+## Where the fleets come from in long campaigns (measured 2026-11-20)
+
+Seeds 1 to 5, 5,000 days, both sides AI, at `25e1d7bb`
+(`rebellion-playtest --dual-ai`, which now prints each side's most
+fleets on any day). Seed 1's Alliance went from 9 fleets on day 3,500 to
+42 on day 3,750 with 46 to 52 ships: 33 held one ship. The jumps are one
+planner giving back a ship a cycle after a large fleet came home
+(`FUN_00478aa0`, Create Fleet `0x270` to its base, 35 times in 250 days
+at Mon Calamari) while another takes them one at a time
+(`FUN_004782a0`, 21 times, each a whole one-ship fleet that leaves). In
+seed 1 the planners gave 313 take, 118 steal, 164 give-back and 64
+damaged-ship Create Fleets over the campaign.
+
+Checked against the original:
+- `FUN_00478aa0` gives back one ship per order, to `FUN_00479220`'s
+  system, as the port does.
+- Create Fleet's leg puts the ships in the destination's bit-2 spare
+  (`FUN_00552300` -> `FUN_00509b40`). The spare turns real
+  (`Fleet_vtc4` -> `FUN_004fe630`, a capital ship child), and the
+  system's `+0xc4` (`System_vtc4`, a fleet child) then runs
+  `FUN_0050be00`, which takes bit 2 from a spare holding anything and
+  makes a new one. So each give-back is a fleet of its own there, as in
+  the port. hyp: the existing-changed event runs a tick later, so Create
+  Fleets to one system on one day would share a fleet; the port's
+  give-backs come about one a day, so this is not ported.
+- A ship's own Move to another system lands in the destination's bit-1
+  spare; module `0xb`'s repair move is such a Move. Ported
+  (`fleet-join-split.md`, `AIAction::MoveShipsIntoSpare`).
+
+Most fleets per side (Alliance/Empire), before and after the repair-move
+fix: seed 1 42/25 -> 17/39, seed 2 31/33 -> 42/30, seed 3 23/20 ->
+17/13, seed 4 21/25 -> 8/31, seed 5 25/20 -> 23/22. The campaigns
+diverge from the first changed order, so a seed's count moves either
+way; the bursts above remain.
