@@ -1366,3 +1366,37 @@ Module 5 trains no special forces in this campaign: a temporary trace
 shows it keeping one or two sites, none with an idle training facility
 (`FUN_004d01a0`), while module 6, which runs first, trains regiments at
 the training facilities of the sites both mark `0x400000`.
+
+### The stand-in for module `0xa` ordered the headquarters (2026-11-20)
+
+Module `0xa` (shipyard placement, `FUN_004cc9c0`) is not ported; the
+production heuristic's manufacturing facilities stand in for it. Its class
+was the first facility of the side in the world, which for the Alliance is
+often the headquarters (ALLFACSD `0x20000001`, no refined cost). The
+original lists only classes with a refined cost (`FUN_0052e580`), and
+module `0xa`'s Build (`FUN_004ce350`) passes the same validation (slot
+`+0x1c`) as module 1's, so it can never queue the headquarters. The port
+queued it, and the item never completed: the construction yard of the
+headquarters' system stayed busy for good.
+
+Every 1998-default seed from 1 to 10 queued it for the Alliance (3 to 32
+times in 5000 days). Where module 1's only site was that system (seed 4,
+Woostri), the site kept no idle yard (`FUN_004daca0`), and module 1, which
+holds the yard token from setup (`+0xc = 0x80`), never reached state 1
+(`FUN_004199b0`) nor state 10 (skipped while it holds the token). The
+token never moved, so the Alliance's other yard cycles (modules 2, 3, 5,
+6, 7, `0xb`) never ran: no shipyard or construction yard was built.
+Module `0xb`'s only site, Commenor, held two training facilities and no
+shipyard, so its ship cycle kept no site (`FUN_004ca300` needs `v[4] > 0`)
+and passed to the yard cycle, which waits for the token: no capital ship
+was ordered. The Alliance kept its 2 starting capital
+ships and 3 fleets until the Empire took its headquarters on day 1391 and
+won on day 1516. A permanently busy yard would stall the token in the
+original as well; the deviation is the unlisted order.
+
+`ai::accepts` now validates `EnqueueProduction` as a Build: a yard of the
+class's area and a listed class. Seeds 1-10 (dual AI, 5000 days) before:
+two victories (1: Death Star, day 3669; 4: headquarters, day 1516) and
+two seeds where the Alliance never grew (4: max 3 fleets, day 1; 9: max 4,
+day 1). After: no victory in 5000 days, and each side's fleets peak at 12
+to 36. The seed-42 golden and the sweep gate are unchanged.

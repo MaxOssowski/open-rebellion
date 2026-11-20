@@ -158,6 +158,25 @@ fn accepts(
                 )
                 .contains(kind)
         }
+        // The production heuristic's facility, standing in for module
+        // `0xa`'s Build `0x210` (FUN_004ce350), passes the same check: a
+        // yard of its area and a class the yard lists (FUN_0052e580). The
+        // Alliance headquarters (ALLFACSD `0x20000001`, no refined cost)
+        // is never listed.
+        AIAction::EnqueueProduction { system, kind, .. } => {
+            crate::ai_module1::has_yard(
+                world,
+                side,
+                *system,
+                crate::build_selection::area_family(ProductionArea::of(*kind)),
+            ) && crate::build_selection::listed_classes(
+                world,
+                research,
+                ProductionArea::of(*kind),
+                is_alliance,
+            )
+            .contains(kind)
+        }
         // The move command's validation (FUN_00578d00) for each regiment:
         // the side's own (FUN_004f9860), then the regiment move's checks.
         AIAction::MoveRegiments { troops, to } => {
@@ -12151,6 +12170,61 @@ mod tests {
         assert!(!ok(&build(site, 0x2a00_0009, 1)));
         // Other orders are checked when applied.
         assert!(ok(&AIAction::AbortMission { mission_id: 1 }));
+    }
+
+    #[test]
+    fn the_validator_refuses_the_heuristic_s_unlisted_headquarters() {
+        // The production heuristic stands in for module 0xa, whose Build
+        // 0x210 (FUN_004ce350) passes slot +0x1c: a yard of the class's
+        // area and a class the yard lists (FUN_0052e580). The Alliance
+        // headquarters (ALLFACSD 0x20000001) has no refined cost and is
+        // never listed; queued, it held the construction yard busy for
+        // good (seed 4, dual AI).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let elsewhere = add_system(&mut world, sector, 0.9, 0.1);
+        let (yard, hq) = (DatId(0x2a00_0003), DatId(0x2000_0001));
+        for (class, refined_material_cost) in [(yard, 10), (hq, 0)] {
+            world.buildable_classes.insert(
+                class,
+                crate::world::BuildableClass {
+                    is_alliance: true,
+                    refined_material_cost,
+                    ..Default::default()
+                },
+            );
+            let key =
+                world
+                    .manufacturing_facilities
+                    .insert(crate::world::ManufacturingFacilityInstance {
+                        class_dat_id: class,
+                        side: crate::dat::Faction::Alliance,
+                        is_shipyard: false,
+                    });
+            world.systems[site].manufacturing_facilities.push(key);
+        }
+        let research = ResearchState::new();
+        let ok = |system, class| {
+            accepts(
+                &AIAction::EnqueueProduction {
+                    system,
+                    kind: BuildableKind::ManufacturingFacility(FacilityBuild {
+                        class,
+                        is_alliance: true,
+                    }),
+                    cost: 0,
+                },
+                &world,
+                &research,
+                AiFaction::Alliance,
+                &crate::troop_transport::TroopTransportState::new(),
+                &crate::movement::MovementState::new(),
+            )
+        };
+        assert!(ok(site, yard));
+        assert!(!ok(site, hq));
+        assert!(!ok(elsewhere, yard));
     }
 
     #[test]
