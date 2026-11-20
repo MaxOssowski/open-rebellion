@@ -33,23 +33,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:3434430ca99d9af0";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:88eae5aad5573c6f";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:36b6161835303858";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:f7f4c10e1e6e37d7";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:84163c240506b568"),
-    (2, 0, "v1:39c0d9550691cdb3"),
-    (3, 5, "v1:31a84391c0efbd07"),
-    (4, 10, "v1:cc9c594d3be70895"),
-    (5, 15, "v1:88f4e7623e919c89"),
-    (6, 20, "v1:f247041c744f3424"),
-    (7, 25, "v1:bdd04d529ff4efa1"),
-    (8, 25, "v1:88eae5aad5573c6f"),
-    (9, 25, "v1:88eae5aad5573c6f"),
+    (1, 0, "v1:e5d6d0601ec3cccc"),
+    (2, 0, "v1:9f59c75fb7000251"),
+    (3, 5, "v1:bc9c6c6ecb306e3d"),
+    (4, 10, "v1:ad23268befb21d51"),
+    (5, 15, "v1:89b84ad67c58725f"),
+    (6, 20, "v1:9a9af1af79ccb01e"),
+    (7, 25, "v1:c2cde0015dc15af9"),
+    (8, 25, "v1:f7f4c10e1e6e37d7"),
+    (9, 25, "v1:f7f4c10e1e6e37d7"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -237,6 +237,7 @@ pub fn seed42_initial_state(world: GameWorld) -> anyhow::Result<SaveState> {
         system_copy_bits,
         system_copy_uprisings,
         ai_day: rebellion_core::ai_schedule::AiDay::default(),
+        day_rolls: Vec::new(),
         ai_command_planners: crate::save::AiCommandPlanners::default(),
         ai_sector_links: crate::save::AiSectorLinks::default(),
     })

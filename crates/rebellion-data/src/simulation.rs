@@ -994,6 +994,31 @@ pub fn begin_simulation_day(
     config: &rebellion_core::tuning::GameConfig,
     integrator: &mut PerceptionIntegrator,
 ) {
+    begin_simulation_day_with(
+        world,
+        states,
+        tick_events,
+        rolls,
+        config,
+        integrator,
+        &mut NoPresentation,
+    );
+}
+
+/// [`begin_simulation_day`] shown through `presentation`: the interactive
+/// app's start of the day, from the same day's rolls as the headless
+/// runner's, so the two give the same campaign (F-012). The place reached
+/// in `rolls` is kept for [`close_simulation_day`]
+/// (`AiDay::roll_cursor`).
+pub fn begin_simulation_day_with(
+    world: &mut GameWorld,
+    states: &mut SimulationStates,
+    tick_events: &[TickEvent],
+    rolls: &[f64],
+    config: &rebellion_core::tuning::GameConfig,
+    integrator: &mut PerceptionIntegrator,
+    presentation: &mut dyn DayPresentation,
+) {
     let mut day_rolls = SliceRolls::at(rolls, 0);
     let Some(loyalty_before) = begin_day(
         world,
@@ -1001,7 +1026,7 @@ pub fn begin_simulation_day(
         tick_events,
         &mut day_rolls,
         integrator,
-        &mut NoPresentation,
+        presentation,
     ) else {
         return;
     };
@@ -1013,7 +1038,7 @@ pub fn begin_simulation_day(
         &mut day_rolls,
         config,
         integrator,
-        &mut NoPresentation,
+        presentation,
     );
     states.ai_day.roll_cursor = u32::try_from(day_rolls.cursor()).unwrap_or(u32::MAX);
 }

@@ -795,6 +795,7 @@ struct LiveCampaign<'a> {
     game_config: &'a mut rebellion_core::tuning::GameConfig,
     campaign_config: &'a mut CampaignConfig,
     ai_day: &'a mut AiDay,
+    day_rolls: &'a mut Vec<f64>,
 }
 
 impl LiveCampaign<'_> {
@@ -844,6 +845,7 @@ impl LiveCampaign<'_> {
             ai_command_planners: rebellion_data::save::command_planners(self.ai, self.ai2.as_ref()),
             ai_sector_links: rebellion_data::save::sector_links(self.ai, self.ai2.as_ref()),
             ai_day: *self.ai_day,
+            day_rolls: self.day_rolls.clone(),
         }
     }
 
@@ -898,6 +900,7 @@ impl LiveCampaign<'_> {
         self.world.object_views.system_bits = state.system_copy_bits;
         self.world.object_views.system_uprisings = state.system_copy_uprisings;
         *self.ai_day = state.ai_day;
+        *self.day_rolls = state.day_rolls;
         self.world.products = state.products;
         rebellion_core::squadrons::restore_damaged_squadrons(
             self.world,
@@ -1517,6 +1520,9 @@ async fn main() {
     let mut secondary_ai_state: Option<AIState> = None;
     // The current day's AI passes, one a sub-tick (rebellion_core::ai_schedule).
     let mut ai_day = AiDay::default();
+    // The current day's rolls, drawn from `sim_rng` at the day's start as
+    // the headless runner draws them (SaveState::day_rolls).
+    let mut day_rolls: Vec<f64> = Vec::new();
     let mut movement_state = MovementState::new();
     let mut fog_alliance_state = FogState::new(Faction::Alliance);
     let mut fog_empire_state = FogState::new(Faction::Empire);
@@ -2324,9 +2330,7 @@ async fn main() {
                 &mut msg_log,
                 &message_texts,
                 #[cfg(not(target_arch = "wasm32"))]
-                &mut audio_engine,
-                #[cfg(not(target_arch = "wasm32"))]
-                &audio_vol,
+                Some((&mut audio_engine, &audio_vol)),
             );
         }
         interface_test_fixture::post_own_capture_message(request, &world, &mut msg_log, &message_texts);
@@ -3173,9 +3177,7 @@ async fn main() {
                     other_fog: &mut fog_empire_state,
                     assault_summary: &mut assault_summary_state,
                     #[cfg(not(target_arch = "wasm32"))]
-                    audio_engine: &mut audio_engine,
-                    #[cfg(not(target_arch = "wasm32"))]
-                    audio_vol: &audio_vol,
+                    audio: Some((&mut audio_engine, &audio_vol)),
                 }
             };
         }
@@ -3218,10 +3220,11 @@ async fn main() {
                     let mut presentation = app_presentation!(now);
                     let mut integrator =
                         rebellion_data::integrator::PerceptionIntegrator::new(sim.ai_day.day, 0);
+                    let cursor = sim.ai_day.roll_cursor as usize;
                     rebellion_data::simulation::close_simulation_day(
                         &mut world,
                         &mut sim,
-                        &mut rebellion_data::simulation::RngRolls(&mut sim_rng),
+                        &mut rebellion_data::simulation::SliceRolls::at(&day_rolls, cursor),
                         &mut integrator,
                         &mut presentation,
                     );
@@ -3254,36 +3257,25 @@ async fn main() {
                 let mut presentation = app_presentation!(now);
                 let mut integrator =
                     rebellion_data::integrator::PerceptionIntegrator::new(current_tick, 0);
-                let mut rolls = rebellion_data::simulation::RngRolls(&mut sim_rng);
-                if let Some(loyalty_before) = rebellion_data::simulation::begin_day(
+                // The day's rolls, as the headless runner draws them for a
+                // day (rebellion_data::replay::REPLAY_ROLLS_PER_TICK).
+                day_rolls = (0..usize::from(rebellion_data::replay::REPLAY_ROLLS_PER_TICK))
+                    .map(|_| sim_rng.gen::<f64>())
+                    .collect();
+                // ── AI: each day has as many passes as the speed has
+                // sub-ticks, one a sub-tick, the Alliance's then the
+                // Empire's, both sides' orders applied before the next pass
+                // (FUN_0041dff0 phase 8, FUN_0041cf20 -> FUN_004361a0;
+                // rebellion_core::ai_schedule), after the day's timers.
+                rebellion_data::simulation::begin_simulation_day_with(
                     &mut world,
                     &mut sim,
                     &tick_events,
-                    &mut rolls,
+                    &day_rolls,
+                    &game_config,
                     &mut integrator,
                     &mut presentation,
-                ) {
-                    // ── AI: each day has as many passes as the speed has
-                    // sub-ticks, one a sub-tick, the Alliance's then the
-                    // Empire's, both sides' orders applied before the next
-                    // pass (FUN_0041dff0 phase 8, FUN_0041cf20 ->
-                    // FUN_004361a0; rebellion_core::ai_schedule). The day's
-                    // timers above fired in its first sub-tick, ahead of its
-                    // first pass. A frame that ran more than one day runs
-                    // the earlier days' passes at once; the passes of the
-                    // last run below as its sub-ticks begin
-                    // (ghidra/notes/ai-scheduling.md).
-                    rebellion_data::simulation::start_ai_day(
-                        &mut world,
-                        &mut sim,
-                        &tick_events,
-                        loyalty_before,
-                        &mut rolls,
-                        &game_config,
-                        &mut integrator,
-                        &mut presentation,
-                    );
-                }
+                );
                 sim_unpack!(sim);
             }
         }
@@ -3857,6 +3849,7 @@ async fn main() {
                                     );
                                     clock = GameClock::new();
                                     ai_day = AiDay::default();
+                                    day_rolls.clear();
                                     game_speed_ui = GameSpeedUiState::default();
                                     held_orders.clear();
                                     mfg_state = ManufacturingState::new();
@@ -4029,6 +4022,7 @@ async fn main() {
                                     PlayerAgent::for_new_game(campaign_config.difficulty);
 
                                 ai_day = AiDay::default();
+                                day_rolls.clear();
                                 // AI controls the opposite faction
                                 if faction == MissionFaction::Empire {
                                     ai_state = AIState::new(AiFaction::Alliance);
@@ -8336,6 +8330,7 @@ async fn main() {
                         game_config: &mut game_config,
                         campaign_config: &mut campaign_config,
                         ai_day: &mut ai_day,
+                        day_rolls: &mut day_rolls,
                     }
                     .snapshot();
                     let active_mods = mod_runtime.enabled_mod_list();
@@ -8421,6 +8416,7 @@ async fn main() {
                                 game_config: &mut game_config,
                                 campaign_config: &mut campaign_config,
                                 ai_day: &mut ai_day,
+                                day_rolls: &mut day_rolls,
                             };
                             campaign.restore(state);
                             let restored_fingerprint =
@@ -13414,8 +13410,7 @@ fn apply_mission_result(
     research_state: &mut ResearchState,
     log: &mut MessageLog,
     message_texts: &std::collections::HashMap<u16, String>,
-    #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
-    #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
+    #[cfg(not(target_arch = "wasm32"))] audio: Option<(&mut audio::AudioEngine, &AudioVolumeState)>,
 ) {
     let faction_name = match result.faction {
         MissionFaction::Alliance => "Alliance",
@@ -13538,10 +13533,12 @@ fn apply_mission_result(
         .and_then(|place| return_place_name(world, place));
     // SFX + voice lines for mission outcomes
     #[cfg(not(target_arch = "wasm32"))]
-    if result.outcome == rebellion_core::missions::MissionOutcome::Success {
-        audio_engine.play_sfx(SfxKind::MissionSuccess, audio_vol);
-    } else {
-        audio_engine.play_sfx(SfxKind::MissionFail, audio_vol);
+    if let Some((audio_engine, audio_vol)) = audio {
+        if result.outcome == rebellion_core::missions::MissionOutcome::Success {
+            audio_engine.play_sfx(SfxKind::MissionSuccess, audio_vol);
+        } else {
+            audio_engine.play_sfx(SfxKind::MissionFail, audio_vol);
+        }
     }
 
     // A research level reached by this result (FUN_004927c0 reads the
@@ -14346,10 +14343,9 @@ struct AppDayPresentation<'a> {
     /// The Empire's fog; the shared day advances the Alliance's.
     other_fog: &'a mut FogState,
     assault_summary: &'a mut rebellion_render::assault_summary::AssaultSummaryState,
+    /// The sounds; none in a headless test.
     #[cfg(not(target_arch = "wasm32"))]
-    audio_engine: &'a mut audio::AudioEngine,
-    #[cfg(not(target_arch = "wasm32"))]
-    audio_vol: &'a AudioVolumeState,
+    audio: Option<(&'a mut audio::AudioEngine, &'a AudioVolumeState)>,
 }
 
 /// What a step's messages need from before it was applied.
@@ -14371,6 +14367,14 @@ struct DayStash {
 }
 
 impl AppDayPresentation<'_> {
+    /// Play a sound effect (none headless).
+    #[cfg(not(target_arch = "wasm32"))]
+    fn sfx(&mut self, kind: SfxKind) {
+        if let Some((engine, vol)) = self.audio.as_mut() {
+            engine.play_sfx(kind, vol);
+        }
+    }
+
     /// An uprising event's message, from the world before it is applied:
     /// Uprising Begins / Ends (0x14b, FUN_00499460), Natural Disaster
     /// (0x154, FUN_0048e940), New Resources or Resources Depleted (0x155,
@@ -14577,9 +14581,7 @@ impl AppDayPresentation<'_> {
             self.log,
             message_texts,
             #[cfg(not(target_arch = "wasm32"))]
-            self.audio_engine,
-            #[cfg(not(target_arch = "wasm32"))]
-            self.audio_vol,
+            self.audio.as_mut().map(|(engine, vol)| (&mut **engine, *vol)),
         );
         let world = &world;
         // Notification 0x212 (FUN_0048fa00), after Han's capture;
@@ -14784,7 +14786,7 @@ impl AppDayPresentation<'_> {
             ));
             advisor_manufacturing_complete(self.advisor, &sys_name);
             #[cfg(not(target_arch = "wasm32"))]
-            self.audio_engine.play_sfx(SfxKind::BuildComplete, self.audio_vol);
+            self.sfx(SfxKind::BuildComplete);
         }
         let system_name = |key| {
             world
@@ -14838,7 +14840,7 @@ impl AppDayPresentation<'_> {
             ));
             advisor_manufacturing_complete(self.advisor, &origin);
             #[cfg(not(target_arch = "wasm32"))]
-            self.audio_engine.play_sfx(SfxKind::BuildComplete, self.audio_vol);
+            self.sfx(SfxKind::BuildComplete);
         }
     }
 
@@ -15603,7 +15605,7 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
                         message_texts,
                     ));
                     #[cfg(not(target_arch = "wasm32"))]
-                    self.audio_engine.play_sfx(SfxKind::FleetArrival, self.audio_vol);
+                    self.sfx(SfxKind::FleetArrival);
                 }
             }
             (DayStep::RegimentsArrived(regiments), StepPhase::After) => {
@@ -15641,7 +15643,7 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
                     result.system,
                 ));
                 #[cfg(not(target_arch = "wasm32"))]
-                self.audio_engine.play_sfx(SfxKind::CombatStart, self.audio_vol);
+                self.sfx(SfxKind::CombatStart);
             }
             // port: a log line only. Regiments taking the planet set its
             // control bits 0x30, so FUN_00510d70 leaves bit 0x2000 clear and
@@ -15739,7 +15741,7 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
         }
         self.tactical_state.set_display_options(self.tactical_flags);
         #[cfg(not(target_arch = "wasm32"))]
-        self.audio_engine.play_sfx(SfxKind::CombatStart, self.audio_vol);
+        self.sfx(SfxKind::CombatStart);
         true
     }
 
@@ -15801,7 +15803,7 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
                     ..
                 } => {
                     #[cfg(not(target_arch = "wasm32"))]
-                    self.audio_engine.play_sfx(SfxKind::FleetDeparture, self.audio_vol);
+                    self.sfx(SfxKind::FleetDeparture);
                     let reason = match reason {
                         FleetMoveReason::Attack => "attack",
                         FleetMoveReason::Reinforce => "reinforce",
@@ -20366,5 +20368,108 @@ mod a0_message_text_tests {
             attacked.text,
             "Han Solo was attacked by bounty hunters, who failed to capture him."
         );
+    }
+}
+
+#[cfg(test)]
+mod shared_day_tests {
+    use super::*;
+    use rebellion_data::integrator::PerceptionIntegrator;
+    use rebellion_data::simulation::{
+        begin_simulation_day_with, close_simulation_day, run_ai_passes, run_simulation_tick,
+        SliceRolls,
+    };
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_app_s_day_with_its_presentation_matches_the_headless_runner() {
+        // F-012: the app runs the runner's day (its start at the day's
+        // event, one AI pass a sub-tick, FUN_0041dff0 phase 8, and its end
+        // after the last) from the same day's rolls, with its messages as
+        // hooks that change nothing; with no player input and no tactical
+        // battle, a seed gives the same campaign.
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let world = rebellion_data::load_game_data_with_options(
+            &data,
+            &rebellion_data::replay_fixture::seed42_seed_options(),
+        )
+        .expect("load original campaign data");
+        let initial = rebellion_data::replay_fixture::seed42_initial_state(world).unwrap();
+        let days = 40;
+        let runner = rebellion_data::replay::drive_days(
+            initial.clone(),
+            GameSpeed::Medium,
+            true,
+            days,
+            &mut |world, states, ticks, rolls, config| {
+                run_simulation_tick(world, states, ticks, rolls, 0, config);
+            },
+        )
+        .unwrap();
+
+        let message_texts = std::collections::HashMap::new();
+        let mut log = MessageLog::default();
+        let mut battled = std::collections::HashSet::new();
+        let mut pending_ending = None;
+        let mut player_agent = PlayerAgent::default();
+        let mut advisor = AdvisorState::new(AdvisorFaction::Alliance);
+        // Not the galaxy: no battle becomes a tactical battle.
+        let mut game_mode = GameMode::MainMenu;
+        let mut tactical_state = TacticalState::new();
+        let mut battle_sorties = Vec::new();
+        let mut other_fog = FogState::new(Faction::Empire);
+        let mut assault_summary = rebellion_render::assault_summary::AssaultSummaryState::default();
+        let app = rebellion_data::replay::drive_days(
+            initial,
+            GameSpeed::Medium,
+            true,
+            days,
+            &mut |world, sim, ticks, rolls, config| {
+                let mut presentation = AppDayPresentation {
+                    log: &mut log,
+                    battled: &mut battled,
+                    message_texts: &message_texts,
+                    cockpit_faction: CockpitFaction::Alliance,
+                    advisor_schedule: None,
+                    advisor_now: 0,
+                    pending_ending: &mut pending_ending,
+                    player_faction: MissionFaction::Alliance,
+                    player_agent: &mut player_agent,
+                    advisor: &mut advisor,
+                    stash: DayStash::default(),
+                    game_mode: &mut game_mode,
+                    tactical_state: &mut tactical_state,
+                    battle_sorties: &mut battle_sorties,
+                    tactical_flags: [true; 5],
+                    other_fog: &mut other_fog,
+                    assault_summary: &mut assault_summary,
+                    audio: None,
+                };
+                let mut integrator = PerceptionIntegrator::new(ticks[0].tick, 0);
+                begin_simulation_day_with(
+                    world,
+                    sim,
+                    ticks,
+                    rolls,
+                    config,
+                    &mut integrator,
+                    &mut presentation,
+                );
+                for upto in 1..=sim.ai_day.passes {
+                    run_ai_passes(world, sim, config, &mut integrator, &mut presentation, upto);
+                }
+                let cursor = sim.ai_day.roll_cursor as usize;
+                close_simulation_day(
+                    world,
+                    sim,
+                    &mut SliceRolls::at(rolls, cursor),
+                    &mut integrator,
+                    &mut presentation,
+                );
+            },
+        )
+        .unwrap();
+        assert!(log.len() > 0, "the app's presentation posted its messages");
+        assert_eq!(app, runner);
     }
 }

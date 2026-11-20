@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 132;
+pub const SAVE_VERSION: u32 = 133;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -145,7 +145,11 @@ pub const V130: u32 = 130;
 /// field.
 pub const V131: u32 = 131;
 
-/// Whether a save of `version` loads (the current one, or v116 to v131
+/// v132: the save without the day's rolls (`SaveState::day_rolls`), its
+/// last field.
+pub const V132: u32 = 132;
+
+/// Whether a save of `version` loads (the current one, or v116 to v132
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -283,6 +287,11 @@ pub fn migrate_body(version: u32, mut body: Vec<u8>) -> anyhow::Result<Vec<u8>> 
         // An older save was made between days, after every AI pass of
         // its day had run.
         body.extend(bincode::serialize(&rebellion_core::ai_schedule::AiDay::default())?);
+    }
+    if version <= V132 {
+        // An older save keeps no day's rolls: a day it was saved within
+        // ends with padded rolls (simulation::SliceRolls).
+        body.extend(bincode::serialize(&Vec::<f64>::new())?);
     }
     Ok(body)
 }
@@ -480,6 +489,9 @@ pub fn compute_state_fingerprint(state: &SaveState) -> anyhow::Result<StateFinge
 fn fingerprint_as(state: &SaveState, version: u32) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V132 {
+            fields.remove("day_rolls");
+        }
         if version <= V131 {
             fields.remove("ai_day");
         }
@@ -689,6 +701,14 @@ pub struct SaveState {
     /// stays the last field: an older body, saved between days, is read
     /// by appending a finished day ([`migrate_body`]).
     pub ai_day: rebellion_core::ai_schedule::AiDay,
+    // ── v133: the day's rolls ───────────────────────────────────────────
+    /// The rolls the interactive game drew for the current day at its
+    /// start, as the headless runner draws a day's
+    /// (`replay::REPLAY_ROLLS_PER_TICK` from `sim_rng`); the day's end takes
+    /// the rest from `ai_day.roll_cursor` (`simulation::SliceRolls`). Empty
+    /// between days in a headless runner's save. It stays the last field:
+    /// an older body is read by appending an empty one ([`migrate_body`]).
+    pub day_rolls: Vec<f64>,
 }
 
 /// [`SaveState::ai_command_planners`]: module `0xc` of `ai` and of `ai2`.
@@ -1242,6 +1262,7 @@ pub mod wasm_impl {
     fn stored_save(slot: usize) -> anyhow::Result<Option<(u32, String, String)>> {
         for version in [
             SAVE_VERSION,
+            V132,
             V131,
             V130,
             V129,
@@ -1384,6 +1405,8 @@ pub mod wasm_impl {
             versioned_meta_key(V130, slot),
             versioned_slot_key(V131, slot),
             versioned_meta_key(V131, slot),
+            versioned_slot_key(V132, slot),
+            versioned_meta_key(V132, slot),
         ]
         .iter()
         .any(|key| !matches!(storage_get(key), Ok(None)))
@@ -1413,6 +1436,7 @@ pub mod wasm_impl {
     pub fn delete_slot(_saves_dir: &Path, slot: usize) -> anyhow::Result<()> {
         for version in [
             SAVE_VERSION,
+            V132,
             V131,
             V130,
             V129,
@@ -1580,6 +1604,7 @@ mod tests {
             ai_command_planners: AiCommandPlanners::default(),
             ai_sector_links: AiSectorLinks::default(),
             ai_day: rebellion_core::ai_schedule::AiDay::default(),
+            day_rolls: Vec::new(),
         }
     }
 
@@ -2043,11 +2068,23 @@ mod tests {
             + day_tail()
     }
 
-    /// The length of the finished AI day v132 added.
+    /// The length of the finished AI day v132 added, and what came after.
     fn day_tail() -> usize {
         bincode::serialize(&rebellion_core::ai_schedule::AiDay::default())
             .unwrap()
             .len()
+            + rolls_tail()
+    }
+
+    /// The length of the empty day's rolls v133 added.
+    fn rolls_tail() -> usize {
+        bincode::serialize(&Vec::<f64>::new()).unwrap().len()
+    }
+
+    /// `state` written as a v132 file: no day's rolls. `state` holds none.
+    fn write_v132(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert!(state.day_rolls.is_empty());
+        write_old(saves_dir, state, V132, rolls_tail())
     }
 
     /// `state` written as a v131 file: no AI day. `state` holds a
@@ -2519,6 +2556,35 @@ mod tests {
             fingerprint_as(&state, V131).unwrap(),
             fingerprint_as(&loaded, V131).unwrap()
         );
+    }
+
+    #[test]
+    fn a_v132_save_loads_without_the_day_s_rolls() {
+        // v133 keeps the day's rolls (SaveState::day_rolls); a v132 save
+        // had none.
+        let saves_dir = tmp_dir("v132_migration");
+        let state = minimal_save_state();
+        write_v132(&saves_dir, &state);
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v132 save migrates");
+        assert!(loaded.day_rolls.is_empty());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V132).unwrap(),
+            fingerprint_as(&loaded, V132).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_the_day_s_rolls() {
+        let saves_dir = tmp_dir("day_rolls");
+        let mut state = minimal_save_state();
+        state.day_rolls = vec![0.25, 0.5];
+        save_slot(&saves_dir, 0, "Rolls", &state, &[]).unwrap();
+        let (_, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.day_rolls, [0.25, 0.5]);
     }
 
     #[test]

@@ -480,6 +480,49 @@ pub struct ReplayRecording {
 /// # Errors
 /// Returns an error if the initial environment, command execution, state
 /// fingerprinting, or recording validation fails.
+/// A day's driver for [`drive_days`]: the world, the states, the day's
+/// tick events and rolls, and the configuration.
+pub type DayDriver<'a> =
+    dyn FnMut(&mut GameWorld, &mut SimulationStates, &[TickEvent], &[f64], &GameConfig) + 'a;
+
+/// Run `days` days of `initial` at `speed`, with the dual AI when `dual_ai`,
+/// drawing each day's rolls from the state's generator as the replay runner
+/// and the headless playtest do, and letting `driver` run each day.
+/// Returns the final state's fingerprint. A runner that drives its day
+/// differently (the interactive app's spread passes and presentation)
+/// compares its fingerprint with [`run_simulation_tick`]'s (F-012).
+///
+/// # Errors
+/// Returns an error when the final state cannot be fingerprinted.
+pub fn drive_days(
+    initial: SaveState,
+    speed: GameSpeed,
+    dual_ai: bool,
+    days: u64,
+    driver: &mut DayDriver<'_>,
+) -> anyhow::Result<StateFingerprint> {
+    let mut runtime = ReplayRuntime::from_save_state(initial);
+    runtime.states.clock.set_speed(speed);
+    if dual_ai {
+        runtime.apply_command(&ReplayCommand::ToggleDualAi)?;
+    }
+    for _ in 0..days {
+        let tick = runtime.states.clock.tick + 1;
+        runtime.states.clock.tick = tick;
+        let rolls = (0..usize::from(REPLAY_ROLLS_PER_TICK))
+            .map(|_| runtime.sim_rng.gen::<f64>())
+            .collect::<Vec<_>>();
+        driver(
+            &mut runtime.world,
+            &mut runtime.states,
+            &[TickEvent { tick }],
+            &rolls,
+            &runtime.game_config,
+        );
+    }
+    compute_state_fingerprint(&runtime.snapshot())
+}
+
 pub fn record_replay<I>(
     environment: ReplayEnvironment<'_>,
     initial_state: SaveState,
@@ -769,6 +812,7 @@ impl ReplayRuntime {
             ai_sector_links,
             system_copy_uprisings,
             ai_day,
+            day_rolls: _,
         } = state;
         let (mut ai, mut ai2) = (ai, ai2);
         ai.module_c = ai_command_planners.0;
@@ -948,6 +992,7 @@ impl ReplayRuntime {
             system_copy_bits: self.world.object_views.system_bits.clone(),
             system_copy_uprisings: self.world.object_views.system_uprisings.clone(),
             ai_day: self.states.ai_day,
+            day_rolls: Vec::new(),
             ai_command_planners: crate::save::command_planners(
                 &self.states.ai,
                 self.states.ai2.as_ref(),
@@ -1296,6 +1341,7 @@ mod tests {
             system_copy_bits: rebellion_core::object_views::SystemCopyBitsMap::default(),
             system_copy_uprisings: rebellion_core::object_views::SystemCopyUprisings::default(),
             ai_day: rebellion_core::ai_schedule::AiDay::default(),
+            day_rolls: Vec::new(),
             ai_command_planners: crate::save::AiCommandPlanners::default(),
             ai_sector_links: crate::save::AiSectorLinks::default(),
         }
