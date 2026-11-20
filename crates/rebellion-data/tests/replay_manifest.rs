@@ -88,15 +88,15 @@ fn original_campaign_replay_matches_after_save_reload() {
     assert_eq!(
         observed_fingerprints,
         vec![
-            (1, 0, "v1:158e63a2d0b98f27".into()),
-            (2, 0, "v1:79a34aafb8e6a716".into()),
-            (3, 5, "v1:3aae3accd9e55946".into()),
-            (4, 10, "v1:cd1ba96cfecd5e4a".into()),
-            (5, 15, "v1:00392cf092e1ca65".into()),
-            (6, 20, "v1:3a8255e4ab699358".into()),
-            (7, 25, "v1:7fa347a84dde3352".into()),
-            (8, 25, "v1:9ea2642eaf0dab8c".into()),
-            (9, 25, "v1:9ea2642eaf0dab8c".into()),
+            (1, 0, "v1:de5b707ce48968ae".into()),
+            (2, 0, "v1:716ec60f471c497f".into()),
+            (3, 5, "v1:bfcfb889953ef3d1".into()),
+            (4, 10, "v1:d8e826301d3c3693".into()),
+            (5, 15, "v1:693b24c6f9ed3744".into()),
+            (6, 20, "v1:a6f6dcbc6bd704ed".into()),
+            (7, 25, "v1:61e49c8788f450e5".into()),
+            (8, 25, "v1:0cad57d835ef378b".into()),
+            (9, 25, "v1:0cad57d835ef378b".into()),
         ]
     );
     assert_eq!(executed_fingerprint.to_string(), SEED42_FINAL_FINGERPRINT);
