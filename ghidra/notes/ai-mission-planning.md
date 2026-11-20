@@ -2424,7 +2424,10 @@ The planner's state-7 order and the selectors move every campaign. 5
 seeds of 5000 days, dual AI, on `15e8c8ec` before and with the review
 after. These are not the same runs: the games diverge from the first
 weeks. Non-Move missions 7,953 before; 7,088 with the bit-8 fix; 9,631
-with every fix.
+with every fix. Rebased on the stage-2 commit `6b7cb77f`: 8,053 before,
+6,819 after, where seeds 1 and 4 end early (Death Star victory day 3,669,
+Alliance headquarters destroyed day 1,516; before, only seed 5 ended,
+day 3,320).
 
 ## Still open
 
