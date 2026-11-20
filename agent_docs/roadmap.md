@@ -639,6 +639,12 @@ would tune around known simulation feedback defects.
 - [ ] Construct the victory modal and unify win/loss transitions. The tick-loop victory check now opens the modal (F-005 re-check, 2026-10-14); cutscene policy, defeat wording, and a browser pass remain.
 - [ ] Remove `AdvanceTicks` or make it execute the real simulation.
 - [ ] Prove identical fingerprints for the same seed and command stream across app/playtest, native/WASM, and auto/tactical paths.
+  2026-11-20: the `sweep-v1` gate matches native and WASM on seeds 1-3 over
+  200 days with the AI passes burst and spread, and on one staged battle on
+  each combat engine (`portable_math` fixed a tactical `f32` divergence).
+  Open: the app's remaining day work and player commands, played tactical
+  battles, and automatic = tactical, which are different engines
+  (`deterministic-replay.md`).
 
 ### M3: Exceptional Browser Runtime — 3 weeks
 

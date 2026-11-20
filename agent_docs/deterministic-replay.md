@@ -3,7 +3,7 @@ title: "Deterministic Replay Contract"
 description: "Versioned command streams, simulation-data identity, checkpoints, and remaining cross-runtime gates"
 category: agent-docs
 created: 2026-09-09
-updated: 2026-10-14
+updated: 2026-11-20
 tags: [determinism, replay, wasm, multiplayer, testing]
 ---
 
@@ -27,7 +27,11 @@ it does not yet make the app and playtest simulation loops equivalent.
 | Fresh-process native replay | F-011B3 complete | Stable 25-tick original-data golden |
 | App/playtest tick convergence | Partial | One implementation of the day (`begin_day`, `start_ai_day`, `run_ai_passes`, `close_simulation_day`; F-012); same day rolls; the app's tactical battles are the one exception (`the_app_s_day_with_its_presentation_matches_the_headless_runner`) |
 | Native/WASM checkpoint equality | F-011B4 complete | Exact seed-42 artifact, nine checkpoints |
-| Automatic/tactical combat equality | Open | M2 |
+| Native/WASM multi-seed equality | Complete 2026-11-20 | Sweep: seeds 1-3, 200 days, burst and spread AI schedules |
+| App AI schedule (spread) = playtest (burst) | Complete 2026-11-20 | Native test and the sweep in both runtimes |
+| Automatic battle native/WASM equality | Complete 2026-11-20 | Sweep's staged seed-42 battle |
+| Tactical battle native/WASM equality | Complete 2026-11-20 | Same battle headless with Observe Battle; `portable_math` |
+| Automatic = tactical outcome | Not comparable | Different engines (see below) |
 
 ## Format v1
 
@@ -99,8 +103,72 @@ campaign independently, and echo the original text into their reports.
 The browser gate runs only at `?replay-check=seed42-v1`. It strictly loads
 `runtime.orpk`, publishes `window.__openRebellionReplay`, and never falls into
 normal gameplay. Invalid query values and a missing pack fail before any
-partial replay state is reported. Without the query, ordinary startup still
-uses four requests and reaches the authentic bitmap menu.
+partial replay state is reported. Without the query, ordinary startup uses
+the same four requests, then fetches the intro movies (`data/video/000.webm`,
+`001.webm`); the gate presses Escape over each, as the interface-parity gates
+do, and requires the authentic bitmap menu.
+
+## Multi-seed sweep
+
+`rebellion-data/src/replay_sweep.rs` (fixture id `sweep-v1`) has no
+committed goldens: every simulation change moves its fingerprints, and its
+claim is equality. It runs, from the same `campaign_initial_state` the seed-42
+fixture uses:
+
+- seeds 1, 2 and 3 for 200 dual-AI days at Medium speed, once with each day's
+  AI passes in one burst (`run_simulation_tick`, the playtest and replays)
+  and once spread over the day's sub-ticks with the day's end after the last
+  (`begin_simulation_day`, `run_ai_passes` per pass, `close_simulation_day`,
+  as the app runs them). Each run samples the state fingerprint every 25
+  days and digests every event (tick, system, type, details; not the wall
+  clock). A seed fails unless both schedules agree on all of it;
+- one staged battle: seed 42's largest Empire fleet is moved to the largest
+  Alliance fleet's system. The tactical engine fights it headless with
+  Observe Battle (`set_player_observing`, `FUN_0059fd40`) and the Battle
+  Alert's pause lifted, one fixed `step()` at a time, digesting the ships
+  and fighters every 100 steps and at the end; then the next day resolves
+  the same battle automatically and the sweep keeps its `combat_space`
+  details and the state fingerprint after it.
+
+`replay-gate data/base --sweep` prints the native report;
+`?replay-check=sweep-v1` publishes the browser's in
+`window.__openRebellionReplay` (about 9 s in Chromium 157);
+`check-replay-equivalence.py --sweep` compares them field by field.
+
+The 200-day campaigns fight no space battle on seeds 1-3 (seed 1 has one
+ground battle), so the staged battle is the sweep's only space combat.
+
+### Platform floating point
+
+The first sweep (2026-11-20) matched every campaign sample and the automatic
+battle but not the tactical one: at step 122 a fighter's `x` was `0.4214537`
+natively and `0.42145374` in WASM. `f32::hypot`, `sin_cos` and `acos` call the
+C library natively (glibc here, the system libm on macOS) and Rust's libm port
+in WebAssembly, and those round some last bits differently.
+`rebellion_core::portable_math` replaces them in `tactical.rs` with versions
+built from basic IEEE operations and square roots (FreeBSD/musl kernels for
+sine, cosine and arc cosine, an `f64` sum for `hypot`), each within one ulp of
+glibc. With it the whole sweep matches. The automatic battle
+(`abstract_battle.rs`) and the strategic layer call no transcendental
+function outside tests; keep it that way or route new calls through
+`portable_math`.
+
+### Automatic versus tactical
+
+The automatic battle (`abstract_battle::resolve_space_battle`, FUN_005ae9c0)
+and the tactical engine (`BattleSession::step`) are different engines and do
+not produce the same outcome or state: in the staged battle the automatic
+resolution destroys the Empire's Star Destroyer while the tactical one loses
+the Alliance's corvette. The automatic battle also counts the planet's
+squadrons (`squadrons::scramble`), which the tactical session built from the
+fleets does not. What is comparable, and the sweep checks, is each engine's
+result across runtimes for the same input. A played tactical battle also
+depends on the player's commands and on wall-clock frames: the app steps
+`4 × combat_speed` times a second from `get_frame_time()`
+(`advance_tactical_frame`), so the step count reached by any moment differs
+between machines. Its result is applied to the campaign outside the day loop
+(`tactical_flow.rs`) and has no replay command yet; replaying a played battle
+needs its commands recorded by step, which format v1 cannot express.
 
 ## Validation
 
@@ -109,7 +177,15 @@ cargo test -p rebellion-data replay --lib
 cargo test -p rebellion-data --test replay_manifest -- --ignored
 cargo check -p rebellion-app --target wasm32-unknown-unknown
 python3 scripts/check-replay-equivalence.py --skip-build --json
+python3 scripts/check-replay-equivalence.py --skip-build --sweep --json
+cargo test -p rebellion-data --lib -- --ignored replay
 ```
+
+Both scripts accept `--site DIR` to serve a staged copy (`index.html`,
+`gl.js`, the WASM, `data/runtime.orpk`, `data/video`) instead of `web/`; build
+the WASM with `cargo build --release --target wasm32-unknown-unknown -p
+rebellion-app` into that copy rather than through `build-wasm.sh` when `web/`
+belongs to another checkout.
 
 The ignored fixture test requires the locally supplied original `.DAT` files.
 It records a nine-command, 25-tick campaign on the full 200-system galaxy
@@ -125,7 +201,12 @@ synthetic data and run in normal repository test passes.
 
 ## Next implementation boundary
 
-F-011B4 proves replay-executor equivalence for one 25-tick campaign. F-012 must
-now converge the interactive app and `rebellion-playtest` on the same command,
-tick, event, and combat paths. Long-running multi-seed replay remains an M1
-gate, so this result is not a claim of full interactive game parity.
+F-011B4 proves replay-executor equivalence for one 25-tick campaign, and the
+sweep extends it to three seeds over 200 days, both AI schedules and one
+battle on each combat engine. Still open: the interactive app's other day
+work is not the shared `close_simulation_day` (F-012: the day's systems are
+written twice); player commands from the app (orders, missions, production)
+have no replay command, so no app session can be replayed; a played tactical
+battle has no recorded command stream; and the sweep has run on Linux
+x86_64 and Chromium 157 only (macOS, other browsers and other CPUs are
+untested). This is not a claim of full interactive game parity.

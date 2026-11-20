@@ -21,7 +21,7 @@ System::advance(&mut State, &GameWorld, &[TickEvent], ...) -> Vec<ResultEvent>
 Rules:
 - **Never mutates GameWorld** — returns result events for the caller to apply
 - **Caller provides RNG** — random rolls are passed as `&[f64]` or `&[f32]` slices, so tests can control outcomes exactly
-- **Deterministic** — same inputs always produce same outputs
+- **Deterministic** — same inputs always produce same outputs, natively and in WASM. Use `rebellion_core::portable_math` for `f32` `sin_cos`, `acos` and `hypot` in state-changing code: the standard methods call the native C library but Rust's libm port in the browser, and their last bits differ (`agent_docs/deterministic-replay.md`). Basic arithmetic, `sqrt` and `mul_add` are exact everywhere.
 - **No IO** — rebellion-core has zero IO deps; stays headless-testable
 
 The `PerceptionIntegrator` (rebellion-data `integrator.rs`) applies effects to `GameWorld` and emits telemetry. `simulation.rs` orchestrates the tick; `integrator.rs` owns all mutation and telemetry.
