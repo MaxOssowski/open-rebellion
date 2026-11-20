@@ -224,14 +224,17 @@ port:
   `FUN_004c86b0`, `FUN_00478140`'s flags, `FUN_00479560` with
   `0x2000000`) are not ported: states 2 and 3 find no request, and the
   sector planners' counts `+0xc8..+0xd0` stay 0.
-- A member's record is the port's (no injuries: `0x10` is never set).
+- A member's record is the port's; an injured character has `0x10`
+  (`FUN_00402230`, ported with the mission records), so an injured
+  member is let go.
 - hyp: `FUN_00403750` walks a record's location up to a system; a
   character aboard a fleet is measured from the fleet's system, and one
   with none is left out of the merged pick.
 - hyp: `FUN_004ece80` after a refused target in `FUN_0047a5b0` clears the
   target (`+0x28`), as its other uses clear the field just read.
 
-**Two Generals at one post (as read, unconfirmed in A0).** A type 1
+**Two Generals at one post (as read; to confirm with A0).** Kept as
+read (decision 2026-11-20): the port does not mark a retarget. A type 1
 planner that loses its target (the guard bit goes, for instance when a
 production module moves its site claim) chooses another (slot `+0x30`)
 but keeps its member, and nothing then sets the new target's
