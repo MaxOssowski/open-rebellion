@@ -291,6 +291,11 @@ Fleet bits `0x4000` (a standing active ship), `0x8000`, `0x20000`/`0x40000`
 
 ## Open
 
-- The thresholds the system record reads through `+0x40` (the
-  controller's `+0x138` object, `+0x24`/`+0x28`); no writer is found.
+- ~~The thresholds the system record reads through `+0x40`~~: found
+  2026-11-21. `+0x40` is the controller's class tree (`+0x138`), whose
+  `+0x24` (`FUN_0042e330`: the side's best defensive regiment's defense
+  by the Troop level) and `+0x28` (`FUN_0042e210`: its best squadron's
+  `+0x34` by the Ship level) a marked system's regiments and squadrons
+  must reach to count (`ai-sector-plans.md`, "The class tree's
+  floors").
 - System object `+0x50` bit 3, and the ship slot `+0x34(1)` test.

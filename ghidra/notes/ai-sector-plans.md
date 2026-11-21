@@ -1071,7 +1071,7 @@ port:
   `+0x150` and `+0x160..+0x174` (the class tree `+0x138`'s `+0x18`,
   `+0x28..+0x3c`) at setup and on each Shipyard research notification;
   `+0x164` is the best `values[0]` of the side's researched heavy ship
-  classes. The sector planners' port still reads them as 0.
+  classes. Ported the same day ("The class tree's floors", below).
 
 ## Ported (2026-10-15, save v51): the ships' records
 
@@ -1251,3 +1251,55 @@ fix: seed 1 42/25 -> 17/39, seed 2 31/33 -> 42/30, seed 3 23/20 ->
 17/13, seed 4 21/25 -> 8/31, seed 5 25/20 -> 23/22. The campaigns
 diverge from the first changed order, so a seed's count moves either
 way; the bursts above remain.
+
+## The class tree's floors (controller `+0x150..+0x174`, 2026-11-21)
+
+The controller's object at `+0x138` (`FUN_0042dc10`, vtable `0x658c40`)
+is the class records' tree; its own fields `+0x18..+0x3c` are controller
+`+0x150..+0x174`. `FUN_0042e210(level, side)` (at setup from
+`FUN_0042dd00`, and on each Shipyard research notification
+`FUN_004198a0`, message `0x125`) and `FUN_0042e330(level, side)` (setup,
+and the Training Facility notification `FUN_00419870`) write them;
+`FUN_0042e3b0` (Construction Yard, `FUN_004197b0`) only stores its level.
+Each figure is `FUN_0042e960(side, level, mask, key, 1)`: the class
+records with `+0x28` the side, a flag of `mask` in `+0x18` and a research
+order `+0x24` at most the level, ranked on slot `+4(key)` (order 1, the
+largest picked; the coin on equal keys cannot change the value), that
+value; 0 with none.
+
+| Controller | Tree | Writer | Classes | Key | Value |
+|---|---|---|---|---|---|
+| `+0x150` | `+0x18` | `FUN_0042e210` | | | Ship level |
+| `+0x154` | `+0x1c` | `FUN_0042e330` | | | Troop level |
+| `+0x158` | `+0x20` | `FUN_0042e3b0` | | | Facility level |
+| `+0x15c` | `+0x24` | `FUN_0042e330` | regiments `0x2000` (defensive) | `0x2000` | `+0x34` defense (`FUN_00473490`) |
+| `+0x160` | `+0x28` | `FUN_0042e210` | squadrons `0x200000` | `0x400` | `+0x34` (`FUN_00473640`) |
+| `+0x164` | `+0x2c` | `FUN_0042e210` | ships flag 1 (heavy) | `0x200` | `+0x30` attack (`FUN_00473930`) |
+| `+0x168` | `+0x30` | `FUN_0042e210` | ships flag 2 (lasers) | `0x400` | `+0x34` |
+| `+0x16c` | `+0x34` | `FUN_0042e210` | ships `0x100000` | `0x80` | `+0x44` hangar room |
+| `+0x170` | `+0x38` | `FUN_0042e210` | ships `0x100000` | `0x100` | `+0x48` troop room |
+| `+0x174` | `+0x3c` | `FUN_0042e210` | ships `0x800` (bombard) | `0x800` | `+0x38` bombardment |
+
+Readers (every one read as 0 before):
+- the system record (`FUN_00433e40` via `+0x40`): a marked system's
+  regiment counts toward its garrison when its defense reaches `+0x24`
+  (else `+0x30` takes `0x4000` offensive / `0x8000` defensive), and a
+  squadron when its `+0x34` reaches `+0x28`;
+- the plans' wants (slot `+0x50`): kind 3 `FUN_004b4920` `+0x34`/`+0x164`,
+  `+0x38`/`+0x168`; kind 1 `FUN_004bb510` `+0x38`/`+0x168`, `+0x48`/`+0x174`;
+  kind 2 `FUN_004b9fe0` `+0x34`, `+0x38`, `+0x40`/`+0x164..+0x16c`; kind 5
+  `FUN_004b3300` `+0x38`/`+0x168` with an opponent system; kind 6
+  `FUN_004b6a60` `+0x34..+0x40`/`+0x164..+0x170`; kind 4 `FUN_004b8b70`
+  `+0x34`, `+0x38`, `+0x40`/`+0x164..+0x16c` (and `+0x3c` from `+0x40`'s
+  floored value without a target);
+- a lone fleet sent on: kind 2 `FUN_004ba0d0` and kind 6 `FUN_004b6b70`
+  need fleet `values[2] >= +0x164` and `values[3] >= +0x168`;
+- the assault and bombardment tests `FUN_004ae240`, `FUN_004ae320`: the
+  target's shields `v[27]` or `+0x168` when higher, from elsewhere;
+- module 9's balance `FUN_00474b90` (`+0x164`, `ai-module-9.md`);
+- module `0xb`'s carrier role `FUN_004ca5e0` (`0x4ca8d0`: hangar room
+  `+0x27c` at most `+0x16c`).
+
+Ported as `ai_records::ClassFloors` (`Galaxy::floors`), computed from the
+side's current levels when the records are built (no save change).
+

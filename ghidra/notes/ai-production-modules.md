@@ -1122,7 +1122,8 @@ Build.
   - armed ships when its fleets have none (`+0x268 < 1`);
   - ships with lasers when none (`+0x26c < 1`);
   - carriers when the fleets' hangar room `+0x27c` is at most controller
-    `+0x16c` (no writer found).
+    `+0x16c` (the class tree's best hangar room, `FUN_0042e210`; found
+    2026-11-21).
 
   | Role | Class flags `+0x60` | Key `+0x64` | Tried `+0x68` |
   |---|---|---|---|
@@ -1216,6 +1217,8 @@ port:
 - A fleet of squadrons alone (the port's seeding) is passed over by the
   fleet queries.
 - hyp: controller `+0x16c` has no writer found and reads as 0.
+  Refuted 2026-11-21: `FUN_0042e210` writes it (`ai-sector-plans.md`,
+  "The class tree's floors").
 
 ### The scheduler, read again (`FUN_00485b40`)
 

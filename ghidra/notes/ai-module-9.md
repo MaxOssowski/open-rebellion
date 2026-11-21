@@ -154,8 +154,9 @@ side's researched heavy ship classes, 0 with none. The coin on equal keys
 cannot change the value returned.
 
 This refutes the earlier reading that controller `+0x164..+0x174` have no
-writer (`ai-sector-plans.md`, kinds 1 to 6 take them as floors); the
-sector planners' port still reads them as 0.
+writer (`ai-sector-plans.md`, kinds 1 to 6 take them as floors); all of
+`+0x150..+0x174` are ported as `ai_records::ClassFloors`
+(`ai-sector-plans.md`, "The class tree's floors").
 
 ### State 4 (`FUN_00474c00`, `0x474c00..0x474cd2`)
 
@@ -223,7 +224,7 @@ view of the pass (`PlannerIo`, as module 8's planners see it), its
 refusal is `Module9::refused`, and the strategy's state 5 runs with
 states 4 and 6 when module `0xd` steps (`Module9::balance`, controller
 `+0x224` from the sector records). Controller `+0x164` is
-`ai_module9::heaviest_attack`.
+`ai_records::ClassFloors::heavy_attack`.
 
 Orders go through the validated paths: Create Fleet (`AIAction::CreateFleet`),
 the fleet's Move home (`AIAction::MoveShips` of all its ships), the
