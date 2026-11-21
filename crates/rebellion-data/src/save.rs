@@ -75,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 135;
+pub const SAVE_VERSION: u32 = 136;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -156,7 +156,11 @@ pub const V133: u32 = 133;
 /// ([`RetiredTuning`]) after `SaveState::combat_cooldowns`.
 pub const V134: u32 = 134;
 
-/// Whether a save of `version` loads (the current one, or v116 to v134
+/// v135: the save without the AI's module `0xa` (`SaveState::ai_module_a`),
+/// its last field.
+pub const V135: u32 = 135;
+
+/// Whether a save of `version` loads (the current one, or v116 to v135
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -310,11 +314,18 @@ fn migrate_body(
         // passed its failure limit or holds an unread check or abort.
         body.extend(bincode::serialize(&AiResearchBits::default())?);
     }
+    let mut tuning = None;
     if version <= V134 {
-        let (body, tuning) = strip_retired_tuning(&body)?;
-        return Ok((body, Some(tuning)));
+        let (stripped, retired) = strip_retired_tuning(&body)?;
+        body = stripped;
+        tuning = Some(retired);
     }
-    Ok((body, None))
+    if version <= V135 {
+        // An older save ran no module 0xa: it starts its cycle afresh,
+        // with no sites.
+        body.extend(bincode::serialize(&AiModuleA::default())?);
+    }
+    Ok((body, tuning))
 }
 
 /// The tuning configuration (`GameConfig`) a v116 to v134 body holds after
@@ -634,6 +645,9 @@ fn fingerprint_with(
 ) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V135 {
+            fields.remove("ai_module_a");
+        }
         if version <= V134 {
             fields.insert("game_config".to_owned(), serde_json::to_value(tuning)?);
         }
@@ -866,6 +880,33 @@ pub struct SaveState {
     /// The loaders put it back into the AI states, whose own encoding skips
     /// it ([`restore_research_bits`]).
     pub research_planner_bits: AiResearchBits,
+    // ── v136: the AI's module `0xa` ─────────────────────────────────────
+    /// Module `0xa` (`FUN_004cc6b0`) of `ai`, then `ai2`. It stays the last
+    /// field: an older body is read by appending a fresh one
+    /// ([`migrate_body`]). The loaders put it back into the AI states,
+    /// whose own encoding skips it ([`restore_module_a`]).
+    pub ai_module_a: AiModuleA,
+}
+
+/// [`SaveState::ai_module_a`]: module `0xa` of `ai` and of `ai2`.
+pub type AiModuleA = (
+    rebellion_core::ai_module_a::ModuleA,
+    Option<rebellion_core::ai_module_a::ModuleA>,
+);
+
+/// Module `0xa` of `ai` and `ai2` for [`SaveState::ai_module_a`].
+#[must_use]
+pub fn module_a(ai: &AIState, ai2: Option<&AIState>) -> AiModuleA {
+    (ai.module_a.clone(), ai2.map(|a| a.module_a.clone()))
+}
+
+/// Put `saved` back into `ai` and `ai2`; a second side without one starts
+/// afresh.
+pub fn restore_module_a(ai: &mut AIState, ai2: Option<&mut AIState>, saved: &AiModuleA) {
+    ai.module_a = saved.0.clone();
+    if let Some(ai2) = ai2 {
+        ai2.module_a = saved.1.clone().unwrap_or_default();
+    }
 }
 
 /// [`SaveState::research_planner_bits`]: the research planners' `+0x20`
@@ -930,8 +971,8 @@ pub fn restore_sector_links(ai: &mut AIState, ai2: Option<&mut AIState>, links: 
 }
 
 impl SaveState {
-    /// Put [`Self::ai_command_planners`], then the sector links and the
-    /// research planners' bits, back into the AI states.
+    /// Put [`Self::ai_command_planners`], then the sector links, the
+    /// research planners' bits and module `0xa`, back into the AI states.
     pub fn restore_command_planners(&mut self) {
         let (first, second) = self.ai_command_planners.clone();
         self.ai.module_c = first;
@@ -940,6 +981,7 @@ impl SaveState {
         }
         restore_sector_links(&mut self.ai, self.ai2.as_mut(), &self.ai_sector_links);
         restore_research_bits(&mut self.ai, self.ai2.as_mut(), &self.research_planner_bits);
+        restore_module_a(&mut self.ai, self.ai2.as_mut(), &self.ai_module_a);
     }
 }
 
@@ -1573,6 +1615,7 @@ pub(crate) mod tests {
             ai_day: rebellion_core::ai_schedule::AiDay::default(),
             day_rolls: Vec::new(),
             research_planner_bits: AiResearchBits::default(),
+            ai_module_a: AiModuleA::default(),
         }
     }
 
@@ -2043,7 +2086,19 @@ pub(crate) mod tests {
 
     /// The length of the empty research planner bits v134 added.
     fn research_tail() -> usize {
-        bincode::serialize(&AiResearchBits::default()).unwrap().len()
+        bincode::serialize(&AiResearchBits::default()).unwrap().len() + module_a_tail()
+    }
+
+    /// The length of the fresh module `0xa` v136 added.
+    fn module_a_tail() -> usize {
+        bincode::serialize(&AiModuleA::default()).unwrap().len()
+    }
+
+    /// `state` written as a v135 file: no module `0xa`. `state` holds a
+    /// fresh one.
+    fn write_v135(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.ai_module_a, AiModuleA::default());
+        write_old(saves_dir, state, V135, module_a_tail())
     }
 
     /// `state` written as a v133 file: no research planner bits. `state`
@@ -2565,6 +2620,75 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_v135_save_loads_with_a_fresh_module_a() {
+        // v136 keeps module 0xa (SaveState::ai_module_a); a v135 save ran
+        // none, and both sides start its cycle afresh.
+        use rebellion_core::ai::{AIState, AiFaction};
+        let saves_dir = tmp_dir("v135_migration");
+        let mut state = minimal_save_state();
+        state.ai2 = Some(AIState::new(AiFaction::Alliance));
+        write_v135(&saves_dir, &state);
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v135 save migrates");
+        assert_eq!(loaded.ai_module_a, AiModuleA::default());
+        assert_eq!(loaded.ai.module_a, Default::default());
+        assert_eq!(loaded.ai2.as_ref().unwrap().module_a, Default::default());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V135).unwrap(),
+            fingerprint_as(&loaded, V135).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_module_a_of_both_sides() {
+        // AIState::module_a is skipped by the AI's own encoding; the save
+        // carries it after the other fields and the loader puts it back.
+        use rebellion_core::ai::{AIState, AiFaction};
+        use rebellion_core::ai_module_a::{ModuleA, SQUADRON_CYCLE, YARD_CYCLE};
+        let saves_dir = tmp_dir("module_a");
+        let mut state = minimal_save_state();
+        state.ai.module_a = ModuleA {
+            phase: SQUADRON_CYCLE,
+            state: 4,
+            planner: 3,
+            next_planner: 5,
+            count: 2,
+            ..ModuleA::default()
+        };
+        let mut ai2 = AIState::new(AiFaction::Alliance);
+        ai2.module_a = ModuleA {
+            phase: YARD_CYCLE,
+            state: 0xb,
+            room: 7,
+            ..ModuleA::default()
+        };
+        state.ai2 = Some(ai2);
+        state.ai_module_a = module_a(&state.ai, state.ai2.as_ref());
+        save_slot(&saves_dir, 0, "Module A", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.ai.module_a, state.ai.module_a);
+        assert_eq!(
+            loaded.ai2.as_ref().unwrap().module_a,
+            state.ai2.as_ref().unwrap().module_a
+        );
+        // Module 0xa counts in the current fingerprint.
+        let mut cleared = state.clone();
+        cleared.ai_module_a = AiModuleA::default();
+        assert_ne!(
+            compute_state_fingerprint(&cleared).unwrap(),
+            compute_state_fingerprint(&state).unwrap()
+        );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&state).unwrap()
+        );
+    }
+
+    #[test]
     fn a_v133_save_loads_without_the_research_planners_bits() {
         // v134 keeps the research planners' +0x20 bits
         // (SaveState::research_planner_bits); a v133 save had none, and
@@ -2608,10 +2732,13 @@ pub(crate) mod tests {
         state.combat_cooldowns.insert(system, 61);
         let mut tuning = RetiredTuning::default();
         tuning.ai.troop_garrison_min = 13;
-        let body = with_retired_tuning(&bincode::serialize(&state).unwrap(), tuning);
+        // A v134 body also lacks module 0xa (v136).
+        let mut current = bincode::serialize(&state).unwrap();
+        current.truncate(current.len() - module_a_tail());
+        let body = with_retired_tuning(&current, tuning);
         assert_eq!(
             body.len(),
-            bincode::serialize(&state).unwrap().len() + 76,
+            current.len() + 76,
             "the tuning's eleven fixed-width fields"
         );
         let fingerprint = fingerprint_with(&state, V134, tuning).unwrap();

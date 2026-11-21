@@ -879,6 +879,7 @@ impl LiveCampaign<'_> {
             ai_day: *self.ai_day,
             day_rolls: self.day_rolls.clone(),
             research_planner_bits: rebellion_data::save::research_bits(self.ai, self.ai2.as_ref()),
+            ai_module_a: rebellion_data::save::module_a(self.ai, self.ai2.as_ref()),
         }
     }
 
@@ -918,6 +919,7 @@ impl LiveCampaign<'_> {
             self.ai2.as_mut(),
             &state.research_planner_bits,
         );
+        rebellion_data::save::restore_module_a(self.ai, self.ai2.as_mut(), &state.ai_module_a);
         *self.repair = state.repair;
         *self.production = state.production;
         *self.autoscrap = state.autoscrap;

@@ -540,6 +540,10 @@ pub struct AIState {
     /// Module 7's fields (`FUN_004d2ef0`).
     #[serde(default)]
     pub module7: crate::ai_module7::Module7,
+    /// Module `0xa`'s fields (`FUN_004cc6b0`). The save keeps it apart
+    /// (`SaveState::ai_module_a`, v136), so this encoding skips it.
+    #[serde(skip)]
+    pub module_a: crate::ai_module_a::ModuleA,
     /// Module `0xb`'s fields (`FUN_004c8820`).
     #[serde(default)]
     pub module_b: crate::ai_module_b::ModuleB,
@@ -974,6 +978,7 @@ impl AIState {
             module5: crate::ai_module5::Module5::default(),
             module6: crate::ai_module6::Module6::default(),
             module7: crate::ai_module7::Module7::default(),
+            module_a: crate::ai_module_a::ModuleA::default(),
             module_b: crate::ai_module_b::ModuleB::default(),
             strategy: crate::ai_strategy::Strategy::default(),
             module8: crate::ai_module8::Module8::default(),
@@ -1531,8 +1536,8 @@ impl AISystem {
         // controller's token (FUN_004199b0: 0x80 module 1, 0x40 module 2,
         // 0x20 module 6, 0x10 module 0xa, 8 module 7, 4 module 5, 2 module
         // 0xb, 1 module 3), each passing it on once its own work allows.
-        // Only modules 1, 2, 3, 5, 6, 7 and 0xb are ported, so a pass hands
-        // on the yards that an unported module holds.
+        // All eight are ported; the pass stays for a holder no module
+        // answers to.
         if ![
             crate::ai_module1::YARD_TOKEN,
             crate::ai_module2::YARD_TOKEN,
@@ -1540,6 +1545,7 @@ impl AISystem {
             crate::ai_module5::YARD_TOKEN,
             crate::ai_module6::YARD_TOKEN,
             crate::ai_module7::YARD_TOKEN,
+            crate::ai_module_a::YARD_TOKEN,
             crate::ai_module_b::YARD_TOKEN,
         ]
         .contains(&state.controller.yard_holder)
@@ -1592,6 +1598,7 @@ impl AISystem {
                         6 => state.module6.refused(),
                         7 => state.module7.refused(),
                         8 => state.module8.refused(),
+                        0xa => state.module_a.refused(),
                         0xb => state.module_b.refused(),
                         0xc => state.module_c.refused(),
                         _ => {}
@@ -1729,8 +1736,10 @@ impl AISystem {
         tallies: crate::ai_module1::Tallies,
     ) -> crate::ai_module1::Step {
         let id = MODULE_IDS[module];
-        if matches!(id, 1 | 2 | 3 | 5 | 6 | 7 | 0xb) {
-            let mut coin = || planner.coin();
+        if matches!(id, 1 | 2 | 3 | 5 | 6 | 7 | 0xa | 0xb) {
+            let draws = std::cell::RefCell::new(&mut *planner);
+            let mut coin = || draws.borrow_mut().coin();
+            let mut random = |n| draws.borrow_mut().random(n);
             let mut io = crate::ai_module1::Inputs {
                 world: ctx.world,
                 research: ctx.research_state,
@@ -1743,6 +1752,7 @@ impl AISystem {
                 planners: &state.module8.planners,
                 transport: ctx.transport,
                 coin: &mut coin,
+                random: &mut random,
             };
             return match id {
                 1 => state.module1.step(&mut io),
@@ -1751,6 +1761,7 @@ impl AISystem {
                 5 => state.module5.step(&mut io),
                 6 => state.module6.step(&mut io),
                 7 => state.module7.step(&mut io),
+                0xa => state.module_a.step(&mut io),
                 _ => state.module_b.step(&mut io),
             };
         }
@@ -1892,16 +1903,13 @@ impl AISystem {
     ///   strategy ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
     ///
-    /// port: modules 9, `0xa` and `0xe` have no port counterpart and order
-    /// nothing. Module `0xa`'s stand-in, the production heuristic's
-    /// manufacturing facilities, is gone: its orders are a shipyard class's
-    /// Build at a shipyard site and yard builds under the yard token
-    /// (`ghidra/notes/ai-production-modules.md`). Modules 1, 2, 3, 5, 6, 7,
-    /// 8, `0xb` and `0xc` are ported ([`crate::ai_module1`],
+    /// port: modules 9 and `0xe` have no port counterpart and order
+    /// nothing (`ghidra/notes/ai-production-modules.md`). Modules 1, 2, 3,
+    /// 5, 6, 7, 8, `0xa`, `0xb` and `0xc` are ported ([`crate::ai_module1`],
     /// [`crate::ai_module2`], [`crate::ai_module3`], [`crate::ai_module5`],
     /// [`crate::ai_module6`], [`crate::ai_module7`], [`crate::ai_module8`],
-    /// [`crate::ai_module_b`], [`crate::ai_module_c`]) and run in
-    /// [`Self::step_module`].
+    /// [`crate::ai_module_a`], [`crate::ai_module_b`],
+    /// [`crate::ai_module_c`]) and run in [`Self::step_module`].
     fn run_module(
         id: u8,
         state: &mut AIState,
@@ -11523,6 +11531,44 @@ mod tests {
         assert_eq!((state.module_b.phase, state.module_b.state), (0, 0));
         assert_eq!(state.module_priority[11], 0);
         assert_eq!(state.orders_today, 0);
+    }
+
+    #[test]
+    fn a_refused_module_a_order_ends_its_cycle_and_the_tick() {
+        // FUN_00485b40 sends module 0xa's refused order to its slot +0x18
+        // (FUN_004dd810, vtable 0x65c6f8). Its squadron cycle state 9
+        // (FUN_004ce350): Destination on a shipyard manager the side lacks.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.9, 0.1);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module_a.phase = crate::ai_module_a::SQUADRON_CYCLE;
+        state.module_a.state = 9;
+        state.module_a.destination = Some(crate::squadrons::SquadronPlace::Planet(site));
+        state.module_a.yard = crate::ai_module1::Yard::Manager(site);
+        state.module_priority[10] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert!(orders.is_empty());
+        assert_eq!((state.module_a.phase, state.module_a.state), (0, 0));
+        assert_eq!(state.module_priority[10], 0);
+        assert_eq!(state.orders_today, 0);
+    }
+
+    #[test]
+    fn the_yard_token_stays_with_module_a_until_it_passes_it() {
+        // FUN_004199b0's holder 0x10 is module 0xa's (FUN_004ccb50 state
+        // 3); the token moves only when its yard cycle borrows a yard. With
+        // no shipyard target in the galaxy its cycle ends first.
+        let mut world = empty_world();
+        add_sector(&mut world);
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.controller.yard_holder = crate::ai_module_a::YARD_TOKEN;
+
+        cadence_pass(&mut state, &world);
+
+        assert_eq!(state.controller.yard_holder, crate::ai_module_a::YARD_TOKEN);
     }
 
     #[test]

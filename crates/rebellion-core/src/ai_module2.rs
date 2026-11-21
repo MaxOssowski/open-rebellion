@@ -570,6 +570,7 @@ mod tests {
             planners: &[],
             transport: &transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         run(&mut state.module2, &mut io)
     }

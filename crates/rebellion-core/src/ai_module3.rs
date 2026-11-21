@@ -631,7 +631,8 @@ impl Module3 {
 /// `FUN_004d8ad0` (module 5: `FUN_004d0860`, training facilities): the
 /// target, an own calm site with room and the fewest yards of `kind`
 /// (its room into `room`), or a new site found by query and marked
-/// `mark`. The second lists join only when the module has sites.
+/// `mark`. The second lists join only when the module has sites; the
+/// second system list ranks on the free room (key `0x33`).
 pub(crate) fn choose_target(
     io: &mut Inputs<'_>,
     sites: &mut Vec<SystemKey>,
@@ -639,6 +640,21 @@ pub(crate) fn choose_target(
     room: &mut i32,
     mark: u32,
     kind: YardKind,
+) -> bool {
+    choose_target_keyed(io, sites, target, room, mark, kind, 0x33)
+}
+
+/// [`choose_target`] with the second system list ranked on `v[second]`:
+/// module `0xa`'s `FUN_004cd580` ranks on key 1 (`0x4cd740`), the other
+/// modules on `0x33`.
+pub(crate) fn choose_target_keyed(
+    io: &mut Inputs<'_>,
+    sites: &mut Vec<SystemKey>,
+    target: &mut Target,
+    room: &mut i32,
+    mark: u32,
+    kind: YardKind,
+    second: usize,
 ) -> bool {
     *target = Target::None;
     *room = 0;
@@ -667,7 +683,7 @@ pub(crate) fn choose_target(
     let masks = [Mask::new(0, kind.forbid), ANY, Mask::new(1, 0x4000_0000)];
     let mut lists = vec![io.systems(sector, masks, kind.system_key, Order::Ascending)];
     if listed {
-        lists.push(io.systems(sector, masks, 0x33, Order::Ascending));
+        lists.push(io.systems(sector, masks, second, Order::Ascending));
     }
     let Some(system) = pick(&lists) else {
         return false;
@@ -740,6 +756,7 @@ mod tests {
             planners: &[],
             transport: &transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         run(&mut state.module3, &mut io)
     }

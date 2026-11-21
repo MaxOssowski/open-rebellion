@@ -612,7 +612,7 @@ impl Module7 {
 /// The squadron class record value a class choice ranks on
 /// (`FUN_00473640`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FighterRank {
+pub(crate) enum FighterRank {
     /// Key 1: the maintenance (`+0x20`).
     Maintenance,
     /// `values[i]` (`+0x30 + 4i`; key `0x400` is `values[1]`).
@@ -622,7 +622,11 @@ enum FighterRank {
 /// `FUN_0041b230(&class, 0x28, 0x200000, key, order)`: the squadron classes
 /// the side's shipyards list, ranked on the record value the key selects
 /// and picked; with the class's maintenance, 0 with none.
-fn fighter_class(io: &mut Inputs<'_>, key: FighterRank, order: Order) -> (Option<FighterKey>, i32) {
+pub(crate) fn fighter_class(
+    io: &mut Inputs<'_>,
+    key: FighterRank,
+    order: Order,
+) -> (Option<FighterKey>, i32) {
     let classes: Vec<_> = crate::build_selection::listed_classes(
         io.world,
         io.research,
@@ -714,13 +718,19 @@ fn over_budget(io: &Inputs<'_>) -> bool {
 /// shipyard upkeep (`v[34]`); 0 when the side's free maintenance falls
 /// short of it.
 fn yard_budget(io: &Inputs<'_>, sites: &[SystemKey]) -> i32 {
+    fifth_less_yards(io, sites, PERCENT)
+}
+
+/// [`yard_budget`] for a module's `percent` (`+0x24`; module `0xa`'s
+/// `FUN_004cec80`).
+pub(crate) fn fifth_less_yards(io: &Inputs<'_>, sites: &[SystemKey], percent: i32) -> i32 {
     let held: i32 = sites
         .iter()
         .filter_map(|&s| io.galaxy.system(s))
         .map(|r| r.values[34])
         .sum();
     let t = io.tallies;
-    let budget = PERCENT * t.capacity / 100 * 20 / 100 - held;
+    let budget = percent * t.capacity / 100 * 20 / 100 - held;
     if t.capacity - t.requirement < budget {
         0
     } else {
@@ -763,6 +773,7 @@ mod tests {
             planners: &[],
             transport: &transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         run(&mut state.module7, &mut io)
     }

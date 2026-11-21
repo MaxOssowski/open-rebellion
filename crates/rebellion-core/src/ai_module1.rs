@@ -188,6 +188,10 @@ pub struct Tallies {
     /// `+0x250`: the regiments' maintenance aboard the side's fleets (the
     /// own fleet records' `values[15]`, `FUN_0041ba80`).
     pub cargo_upkeep: i32,
+    /// `+0x254`: the squadrons' maintenance aboard the side's fleets (the
+    /// own fleet records' `values[16]`, `FUN_0041ba80`), which module
+    /// `0xa`'s budget reads (`FUN_004cec20`).
+    pub wing_upkeep: i32,
     /// Controller `+4` bit `0x20`: some sector record has `+0x2c` bit
     /// `0x2000000` (`FUN_0041b7e0`).
     pub sector_short: bool,
@@ -310,6 +314,7 @@ impl Tallies {
             regiment_upkeep: sum(0xfc),
             squadron_upkeep: sum(0x104),
             cargo_upkeep: own(15),
+            wing_upkeep: own(16),
             sector_short: galaxy.sectors.iter().any(|s| s.summary & 0x200_0000 != 0),
             sector_invading: galaxy.sectors.iter().any(|s| s.summary & 0x100_0000 != 0),
             ship_upkeep: own(14),
@@ -377,6 +382,9 @@ pub struct Inputs<'a> {
     pub transport: &'a crate::troop_transport::TroopTransportState,
     /// `FUN_0041cd80(10) < 5`, the ranked lists' coin.
     pub coin: &'a mut dyn FnMut() -> bool,
+    /// `FUN_0041cd80(n)`: a draw from 0 to `n - 1`, which module `0xa`
+    /// takes for its squadron key (`FUN_004cd230`).
+    pub random: &'a mut dyn FnMut(i32) -> i32,
 }
 
 impl Inputs<'_> {
@@ -1548,6 +1556,7 @@ pub(crate) mod tests {
             planners: &[],
             transport: &transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         state.module1.step(&mut io)
     }
@@ -1566,6 +1575,7 @@ pub(crate) mod tests {
         regiment_upkeep: 0,
         squadron_upkeep: 0,
         cargo_upkeep: 0,
+        wing_upkeep: 0,
         sector_short: false,
         sector_invading: false,
         ship_upkeep: 0,
@@ -1866,6 +1876,7 @@ pub(crate) mod tests {
             planners: &[],
             transport: &transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         state.module1.claim(&mut io);
 
@@ -1897,6 +1908,7 @@ pub(crate) mod tests {
             planners: &[],
             transport: &transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         run(&mut state.module1, &mut io)
     }
@@ -2690,6 +2702,7 @@ pub(crate) mod tests {
                 regiment_upkeep: 0,
                 squadron_upkeep: 0,
                 cargo_upkeep: 0,
+                wing_upkeep: 0,
                 sector_short: false,
                 sector_invading: false,
                 ship_upkeep: 0,

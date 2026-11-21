@@ -629,7 +629,7 @@ fn record_at<'a>(
 ///
 /// port: a fleet of squadrons alone (the port's seeding) holds no capital
 /// ship, which no fleet of the original lacks; the queries pass over it.
-fn fleets(io: &mut Inputs<'_>, masks: Mask, key: usize, order: Order) -> Vec<FleetKey> {
+pub(crate) fn fleets(io: &mut Inputs<'_>, masks: Mask, key: usize, order: Order) -> Vec<FleetKey> {
     let keyed: Vec<_> = io
         .world
         .fleets
@@ -765,6 +765,7 @@ mod tests {
             planners: &state.module8.planners,
             transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         run(&mut state.module_b, &mut io)
     }

@@ -844,6 +844,7 @@ mod tests {
             planners: &state.module8.planners,
             transport: &transport,
             coin: &mut coin,
+            random: &mut |_| 0,
         };
         run(&mut state.module6, &mut io)
     }

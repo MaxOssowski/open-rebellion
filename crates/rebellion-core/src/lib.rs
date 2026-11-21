@@ -12,6 +12,7 @@ pub mod ai_module7;
 pub mod ai_module8;
 pub mod ai_plan;
 pub mod ai_planner;
+pub mod ai_module_a;
 pub mod ai_module_b;
 pub mod ai_module_c;
 pub mod ai_records;
