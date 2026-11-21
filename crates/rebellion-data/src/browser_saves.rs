@@ -31,7 +31,7 @@ use crate::save::{
     compute_mod_hash, compute_state_fingerprint, decode_body, SaveMeta, SaveState,
     StateFingerprint, MAX_SAVE_SLOTS, MIGRATED_VERSION, SAVE_VERSION, STATE_FINGERPRINT_VERSION,
     V117, V118, V119, V120, V121, V122, V123, V124, V125, V126, V127, V128, V129, V130, V131, V132,
-    V133, V134, V135, V136, V137, V138,
+    V133, V134, V135, V136, V137, V138, V139,
 };
 
 const BROWSER_META_VERSION: u32 = 1;
@@ -92,8 +92,9 @@ pub fn decode_stored_body(body: &StoredValue) -> anyhow::Result<Vec<u8>> {
 
 /// The versions whose keys a slot is read from, newest first: a slot holds
 /// the current version's save, else the newest older one (migrated on load).
-const READ_VERSIONS: [u32; 24] = [
+const READ_VERSIONS: [u32; 25] = [
     SAVE_VERSION,
+    V139,
     V138,
     V137,
     V136,

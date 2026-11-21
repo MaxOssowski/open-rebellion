@@ -75,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 139;
+pub const SAVE_VERSION: u32 = 140;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -173,7 +173,11 @@ pub const V137: u32 = 137;
 /// [`decode_body`] rolls ([`crate::seeds::roll_missing_resources`]).
 pub const V138: u32 = 138;
 
-/// Whether a save of `version` loads (the current one, or v116 to v138
+/// v139: the save without the captives' pending escapes
+/// (`SaveState::escape_requests`), its last field.
+pub const V139: u32 = 139;
+
+/// Whether a save of `version` loads (the current one, or v116 to v139
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -348,6 +352,13 @@ fn migrate_body(
         // Destination: the port refused one.
         body.extend(bincode::serialize(&ProductionFleets::default())?);
     }
+    if version <= V139 {
+        // An older save kept no pending escapes: an escape rolled on a
+        // mission freed the captive at once.
+        body.extend(bincode::serialize(
+            &Vec::<rebellion_core::ids::CharacterKey>::new(),
+        )?);
+    }
     Ok((body, tuning))
 }
 
@@ -499,6 +510,9 @@ pub fn decode_body(
         &mut state.world.products,
         &state.production_fleets,
     );
+    state
+        .missions
+        .restore_escape_requests(state.escape_requests.clone());
     rebellion_core::squadrons::restore_damaged_squadrons(
         &mut state.world,
         &mut state.troop_transport.squadrons,
@@ -680,6 +694,9 @@ fn fingerprint_with(
 ) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V139 {
+            fields.remove("escape_requests");
+        }
         if version <= V137 {
             fields.remove("production_fleets");
         }
@@ -943,6 +960,12 @@ pub struct SaveState {
     /// loader puts it back into `manufacturing` and `products`, whose own
     /// encodings skip it ([`restore_production_fleets`]).
     pub production_fleets: ProductionFleets,
+    // ── v140: the captives' pending escapes ─────────────────────────────
+    /// Each captive whose escape roll hit while it was on a mission
+    /// (EscapeRequest, `+0xac` bit 9; `MissionState::escape_requests`). It
+    /// stays the last field; the loader puts it back into `missions`, whose
+    /// own encoding skips it. An older save has none.
+    pub escape_requests: Vec<rebellion_core::ids::CharacterKey>,
 }
 
 /// [`SaveState::production_fleets`]: the areas' fleet Destinations and the
@@ -1783,6 +1806,7 @@ pub(crate) mod tests {
             ai_module_a: AiModuleA::default(),
             ai_module9: AiModule9::default(),
             production_fleets: ProductionFleets::default(),
+            escape_requests: Vec::new(),
         }
     }
 
@@ -2270,9 +2294,18 @@ pub(crate) mod tests {
             + production_fleets_tail()
     }
 
-    /// The length of the empty production fleets v138 added.
+    /// The length of the empty production fleets v138 added, and what
+    /// came after.
     fn production_fleets_tail() -> usize {
         bincode::serialize(&ProductionFleets::default())
+            .unwrap()
+            .len()
+            + escape_requests_tail()
+    }
+
+    /// The length of the empty escape requests v140 added.
+    fn escape_requests_tail() -> usize {
+        bincode::serialize(&Vec::<rebellion_core::ids::CharacterKey>::new())
             .unwrap()
             .len()
     }
@@ -2909,6 +2942,47 @@ pub(crate) mod tests {
     fn write_v138(saves_dir: &std::path::Path, state: &SaveState) -> usize {
         let body = bincode::serialize(state).unwrap();
         write_body(saves_dir, state, V138, &body)
+    }
+
+    /// `state` written as a v139 file: no escape requests. `state` holds
+    /// none.
+    fn write_v139(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert!(state.escape_requests.is_empty());
+        write_old(saves_dir, state, V139, escape_requests_tail())
+    }
+
+    #[test]
+    fn a_v139_save_loads_with_no_pending_escape() {
+        // v140 keeps each captive's EscapeRequest (+0xac bit 9) raised on a
+        // mission (SaveState::escape_requests); v139 freed it at once.
+        let saves_dir = tmp_dir("v139_escapes");
+        let state = minimal_save_state();
+        write_v139(&saves_dir, &state);
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v139 save migrates");
+        assert!(loaded.escape_requests.is_empty());
+        assert!(loaded.missions.escape_requests().is_empty());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V139).unwrap(),
+            fingerprint_as(&loaded, V139).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_a_captives_pending_escape() {
+        // FUN_00561990's hit on a captive on a Move waits for FUN_004ef0c0;
+        // the save carries the request and the loader puts it back.
+        let saves_dir = tmp_dir("escape_requests");
+        let mut state = minimal_save_state();
+        let captive = state.world.characters.insert(Default::default());
+        state.missions.restore_escape_requests(vec![captive]);
+        state.escape_requests = state.missions.escape_requests().to_vec();
+        save_slot(&saves_dir, 0, "Escape", &state, &[]).expect("save");
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("load");
+        assert_eq!(loaded.missions.escape_requests(), &[captive]);
     }
 
     #[test]

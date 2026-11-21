@@ -922,6 +922,7 @@ impl ReplayRuntime {
             ai_module_a,
             ai_module9,
             production_fleets,
+            escape_requests,
         } = state;
         let (mut ai, mut ai2) = (ai, ai2);
         ai.module_c = ai_command_planners.0;
@@ -943,6 +944,8 @@ impl ReplayRuntime {
             &mut world.products,
             &production_fleets,
         );
+        let mut missions = missions;
+        missions.restore_escape_requests(escape_requests);
         let mut troop_transport = troop_transport;
         rebellion_core::squadrons::restore_damaged_squadrons(
             &mut world,
@@ -1128,6 +1131,7 @@ impl ReplayRuntime {
                 &self.states.manufacturing,
                 &self.world.products,
             ),
+            escape_requests: self.states.missions.escape_requests().to_vec(),
             ai_command_planners: crate::save::command_planners(
                 &self.states.ai,
                 self.states.ai2.as_ref(),
@@ -1463,6 +1467,7 @@ mod tests {
             ai_module_a: crate::save::AiModuleA::default(),
             ai_module9: crate::save::AiModule9::default(),
             production_fleets: crate::save::ProductionFleets::default(),
+            escape_requests: Vec::new(),
             ai_command_planners: crate::save::AiCommandPlanners::default(),
             ai_sector_links: crate::save::AiSectorLinks::default(),
         }

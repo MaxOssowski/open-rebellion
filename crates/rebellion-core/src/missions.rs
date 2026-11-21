@@ -2085,6 +2085,11 @@ pub struct MissionState {
     escape_timers: Vec<EscapeTimer>,
     /// Escaped characters travelling to safety.
     escapees: Vec<EscapeeTransit>,
+    /// Captives whose escape roll hit while they were on a mission
+    /// (EscapeRequest, `+0xac` bit 9, `FUN_004eeb80(1)`), in hit order. The
+    /// save carries them in its own last field (`SaveState::escape_requests`).
+    #[serde(skip)]
+    escape_requests: Vec<CharacterKey>,
 }
 
 impl MissionState {
@@ -2096,7 +2101,19 @@ impl MissionState {
             en_route: Vec::new(),
             escape_timers: Vec::new(),
             escapees: Vec::new(),
+            escape_requests: Vec::new(),
         }
+    }
+
+    /// Captives whose escape waits for them to leave their mission.
+    #[must_use]
+    pub fn escape_requests(&self) -> &[CharacterKey] {
+        &self.escape_requests
+    }
+
+    /// Puts back the escape requests a save carried beside this state.
+    pub fn restore_escape_requests(&mut self, requests: Vec<CharacterKey>) {
+        self.escape_requests = requests;
     }
 
     /// Members travelling to a mission target.
@@ -2409,6 +2426,12 @@ impl MissionState {
     ///
     /// A character's side is [`character_side`], a prisoner's being its
     /// captor's, as the character menu's Move reads it.
+    ///
+    /// `FUN_0054bb90` first moves every prisoner (member slot `+0x1d4`,
+    /// Captured, `FUN_004edc70`) out of the team into the captured list and
+    /// fails `0x40`/`0x91` when no team member is left: a prisoner moves only
+    /// with a free member of its captor's side, its jailer (manual p. 96,
+    /// "as long as one character or SpecForce unit acts as 'jailer'").
     #[must_use]
     pub fn move_order_enabled(
         &self,
@@ -2418,10 +2441,12 @@ impl MissionState {
     ) -> bool {
         let side = crate::dat::Faction::from(faction);
         let mut place = None;
+        let mut jailer = false;
         for &member in team {
             let Some(state) = member_state(world, member) else {
                 return false;
             };
+            jailer |= !state.prisoner;
             let member_side = match member {
                 MissionMember::Character(key) => world.characters.get(key).and_then(character_side),
                 MissionMember::SpecialForce(_) => {
@@ -2440,7 +2465,7 @@ impl MissionState {
                 Some(_) => {}
             }
         }
-        place.is_some()
+        place.is_some() && jailer
     }
 
     /// Queue a mission built in a test, past the dispatch rules.
@@ -4852,6 +4877,23 @@ impl MissionSystem {
                 .is_some_and(|c| c.is_captive && !c.is_killed && !c.escape_barred)
         };
         state.escape_timers.retain(|timer| held(timer.character));
+        // FUN_004f1a80 clears EscapeRequest on a Captured change.
+        state.escape_requests.retain(|&key| held(key));
+        // FUN_004ef0c0 frees a captive with EscapeRequest set once it is
+        // usable and off its mission (+0x78 bit 7): it runs again from the
+        // mission-change slot Character_vt268 (FUN_004f1490). port: the
+        // request is checked here, on the first advance after the captive
+        // leaves its mission or lands from its trip.
+        let ready: Vec<CharacterKey> = state
+            .escape_requests
+            .iter()
+            .copied()
+            .filter(|&key| !on_a_mission(state, world, key))
+            .collect();
+        state.escape_requests.retain(|key| !ready.contains(key));
+        for &key in &ready {
+            escape(state, world, key, now, &mut effects);
+        }
 
         let param = |id| world.gnprtb.value(id, world.difficulty_index);
         let delay = |rolls: &mut crate::uprising::Rolls<'_>| {
@@ -4864,7 +4906,11 @@ impl MissionSystem {
         let empty = crate::world::MstbTable::new(Vec::new());
         let escapetb = world.mission_tables.get("ESCAPETB").unwrap_or(&empty);
         let mut rolls = crate::uprising::Rolls::new(rolls);
-        for (key, _) in world.characters.iter().filter(|(key, _)| held(*key)) {
+        for (key, _) in world
+            .characters
+            .iter()
+            .filter(|(key, _)| held(*key) && !ready.contains(key))
+        {
             let Some(index) = state.escape_timers.iter().position(|t| t.character == key) else {
                 let due = now + delay(&mut rolls);
                 state.escape_timers.push(EscapeTimer {
@@ -4885,48 +4931,79 @@ impl MissionSystem {
             if !hit {
                 continue;
             }
-            state.escape_timers.remove(index);
-            let character = &world.characters[key];
-            effects.push(MissionEffect::CharacterEscaped {
-                character: key,
-                escaped_to_alliance: character.is_alliance,
-            });
-            let Some(from) = character.current_system else {
+            // FUN_00561990's hit only sets EscapeRequest (FUN_004eeb80(1));
+            // FUN_004ef0c0 acts on it at once unless the captive is on a
+            // mission, a jailer's Move included.
+            if on_a_mission(state, world, key) {
+                if !state.escape_requests.contains(&key) {
+                    state.escape_requests.push(key);
+                }
                 continue;
-            };
-            let Some(to) = escape_destination(world, key, from) else {
-                continue;
-            };
-            let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
-            // port: a character travels at the GNPRTB 1 default speed.
-            let days = crate::movement::transit_ticks_between(
-                world,
-                position(from),
-                position(to),
-                crate::movement::default_speed(world),
-            );
-            if days == 0 {
-                effects.push(MissionEffect::MemberMoved {
-                    member: MissionMember::Character(key),
-                    to: Some(to),
-                });
-            } else {
-                // port: a travelling character is off the map, as a mission
-                // member is.
-                effects.push(MissionEffect::MemberMoved {
-                    member: MissionMember::Character(key),
-                    to: None,
-                });
-                state.escapees.push(EscapeeTransit {
-                    character: key,
-                    to,
-                    arrival: now + u64::from(days),
-                    abode: None,
-                    ship: None,
-                });
             }
+            state.escape_timers.remove(index);
+            escape(state, world, key, now, &mut effects);
         }
         effects
+    }
+}
+
+/// Whether `key` is on a mission (`+0x78` bit 7), which holds back
+/// `FUN_004ef0c0`. port: a captive still travelling to a mission's target
+/// counts too, since the port keeps a traveller off the map.
+fn on_a_mission(state: &MissionState, world: &GameWorld, key: CharacterKey) -> bool {
+    world.characters.get(key).is_some_and(|c| c.on_mission)
+        || state.engaged(MissionMember::Character(key))
+}
+
+/// `FUN_004ef0c0` -> `FUN_004ef570`: frees `key`, which restores its home
+/// side and sets Autorouting (`FUN_004f18e0`): it leaves a location another
+/// side holds for [`escape_destination`] and travels there (`FUN_0054c7d0`).
+fn escape(
+    state: &mut MissionState,
+    world: &GameWorld,
+    key: CharacterKey,
+    now: u64,
+    effects: &mut Vec<MissionEffect>,
+) {
+    state.escape_timers.retain(|timer| timer.character != key);
+    let character = &world.characters[key];
+    effects.push(MissionEffect::CharacterEscaped {
+        character: key,
+        escaped_to_alliance: character.is_alliance,
+    });
+    let Some(from) = character.current_system else {
+        return;
+    };
+    let Some(to) = escape_destination(world, key, from) else {
+        return;
+    };
+    let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
+    // port: a character travels at the GNPRTB 1 default speed.
+    let days = crate::movement::transit_ticks_between(
+        world,
+        position(from),
+        position(to),
+        crate::movement::default_speed(world),
+    );
+    if days == 0 {
+        effects.push(MissionEffect::MemberMoved {
+            member: MissionMember::Character(key),
+            to: Some(to),
+        });
+    } else {
+        // port: a travelling character is off the map, as a mission
+        // member is.
+        effects.push(MissionEffect::MemberMoved {
+            member: MissionMember::Character(key),
+            to: None,
+        });
+        state.escapees.push(EscapeeTransit {
+            character: key,
+            to,
+            arrival: now + u64::from(days),
+            abode: None,
+            ship: None,
+        });
     }
 }
 
@@ -5797,6 +5874,60 @@ mod tests {
             Some(MissionEffect::CharacterEscaped { .. })
         ));
         assert_eq!(timer_of(&state, captive), None);
+    }
+
+    #[test]
+    fn an_escape_rolled_during_a_move_waits_until_the_prisoner_leaves_the_mission() {
+        // FUN_00561990's hit sets EscapeRequest (FUN_004eeb80(1)); FUN_004ef0c0
+        // acts only on a captive off its mission (+0x78 bit 7) and runs again
+        // from the mission-change slot Character_vt268 (FUN_004f1490).
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 100, 100);
+        world
+            .mission_tables
+            .insert("ESCAPETB".into(), escapetb(&[(0, 100)]));
+        let mut state = MissionState::new();
+        MissionSystem::advance_escapes(&mut state, &world, 0, &[0.0]);
+        world.characters[captive].on_mission = true;
+
+        let effects = MissionSystem::advance_escapes(&mut state, &world, 100, &[0.0, 0.0]);
+        assert!(effects.is_empty(), "held back on the Move: {effects:?}");
+        assert_eq!(state.escape_requests(), &[captive]);
+        // The timer keeps firing; a second hit asks again, once.
+        let due = timer_of(&state, captive).expect("re-armed");
+        assert!(MissionSystem::advance_escapes(&mut state, &world, due, &[0.0, 0.0]).is_empty());
+        assert_eq!(state.escape_requests(), &[captive]);
+
+        world.characters[captive].on_mission = false;
+        let effects = MissionSystem::advance_escapes(&mut state, &world, due + 1, &[0.9, 0.9]);
+        assert!(matches!(
+            effects.first(),
+            Some(MissionEffect::CharacterEscaped { character, .. }) if *character == captive
+        ));
+        assert!(state.escape_requests().is_empty());
+        assert_eq!(timer_of(&state, captive), None);
+    }
+
+    #[test]
+    fn a_captive_freed_another_way_drops_its_pending_escape() {
+        // FUN_004f1a80 clears EscapeRequest when Captured changes.
+        let mut world = escape_world();
+        let prison = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let captive = captive_at(&mut world, prison, 100, 100);
+        world
+            .mission_tables
+            .insert("ESCAPETB".into(), escapetb(&[(0, 100)]));
+        let mut state = MissionState::new();
+        MissionSystem::advance_escapes(&mut state, &world, 0, &[0.0]);
+        world.characters[captive].on_mission = true;
+        MissionSystem::advance_escapes(&mut state, &world, 100, &[0.0, 0.0]);
+        assert_eq!(state.escape_requests(), &[captive]);
+
+        world.characters[captive].is_captive = false;
+        world.characters[captive].on_mission = false;
+        assert!(MissionSystem::advance_escapes(&mut state, &world, 101, &[0.0]).is_empty());
+        assert!(state.escape_requests().is_empty());
     }
 
     #[test]
@@ -8253,6 +8384,84 @@ mod tests {
             abode: None,
         });
         assert!(!travelling.move_order_enabled(&world, MissionFaction::Alliance, &[member(a)]));
+    }
+
+    /// An Alliance character held by the Empire at `system`.
+    fn empire_prisoner_at(world: &mut GameWorld, system: SystemKey) -> CharacterKey {
+        let key = agent_at(world, system, true);
+        world.characters[key].is_captive = true;
+        world.characters[key].captured_by = Some(crate::dat::Faction::Empire);
+        key
+    }
+
+    #[test]
+    fn move_is_disabled_for_a_prisoner_without_a_jailer() {
+        // FUN_0054bb90 moves every prisoner (+0x1d4) to the captured list and
+        // fails 0x40/0x91 on an empty team; FUN_0051fe20 greys the 0x241.
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let a = empire_prisoner_at(&mut world, here);
+        let b = empire_prisoner_at(&mut world, here);
+        let state = MissionState::new();
+        let member = MissionMember::Character;
+        assert!(!state.move_order_enabled(&world, MissionFaction::Empire, &[member(a)]));
+        assert!(!state.move_order_enabled(&world, MissionFaction::Empire, &[member(a), member(b)]));
+    }
+
+    #[test]
+    fn move_is_enabled_for_a_prisoner_with_a_free_jailer_at_its_place() {
+        // Manual p. 96: a captive travels "as long as one character or
+        // SpecForce unit acts as 'jailer'"; FUN_0054bb90 keeps the jailer in
+        // the team. The prisoner carries its captor's side (FUN_004eec60).
+        let mut world = minimal_world();
+        let (here, _) = two_systems();
+        let prisoner = empire_prisoner_at(&mut world, here);
+        let jailer = agent_at(&mut world, here, false);
+        let state = MissionState::new();
+        let team = [
+            MissionMember::Character(prisoner),
+            MissionMember::Character(jailer),
+        ];
+        assert!(state.move_order_enabled(&world, MissionFaction::Empire, &team));
+        assert!(!state.move_order_enabled(&world, MissionFaction::Alliance, &team));
+        world.characters[jailer].on_mission = true;
+        assert!(!state.move_order_enabled(&world, MissionFaction::Empire, &team));
+    }
+
+    #[test]
+    fn a_special_force_can_be_a_prisoners_jailer() {
+        // FUN_00533ce0 is a unit's +0x1c8; FUN_0054bb90 keeps a free unit in
+        // the team (manual p. 96, "one character or SpecForce unit").
+        let mut world = minimal_world();
+        let (unit, at) = unit_on_surface(&mut world, false);
+        let prisoner = empire_prisoner_at(&mut world, at);
+        let state = MissionState::new();
+        assert!(state.move_order_enabled(
+            &world,
+            MissionFaction::Empire,
+            &[
+                MissionMember::Character(prisoner),
+                MissionMember::SpecialForce(unit)
+            ]
+        ));
+    }
+
+    #[test]
+    fn a_jailer_at_another_place_does_not_enable_a_prisoners_move() {
+        // FUN_0054bf00: every member, the captured ones too, at one place.
+        let mut world = minimal_world();
+        let (here, there) = two_systems();
+        let prisoner = empire_prisoner_at(&mut world, here);
+        let jailer = agent_at(&mut world, there, false);
+        let state = MissionState::new();
+        assert!(!state.move_order_enabled(
+            &world,
+            MissionFaction::Empire,
+            &[
+                MissionMember::Character(prisoner),
+                MissionMember::Character(jailer)
+            ]
+        ));
     }
 
     #[test]

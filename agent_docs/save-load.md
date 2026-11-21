@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v139, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v138 migrations"
+description: "Native and browser save v140, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v139 migrations"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-11-21
@@ -11,7 +11,7 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v139. v116 to v138 still load
+serializable snapshot. The current format is v140. v116 to v139 still load
 through their migrations (below); no other version does.
 
 v139 keeps v138's layout. A v138 or older save was made before every
@@ -21,7 +21,7 @@ systems hold 0/0. `decode_body` rolls each system left without energy
 from a stream seeded by its id (`seeds::roll_missing_resources`), and a
 side's explored copy still showing 0/0 takes the new values.
 
-## Native format (v139)
+## Native format (v140)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -90,7 +90,8 @@ Every mutable campaign subsystem required by the app is serialized:
 | `research_planner_bits` | `(Vec<u32>, Option<Vec<u32>>)` (v134, the last field): each research planner's `+0x20` bits (`ResearchPlanner::pending`: `0x80` past its failure limit, the Mission Report's check and abort), of `ai` then `ai2`, in the planners' order. The AI's own encoding skips them; the loaders put them back (`save::restore_research_bits`). An older save has none |
 | `ai_module_a` | `(ModuleA, Option<ModuleA>)` (v136, the last field): module `0xa` of `ai` then `ai2` (`FUN_004cc6b0`: its cycle, planner walk, site, destination, class, counts and sites). The AI's own encoding skips it; the loaders put it back (`save::restore_module_a`). An older save ran none and starts it afresh |
 | `ai_module9` | `(Module9, Option<Module9>)` (v137, the last field): module 9 of `ai` then `ai2` (`FUN_004cf0a0`: its state, planner walk and the headquarters planners, each with its state, held ships, fleet, system, balance and refresh flag). The AI's own encoding skips it; the loaders put it back (`save::restore_module9`). An older save ran none and starts with no planners |
-| `production_fleets` | `(Vec<((SystemKey, ProductionArea), FleetKey)>, Vec<(u64, FleetKey)>)` (v138, the last field): each production area whose Destination (`0x214`) is a fleet (`ManufacturingState::destination_fleet`; a shipyard or training manager may name one, `FUN_00537180`), and each product's fleet target (`Product::target_fleet`) by id. The manufacturing and product encodings skip them; the loaders put them back (`save::restore_production_fleets`). An older save has none |
+| `production_fleets` | `(Vec<((SystemKey, ProductionArea), FleetKey)>, Vec<(u64, FleetKey)>)` (v138): each production area whose Destination (`0x214`) is a fleet (`ManufacturingState::destination_fleet`; a shipyard or training manager may name one, `FUN_00537180`), and each product's fleet target (`Product::target_fleet`) by id. The manufacturing and product encodings skip them; the loaders put them back (`save::restore_production_fleets`). An older save has none |
+| `escape_requests` | `Vec<CharacterKey>` (v140, the last field): each captive whose escape roll (`FUN_00561990`) hit while it was on a mission, a jailer's Move included (EscapeRequest, `+0xac` bit 9). `FUN_004ef0c0` frees it once it leaves the mission (`MissionState::escape_requests`). The mission encoding skips it; the loaders put it back. An older save has none |
 | `ai_day` | `rebellion_core::ai_schedule::AiDay` (v132, the last field): the current day's AI passes (the passes the day has, those run, the bombardment stream's state, and the day's end owed: the loyalty watch and the days it closes). The app runs one pass a sub-tick, so a save made within a day resumes at its next pass. A v131 or older save was made between days and loads with a finished day |
 | `system_copy_uprisings` | `SystemCopyUprisings` (v131): each side's copies' uprising bit (`+0x88` bit 2) by the system's id (`ObjectViews::system_uprisings`, `ghidra/notes/fog-of-war.md`). The views' own encoding skips it; the loaders put it back. A v130 or older save's copies take each system's own bit at load (`object_views::seed_uprisings`) |
 

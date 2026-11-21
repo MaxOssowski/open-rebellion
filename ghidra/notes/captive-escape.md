@@ -208,3 +208,26 @@ tab and the Defenses window's personnel page (`captive_mark`).
 - `FUN_004ef190` and the handler of event `0x30a` (`FUN_00516220`).
 - What `FUN_00505230` with range `1..0x12` checks before each fire
   (`FUN_0057d330`, `FUN_0057d670`).
+
+## Moving a captive with a jailer (ported 2026-11-22)
+
+Manual p. 96: a captive can be moved "as long as one character or SpecForce
+unit acts as 'jailer' and stays with the character during transport".
+
+- The captor selects the captive together with a free character or special
+  force of its side at the same place and orders Move. `FUN_0053cbc0` puts
+  them in one `0x241`; its `+0x18` (`FUN_0051fe20` -> `FUN_0054d1a0` ->
+  `FUN_005429e0`) runs `FUN_0054bb90`, which moves every Captured member
+  (`+0x1d4`, `FUN_004edc70`) to the captured list and fails `0x40`/`0x91`
+  on an empty team. So a captive alone, or a team of captives, is grey.
+  Port: `MissionState::move_order_enabled` (the jailer rule) and
+  `team_gates`, which checks a team's personnel together.
+- The captive travels on the Move mission's captured list and lands at the
+  target still captive (Move's MISSNSD column 10 is 0, `FUN_00521220`).
+- An escape roll that hits while the captive is on a mission only sets
+  EscapeRequest (`FUN_004eeb80(1)`). `FUN_004ef0c0` acts once the captive
+  is off its mission; `Character_vt268` (`FUN_004f1490`, the mission-change
+  slot) runs it again, and `FUN_004f1a80` clears the request on a Captured
+  change. Port: `MissionState::escape_requests` (save v140); the request is
+  checked on the first escape advance after the captive leaves the mission
+  or lands. hyp: no vtable-only path clears bit 9 meanwhile.

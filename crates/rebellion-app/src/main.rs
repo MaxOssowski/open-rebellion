@@ -986,6 +986,7 @@ impl LiveCampaign<'_> {
                 self.manufacturing,
                 &self.world.products,
             ),
+            escape_requests: self.missions.escape_requests().to_vec(),
         }
     }
 
@@ -5696,20 +5697,31 @@ async fn main() {
                                 team,
                                 point,
                             } => {
-                                let gates = team_gates(&team, |object| {
-                                    order_gates(
-                                        Some(object),
+                                let personnel = |members: &[MissionMember]| {
+                                    mission_state.move_order_enabled(
                                         &world,
-                                        &mission_state,
-                                        &movement_state,
-                                        &troop_transport_state,
-                                        &delivery_state,
-                                        &mfg_state,
-                                        &research_state,
                                         player_faction,
-                                        victory_state.conditions_word,
+                                        members,
                                     )
-                                });
+                                };
+                                let gates = team_gates(
+                                    &team,
+                                    |object| {
+                                        order_gates(
+                                            Some(object),
+                                            &world,
+                                            &mission_state,
+                                            &movement_state,
+                                            &troop_transport_state,
+                                            &delivery_state,
+                                            &mfg_state,
+                                            &research_state,
+                                            player_faction,
+                                            victory_state.conditions_word,
+                                        )
+                                    },
+                                    Some(&personnel),
+                                );
                                 object_menu_place = Some((system, team_squadron_place(&team, system)));
                                 object_menu = Some(
                                     ObjectMenuState::new(Some(selection), gates, point)
@@ -5930,7 +5942,18 @@ async fn main() {
                                 let gates = if team.is_empty() {
                                     gates_of(selection)
                                 } else {
-                                    team_gates(&team, |object| gates_of(Some(object)))
+                                    let personnel = |members: &[MissionMember]| {
+                                        mission_state.move_order_enabled(
+                                            &world,
+                                            player_faction,
+                                            members,
+                                        )
+                                    };
+                                    team_gates(
+                                        &team,
+                                        |object| gates_of(Some(object)),
+                                        Some(&personnel),
+                                    )
                                 };
                                 object_menu_place = Some((system, team_squadron_place(&team, system)));
                                 object_menu = Some(
@@ -9885,20 +9908,39 @@ fn team_squadron_place(team: &[MenuObject], system: SystemKey) -> SquadronPlace 
 /// when the order with the whole team as its team is (`+0x18`, which runs
 /// each member's own check). port: each member's own Move gate and
 /// Mission gate stand in for the team order's.
-fn team_gates(team: &[MenuObject], gates_of: impl Fn(MenuObject) -> OrderGates) -> OrderGates {
+///
+/// `personnel_move`, when given, checks the team's characters and special
+/// forces together, as their one `0x241` sub-order does (`FUN_0053cbc0`):
+/// `FUN_0054bb90` lets a prisoner go only with a free member, its jailer,
+/// so a prisoner's own gate alone would refuse the pair.
+fn team_gates(
+    team: &[MenuObject],
+    gates_of: impl Fn(MenuObject) -> OrderGates,
+    personnel_move: Option<&dyn Fn(&[MissionMember]) -> bool>,
+) -> OrderGates {
     let Some(&first) = team.first() else {
         return OrderGates::default();
     };
     let mut gates = gates_of(first);
     if team.len() > 1 {
-        let each: Vec<(MenuObject, OrderGates)> =
-            team.iter().map(|&object| (object, gates_of(object))).collect();
+        let each: Vec<(MenuObject, OrderGates)> = team
+            .iter()
+            .map(|&object| (object, gates_of(object)))
+            .collect();
+        let personnel: Vec<MissionMember> = team
+            .iter()
+            .filter_map(|object| object.mission_member())
+            .collect();
+        let together = match personnel_move {
+            Some(check) if !personnel.is_empty() => Some(check(&personnel)),
+            _ => None,
+        };
         let moves = each.iter().all(|(object, gates)| match object {
             MenuObject::Ship { .. } => gates.ship_move,
             MenuObject::Troop(_) => gates.troop_move,
             MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. } => gates.squadron_move,
-            MenuObject::Character(_) => gates.character_move,
-            MenuObject::SpecialForce(_) => gates.special_force_move,
+            MenuObject::Character(_) => together.unwrap_or(gates.character_move),
+            MenuObject::SpecialForce(_) => together.unwrap_or(gates.special_force_move),
             MenuObject::Fleet(_) => gates.fleet_move,
             _ => false,
         });
@@ -19273,12 +19315,12 @@ mod fleet_move_tests {
             ),
         ];
         for (object, own) in kinds {
-            let team = team_gates(&[object, object], |_| own);
+            let team = team_gates(&[object, object], |_| own, None);
             assert!(team.troop_move && team.fleet_move, "{object:?}");
-            let refused = team_gates(&[object, object], |_| OrderGates::default());
+            let refused = team_gates(&[object, object], |_| OrderGates::default(), None);
             assert!(!refused.troop_move, "{object:?}");
         }
-        let one = team_gates(&[ship], |_| kinds[0].1);
+        let one = team_gates(&[ship], |_| kinds[0].1, None);
         assert!(one.ship_move && !one.troop_move);
     }
 
@@ -19364,6 +19406,50 @@ mod fleet_move_tests {
     }
 
     #[test]
+    fn a_team_of_jailer_and_captive_takes_its_move_from_the_pair() {
+        // FUN_0053cbc0 puts a team's characters and special forces in one
+        // 0x241, whose FUN_0054bb90 lets a prisoner go with a free member
+        // (manual p. 96): the pair's Move is the pair's check, not each
+        // member's own (a lone prisoner's is grey).
+        let mut world = GameWorld::default();
+        let captive = world.characters.insert(Default::default());
+        let jailer = world.characters.insert(Default::default());
+        let team = [
+            MenuObject::Character(captive),
+            MenuObject::Character(jailer),
+        ];
+        let own = |object: MenuObject| OrderGates {
+            character_move: object == MenuObject::Character(jailer),
+            ..OrderGates::default()
+        };
+        let pair = |members: &[MissionMember]| members.contains(&MissionMember::Character(jailer));
+        assert!(team_gates(&team, own, Some(&pair)).character_move);
+        assert!(!team_gates(&team, own, None).character_move);
+        let alone = [
+            MenuObject::Character(captive),
+            MenuObject::Character(captive),
+        ];
+        assert!(!team_gates(&alone, own, Some(&pair)).character_move);
+        // A unit can be the jailer too (FUN_00533ce0).
+        let unit = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0003),
+                is_alliance: false,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        let mixed = [
+            MenuObject::Character(captive),
+            MenuObject::SpecialForce(unit),
+        ];
+        let with_unit =
+            |members: &[MissionMember]| members.contains(&MissionMember::SpecialForce(unit));
+        let gates = team_gates(&mixed, |_| OrderGates::default(), Some(&with_unit));
+        assert!(gates.character_move && gates.special_force_move);
+    }
+
+    #[test]
     fn a_team_menus_gates_take_scrap_and_retire_from_every_member() {
         // FUN_0051d990: the order's +0x18 with the whole team.
         let gates = |scrap, retire| rebellion_render::object_menu::OrderGates {
@@ -19372,16 +19458,24 @@ mod fleet_move_tests {
             ..Default::default()
         };
         let team = [MenuObject::Troop(Default::default()), MenuObject::Fleet(Default::default())];
-        let both = team_gates(&team, |object| match object {
-            MenuObject::Troop(_) => gates(true, true),
-            _ => gates(true, false),
-        });
+        let both = team_gates(
+            &team,
+            |object| match object {
+                MenuObject::Troop(_) => gates(true, true),
+                _ => gates(true, false),
+            },
+            None,
+        );
         assert!(both.scrap);
         assert!(!both.retire);
-        let one = team_gates(&team, |object| match object {
-            MenuObject::Troop(_) => gates(false, true),
-            _ => gates(true, true),
-        });
+        let one = team_gates(
+            &team,
+            |object| match object {
+                MenuObject::Troop(_) => gates(false, true),
+                _ => gates(true, true),
+            },
+            None,
+        );
         assert!(!one.scrap);
         assert!(one.retire);
     }
