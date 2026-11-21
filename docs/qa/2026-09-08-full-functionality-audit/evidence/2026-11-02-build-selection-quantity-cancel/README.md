@@ -148,6 +148,58 @@ The build-selection gate's `defensesDestination` step does the following on both
 
 Run `build-selection-2026-11-03T04-16-07-647Z-2127650` (Linux): the Alliance's Destination goes from Akrit'tar to F'tral. Screenshot: `defenses-destination.png`.
 
+## The A0 own-fleet gaps closed (OBJ-07 C019, 2026-11-21)
+
+These close the rows left open in the table below.
+
+- **The regiment's ship (A0 12, 13, 17).** `FUN_00552300` weighs the fleet,
+  then each of its ships (`FUN_00552b10`). `FUN_0054fbb0` keeps a later
+  ship only when it has strictly more room at record `+8`.
+  `CapShip_vt78` (`FUN_00500b40`) gives that room: the troop capacity
+  less the regiments aboard, or the fighter capacity less the squadrons.
+  - With Fleet 1's Imperial Star Destroyer (3) and Victory Destroyer (2)
+    and four regiments aboard, the regiments seat ISD, ISD, VD, ISD, so
+    the fifth goes to the Victory Destroyer, as A0 shows.
+  - The port seats the unit (`products::seat`). The band names that ship
+    (`deployment_ship`), and the Units Deployed body names it too
+    (`boarded_ship`, `travelling_ship`).
+  - port: regiments ride a fleet as one list, so the carried regiments
+    are seated again in order by the same rule.
+- **The ship Destination (A0 34).** `FUN_00537180` takes a capital ship.
+  A band released or dropped on a ship's entry of the Fleet window names
+  that ship (`set_ship_destination`), and its units go to that ship
+  while it has room.
+- **The band drag (A0 28..33).** `FUN_004534f0` drags a band:
+  - the drag image is STRATEGY 0x2841 for the Alliance and 0x2844 for
+    the Empire, with hotspot (3, 3), keyed;
+  - a release 4 or more pixels away gives a `0x214` against the `+0x70`
+    object (`FUN_00422ce0`, window type 9).
+
+**The gate.** Run `build-selection-2026-11-21T05-16-51-201Z-727725` passed
+on both sides: Linux, Arch Chromium 157.0.8103.78 through a temporary
+Linux copy, cargo-built test WASM sha256 `933753032cc073fa…`,
+`result.json` sha256 `4ecfccf98103c4ee…`. Its `fleetDrag` step:
+
+- drags the ships and troops bands onto Fleet 1, and both read
+  "Destination: Fleet 1"; their lines match A0 33 and 31 (ships
+  [6,61,93,66] against [5,60,92,66]);
+- finds the drag image under the pointer (114 and 116 white pixels);
+- drops the facilities band, which is refused (`0x25`);
+- drops the troops band on the fleet panel's first ship, and it reads
+  "Destination: Imperial Star Destroyer 1";
+- confirms an Army Regiment there, and the band keeps naming the ship
+  ("Training: 1"; deployment 17 days).
+
+The message bodies and the per-ship seating are checked by unit tests,
+not in the browser. A0's ship names differ from the fixture's, so those
+lines are not compared by pixels.
+
+**Remaining port deviations.**
+- A unit with no room aboard waits at the fleet's system; the original
+  refuses the Build (`0x27`).
+- The check that refuses the other side's fleet is not traced.
+- Whether a Stop resets the Destination is not traced.
+
 ## Against A0 on an own fleet (OBJ-07 C019, 2026-11-21)
 
 **A0.** `.artifacts/a0-vm/2026-11-21-build-dest-16` is an unedited capture:

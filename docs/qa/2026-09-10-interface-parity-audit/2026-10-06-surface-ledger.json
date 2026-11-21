@@ -6317,13 +6317,13 @@
         {
           "id": "OBJ-07-C019",
           "requirement": "destination targeting accepts Fleet window",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Corrected 2026-11-21: FUN_00537180 holds only construction managers (0xa0..0xa1) to a system (else 1/0x25); a shipyard (0xa2..0xa3) or training manager (0xa4..0xa5) takes a fleet. Compared with A0 2026-11-21-build-dest-16 (Empire, own Fleet 1). Match: the ships and troops bands take the fleet (04, 07; the gate compares the lines), the facilities band is refused silently (10), a Carrack waits in the fleet and finishes there, the band resets to its system after the last unit (14, 25; ManuMgr_vt204 ported), and the deployment message names the ship (27). The port sets the Destination (save v138); build-selection.mjs fleetDestination passes on Linux, both sides (run build-selection-2026-11-21T04-10-28-051Z-207892). Open: a regiment's band and message name the ship it boards (12, 17; the port carries regiments by fleet, and the planner's ship pick is untraced); band drags (28..33); a ship Destination (34). The other side's fleet is refused (build-selection2/30, 32; the check is untraced).",
-          "scope": "Against A0 (Windows 10 VM, 2026-11-21-build-dest-16) and the Linux browser build (Arch Chromium 157), both sides; partial for the open items in the note."
+          "note": "Compared with A0 2026-11-21-build-dest-16 (Empire, own Fleet 1). FUN_00537180 holds only construction managers (0xa0..0xa1) to a system (else 1/0x25); a shipyard or training manager takes a fleet or a capital ship. Ported and matched: the ships and troops bands take the fleet by targeting (04, 07) or a band drag (31, 33; FUN_004534f0, drag image 0x2841/0x2844), and the facilities band is refused silently (10, 29). A unit built for the fleet goes on the ship with the most room (FUN_00552300, FUN_0054fbb0, CapShip_vt78): the band names that ship (12) and so does the deployment body (17). A drop on a ship entry names that ship (34). The band resets to its system after its last unit (14, 25; ManuMgr_vt204), and the Carrack waits in the fleet and finishes there, named in its message (23, 25, 27). build-selection.mjs passes on Linux, both sides (fleetDestination, fleetDrag; run build-selection-2026-11-21T05-16-51-201Z-727725), comparing the band lines with A0 04, 07, 31 and 33. port: regiments are seated again from the fleet's cargo count; a unit with no room waits at the fleet's system (the original refuses the Build, 0x27). Untraced: the other side's fleet refusal (build-selection2/30, 32) and a Stop's reset.",
+          "scope": "Passed against A0 (Windows 10 VM, 2026-11-21-build-dest-16) and the Linux browser build (Arch Chromium 157), both sides; the message bodies and per-ship seating by unit tests."
         },
         {
           "id": "OBJ-07-C020",
