@@ -1282,9 +1282,13 @@ var importObject = {
         glFlush: function () {
             gl.flush();
         },
-        glFinish: function () {
-            gl.finish();
-        },
+        // Open Rebellion: macroquad calls glFlush and glFinish after every
+        // frame on wasm32. WebGL presents the canvas when the frame's task
+        // ends and orders every later read (readPixels, copyTexImage2D)
+        // after the draws, so the finish only made the page wait for the
+        // GPU: in Firefox it was about 3 ms of every frame (Firefox 160,
+        // llvmpipe: galaxy-view frame 7 -> 4 ms, battle 10 -> 7 ms).
+        glFinish: function () {},
         glDepthFunc: function (func) {
             gl.depthFunc(func);
         },
