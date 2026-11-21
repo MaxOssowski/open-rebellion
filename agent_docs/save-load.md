@@ -162,13 +162,23 @@ released, restore versioned migration before the next layout change.
 
 ## Browser storage
 
-WASM keeps each slot as base64 bincode and versioned JSON metadata under
-version-keyed string entries:
+WASM keeps each slot as a body and versioned JSON metadata under
+version-keyed entries:
 
 ```text
 rebellion_save_v<SAVE_VERSION>_<slot>
 rebellion_meta_v<SAVE_VERSION>_<slot>
 ```
+
+Since 2026-11-21 the body is the bincode `SaveState` zlib-compressed
+(`miniz_oxide`, level 6, already in the tree through `png`) and stored as
+raw bytes (`browser_saves::StoredValue::Bytes`, a `Uint8Array` in
+IndexedDB). An older build's body, an unpadded base64 bincode string
+(`StoredValue::Text`), still loads; nothing rewrites it until the slot is
+saved again. Metadata stays a JSON string. The page bridge reads a value
+with `rebellion_saves_get` (a string; -3 when it holds bytes) or
+`rebellion_saves_get_bytes` (-3 when it holds a string), and writes bytes
+with `rebellion_saves_put_bytes`.
 
 Metadata includes the full save name, game tick, and fingerprint with its
 `u64` value encoded as a decimal string so JavaScript cannot truncate it. A
@@ -198,15 +208,19 @@ store `saves`), through `rebellionSaveStore` in `web/gl.js`:
   copy fails they stay there for the next load.
 - Where IndexedDB cannot be opened (a blocked or private context), the slots
   stay in `localStorage`, written synchronously with the same statuses.
+  `localStorage` holds only strings, so a byte body is kept there as
+  `bytes:` and its base64 (outside the base64 alphabet and JSON, so no
+  older entry reads as one); the migration turns it back into bytes.
+  `rebellionSaveStore.entries()` and `write()` use the same form.
 - The settings (`rebellion_settings_v1`) stay in `localStorage`.
 
 The slot logic is generic over `browser_saves::SaveStore`; native unit
 tests run it on `MemoryStore`, which can settle commits late, fail them
 over a quota, or fail reads. `tools/interface-parity/save-storage.mjs`
-checks the browser path: save, reload, load, migration, and a full quota
-(Chromium `Storage.overrideQuotaForOrigin`).
-
-Not done yet: compression of the body (still base64 bincode strings).
+checks the browser path: a compressed byte body, save, reload, load,
+migration of an old base64 body and of a `bytes:` one, the body's size
+against the old base64 form, and a full quota (Chromium
+`Storage.overrideQuotaForOrigin`).
 
 ## API
 

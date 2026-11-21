@@ -631,6 +631,12 @@ var emscripten_shaders_hack = false;
 // show what the disk holds. Saves an older build kept in localStorage move
 // into IndexedDB on the first load. Where IndexedDB cannot be opened the
 // slots stay in localStorage, written synchronously.
+//
+// A value is a string (metadata, or a base64 body an older build wrote) or
+// a Uint8Array (a compressed body), which IndexedDB keeps as raw bytes.
+// localStorage holds only strings, so there a Uint8Array is kept as
+// "bytes:" and its base64 (outside the base64 alphabet and JSON, so no
+// older entry reads as one).
 var rebellionSaveStore = (function () {
     "use strict";
 
@@ -638,14 +644,49 @@ var rebellionSaveStore = (function () {
     var STORE_NAME = "saves";
     var SAVE_KEY = /^rebellion_(save|meta)_v\d+_\d+$/;
     var PENDING = 0, COMMITTED = 1, QUOTA = 2, FAILED = 3;
+    var BYTES_PREFIX = "bytes:";
 
     var entries = new Map();
-    // Keys whose stored value is not a string: reading them fails.
+    // Keys whose stored value is neither a string nor bytes: reading them
+    // fails.
     var unreadable = new Set();
     var staged = [];
     var tickets = [];
     var db = null;
     var opening = null;
+
+    function readable(value) {
+        return typeof value === "string" || value instanceof Uint8Array;
+    }
+
+    // A value as localStorage holds it, and back.
+    function toLocal(value) {
+        if (typeof value === "string") return value;
+        var binary = "";
+        for (var i = 0; i < value.length; i += 0x8000) {
+            binary += String.fromCharCode.apply(null, value.subarray(i, i + 0x8000));
+        }
+        return BYTES_PREFIX + window.btoa(binary);
+    }
+
+    function fromLocal(text) {
+        if (typeof text !== "string" || !text.startsWith(BYTES_PREFIX)) return text;
+        var binary = window.atob(text.slice(BYTES_PREFIX.length));
+        var bytes = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+    }
+
+    // The localStorage value under `key`; a corrupt "bytes:" entry is
+    // unreadable (null).
+    function localValue(key) {
+        try {
+            return fromLocal(window.localStorage.getItem(key));
+        } catch (error) {
+            console.error("Open Rebellion could not read a localStorage save:", error);
+            return null;
+        }
+    }
 
     function failure(error) {
         return error && error.name === "QuotaExceededError" ? QUOTA : FAILED;
@@ -668,7 +709,9 @@ var rebellionSaveStore = (function () {
         console.warn("Open Rebellion saves use localStorage; IndexedDB is unavailable:", error);
         db = null;
         legacyKeys().forEach(function (key) {
-            entries.set(key, window.localStorage.getItem(key));
+            var value = localValue(key);
+            if (value === null) unreadable.add(key);
+            else entries.set(key, value);
         });
     }
 
@@ -688,12 +731,16 @@ var rebellionSaveStore = (function () {
     function migrate(resolve) {
         var keys = legacyKeys();
         var copy = keys.filter(function (key) { return !entries.has(key) && !unreadable.has(key); });
+        var values = copy.map(localValue);
+        // An entry that does not read stays in localStorage, untouched.
+        keys = keys.filter(function (key) { return copy.indexOf(key) < 0 || values[copy.indexOf(key)] !== null; });
+        copy = copy.filter(function (key, i) { return values[i] !== null; });
+        values = values.filter(function (value) { return value !== null; });
         if (copy.length === 0) {
             removeLegacy(keys);
             resolve();
             return;
         }
-        var values = copy.map(function (key) { return window.localStorage.getItem(key); });
         copy.forEach(function (key, i) { entries.set(key, values[i]); });
         try {
             var tx = db.transaction(STORE_NAME, "readwrite");
@@ -742,7 +789,7 @@ var rebellionSaveStore = (function () {
                     tx.oncomplete = function () {
                         keys.result.forEach(function (key, i) {
                             if (typeof key !== "string") return;
-                            if (typeof values.result[i] === "string") entries.set(key, values.result[i]);
+                            if (readable(values.result[i])) entries.set(key, values.result[i]);
                             else unreadable.add(key);
                         });
                         migrate(resolve);
@@ -797,7 +844,7 @@ var rebellionSaveStore = (function () {
             try {
                 ops.forEach(function (op) {
                     if (op.value === undefined) window.localStorage.removeItem(op.key);
-                    else window.localStorage.setItem(op.key, op.value);
+                    else window.localStorage.setItem(op.key, toLocal(op.value));
                     done++;
                 });
                 tickets[ticket - 1] = COMMITTED;
@@ -805,7 +852,7 @@ var rebellionSaveStore = (function () {
                 for (var i = done - 1; i >= 0; i--) {
                     try {
                         if (changes[i].previous === undefined) window.localStorage.removeItem(changes[i].key);
-                        else window.localStorage.setItem(changes[i].key, changes[i].previous);
+                        else window.localStorage.setItem(changes[i].key, toLocal(changes[i].previous));
                     } catch (ignored) { /* the copy still rolls back */ }
                 }
                 rollBack(ticket, changes, error);
@@ -840,13 +887,18 @@ var rebellionSaveStore = (function () {
         status: function (ticket) {
             return ticket >= 1 && ticket <= tickets.length ? tickets[ticket - 1] : FAILED;
         },
-        // For the page and its checks: every readable slot entry, and
-        // writes that settle as a Promise of the status.
-        entries: function () { return Object.fromEntries(entries); },
+        // For the page and its checks: every readable slot entry as
+        // localStorage holds it (bytes as "bytes:" base64), and writes of
+        // such values that settle as a Promise of the status.
+        entries: function () {
+            return Object.fromEntries(Array.from(entries, function (entry) {
+                return [entry[0], toLocal(entry[1])];
+            }));
+        },
         backend: function () { return db === null ? "localStorage" : "indexedDB"; },
         write: function (values) {
             Object.keys(values).forEach(function (key) {
-                staged.push({ key: key, value: values[key] === null ? undefined : values[key] });
+                staged.push({ key: key, value: values[key] === null ? undefined : fromLocal(values[key]) });
             });
             var ticket = commit();
             return new Promise(function (resolve) {
@@ -943,6 +995,9 @@ var importObject = {
                 if (value === null) {
                     return -2;
                 }
+                if (typeof value !== "string") {
+                    return -3;
+                }
                 const encoded = new TextEncoder().encode(value);
                 if (output_capacity === 0) {
                     return encoded.length;
@@ -955,6 +1010,43 @@ var importObject = {
             } catch (error) {
                 console.error("Open Rebellion load failed:", error);
                 return -2;
+            }
+        },
+        rebellion_saves_get_bytes: function (key_ptr, key_len, output_ptr, output_capacity) {
+            try {
+                const value = rebellionSaveStore.get(UTF8ToString(key_ptr, key_len));
+                if (value === undefined) {
+                    return -1;
+                }
+                if (value === null) {
+                    return -2;
+                }
+                if (typeof value === "string") {
+                    return -3;
+                }
+                if (output_capacity === 0) {
+                    return value.length;
+                }
+                if (output_capacity < value.length) {
+                    return -2;
+                }
+                new Uint8Array(wasm_memory.buffer, output_ptr, output_capacity).set(value);
+                return value.length;
+            } catch (error) {
+                console.error("Open Rebellion load failed:", error);
+                return -2;
+            }
+        },
+        rebellion_saves_put_bytes: function (key_ptr, key_len, value_ptr, value_len) {
+            try {
+                rebellionSaveStore.put(
+                    UTF8ToString(key_ptr, key_len),
+                    new Uint8Array(wasm_memory.buffer, value_ptr, value_len).slice(),
+                );
+                return 0;
+            } catch (error) {
+                console.error("Open Rebellion save failed:", error);
+                return -1;
             }
         },
         rebellion_saves_put: function (key_ptr, key_len, value_ptr, value_len) {

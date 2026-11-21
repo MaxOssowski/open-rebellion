@@ -16,6 +16,8 @@ bincode = "1"
 rand = "0.8"
 rand_xoshiro = { version = "0.6", features = ["serde1"] }
 sha2 = "0.10"
+# Browser save bodies (zlib); already in the tree through png.
+miniz_oxide = "0.8"
 
 # Hot reload: file watching on native only (no WASM support)
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

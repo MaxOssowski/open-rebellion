@@ -1410,7 +1410,7 @@ pub fn save_write_status() -> WriteStatus {
 #[cfg(target_arch = "wasm32")]
 pub mod wasm_impl {
     use super::*;
-    use crate::browser_saves::{self, SaveStore, WriteStatus};
+    use crate::browser_saves::{self, SaveStore, StoredValue, WriteStatus};
     use std::cell::Cell;
     use std::path::{Path, PathBuf};
 
@@ -1440,6 +1440,18 @@ pub mod wasm_impl {
             value_ptr: *const u8,
             value_len: usize,
         ) -> i32;
+        fn rebellion_saves_get_bytes(
+            key_ptr: *const u8,
+            key_len: usize,
+            output_ptr: *mut u8,
+            output_capacity: usize,
+        ) -> i32;
+        fn rebellion_saves_put_bytes(
+            key_ptr: *const u8,
+            key_len: usize,
+            value_ptr: *const u8,
+            value_len: usize,
+        ) -> i32;
         fn rebellion_saves_remove(key_ptr: *const u8, key_len: usize) -> i32;
         fn rebellion_saves_commit() -> i32;
         fn rebellion_saves_status(ticket: u32) -> i32;
@@ -1450,16 +1462,27 @@ pub mod wasm_impl {
         static LAST_SAVE: Cell<Option<u32>> = const { Cell::new(None) };
     }
 
-    /// Reads a string through a bridge `get`: -1 absent, below that an
-    /// error, else the value's UTF-8 length (asked with capacity 0 first).
-    fn bridge_get(
+    /// What a bridge `get` found.
+    enum BridgeValue {
+        Absent,
+        /// The value is of the other kind (`rebellion_saves_get` found
+        /// bytes, `rebellion_saves_get_bytes` a string).
+        OtherKind,
+        Found(Vec<u8>),
+    }
+
+    /// Reads a value through a bridge `get`: -1 absent, -3 the other kind,
+    /// below that an error, else the value's length in bytes (asked with
+    /// capacity 0 first).
+    fn bridge_read(
         key: &str,
         get: unsafe extern "C" fn(*const u8, usize, *mut u8, usize) -> i32,
         what: &str,
-    ) -> anyhow::Result<Option<String>> {
+    ) -> anyhow::Result<BridgeValue> {
         let required = unsafe { get(key.as_ptr(), key.len(), std::ptr::null_mut(), 0) };
         match required {
-            -1 => return Ok(None),
+            -1 => return Ok(BridgeValue::Absent),
+            -3 => return Ok(BridgeValue::OtherKind),
             n if n < 0 => anyhow::bail!("{what} could not be read"),
             _ => {}
         }
@@ -1468,7 +1491,20 @@ pub mod wasm_impl {
         if written < 0 || written as usize != bytes.len() {
             anyhow::bail!("{what} changed while being read")
         }
-        Ok(Some(String::from_utf8(bytes)?))
+        Ok(BridgeValue::Found(bytes))
+    }
+
+    /// Reads a string through a bridge `get`.
+    fn bridge_get(
+        key: &str,
+        get: unsafe extern "C" fn(*const u8, usize, *mut u8, usize) -> i32,
+        what: &str,
+    ) -> anyhow::Result<Option<String>> {
+        match bridge_read(key, get, what)? {
+            BridgeValue::Absent => Ok(None),
+            BridgeValue::OtherKind => anyhow::bail!("{what} holds no string under {key}"),
+            BridgeValue::Found(bytes) => Ok(Some(String::from_utf8(bytes)?)),
+        }
     }
 
     /// The settings' `localStorage` (`rebellion_settings_v1`).
@@ -1492,13 +1528,29 @@ pub mod wasm_impl {
     struct PageStore;
 
     impl SaveStore for PageStore {
-        fn get(&self, key: &str) -> anyhow::Result<Option<String>> {
-            bridge_get(key, rebellion_saves_get, "save storage")
+        fn get(&self, key: &str) -> anyhow::Result<Option<StoredValue>> {
+            const WHAT: &str = "save storage";
+            match bridge_read(key, rebellion_saves_get, WHAT)? {
+                BridgeValue::Absent => Ok(None),
+                BridgeValue::Found(bytes) => Ok(Some(StoredValue::Text(String::from_utf8(bytes)?))),
+                BridgeValue::OtherKind => {
+                    match bridge_read(key, rebellion_saves_get_bytes, WHAT)? {
+                        BridgeValue::Absent => Ok(None),
+                        BridgeValue::Found(bytes) => Ok(Some(StoredValue::Bytes(bytes))),
+                        BridgeValue::OtherKind => anyhow::bail!("{WHAT} changed while being read"),
+                    }
+                }
+            }
         }
 
-        fn put(&mut self, key: &str, value: &str) -> anyhow::Result<()> {
-            let status = unsafe {
-                rebellion_saves_put(key.as_ptr(), key.len(), value.as_ptr(), value.len())
+        fn put(&mut self, key: &str, value: StoredValue) -> anyhow::Result<()> {
+            let status = match &value {
+                StoredValue::Text(text) => unsafe {
+                    rebellion_saves_put(key.as_ptr(), key.len(), text.as_ptr(), text.len())
+                },
+                StoredValue::Bytes(bytes) => unsafe {
+                    rebellion_saves_put_bytes(key.as_ptr(), key.len(), bytes.as_ptr(), bytes.len())
+                },
             };
             anyhow::ensure!(status == 0, "save storage refused a write");
             Ok(())

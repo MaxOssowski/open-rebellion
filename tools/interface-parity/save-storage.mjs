@@ -1,9 +1,10 @@
 // Browser save storage check (implementation evidence, not original-game
-// acceptance): a save lands in IndexedDB, survives a page reload and loads
-// back with its fingerprint; a save an older build left in localStorage
-// moves into IndexedDB on the next load and loads; a save over a full
-// browser quota shows "Selected Game Failed To Save" (FUN_00408240, REBDLOG
-// 0x1219) alone, logs its cause, and leaves the stored slot as it was.
+// acceptance): a save lands in IndexedDB as compressed raw bytes, survives
+// a page reload and loads back with its fingerprint; a save an older build
+// left in localStorage (a base64 bincode body) moves into IndexedDB on the
+// next load and loads; a save over a full browser quota shows "Selected
+// Game Failed To Save" (FUN_00408240, REBDLOG 0x1219) alone, logs its
+// cause, and leaves the stored slot as it was.
 //
 // Serve a production WASM build with its runtime pack first:
 //   SAVE_TEST_URL=http://127.0.0.1:8791 CHROMIUM_PATH=/usr/bin/chromium \
@@ -35,8 +36,16 @@ const screenshot = name => page.screenshot({ path: path.join(output, `${name}.pn
 // Playwright release frame: hold, then wait before moving away.
 const click = async (x, y) => { await page.mouse.click(x, y, { delay: 300 }); await page.waitForTimeout(350); };
 const key = async value => { await page.keyboard.press(value, { delay: 100 }); await page.waitForTimeout(350); };
-// The slot entries as IndexedDB holds them, read past the page's copy.
+// The slot entries as IndexedDB holds them, read past the page's copy;
+// bytes come back as "bytes:" and their base64, as the page's
+// rebellionSaveStore.entries() gives them.
 const indexedDb = () => page.evaluate(() => new Promise((resolve, reject) => {
+  const describe = value => {
+    if (!(value instanceof Uint8Array)) return value;
+    let binary = '';
+    for (let i = 0; i < value.length; i += 0x8000) binary += String.fromCharCode(...value.subarray(i, i + 0x8000));
+    return `bytes:${btoa(binary)}`;
+  };
   const request = indexedDB.open('open-rebellion', 1);
   request.onerror = () => reject(request.error);
   request.onsuccess = () => {
@@ -45,7 +54,7 @@ const indexedDb = () => page.evaluate(() => new Promise((resolve, reject) => {
     const values = tx.objectStore('saves').getAll();
     tx.oncomplete = () => {
       request.result.close();
-      resolve(Object.fromEntries(keys.result.map((k, i) => [k, values.result[i]])));
+      resolve(Object.fromEntries(keys.result.map((k, i) => [k, describe(values.result[i])])));
     };
   };
 }));
@@ -123,6 +132,24 @@ try {
   const k = (kind, slot) => `rebellion_${kind}_v${version}_${slot}`;
   assert.match(stored[k('meta', 0)], /indexeddb save/);
   assert.deepEqual(await legacy(), {}, 'no save in localStorage');
+  // The body is zlib-compressed bincode kept as raw bytes; an older build
+  // kept the bincode as an unpadded base64 string.
+  assert.match(stored[k('save', 0)], /^bytes:/, 'the body is stored as bytes');
+  const sizes = await page.evaluate(async body => {
+    const compressed = Uint8Array.from(atob(body.slice('bytes:'.length)), c => c.charCodeAt(0));
+    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate'));
+    const bincode = new Uint8Array(await new Response(stream).arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bincode.length; i += 0x8000) binary += String.fromCharCode(...bincode.subarray(i, i + 0x8000));
+    const legacyBody = btoa(binary).replace(/=+$/, '');
+    return { compressed: compressed.length, bincode: bincode.length, legacyBase64: legacyBody.length, legacyBody };
+  }, stored[k('save', 0)]);
+  const { legacyBody } = sizes;
+  delete sizes.legacyBody;
+  result.sizes = sizes;
+  assert.ok(sizes.compressed * 4 < sizes.legacyBase64,
+    `the stored body is under a quarter of the old base64 one (${sizes.compressed} of ${sizes.legacyBase64})`);
+  check(`the body is stored as ${sizes.compressed} compressed bytes (bincode ${sizes.bincode}, old base64 ${sizes.legacyBase64})`);
   await page.waitForTimeout(500);
   await screenshot('01-saved');
   const savedDiff = await dialogDiff(closed);
@@ -145,21 +172,26 @@ try {
   await screenshot('03-loaded');
   check('after a reload the save loads with its fingerprint');
 
-  // 3. A save an older build left in localStorage (slot 3) moves into
-  // IndexedDB on the next load and loads.
-  await page.evaluate(([entries, from, to]) => {
-    for (const kind of ['save', 'meta']) {
-      localStorage.setItem(to.replace('KIND', kind), entries[from.replace('KIND', kind)]);
-    }
-  }, [stored, k('KIND', 0), k('KIND', 2)]);
-  assert.equal(Object.keys(await legacy()).length, 2);
+  // 3. A save an older build left in localStorage (slot 3: a base64
+  // bincode body) moves into IndexedDB on the next load and loads. So does
+  // one the localStorage fallback kept (slot 4: "bytes:" and base64).
+  await page.evaluate(entries => {
+    for (const [key, value] of Object.entries(entries)) localStorage.setItem(key, value);
+  }, {
+    [k('save', 2)]: legacyBody,
+    [k('meta', 2)]: stored[k('meta', 0)],
+    [k('save', 3)]: stored[k('save', 0)],
+    [k('meta', 3)]: stored[k('meta', 0)],
+  });
+  assert.equal(Object.keys(await legacy()).length, 4);
   await page.reload();
   await toMainMenu();
-  assert.deepEqual(await legacy(), {}, 'the migrated save left localStorage');
+  assert.deepEqual(await legacy(), {}, 'the migrated saves left localStorage');
   const migrated = await indexedDb();
-  assert.equal(migrated[k('save', 2)], stored[k('save', 0)], 'the body moved into IndexedDB');
+  assert.equal(migrated[k('save', 2)], legacyBody, 'the base64 body moved into IndexedDB as it was');
   assert.equal(migrated[k('meta', 2)], stored[k('meta', 0)], 'the metadata moved into IndexedDB');
-  assert.ok(consoleLog.some(line => line.includes('moved 2 localStorage save entries to IndexedDB')));
+  assert.equal(migrated[k('save', 3)], stored[k('save', 0)], 'the fallback body moved into IndexedDB as bytes');
+  assert.ok(consoleLog.some(line => line.includes('moved 4 localStorage save entries to IndexedDB')));
   await click(850, 500);
   await screenshot('04-migrated-options');
   await click(610, 349); // row 3 Load

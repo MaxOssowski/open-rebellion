@@ -1443,6 +1443,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "dat-dumper",
+ "miniz_oxide",
  "notify",
  "rand",
  "rand_xoshiro",

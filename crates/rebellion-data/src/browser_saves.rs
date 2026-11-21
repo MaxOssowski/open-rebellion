@@ -1,12 +1,17 @@
 //! Browser save slots over a key-value store.
 //!
-//! The browser keeps each slot as two string entries, a base64 bincode body
-//! and JSON metadata, under keys that carry the save format version:
+//! The browser keeps each slot as two entries, a body and JSON metadata,
+//! under keys that carry the save format version:
 //!
 //! ```text
 //! rebellion_save_v<version>_<slot>
 //! rebellion_meta_v<version>_<slot>
 //! ```
+//!
+//! The body is the bincode `SaveState`, zlib-compressed, stored as raw
+//! bytes ([`StoredValue::Bytes`]). A build before 2026-11-21 stored it as
+//! a base64 string ([`StoredValue::Text`]) without compression; such a
+//! body still loads.
 //!
 //! The web page holds them in IndexedDB (`web/gl.js`, `rebellionSaveStore`).
 //! IndexedDB answers asynchronously, so the page reads every entry into
@@ -30,6 +35,60 @@ use crate::save::{
 };
 
 const BROWSER_META_VERSION: u32 = 1;
+
+/// The zlib level of a stored body (miniz's default; a body of some
+/// megabytes compresses in tens of milliseconds).
+const BODY_COMPRESSION_LEVEL: u8 = 6;
+
+/// The largest body a stored one decompresses to: a guard against a
+/// corrupt entry, far above any campaign's save.
+const MAX_BODY_BYTES: usize = 512 << 20;
+
+/// A stored entry's value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoredValue {
+    /// A string: the metadata, or a body a build before 2026-11-21 wrote
+    /// (base64 bincode).
+    Text(String),
+    /// Raw bytes: a zlib-compressed bincode body.
+    Bytes(Vec<u8>),
+}
+
+impl StoredValue {
+    /// The value's size in bytes (a string's UTF-8 length).
+    fn size(&self) -> usize {
+        match self {
+            Self::Text(text) => text.len(),
+            Self::Bytes(bytes) => bytes.len(),
+        }
+    }
+}
+
+/// The stored form of a bincode body.
+#[must_use]
+pub fn encode_body(bincode: &[u8]) -> StoredValue {
+    StoredValue::Bytes(miniz_oxide::deflate::compress_to_vec_zlib(
+        bincode,
+        BODY_COMPRESSION_LEVEL,
+    ))
+}
+
+/// The bincode body a stored one holds.
+///
+/// # Errors
+/// On bad base64, or bytes that do not decompress (or exceed
+/// [`MAX_BODY_BYTES`]).
+pub fn decode_stored_body(body: &StoredValue) -> anyhow::Result<Vec<u8>> {
+    match body {
+        StoredValue::Text(b64) => b64_decode(b64),
+        StoredValue::Bytes(compressed) => {
+            miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(compressed, MAX_BODY_BYTES)
+                .map_err(|error| {
+                    anyhow::anyhow!("save body does not decompress: {:?}", error.status)
+                })
+        }
+    }
+}
 
 /// The versions whose keys a slot is read from, newest first: a slot holds
 /// the current version's save, else the newest older one (migrated on load).
@@ -91,12 +150,12 @@ pub trait SaveStore {
     ///
     /// # Errors
     /// When the store cannot be read.
-    fn get(&self, key: &str) -> anyhow::Result<Option<String>>;
+    fn get(&self, key: &str) -> anyhow::Result<Option<StoredValue>>;
     /// Stage `value` under `key` for the next commit.
     ///
     /// # Errors
     /// When the store refuses to stage it.
-    fn put(&mut self, key: &str, value: &str) -> anyhow::Result<()>;
+    fn put(&mut self, key: &str, value: StoredValue) -> anyhow::Result<()>;
     /// Stage the removal of `key` for the next commit.
     ///
     /// # Errors
@@ -148,28 +207,6 @@ struct BrowserSaveMeta {
     /// Absent in metadata written before 2026-10-31.
     #[serde(default)]
     player_is_alliance: Option<bool>,
-}
-
-/// Base64 encode (standard alphabet, no padding).
-#[must_use]
-pub fn b64_encode(data: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = u32::from(chunk[0]);
-        let b1 = chunk.get(1).copied().map_or(0, u32::from);
-        let b2 = chunk.get(2).copied().map_or(0, u32::from);
-        let triple = (b0 << 16) | (b1 << 8) | b2;
-        out.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
-        out.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-        if chunk.len() > 1 {
-            out.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
-        }
-        if chunk.len() > 2 {
-            out.push(CHARS[(triple & 0x3F) as usize] as char);
-        }
-    }
-    out
 }
 
 /// Base64 decode (standard alphabet, tolerates missing padding).
@@ -235,7 +272,7 @@ pub fn versioned_meta_key(version: u32, slot: usize) -> String {
 fn stored_save(
     store: &impl SaveStore,
     slot: usize,
-) -> anyhow::Result<Option<(u32, String, String)>> {
+) -> anyhow::Result<Option<(u32, StoredValue, StoredValue)>> {
     for version in READ_VERSIONS {
         if let (Some(body), Some(meta)) = (
             store.get(&versioned_slot_key(version, slot))?,
@@ -247,7 +284,10 @@ fn stored_save(
     Ok(None)
 }
 
-fn parse_meta(encoded: &str) -> anyhow::Result<BrowserSaveMeta> {
+fn parse_meta(encoded: &StoredValue) -> anyhow::Result<BrowserSaveMeta> {
+    let StoredValue::Text(encoded) = encoded else {
+        anyhow::bail!("browser save metadata is not text");
+    };
     let meta: BrowserSaveMeta = serde_json::from_str(encoded)?;
     anyhow::ensure!(
         meta.schema_version == BROWSER_META_VERSION,
@@ -283,9 +323,12 @@ pub fn save_slot(
     })?;
     store.put(
         &versioned_slot_key(SAVE_VERSION, slot),
-        &b64_encode(&encoded),
+        encode_body(&encoded),
     )?;
-    store.put(&versioned_meta_key(SAVE_VERSION, slot), &meta)?;
+    store.put(
+        &versioned_meta_key(SAVE_VERSION, slot),
+        StoredValue::Text(meta),
+    )?;
     let ticket = store.commit()?;
     Ok((state_fingerprint, ticket))
 }
@@ -294,12 +337,12 @@ pub fn save_slot(
 ///
 /// # Errors
 /// When the slot is empty, the store cannot be read, or the save is
-/// corrupt (bad base64, metadata, body or fingerprint).
+/// corrupt (bad base64 or compression, metadata, body or fingerprint).
 pub fn load_slot(store: &impl SaveStore, slot: usize) -> anyhow::Result<(SaveMeta, SaveState)> {
-    let Some((version, b64, meta_encoded)) = stored_save(store, slot)? else {
+    let Some((version, body, meta_encoded)) = stored_save(store, slot)? else {
         anyhow::bail!("no save in slot {}", slot);
     };
-    let bytes = b64_decode(&b64)?;
+    let bytes = decode_stored_body(&body)?;
     let browser_meta = parse_meta(&meta_encoded)?;
     let expected = browser_meta.state_fingerprint.to_fingerprint()?;
     let (state, state_fingerprint) = decode_body(version, bytes, expected)?;
@@ -365,14 +408,14 @@ pub fn delete_slot(store: &mut impl SaveStore, slot: usize) -> anyhow::Result<u3
 }
 
 /// Each changed key and the value it had (`None`: absent), in change order.
-type Undo = Vec<(String, Option<String>)>;
+type Undo = Vec<(String, Option<StoredValue>)>;
 
 /// An in-memory [`SaveStore`] whose commits settle when told to, for
 /// tests: it reads what the page's store would read.
 #[derive(Debug, Default)]
 pub struct MemoryStore {
-    entries: std::collections::BTreeMap<String, String>,
-    staged: Vec<(String, Option<String>)>,
+    entries: std::collections::BTreeMap<String, StoredValue>,
+    staged: Vec<(String, Option<StoredValue>)>,
     /// Per ticket: its status and the entries it replaced, to roll back.
     commits: Vec<(WriteStatus, Undo)>,
     /// When set, a commit whose new size exceeds it fails with a quota
@@ -384,18 +427,19 @@ pub struct MemoryStore {
 
 impl MemoryStore {
     fn size(&self) -> usize {
-        self.entries.iter().map(|(k, v)| k.len() + v.len()).sum()
+        self.entries.iter().map(|(k, v)| k.len() + v.size()).sum()
     }
 
     /// The stored entries.
     #[must_use]
-    pub fn entries(&self) -> &std::collections::BTreeMap<String, String> {
+    pub fn entries(&self) -> &std::collections::BTreeMap<String, StoredValue> {
         &self.entries
     }
 
-    /// Store `value` under `key` directly, as a corrupting writer would.
-    pub fn insert(&mut self, key: &str, value: &str) {
-        self.entries.insert(key.to_owned(), value.to_owned());
+    /// Store `value` under `key` directly, as a corrupting writer (or an
+    /// older build) would.
+    pub fn insert(&mut self, key: &str, value: StoredValue) {
+        self.entries.insert(key.to_owned(), value);
     }
 
     /// Settle every pending commit, oldest first, as the browser's
@@ -424,13 +468,13 @@ impl MemoryStore {
 }
 
 impl SaveStore for MemoryStore {
-    fn get(&self, key: &str) -> anyhow::Result<Option<String>> {
+    fn get(&self, key: &str) -> anyhow::Result<Option<StoredValue>> {
         anyhow::ensure!(!self.read_error, "save storage could not be read");
         Ok(self.entries.get(key).cloned())
     }
 
-    fn put(&mut self, key: &str, value: &str) -> anyhow::Result<()> {
-        self.staged.push((key.to_owned(), Some(value.to_owned())));
+    fn put(&mut self, key: &str, value: StoredValue) -> anyhow::Result<()> {
+        self.staged.push((key.to_owned(), Some(value)));
         Ok(())
     }
 
@@ -467,6 +511,32 @@ mod tests {
     use super::*;
     use crate::save::tests::minimal_save_state;
 
+    /// Base64 encode (standard alphabet, no padding).
+    #[must_use]
+    pub fn b64_encode(data: &[u8]) -> String {
+        const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+        for chunk in data.chunks(3) {
+            let b0 = u32::from(chunk[0]);
+            let b1 = chunk.get(1).copied().map_or(0, u32::from);
+            let b2 = chunk.get(2).copied().map_or(0, u32::from);
+            let triple = (b0 << 16) | (b1 << 8) | b2;
+            out.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
+            out.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
+            if chunk.len() > 1 {
+                out.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+            }
+            if chunk.len() > 2 {
+                out.push(CHARS[(triple & 0x3F) as usize] as char);
+            }
+        }
+        out
+    }
+
+    fn text(value: &str) -> StoredValue {
+        StoredValue::Text(value.to_owned())
+    }
+
     fn meta_named(name: &str) -> String {
         serde_json::to_string(&BrowserSaveMeta {
             schema_version: BROWSER_META_VERSION,
@@ -493,6 +563,70 @@ mod tests {
         assert_eq!(meta.name, "Hoth");
         assert_eq!(meta.state_fingerprint, fingerprint);
         assert_eq!(compute_state_fingerprint(&loaded).unwrap(), fingerprint);
+    }
+
+    #[test]
+    fn a_save_stores_its_body_as_compressed_bytes_smaller_than_its_bincode() {
+        let mut store = MemoryStore::default();
+        let state = minimal_save_state();
+        save_slot(&mut store, 0, "Dantooine", &state).unwrap();
+        let bincode = bincode::serialize(&state).unwrap();
+        let body = &store.entries()[&versioned_slot_key(SAVE_VERSION, 0)];
+        let StoredValue::Bytes(compressed) = body else {
+            panic!("the body is stored as text: {body:?}");
+        };
+        assert!(
+            compressed.len() < bincode.len(),
+            "{} compressed bytes for {} bincode bytes",
+            compressed.len(),
+            bincode.len()
+        );
+        assert_eq!(decode_stored_body(body).unwrap(), bincode);
+        assert!(matches!(
+            store.entries()[&versioned_meta_key(SAVE_VERSION, 0)],
+            StoredValue::Text(_)
+        ));
+    }
+
+    #[test]
+    fn a_base64_body_an_older_build_stored_still_loads() {
+        let mut store = MemoryStore::default();
+        let state = minimal_save_state();
+        let (fingerprint, _) = save_slot(&mut store, 1, "Ord Mantell", &state).unwrap();
+        let legacy = text(&b64_encode(&bincode::serialize(&state).unwrap()));
+        store.insert(&versioned_slot_key(SAVE_VERSION, 1), legacy);
+        let (meta, loaded) = load_slot(&store, 1).unwrap();
+        assert_eq!(meta.name, "Ord Mantell");
+        assert_eq!(meta.state_fingerprint, fingerprint);
+        assert_eq!(compute_state_fingerprint(&loaded).unwrap(), fingerprint);
+    }
+
+    #[test]
+    fn a_compressed_body_that_does_not_decompress_fails_to_load() {
+        let mut store = MemoryStore::default();
+        save_slot(&mut store, 2, "Kessel", &minimal_save_state()).unwrap();
+        let key = versioned_slot_key(SAVE_VERSION, 2);
+        let StoredValue::Bytes(mut body) = store.entries()[&key].clone() else {
+            panic!("the body is stored as text");
+        };
+        body.truncate(body.len() / 2);
+        store.insert(&key, StoredValue::Bytes(body));
+        assert_eq!(list_saves(&store)[0].as_ref().unwrap().name, "Kessel");
+        let error = load_slot(&store, 2).unwrap_err().to_string();
+        assert!(error.contains("does not decompress"), "{error}");
+    }
+
+    #[test]
+    fn metadata_stored_as_bytes_lists_as_an_error_entry() {
+        let mut store = MemoryStore::default();
+        store.insert(&versioned_slot_key(SAVE_VERSION, 0), text("AAAA"));
+        store.insert(
+            &versioned_meta_key(SAVE_VERSION, 0),
+            StoredValue::Bytes(meta_named("Bytes").into_bytes()),
+        );
+        let listed = list_saves(&store);
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].is_err());
     }
 
     #[test]
@@ -546,7 +680,7 @@ mod tests {
         let bytes: usize = sizing
             .entries()
             .iter()
-            .map(|(k, v)| k.len() + v.len())
+            .map(|(k, v)| k.len() + v.size())
             .sum();
         let mut store = MemoryStore {
             quota_bytes: Some(bytes),
@@ -576,22 +710,28 @@ mod tests {
     #[test]
     fn a_corrupt_body_lists_its_name_but_fails_to_load_and_keeps_its_bytes() {
         let mut store = MemoryStore::default();
-        store.insert(&versioned_slot_key(SAVE_VERSION, 2), "corrupt fixture");
-        store.insert(&versioned_meta_key(SAVE_VERSION, 2), &meta_named("Bespin"));
+        store.insert(
+            &versioned_slot_key(SAVE_VERSION, 2),
+            text("corrupt fixture"),
+        );
+        store.insert(
+            &versioned_meta_key(SAVE_VERSION, 2),
+            text(&meta_named("Bespin")),
+        );
         let listed = list_saves(&store);
         assert_eq!(listed[0].as_ref().unwrap().name, "Bespin");
         assert!(load_slot(&store, 2).is_err());
         assert_eq!(
             store.entries()[&versioned_slot_key(SAVE_VERSION, 2)],
-            "corrupt fixture"
+            text("corrupt fixture")
         );
     }
 
     #[test]
     fn unreadable_metadata_lists_as_an_error_entry() {
         let mut store = MemoryStore::default();
-        store.insert(&versioned_slot_key(SAVE_VERSION, 1), "");
-        store.insert(&versioned_meta_key(SAVE_VERSION, 1), "");
+        store.insert(&versioned_slot_key(SAVE_VERSION, 1), text(""));
+        store.insert(&versioned_meta_key(SAVE_VERSION, 1), text(""));
         let listed = list_saves(&store);
         assert_eq!(listed.len(), 1);
         assert!(listed[0].is_err());
@@ -601,7 +741,7 @@ mod tests {
     #[test]
     fn a_body_without_metadata_is_no_save_but_occupies_its_slot() {
         let mut store = MemoryStore::default();
-        store.insert(&versioned_slot_key(SAVE_VERSION, 5), "AAAA");
+        store.insert(&versioned_slot_key(SAVE_VERSION, 5), text("AAAA"));
         assert!(list_saves(&store).is_empty());
         assert!(slot_occupied(&store, 5));
         assert!(!slot_occupied(&store, 6));
@@ -610,16 +750,19 @@ mod tests {
     #[test]
     fn an_older_versions_save_is_read_when_the_current_one_is_absent() {
         let mut store = MemoryStore::default();
-        store.insert(&versioned_slot_key(V130, 0), "AAAA");
-        store.insert(&versioned_meta_key(V130, 0), &meta_named("Old"));
-        store.insert(&versioned_slot_key(MIGRATED_VERSION, 0), "AAAA");
+        store.insert(&versioned_slot_key(V130, 0), text("AAAA"));
+        store.insert(&versioned_meta_key(V130, 0), text(&meta_named("Old")));
+        store.insert(&versioned_slot_key(MIGRATED_VERSION, 0), text("AAAA"));
         store.insert(
             &versioned_meta_key(MIGRATED_VERSION, 0),
-            &meta_named("Oldest"),
+            text(&meta_named("Oldest")),
         );
         assert_eq!(list_saves(&store)[0].as_ref().unwrap().name, "Old");
-        store.insert(&versioned_slot_key(SAVE_VERSION, 0), "AAAA");
-        store.insert(&versioned_meta_key(SAVE_VERSION, 0), &meta_named("New"));
+        store.insert(&versioned_slot_key(SAVE_VERSION, 0), text("AAAA"));
+        store.insert(
+            &versioned_meta_key(SAVE_VERSION, 0),
+            text(&meta_named("New")),
+        );
         assert_eq!(list_saves(&store)[0].as_ref().unwrap().name, "New");
     }
 
@@ -640,10 +783,10 @@ mod tests {
     fn delete_removes_every_versions_keys_of_the_slot_only() {
         let mut store = MemoryStore::default();
         for version in READ_VERSIONS {
-            store.insert(&versioned_slot_key(version, 3), "AAAA");
-            store.insert(&versioned_meta_key(version, 3), "{}");
+            store.insert(&versioned_slot_key(version, 3), text("AAAA"));
+            store.insert(&versioned_meta_key(version, 3), text("{}"));
         }
-        store.insert(&versioned_slot_key(SAVE_VERSION, 4), "AAAA");
+        store.insert(&versioned_slot_key(SAVE_VERSION, 4), text("AAAA"));
         let ticket = delete_slot(&mut store, 3).unwrap();
         store.settle();
         assert_eq!(store.status(ticket), WriteStatus::Committed);
