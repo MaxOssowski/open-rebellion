@@ -343,6 +343,107 @@ fn music_context_after_cutscene(kind: &CutsceneKind) -> Option<MusicContext> {
     }
 }
 
+/// The galaxy view's next track (`FUN_0041d3b0` -> `FUN_0043a250`), rolled
+/// from the app's own random numbers.
+fn next_galaxy_track(
+    score: &mut rebellion_render::GalaxyScore,
+    player_is_alliance: bool,
+) -> rebellion_render::MusicTrack {
+    score.next(player_is_alliance, |n| macroquad::rand::rand() % n.max(1))
+}
+
+/// The systems the viewer's side holds and those the opponent holds
+/// (system record bits 4 and 8, `FUN_004ebe40`, summed by
+/// `FUN_004c6830` and `FUN_0049db10`). port: the true holder, as
+/// `agent_build` reads it, not the side's copy of each system.
+fn systems_held_by_viewer(world: &GameWorld, player_is_alliance: bool) -> (i32, i32) {
+    let (own_side, opponent_side) = if player_is_alliance {
+        (Faction::Alliance, Faction::Empire)
+    } else {
+        (Faction::Empire, Faction::Alliance)
+    };
+    world
+        .systems
+        .values()
+        .fold((0, 0), |(own, opponent), system| match system.control.faction() {
+            Some(side) if side == own_side => (own + 1, opponent),
+            Some(side) if side == opponent_side => (own, opponent + 1),
+            _ => (own, opponent),
+        })
+}
+
+/// Start `context`'s score: the menu's MDATA.300, or in a game the galaxy
+/// view's next pick (`FUN_00417520(FUN_0041d3b0())`), which replaces the
+/// playing track.
+#[cfg(not(target_arch = "wasm32"))]
+fn start_context_score(
+    engine: &mut audio::AudioEngine,
+    context: MusicContext,
+    score: &mut rebellion_render::GalaxyScore,
+    player_is_alliance: bool,
+    sounds_dir: &Path,
+    volume: &rebellion_render::AudioVolumeState,
+) {
+    if context == MusicContext::GalaxyMap {
+        let track = next_galaxy_track(score, player_is_alliance);
+        engine.stop_music();
+        engine.play_music(track, sounds_dir, volume);
+        macroquad::logging::info!(
+            "[audio] context=galaxy track=original mdata={} mood={:#x}",
+            track.mdata().unwrap_or_default(),
+            score.mood()
+        );
+    } else {
+        engine.play_music_for_context(context, sounds_dir, volume);
+    }
+}
+
+/// The browser's [`start_context_score`]: the main theme kept decoded
+/// resumes where a movie halted it; any other track is decoded from the
+/// runtime pack.
+#[cfg(target_arch = "wasm32")]
+fn start_context_score(
+    engine: Option<&mut audio::AudioEngine>,
+    context: MusicContext,
+    score: &mut rebellion_render::GalaxyScore,
+    player_is_alliance: bool,
+    main_theme: Option<&[u8]>,
+    tracks: &std::collections::HashMap<rebellion_render::MusicTrack, Vec<u8>>,
+) {
+    let Some(engine) = engine else {
+        return;
+    };
+    if context != MusicContext::GalaxyMap {
+        let track = rebellion_render::MusicTrack::MainTheme;
+        if let (false, Some(bytes)) = (engine.current_track() == Some(track), main_theme) {
+            engine.load_music_bytes(track, bytes);
+        }
+        return;
+    }
+    let track = next_galaxy_track(score, player_is_alliance);
+    if let Some(bytes) = tracks.get(&track) {
+        engine.load_music_bytes(track, bytes);
+    } else {
+        engine.stop_music();
+    }
+    // The next pick decodes meanwhile, so it starts on time after a short
+    // screen between two movies or at this one's end.
+    let upcoming = score.peek(player_is_alliance, |n| macroquad::rand::rand() % n.max(1));
+    if let Some(bytes) = tracks.get(&upcoming) {
+        engine.prepare_music_bytes(upcoming, bytes);
+    }
+    macroquad::logging::info!(
+        "[audio] context=galaxy track=original mdata={} mood={:#x} loaded={} seconds={:.3}",
+        track.mdata().unwrap_or_default(),
+        score.mood(),
+        tracks.contains_key(&track),
+        tracks
+            .get(&track)
+            .and_then(|bytes| audio::wave_duration_seconds(bytes))
+            .unwrap_or_default()
+    );
+}
+
 /// Whether the browser may start its loaded score this frame. No score
 /// plays under a movie: the main menu's starts with the menu's window
 /// (`FUN_00405050` WM_CREATE: `FUN_004173c0`, `FUN_00417520`), which state 3
@@ -1794,9 +1895,11 @@ async fn main() {
 
     #[cfg(target_arch = "wasm32")]
     let browser_main_theme = browser_audio_files.remove("music/main_theme.wav");
-    // The battle windows' original score (FUN_0044f860, FUN_0046f360).
+    // The original score after MDATA.300: the galaxy view's picks
+    // (FUN_0043a250, indices 1..=9) and the battle windows' tracks
+    // (FUN_0044f860, FUN_0046f360, 10..=15).
     #[cfg(target_arch = "wasm32")]
-    let browser_screen_music: std::collections::HashMap<rebellion_render::MusicTrack, Vec<u8>> = (10..=15)
+    let browser_screen_music: std::collections::HashMap<rebellion_render::MusicTrack, Vec<u8>> = (1..=15)
         .map(rebellion_render::MusicTrack::Original)
         .filter_map(|track| {
             browser_audio_files
@@ -1898,6 +2001,10 @@ async fn main() {
     // The tactical effects' five channels (`audio::TacticalEffectChannels`).
     let mut tactical_channels = audio::TacticalEffectChannels::default();
     let mut screen_music_playing: Option<rebellion_render::MusicTrack> = None;
+    // The galaxy view's score (`FUN_0043a250`) and the day its advisor
+    // mood was last set.
+    let mut galaxy_score = rebellion_render::GalaxyScore::default();
+    let mut galaxy_mood_day: Option<u64> = None;
 
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let interface_fixture_request = interface_test_fixture::requested();
@@ -3546,32 +3653,29 @@ async fn main() {
                         }
                         #[cfg(not(target_arch = "wasm32"))]
                         if let Some(next_music) = next_music.filter(|_| cutscene_player.is_none()) {
-                            audio_engine.play_music_for_context(
+                            start_context_score(
+                                &mut audio_engine,
                                 next_music,
+                                &mut galaxy_score,
+                                player_faction == MissionFaction::Alliance,
                                 &sounds_dir,
                                 &audio_vol,
                             );
                         }
-                        // The browser holds only the main theme; the movie
-                        // halted it (`open_cutscene`), and it starts again
-                        // once the next screen shows (`score_may_start`).
-                        // A track the browser no longer holds is decoded
-                        // again first.
+                        // The movie halted the menu's score
+                        // (`open_cutscene`), which starts again once the
+                        // next screen shows (`score_may_start`); the galaxy
+                        // view takes its next pick (`FUN_00422cb0`).
                         #[cfg(target_arch = "wasm32")]
-                        if let (Some(next_music), Some(engine), Some(bytes)) = (
-                            next_music.filter(|_| cutscene_player.is_none()),
-                            browser_menu_audio.as_mut(),
-                            browser_main_theme.as_deref(),
-                        ) {
-                            let track = audio::track_for_context(next_music);
-                            if track == rebellion_render::MusicTrack::MainTheme
-                                && engine.current_track() != Some(track)
-                            {
-                                engine.load_music_bytes(
-                                    rebellion_render::MusicTrack::MainTheme,
-                                    bytes,
-                                );
-                            }
+                        if let Some(next_music) = next_music.filter(|_| cutscene_player.is_none()) {
+                            start_context_score(
+                                browser_menu_audio.as_mut(),
+                                next_music,
+                                &mut galaxy_score,
+                                player_faction == MissionFaction::Alliance,
+                                browser_main_theme.as_deref(),
+                                &browser_screen_music,
+                            );
                         }
                     }
                 } else {
@@ -3594,6 +3698,23 @@ async fn main() {
                     &sounds_dir,
                     &audio_vol,
                 );
+                // Outside a game `FUN_0041d3b0` gives MDATA.300: a galaxy
+                // pick left from the game gives way to the menu's track.
+                #[cfg(target_arch = "wasm32")]
+                if browser_menu_audio
+                    .as_ref()
+                    .and_then(audio::AudioEngine::current_track)
+                    .is_some_and(rebellion_render::MusicTrack::is_galaxy_pick)
+                {
+                    start_context_score(
+                        browser_menu_audio.as_mut(),
+                        MusicContext::MainMenu,
+                        &mut galaxy_score,
+                        player_faction == MissionFaction::Alliance,
+                        browser_main_theme.as_deref(),
+                        &browser_screen_music,
+                    );
+                }
 
                 #[cfg(target_arch = "wasm32")]
                 if let Some(focus) = web_accessibility::take_focus_update() {
@@ -4128,26 +4249,31 @@ async fn main() {
                                     MessageCategory::Event,
                                 ));
 
-                                // Start galaxy map music and play faction voice greeting.
+                                // The galaxy window's creation starts its
+                                // score (`FUN_00422ce0`: `FUN_00422cb0` ->
+                                // `FUN_00417520(FUN_0041d3b0())`) with a
+                                // new agent's counter and mood
+                                // (`FUN_00439320`).
+                                galaxy_score = rebellion_render::GalaxyScore::default();
+                                galaxy_mood_day = None;
                                 #[cfg(not(target_arch = "wasm32"))]
-                                {
-                                    audio_engine.play_music_for_context(
-                                        MusicContext::GalaxyMap,
-                                        &sounds_dir,
-                                        &audio_vol,
-                                    );
-                                }
+                                start_context_score(
+                                    &mut audio_engine,
+                                    MusicContext::GalaxyMap,
+                                    &mut galaxy_score,
+                                    player_faction == MissionFaction::Alliance,
+                                    &sounds_dir,
+                                    &audio_vol,
+                                );
                                 #[cfg(target_arch = "wasm32")]
-                                if let (Some(engine), Some(bytes)) =
-                                    (browser_menu_audio.as_mut(), browser_main_theme.as_deref())
-                                {
-                                    // The side's movie halted the menu's
-                                    // score; the galaxy view plays the same.
-                                    let track = audio::track_for_context(MusicContext::GalaxyMap);
-                                    if engine.current_track() != Some(track) {
-                                        engine.load_music_bytes(track, bytes);
-                                    }
-                                }
+                                start_context_score(
+                                    browser_menu_audio.as_mut(),
+                                    MusicContext::GalaxyMap,
+                                    &mut galaxy_score,
+                                    player_faction == MissionFaction::Alliance,
+                                    browser_main_theme.as_deref(),
+                                    &browser_screen_music,
+                                );
 
                                 // Sync advisor faction and send greeting
                                 advisor_state =
@@ -8606,6 +8732,30 @@ async fn main() {
                                 MessageCategory::Event,
                             ));
                             game_mode = GameMode::Galaxy;
+                            // The loaded game's galaxy window starts its
+                            // score (`FUN_00422ce0`). port: the counter and
+                            // mood are not saved, so it starts as a new
+                            // game's.
+                            galaxy_score = rebellion_render::GalaxyScore::default();
+                            galaxy_mood_day = None;
+                            #[cfg(not(target_arch = "wasm32"))]
+                            start_context_score(
+                                &mut audio_engine,
+                                MusicContext::GalaxyMap,
+                                &mut galaxy_score,
+                                player_faction == MissionFaction::Alliance,
+                                &sounds_dir,
+                                &audio_vol,
+                            );
+                            #[cfg(target_arch = "wasm32")]
+                            start_context_score(
+                                browser_menu_audio.as_mut(),
+                                MusicContext::GalaxyMap,
+                                &mut galaxy_score,
+                                player_faction == MissionFaction::Alliance,
+                                browser_main_theme.as_deref(),
+                                &browser_screen_music,
+                            );
                             if let Ok(fingerprint) = restored_fingerprint {
                                 macroquad::logging::info!(
                                     "[campaign] restored slot={} mode=Galaxy tick={} fingerprint={} faction={:?}",
@@ -8747,25 +8897,30 @@ async fn main() {
             tactical_music_active = true;
         } else if !tactical_audio_context && tactical_music_active {
             // A battle window's own score follows below.
-            #[cfg(not(target_arch = "wasm32"))]
             if screen_music.is_none() && matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy) {
-                audio_engine.play_music_for_context(
-                    if game_mode == GameMode::MainMenu {
-                        rebellion_render::MusicContext::MainMenu
-                    } else {
-                        rebellion_render::MusicContext::GalaxyMap
-                    },
+                let context = if game_mode == GameMode::MainMenu {
+                    rebellion_render::MusicContext::MainMenu
+                } else {
+                    rebellion_render::MusicContext::GalaxyMap
+                };
+                #[cfg(not(target_arch = "wasm32"))]
+                start_context_score(
+                    &mut audio_engine,
+                    context,
+                    &mut galaxy_score,
+                    player_faction == MissionFaction::Alliance,
                     &sounds_dir,
                     &audio_vol,
                 );
-            }
-            #[cfg(target_arch = "wasm32")]
-            if let (true, Some(engine), Some(bytes)) = (
-                screen_music.is_none(),
-                browser_menu_audio.as_mut(),
-                browser_main_theme.as_deref(),
-            ) {
-                engine.load_music_bytes(rebellion_render::MusicTrack::MainTheme, bytes);
+                #[cfg(target_arch = "wasm32")]
+                start_context_score(
+                    browser_menu_audio.as_mut(),
+                    context,
+                    &mut galaxy_score,
+                    player_faction == MissionFaction::Alliance,
+                    browser_main_theme.as_deref(),
+                    &browser_screen_music,
+                );
             }
             tactical_music_active = false;
         }
@@ -8798,24 +8953,94 @@ async fn main() {
             }
             ScreenScore::Restore => {
                 // Leaving a battle window for the galaxy or the menu
-                // restores their score.
+                // restores their score: the galaxy view's next pick.
+                let context = if game_mode == GameMode::MainMenu {
+                    rebellion_render::MusicContext::MainMenu
+                } else {
+                    rebellion_render::MusicContext::GalaxyMap
+                };
                 #[cfg(not(target_arch = "wasm32"))]
-                audio_engine.play_music_for_context(
-                    if game_mode == GameMode::MainMenu {
-                        rebellion_render::MusicContext::MainMenu
-                    } else {
-                        rebellion_render::MusicContext::GalaxyMap
-                    },
+                start_context_score(
+                    &mut audio_engine,
+                    context,
+                    &mut galaxy_score,
+                    player_faction == MissionFaction::Alliance,
                     &sounds_dir,
                     &audio_vol,
                 );
                 #[cfg(target_arch = "wasm32")]
-                if let (Some(engine), Some(bytes)) =
-                    (browser_menu_audio.as_mut(), browser_main_theme.as_deref())
-                {
-                    engine.load_music_bytes(rebellion_render::MusicTrack::MainTheme, bytes);
+                start_context_score(
+                    browser_menu_audio.as_mut(),
+                    context,
+                    &mut galaxy_score,
+                    player_faction == MissionFaction::Alliance,
+                    browser_main_theme.as_deref(),
+                    &browser_screen_music,
+                );
+            }
+        }
+
+        // The advisor's mood (`FUN_00439bf0`) from the systems each side
+        // holds, once a game day. hyp: the original refreshes it with the
+        // agent's galaxy model; a new game's first pick still sees the
+        // constructor's 8 (A0: the Empire's new game began with 303).
+        if game_mode == GameMode::Galaxy && galaxy_mood_day != Some(clock.tick) {
+            if galaxy_mood_day.is_some() {
+                let (own, opponent) =
+                    systems_held_by_viewer(&world, player_faction == MissionFaction::Alliance);
+                // hyp: agent+0xc4 and +0xc8 (the lead) were not found
+                // written anywhere, so they stay equal.
+                galaxy_score.refresh_mood(0, own, opponent);
+            }
+            galaxy_mood_day = Some(clock.tick);
+        }
+        // In a game the browser keeps the galaxy view's next pick decoding,
+        // so the score starts at once when the view shows (a story movie's
+        // end, FUN_00422cb0), however soon the next movie follows.
+        #[cfg(target_arch = "wasm32")]
+        if matches!(
+            game_mode,
+            GameMode::Galaxy
+                | GameMode::Cutscene {
+                    kind: CutsceneKind::Story(_)
+                }
+        ) {
+            if let Some(engine) = browser_menu_audio.as_mut().filter(|engine| !engine.has_prepared_music()) {
+                let upcoming = galaxy_score.peek(player_faction == MissionFaction::Alliance, |n| {
+                    macroquad::rand::rand() % n.max(1)
+                });
+                if let Some(bytes) = browser_screen_music.get(&upcoming) {
+                    engine.prepare_music_bytes(upcoming, bytes);
                 }
             }
+        }
+        // A galaxy pick that ends starts the next (`FUN_00417780`'s
+        // 0x4c9 -> `FUN_00417520(FUN_0041d3b0())`; A0: 302 ran out and 301
+        // followed).
+        #[cfg(not(target_arch = "wasm32"))]
+        if audio_engine.galaxy_pick_finished(macroquad::time::get_time()) {
+            start_context_score(
+                &mut audio_engine,
+                MusicContext::GalaxyMap,
+                &mut galaxy_score,
+                player_faction == MissionFaction::Alliance,
+                &sounds_dir,
+                &audio_vol,
+            );
+        }
+        #[cfg(target_arch = "wasm32")]
+        if browser_menu_audio
+            .as_ref()
+            .is_some_and(|engine| engine.galaxy_pick_finished(macroquad::time::get_time()))
+        {
+            start_context_score(
+                browser_menu_audio.as_mut(),
+                MusicContext::GalaxyMap,
+                &mut galaxy_score,
+                player_faction == MissionFaction::Alliance,
+                browser_main_theme.as_deref(),
+                &browser_screen_music,
+            );
         }
 
         // The effects class plays at most five at once; a request waits 225
@@ -16610,6 +16835,24 @@ mod tactical_ground_tests {
             false,
             WORD_HQ_LOST | WORD_EMPIRE_WINS | WORD_GAME_OVER
         ));
+    }
+
+    #[test]
+    fn the_galaxy_mood_counts_the_systems_each_side_holds_from_the_viewer() {
+        // FUN_004ebe40: bit 4 the side holds it, 8 the opponent, 0x10
+        // neither; FUN_004c6830 and FUN_0049db10 sum bits 4 and 8.
+        let (mut world, tokmia, _) = victory_word_world();
+        let mut third = world.systems[tokmia].clone();
+        third.control = ControlKind::Uprising(Faction::Alliance);
+        world.systems.insert(third.clone());
+        third.control = ControlKind::Uncontrolled;
+        world.systems.insert(third.clone());
+        third.control = ControlKind::Contested;
+        world.systems.insert(third.clone());
+        third.control = ControlKind::Controlled(Faction::Neutral);
+        world.systems.insert(third);
+        assert_eq!(systems_held_by_viewer(&world, true), (2, 1));
+        assert_eq!(systems_held_by_viewer(&world, false), (1, 2));
     }
 
     /// The Alliance's headquarters, Tokmia, and Coruscant, the Empire's,

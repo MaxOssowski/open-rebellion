@@ -153,6 +153,18 @@ for MDATA_NUMBER in 307 313 308 309 314 315; do
     fi
 done
 echo "Staged the battle windows' original score (MDATA.307..315)."
+# The galaxy view's score (tracks 1..9, FUN_0043a250): MDATA.301..303 at
+# random, and 304..306 and 310..312 by the advisor's mood.
+for MDATA_NUMBER in 301 302 303 304 305 306 310 311 312; do
+    SCORE_SRC="$(music_source "MDATA.$MDATA_NUMBER" "$MDATA_NUMBER.wav")"
+    if [ -n "$SCORE_SRC" ]; then
+        cp "$SCORE_SRC" "$WEB_AUDIO/music/$MDATA_NUMBER.wav"
+    else
+        rm -f "$WEB_AUDIO/music/$MDATA_NUMBER.wav"
+        echo "WARNING: MDATA.$MDATA_NUMBER not found; the galaxy view will skip that track."
+    fi
+done
+echo "Staged the galaxy view's original score (MDATA.301..306, 310..312)."
 
 mkdir -p "$WEB_AUDIO/sfx"
 COMMON_DLL_DIR="$(original_dll_dir COMMON.DLL)"

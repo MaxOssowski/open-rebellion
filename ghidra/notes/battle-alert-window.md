@@ -97,7 +97,9 @@ Ported: `audio::battle_alert_music` and `battle_summary_music`, and
 `TacticalState::screen_music`. The app plays them while those windows
 show, and restores the galaxy's or the menu's score when they close.
 `scripts/build-wasm.sh` stages the six tracks for the browser. The
-tactical battle itself keeps the port's MDATA.307 cue.
+tactical battle has no score: the alert's choice stops it (`0x4505a3`:
+`FUN_00417640`; A0 `2026-11-15-audio` tac01). Restoring the galaxy's
+score means its next pick (galaxy-score.md, 2026-11-21).
 
 The summary's track plays once (`FUN_00470e70` clears `+0x188`). A story
 movie over the open summary stops it (`FUN_00422ce0` 0x482,

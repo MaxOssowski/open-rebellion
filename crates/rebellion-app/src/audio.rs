@@ -231,7 +231,10 @@ pub fn music_file(track: MusicTrack) -> String {
     }
 }
 
-/// Select a `MusicTrack` for a given `MusicContext`.
+/// Select a `MusicTrack` for a given `MusicContext`. The galaxy view's
+/// own score is a sequence of picks (`rebellion_render::GalaxyScore`); the
+/// app asks for it there instead.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub fn track_for_context(ctx: MusicContext) -> MusicTrack {
     match ctx {
         MusicContext::MainMenu | MusicContext::GalaxyMap => MusicTrack::MainTheme,
@@ -501,6 +504,12 @@ pub fn tactical_voice_assets() -> Vec<(TacticalVoiceFaction, String, u32)> {
 // AudioEngine
 // ---------------------------------------------------------------------------
 
+/// Whether a track started at `started` and `seconds` long has ended at
+/// `now`. A track of unknown length never ends.
+fn track_ended(started: f64, seconds: Option<f64>, now: f64) -> bool {
+    seconds.is_some_and(|seconds| now - started >= seconds)
+}
+
 /// `quad-snd`-backed audio engine.
 ///
 /// Handles background music (looped), one-shot SFX, and one-shot voice lines.
@@ -533,6 +542,17 @@ pub struct AudioEngine {
     /// Whether music is currently playing.
     music_playing: bool,
 
+    /// The loaded track's length in seconds, from its WAVE header.
+    music_seconds: Option<f64>,
+
+    /// When the track started (`macroquad::time::get_time`).
+    music_started: f64,
+
+    /// The browser's next track, decoding ahead of its turn
+    /// ([`Self::prepare_music_bytes`]).
+    #[cfg(target_arch = "wasm32")]
+    prepared: Option<(Sound, MusicTrack)>,
+
     /// Missing tracks already reported, keeping diagnostics bounded.
     missing_music_logged: HashSet<MusicTrack>,
 
@@ -557,6 +577,10 @@ impl AudioEngine {
             tactical_loop: None,
             music: None,
             music_playing: false,
+            music_seconds: None,
+            music_started: 0.0,
+            #[cfg(target_arch = "wasm32")]
+            prepared: None,
             missing_music_logged: HashSet::new(),
         }
     }
@@ -826,9 +850,41 @@ impl AudioEngine {
     #[cfg(target_arch = "wasm32")]
     pub fn load_music_bytes(&mut self, track: MusicTrack, bytes: &[u8]) {
         self.stop_music();
-        let sound = Sound::load(&self.ctx, bytes);
+        let sound = match self.prepared.take() {
+            Some((sound, prepared)) if prepared == track => sound,
+            other => {
+                if let Some((sound, _)) = other {
+                    sound.delete(&self.ctx);
+                }
+                Sound::load(&self.ctx, bytes)
+            }
+        };
         self.music = Some((sound, track));
+        self.music_seconds = wave_duration_seconds(bytes);
         self.music_playing = false;
+    }
+
+    /// Begin decoding the track due next, so it can start the moment it is
+    /// asked for ([`Self::load_music_bytes`]).
+    #[cfg(target_arch = "wasm32")]
+    pub fn prepare_music_bytes(&mut self, track: MusicTrack, bytes: &[u8]) {
+        if self
+            .prepared
+            .as_ref()
+            .is_some_and(|(_, prepared)| *prepared == track)
+        {
+            return;
+        }
+        if let Some((sound, _)) = self.prepared.take() {
+            sound.delete(&self.ctx);
+        }
+        self.prepared = Some((Sound::load(&self.ctx, bytes), track));
+    }
+
+    /// Whether a next track is decoding or decoded.
+    #[cfg(target_arch = "wasm32")]
+    pub fn has_prepared_music(&self) -> bool {
+        self.prepared.is_some()
     }
 
     /// Whether the loaded browser music has started.
@@ -844,7 +900,7 @@ impl AudioEngine {
             return true;
         }
 
-        let Some((sound, _)) = &self.music else {
+        let Some((sound, track)) = &self.music else {
             return false;
         };
         if !sound.is_loaded() {
@@ -854,11 +910,12 @@ impl AudioEngine {
         sound.play(
             &self.ctx,
             quad_snd::PlaySoundParams {
-                looped: true,
+                looped: !track.is_galaxy_pick(),
                 volume: vol_state.effective_music_volume() as f32,
             },
         );
         self.music_playing = true;
+        self.music_started = macroquad::time::get_time();
         true
     }
 
@@ -1011,9 +1068,13 @@ impl AudioEngine {
     ) {
         let vol = vol_state.effective_music_volume() as f32;
 
-        // Same track already playing — do nothing.
+        // Same track already playing — do nothing (a galaxy pick that
+        // has ended starts again).
         if let Some((_, current)) = &self.music {
-            if *current == track && self.music_playing {
+            if *current == track
+                && self.music_playing
+                && !self.galaxy_pick_finished(macroquad::time::get_time())
+            {
                 return;
             }
         }
@@ -1057,12 +1118,25 @@ impl AudioEngine {
         sound.play(
             &self.ctx,
             quad_snd::PlaySoundParams {
-                looped: true,
+                looped: !track.is_galaxy_pick(),
                 volume: vol,
             },
         );
         self.music = Some((sound, track));
+        self.music_seconds = wave_duration_seconds(&bytes);
+        self.music_started = macroquad::time::get_time();
         self.music_playing = true;
+    }
+
+    /// Whether the galaxy view's playing track has ended, so the next
+    /// pick is due (`FUN_00417780`'s `0x4c9`). The other tracks loop.
+    pub fn galaxy_pick_finished(&self, now: f64) -> bool {
+        self.music_playing
+            && self
+                .music
+                .as_ref()
+                .is_some_and(|(_, track)| track.is_galaxy_pick())
+            && track_ended(self.music_started, self.music_seconds, now)
     }
 
     /// Select and start the appropriate music track for a game context.
@@ -1094,7 +1168,10 @@ impl AudioEngine {
     /// Stop the current music track immediately.
     pub fn stop_music(&mut self) {
         if let Some((sound, _)) = self.music.take() {
+            // Deleting frees the decoded track (the browser keeps every
+            // buffer until then; the galaxy view changes track often).
             sound.stop(&self.ctx);
+            sound.delete(&self.ctx);
             self.music_playing = false;
         }
     }
@@ -1321,6 +1398,14 @@ mod tests {
             let want = (sample * 32_767.0).round();
             assert!((f32::from(value) - want).abs() < 0.5, "sample {index}");
         }
+    }
+
+    #[test]
+    fn a_track_ends_once_its_length_has_played() {
+        assert!(!track_ended(10.0, Some(2.0), 11.9));
+        assert!(track_ended(10.0, Some(2.0), 12.0));
+        assert!(track_ended(10.0, Some(2.0), 30.0));
+        assert!(!track_ended(10.0, None, 1.0e9));
     }
 
     #[test]

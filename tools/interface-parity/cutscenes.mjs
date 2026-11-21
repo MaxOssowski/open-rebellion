@@ -226,7 +226,8 @@ const CASES = {
   // creates that window only after the intro's movies (FUN_004138a0's 0x405:
   // 0x65 -> state 2, 0x66 -> state 3). A skip of the logos must not start it
   // under the cinematic. The page records each looped WebAudio source (the
-  // score; effects and voices are one-shot) in window.__openRebellionLoops.
+  // score, or longer than 30 s; effects and voices are short one-shots) in
+  // window.__openRebellionLoops.
   async "skip-holds-menu-music"(page, shot) {
     await waitStem(page, "000", "the logos play");
     await page.locator("#glcanvas").focus();
@@ -296,6 +297,63 @@ const CASES = {
       .map((line) => line.match(/mode=(\w+)/)[1]);
     assert.deepEqual(started, ["MainMenu", "MainMenu", "Galaxy"], JSON.stringify(started));
     return { credits, new_game: newGame, starts, starts_after_credits: afterCredits, started_modes: started };
+  },
+  // The galaxy view's score is a run of picks (FUN_0041d3b0 ->
+  // FUN_0043a250; ghidra/notes/galaxy-score.md): a new game's first track
+  // is the advisor's from the starting mood 8, one of MDATA.301..303, and
+  // it plays once; at its end (FUN_00417780's 0x4c9) the next pick, one of
+  // 301..303 again, starts from its beginning. A0 2026-11-15-audio: 303,
+  // then 301, then 302 in a new Empire game; 302 then 301 at day 509.
+  async "galaxy-picks-follow-each-other"(page, shot, log) {
+    await waitStem(page, "000", "the logos play");
+    await page.locator("#glcanvas").focus();
+    await page.mouse.click(320, 240);
+    await waitStem(page, "001", "the cinematic plays");
+    await page.keyboard.press("Escape");
+    await waitFor(page, menuActive, "the main menu");
+    await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(8));
+    await waitStem(page, "004", "the Empire's movie plays before the game");
+    await page.keyboard.press("Escape");
+    await waitFor(page, () => !document.querySelector("video")
+      && !(document.getElementById("main-menu-semantics")?.dataset.active === "true"),
+      "the game starts after the movie");
+    const lines = () => log.filter((line) => line.includes("[audio] context=galaxy track=original"));
+    const picks = () => lines().map((line) => Number(line.match(/mdata=(\d+)/)[1]));
+    // The sources of the picks: those as long as the logged tracks.
+    const pickSources = async () => {
+      const seconds = lines().map((line) => Number(line.match(/seconds=([\d.]+)/)[1]));
+      const sources = await page.evaluate(() => window.__openRebellionLoops.filter(({ menu, loop }) => !menu && !loop));
+      return seconds.map((length) => sources.find((source) => Math.abs(source.seconds - length) < 0.05));
+    };
+    await waitFor(page, () => window.__openRebellionLoops.some(({ menu, loop }) => !menu && !loop),
+      "the galaxy view's first pick sounds", 30_000);
+    await shot("first-pick");
+    const first = picks();
+    assert.equal(first.length, 1, JSON.stringify(first));
+    assert.ok([301, 302, 303].includes(first[0]), `the first pick is 301..303: ${first}`);
+    const [score] = await pickSources();
+    assert.ok(score, `the first pick sounds once, not looped: ${JSON.stringify(lines())}`);
+    // The next pick starts when the first ends (each lasts under 120 s).
+    const deadline = Date.now() + (score.seconds + 30) * 1000;
+    while (picks().length < 2) {
+      assert.ok(Date.now() < deadline, `no second pick after ${score.seconds} s: ${picks()}`);
+      await page.waitForTimeout(1000);
+    }
+    const deadlineSecond = Date.now() + 30_000;
+    let starts = await pickSources();
+    while (!starts[1]) {
+      assert.ok(Date.now() < deadlineSecond, "the second pick sounds");
+      await page.waitForTimeout(500);
+      starts = await pickSources();
+    }
+    await shot("second-pick");
+    const second = picks();
+    assert.ok([301, 302, 303].includes(second[1]), `the second pick is 301..303: ${second}`);
+    const gap = (starts[1].at - starts[0].at) / 1000;
+    assert.ok(gap >= starts[0].seconds - 0.5 && gap <= starts[0].seconds + 3,
+      `the second starts as the first ends: ${gap} s after, the first lasting ${starts[0].seconds} s`);
+    assert.equal(await page.evaluate(() => window.__openRebellionActiveLoops.size), 1, "one score at a time");
+    return { picks: second, first_seconds: starts[0].seconds, gap_seconds: gap };
   },
   // Back to the main menu from a game (Game Options' Restart) and a saved
   // game loaded from the menu's Game Options: one score sounds at each
@@ -505,25 +563,33 @@ async function run(browser, base, name) {
     // Every one-shot source started, with its length and the movie state
     // (the missing-movie box's beep).
     window.__openRebellionStarts = [];
+    // A score track loops (the menu's, the battle windows') or, as a
+    // galaxy pick (FUN_0043a250), plays once and gives way to the next;
+    // every galaxy pick is longer than 30 s (MDATA.312, 31.6 s, the
+    // shortest), every effect and voice shorter.
+    const isScore = (source) => source.loop || (source.buffer?.duration ?? 0) >= 30;
     const start = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...rest) {
-      if (!this.loop) {
+      if (!isScore(this)) {
         window.__openRebellionStarts.push({
           seconds: this.buffer?.duration ?? null,
           state: window.__openRebellionCutscene?.state ?? null,
         });
       }
-      if (this.loop) {
+      if (isScore(this)) {
         window.__openRebellionLoops.push({
           seconds: this.buffer?.duration ?? null,
+          loop: this.loop,
+          at: performance.now(),
           menu: document.getElementById("main-menu-semantics")?.dataset.active === "true",
           stem: window.__openRebellionCutscene?.state === 1 ? window.__openRebellionCutscene.stem : null,
         });
         window.__openRebellionActiveLoops.add(this);
+        this.addEventListener("ended", () => window.__openRebellionActiveLoops.delete(this));
       }
       return start.apply(this, rest);
     };
-    // The looped sources still sounding (a stop ends one).
+    // The score sources still sounding (a stop or the end removes one).
     window.__openRebellionActiveLoops = new Set();
     const stop = AudioBufferSourceNode.prototype.stop;
     AudioBufferSourceNode.prototype.stop = function (...rest) {

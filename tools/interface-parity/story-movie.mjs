@@ -99,18 +99,20 @@ async function run(browser, base, faction) {
     if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => errors.push(String(error)));
-  // The looped WebAudio sources (the score; effects and voices are
-  // one-shot): each start, and those still sounding.
+  // The score's WebAudio sources (looped, or a galaxy pick longer than
+  // 30 s that plays once; effects and voices are short one-shots): each
+  // start, and those still sounding.
   await page.addInitScript(() => {
     window.__openRebellionLoops = [];
     window.__openRebellionActiveLoops = new Set();
     const start = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...rest) {
-      if (this.loop) {
+      if (this.loop || (this.buffer?.duration ?? 0) >= 30) {
         window.__openRebellionLoops.push({
           stem: window.__openRebellionCutscene?.state === 1 ? window.__openRebellionCutscene.stem : null,
         });
         window.__openRebellionActiveLoops.add(this);
+        this.addEventListener("ended", () => window.__openRebellionActiveLoops.delete(this));
       }
       return start.apply(this, rest);
     };
@@ -260,14 +262,17 @@ async function runSummary(browser, base) {
   await page.addInitScript(() => {
     window.__openRebellionLoops = [];
     window.__openRebellionActiveLoops = new Set();
+    // A score track loops or, as a galaxy pick (FUN_0043a250), plays once
+    // (longer than 30 s); effects and voices are shorter one-shots.
     const start = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...rest) {
-      if (this.loop) {
+      if (this.loop || (this.buffer?.duration ?? 0) >= 30) {
         window.__openRebellionLoops.push({
           seconds: this.buffer?.duration ?? null,
           stem: window.__openRebellionCutscene?.state === 1 ? window.__openRebellionCutscene.stem : null,
         });
         window.__openRebellionActiveLoops.add(this);
+        this.addEventListener("ended", () => window.__openRebellionActiveLoops.delete(this));
       }
       return start.apply(this, rest);
     };
@@ -320,7 +325,10 @@ async function runSummary(browser, base) {
     assert.ok(log.slice(movieAt).every((line) => !line.includes("[audio] context=battle_window")),
       "the summary's track does not play again");
     const scoreAfter = log.slice(movieAt).filter((line) => line.includes("[audio] score started"));
-    assert.deepEqual(scoreAfter, ["[audio] score started mode=Galaxy track=Some(MainTheme)"],
+    // The movie's end takes the galaxy view's next pick (FUN_00422cb0 ->
+    // FUN_00417520(FUN_0041d3b0())): one of tracks 1..9, MDATA.301..312.
+    assert.equal(scoreAfter.length, 1, `one score after the movie: ${JSON.stringify(scoreAfter)}`);
+    assert.match(scoreAfter[0], /^\[audio\] score started mode=Galaxy track=Some\(Original\([1-9]\)\)$/,
       `the galaxy view's score, not the summary's: ${JSON.stringify(starts)}`);
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: "battle-summary", status: "pass", starts, summary_score: summaryScore, shots };
