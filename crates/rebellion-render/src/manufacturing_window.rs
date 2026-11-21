@@ -162,9 +162,13 @@ pub fn band(
         rebellion_core::products::delivery_system(world, manufacturing, system, area);
     // An idle band names the manager's DeploymentKey, its TargetKey
     // (FUN_0052ac40, FUN_004591b0): a fleet when the Destination is one.
+    // A0 2026-11-21-build-dest-16/34: a ship Destination names the ship.
     let target_fleet = manufacturing
-        .destination_fleet(system, area)
-        .and_then(|fleet| world.fleet_name(fleet));
+        .destination_target(system, area)
+        .and_then(|target| match target.ship {
+            Some(ship) => rebellion_core::products::ship_name(world, target.fleet, ship),
+            None => world.fleet_name(target.fleet),
+        });
     let destination = format!(
         "Destination: {}",
         target_fleet.unwrap_or_else(|| world
@@ -191,6 +195,9 @@ pub fn band(
         .expect("a non-empty queue has an active unit");
     let (mut name, portrait) = product(world, active.kind);
     let mut destination = destination;
+    if let Some(ship) = rebellion_core::products::deployment_ship(world, system, area) {
+        destination = format!("Destination: {ship}");
+    }
     if let BuildableKind::CapitalShip(class) = active.kind {
         if let Some(class) = world.capital_ship_classes.get(class) {
             // The band names the manager's DeploymentKey (+0x78,
@@ -959,6 +966,60 @@ mod tests {
         assert_eq!(
             shown(&world, &manufacturing, ProductionArea::Shipyard),
             format!("Destination: {name}")
+        );
+    }
+
+    // A regiment confirmed for a fleet waits in the ship the planner
+    // seated it on, and the band names that ship, its DeploymentKey
+    // (FUN_0052ac40). A0 2026-11-21-build-dest-16/07 then /12: "Destination:
+    // Fleet 1", then "Destination: Victory Destroyer 2".
+    #[test]
+    fn a_troops_band_names_the_ship_its_regiment_waits_in() {
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Coruscant", ALLIANCE);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0084),
+            name: "Victory Destroyer".into(),
+            is_alliance: true,
+            troop_capacity: 2,
+            ..CapitalShipClass::default()
+        });
+        let mut ship = rebellion_core::world::ShipInstance::new(class, 100, true);
+        ship.name = Some("Victory Destroyer 2".into());
+        let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+            location: system,
+            capital_ships: vec![ship],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[system].fleets.push(fleet);
+        world.number_ships();
+        let name = world.fleet_name(fleet).expect("a named fleet").to_owned();
+        let mut manufacturing = ManufacturingState::new();
+        let area = ProductionArea::TrainingFacility;
+        assert!(manufacturing.set_fleet_destination(system, area, fleet, system));
+        assert_eq!(
+            band(&world, &manufacturing, true, system, area).destination,
+            format!("Destination: {name}")
+        );
+        let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+        manufacturing.build(system, &QueueItem::new(regiment, 10), 1);
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        assert_eq!(
+            band(&world, &manufacturing, true, system, area).destination,
+            "Destination: Victory Destroyer 2"
+        );
+        // A Destination on the ship itself names it while idle too (A0 /34).
+        let ship = world.fleets[fleet].capital_ships[0].id;
+        world.products = rebellion_core::products::Products::default();
+        let mut idle = ManufacturingState::new();
+        assert!(idle.set_ship_destination(system, area, fleet, ship, system));
+        assert_eq!(
+            band(&world, &idle, true, system, area).destination,
+            "Destination: Victory Destroyer 2"
         );
     }
 

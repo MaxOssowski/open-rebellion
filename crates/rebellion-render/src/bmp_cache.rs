@@ -2255,6 +2255,11 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 10_040..=10_048
                 | 10_050..=10_058
                 | 10_060..=10_068
+                // The Manufacturing window's band drag images (FUN_00456230
+                // loads 0x2841..0x2846; FUN_0060dbb0 drags them): A0
+                // 2026-11-21-build-dest-16/28, 30, 32 show the windows
+                // under the image's blue first pixel.
+                | 10_305..=10_310
                 | 10_117..=10_118
                 | 10_128..=10_129
                 | 10_108..=10_109
@@ -2965,6 +2970,9 @@ pub(crate) mod tests {
         // A0 message-rail/display-sesswenna: the frame shows under the
         // button's green bottom-left pixel.
         assert!(uses_first_pixel_key(DllSource::Strategy, 10_210));
+        // The band drag images (FUN_00456230, 0x2841..0x2846).
+        assert!(uses_first_pixel_key(DllSource::Strategy, 10_305));
+        assert!(uses_first_pixel_key(DllSource::Strategy, 10_310));
         assert!(uses_first_pixel_key(DllSource::Strategy, 10_211));
         assert!(!uses_first_pixel_key(DllSource::Strategy, 10_212));
     }

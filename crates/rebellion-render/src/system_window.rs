@@ -224,6 +224,9 @@ struct OpenSystemWindow {
     /// The overview's selected band (band `+0x30` bit 0). port: one band;
     /// Ctrl's toggle is not ported.
     selected_band: Option<ProductionArea>,
+    /// Where a band drag began, at the canvas (`+0x24c`, `+0x250`, the
+    /// first move with the button held, `FUN_004534f0` case `0x200`).
+    band_drag_from: Option<(i16, i16)>,
     /// Where the window was when a press on its surface took it
     /// (`crate::window_move`).
     moving: MoveAnchor,
@@ -406,6 +409,7 @@ impl SystemWindowState {
             tab: SystemWindowTab::Overview,
             selected_item: None,
             selected_band: None,
+            band_drag_from: None,
             moving: None,
         });
         self.focus.take();
@@ -978,6 +982,40 @@ pub enum SystemWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A band dragged and released at a 640 by 480 canvas `point`
+    /// (`FUN_004534f0` case `0x202`: past 4 pixels from where the drag
+    /// began it posts `0x29a` to the main window, whose `FUN_00422ce0`
+    /// gives window type 9 a Destination `0x214` against the `+0x70`
+    /// object under the point, for the selected bands' managers).
+    DropBand {
+        system: SystemKey,
+        area: ProductionArea,
+        point: (i16, i16),
+    },
+}
+
+/// The drag image of a band drag (`FUN_004534f0` case `0x200`:
+/// `FUN_0060dbb0` with the window's `+0x254 + 4 * (n - 1)` for `n` selected
+/// bands, hotspot (3, 3) by `FUN_0060dcb0`). `FUN_00456230` loads STRATEGY
+/// 0x2841..0x2843 for the Alliance (`+0x9c` 1) and 0x2844..0x2846 for the
+/// Empire. port: one band is selected at a time, so the first.
+#[must_use]
+pub const fn band_drag_image(faction: CockpitFaction) -> u32 {
+    match faction {
+        CockpitFaction::Alliance => 0x2841,
+        CockpitFaction::Empire => 0x2844,
+    }
+}
+
+/// The drag image's hotspot (`FUN_0060dcb0(3, 3)`).
+pub const BAND_DRAG_HOTSPOT: (f32, f32) = (3.0, 3.0);
+
+/// Whether a band drag released `to` from `from` drops: `FUN_004534f0`
+/// case `0x202` ignores a release under 4 pixels from the start in both x
+/// and y.
+#[must_use]
+pub fn band_drag_drops(from: (i16, i16), to: (i16, i16)) -> bool {
+    (to.0 - from.0).abs() >= 4 || (to.1 - from.1).abs() >= 4
 }
 
 #[derive(Default)]
@@ -994,6 +1032,10 @@ struct WindowDrawResult {
     /// A press on a facility page's list: the item under it, or none.
     item: Option<Option<FacilityItem>>,
     band: Option<ProductionArea>,
+    /// A band drag released: the band and the canvas point.
+    band_drop: Option<(ProductionArea, (i16, i16))>,
+    /// A band drag began (`Some(point)`) or ended (`Some(None)`).
+    band_drag: Option<Option<(i16, i16)>>,
     object_menu: Option<(Option<MenuObject>, (i16, i16))>,
     /// The pointer's travel since a press on the window's surface.
     travel: Option<egui::Vec2>,
@@ -1103,6 +1145,16 @@ pub fn draw_system_windows(
             actions.push(SystemWindowAction::OpenObjectMenu {
                 system,
                 selection,
+                point,
+            });
+        }
+        if let (Some(drag), Some(open)) = (result.band_drag, state.window_mut(system)) {
+            open.band_drag_from = drag;
+        }
+        if let Some((area, point)) = result.band_drop {
+            actions.push(SystemWindowAction::DropBand {
+                system,
+                area,
                 point,
             });
         }
@@ -1572,11 +1624,49 @@ fn draw_system_window(
                         let response = ui.interact(
                             rect,
                             ui.id().with((window.system, "band", index)),
-                            egui::Sense::click(),
+                            egui::Sense::click_and_drag(),
                         );
                         if any_pressed && response.is_pointer_button_down_on() {
                             result.band = Some(area);
                             result.focus = true;
+                        }
+                        // FUN_004534f0 case 0x200: a move with the button
+                        // held inside the bands' rect starts the drag; its
+                        // image follows the pointer over every window, and
+                        // the release (case 0x202) drops past 4 pixels.
+                        if response.drag_started_by(egui::PointerButton::Primary) {
+                            let from = ui
+                                .input(|input| input.pointer.interact_pos())
+                                .map(|point| canvas_point(layout, point));
+                            result.band_drag = Some(from);
+                        }
+                        if response.dragged_by(egui::PointerButton::Primary) {
+                            if let Some(point) = ui.input(|input| input.pointer.latest_pos()) {
+                                let painter = ctx.layer_painter(crate::fleet_window::drag_layer());
+                                let at = point
+                                    - egui::vec2(BAND_DRAG_HOTSPOT.0, BAND_DRAG_HOTSPOT.1) * scale;
+                                paint_native(
+                                    &painter,
+                                    ctx,
+                                    cache,
+                                    DllSource::Strategy,
+                                    band_drag_image(faction),
+                                    egui::Rect::from_min_size(at, egui::Vec2::ZERO),
+                                    scale,
+                                    0.0,
+                                    0.0,
+                                );
+                            }
+                        }
+                        if response.drag_stopped_by(egui::PointerButton::Primary) {
+                            let to = ui.input(|input| input.pointer.latest_pos());
+                            if let (Some(from), Some(to)) = (window.band_drag_from, to) {
+                                let to = canvas_point(layout, to);
+                                if band_drag_drops(from, to) {
+                                    result.band_drop = Some((area, to));
+                                }
+                            }
+                            result.band_drag = Some(None);
                         }
                         if response.secondary_clicked() {
                             if let Some(point) = response
@@ -2296,6 +2386,20 @@ mod tests {
             layout(CockpitFaction::Alliance, 2.0)
         ));
         state
+    }
+
+    #[test]
+    fn a_band_drag_drops_past_four_pixels_and_shows_its_sides_image() {
+        // FUN_004534f0 case 0x202: a release under 4 pixels from the
+        // drag's start in both x and y drops nothing. FUN_00456230 loads
+        // STRATEGY 0x2841 (Alliance) or 0x2844 (Empire) as the one-band
+        // drag image; A0 2026-11-21-build-dest-16/28, 30, 32 show the
+        // Empire's green-strip band outline under the pointer.
+        assert!(!band_drag_drops((100, 100), (103, 97)));
+        assert!(band_drag_drops((100, 100), (104, 100)));
+        assert!(band_drag_drops((100, 100), (100, 96)));
+        assert_eq!(band_drag_image(CockpitFaction::Alliance), 10305);
+        assert_eq!(band_drag_image(CockpitFaction::Empire), 10308);
     }
 
     #[test]

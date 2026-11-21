@@ -1978,7 +1978,9 @@ async fn main() {
         interface_test_fixture::place_deliveries(request, &world, &mut delivery_state);
         // The fixture's queued units are products from their orders on
         // (FUN_0052a140; rebellion_core::products).
-        rebellion_core::products::reconcile(&mut world, &mfg_state);
+        rebellion_core::products::reconcile_carrying(&mut world, &mfg_state, &|fleet| {
+            troop_transport_state.carried_count(fleet)
+        });
         // Every fixture's cockpit shows its own side's droids (the
         // Empire's IMP sprites, not the Alliance's).
         let side = if player_faction == MissionFaction::Alliance {
@@ -5448,6 +5450,52 @@ async fn main() {
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
+                            // FUN_00422ce0's 0x29a, window type 9: a
+                            // Destination (0x214) against the +0x70 object
+                            // under the drop, for the dragged band's manager
+                            // (A0 2026-11-21-build-dest-16/28..33).
+                            SystemWindowAction::DropBand {
+                                system,
+                                area,
+                                point,
+                            } => {
+                                let pointer = egui_macroquad::egui::pos2(
+                                    cockpit_layout.canvas.x
+                                        + f32::from(point.0) * cockpit_layout.scale,
+                                    cockpit_layout.canvas.y
+                                        + f32::from(point.1) * cockpit_layout.scale,
+                                );
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                let target = release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    pointer,
+                                );
+                                if let Some(action) = band_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    pointer,
+                                    (system, area),
+                                    target,
+                                    player_faction == MissionFaction::Alliance,
+                                ) {
+                                    panel_actions.push(action);
+                                }
+                            }
                         }
                     }
 
@@ -7751,6 +7799,18 @@ async fn main() {
                                         area,
                                         fleet,
                                         at,
+                                        // A ship's entry names the ship (0x14..0x1b).
+                                        ship: rebellion_render::targeting::release_ship(
+                                            ctx,
+                                            &world,
+                                            &movement_state,
+                                            fog_state,
+                                            cockpit_layout,
+                                            windows,
+                                            pointer,
+                                        )
+                                        .filter(|&(of, _)| of == fleet)
+                                        .map(|(_, ship)| ship),
                                     }),
                                     Err(refusal) => macroquad::logging::info!(
                                         "[interface] command=0x214 destination=production_destination status=refused reason={}",
@@ -8605,7 +8665,11 @@ async fn main() {
                     );
                     // An order's units are objects from its fire
                     // (FUN_0052a140): placed now, in their containers.
-                    rebellion_core::products::reconcile(&mut world, &mfg_state);
+                    rebellion_core::products::reconcile_carrying(
+                        &mut world,
+                        &mfg_state,
+                        &|fleet| troop_transport_state.carried_count(fleet),
+                    );
                     if let Some((system, area, count)) = confirmed {
                         system_window_state.confirmed_build(
                             &world, &mfg_state, system, area, count,
@@ -11422,6 +11486,69 @@ mod refusal_status_tests {
     }
 }
 
+/// A band's Destination (`0x214`) dropped on `target` (`FUN_00422ce0`,
+/// window type 9): a system sets the band's own area; a fleet, or a ship
+/// entry of it, is taken by a shipyard or training band of the fleet's side
+/// and refused for a construction band (`FUN_00537180`, `1`/`0x25`). The
+/// refusal and an empty drop log only.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The drop reads the windows under the point and the player's side."
+)]
+fn band_destination(
+    ctx: &egui_macroquad::egui::Context,
+    world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
+    fog: &FogState,
+    layout: rebellion_render::cockpit::CockpitLayout,
+    windows: ReleaseWindows<'_>,
+    pointer: egui_macroquad::egui::Pos2,
+    (system, area): (SystemKey, rebellion_core::manufacturing::ProductionArea),
+    target: Option<ReleaseTarget>,
+    is_alliance: bool,
+) -> Option<PanelAction> {
+    match target {
+        Some(ReleaseTarget::System(destination)) => Some(PanelAction::SetDestination {
+            system,
+            area: Some(area),
+            destination,
+        }),
+        Some(ReleaseTarget::Fleet { fleet, system: at }) => {
+            match rebellion_core::manufacturing::fleet_destination_area(
+                world,
+                Some(area),
+                fleet,
+                is_alliance,
+            ) {
+                Ok(area) => Some(PanelAction::SetFleetDestination {
+                    system,
+                    area,
+                    fleet,
+                    at,
+                    ship: rebellion_render::targeting::release_ship(
+                        ctx, world, movement, fog, layout, windows, pointer,
+                    )
+                    .filter(|&(of, _)| of == fleet)
+                    .map(|(_, ship)| ship),
+                }),
+                Err(refusal) => {
+                    macroquad::logging::info!(
+                        "[interface] command=0x214 destination=production_destination status=refused drop=1 reason={}",
+                        refusal.status().map_or_else(|| "other_side".to_owned(), |status| format!("{status:#x}"))
+                    );
+                    None
+                }
+            }
+        }
+        None => {
+            macroquad::logging::info!(
+                "[interface] command=0x214 destination=production_destination status=refused drop=1"
+            );
+            None
+        }
+    }
+}
+
 fn apply_panel_action(
     action: PanelAction,
     world: &mut GameWorld,
@@ -11579,12 +11706,19 @@ fn apply_panel_action(
             area,
             fleet,
             at,
+            ship,
         } => {
-            let set = mfg_state.set_fleet_destination(system, area, fleet, at);
+            let set = match ship {
+                Some(ship) => mfg_state.set_ship_destination(system, area, fleet, ship, at),
+                None => mfg_state.set_fleet_destination(system, area, fleet, at),
+            };
+            let named =
+                ship.and_then(|ship| rebellion_core::products::ship_name(world, fleet, ship));
             macroquad::logging::info!(
-                "[interface] command=0x214 destination=production_destination status={} areas=1 to_fleet={}",
+                "[interface] command=0x214 destination=production_destination status={} areas=1 {}={}",
                 if set { "set" } else { "refused" },
-                world.fleet_name(fleet).unwrap_or("")
+                if named.is_some() { "to_ship" } else { "to_fleet" },
+                named.or_else(|| world.fleet_name(fleet)).unwrap_or("")
             );
         }
         PanelAction::RenameProduct { product, name } => {
@@ -14819,6 +14953,7 @@ impl AppDayPresentation<'_> {
     fn manufactured_messages(
         &mut self,
         world: &GameWorld,
+        transport: &rebellion_core::troop_transport::TroopTransportState,
         advance: &rebellion_core::manufacturing::ManufacturingAdvance,
     ) {
         let message_texts = self.message_texts;
@@ -14827,11 +14962,13 @@ impl AppDayPresentation<'_> {
                 .systems
                 .get(completion.system)
                 .map_or_else(|| "unknown".into(), |s| s.name.clone());
+            let aboard = rebellion_core::products::boarded_ship(world, transport, completion);
             let (title, text) = rebellion_render::story_messages::deployed_texts(
                 world,
                 completion.kind,
                 completion.name.as_deref(),
                 &sys_name,
+                aboard,
                 message_texts,
             )
             .map_or((None, format!("Construction complete at {sys_name}")), |(t, b)| {
@@ -14879,11 +15016,13 @@ impl AppDayPresentation<'_> {
             // Notification 0x107, Units Deployed (FUN_00497940): the product
             // is Deployed on completion (FUN_0052bee0), already bound to its
             // destination, which the message names.
+            let aboard = rebellion_core::products::travelling_ship(world, departure);
             let (title, text) = rebellion_render::story_messages::deployed_texts(
                 world,
                 departure.kind,
                 departure.name.as_deref(),
                 &destination,
+                aboard,
                 message_texts,
             )
             .map_or(
@@ -15608,7 +15747,7 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
                 }
             }
             (DayStep::Manufactured(advance), StepPhase::After) => {
-                self.manufactured_messages(world, advance);
+                self.manufactured_messages(world, &states.troop_transport, advance);
             }
             (DayStep::UnitsArrived(completions), StepPhase::After) => {
                 for completion in *completions {

@@ -1581,6 +1581,75 @@ impl FleetWindowState {
         Some(drop_target(world, player, window, &entries, local))
     }
 
+    /// The capital ship a release at `point` names, when the Fleet window
+    /// egui draws as `layer` has a ship's entry under it: a ship of the
+    /// left list, or a row of the right list's Capital Ships page, as the
+    /// window's `+0x70` answers (`FUN_004a3130`). Its fleet and
+    /// `ShipInstance::id`. A0 2026-11-21-build-dest-16/34: a troops band
+    /// dropped on Victory Destroyer 2's entry names that ship.
+    #[must_use]
+    pub fn release_ship(
+        &self,
+        world: &GameWorld,
+        movement: &MovementState,
+        fog: &FogState,
+        layout: CockpitLayout,
+        layer: egui::LayerId,
+        point: egui::Pos2,
+    ) -> Option<(FleetKey, u64)> {
+        let window = self
+            .windows
+            .iter()
+            .find(|window| area_id(window.system) == layer.id)?;
+        let rect = window_screen_rect(window, layout);
+        let scale = layout.scale.max(f32::EPSILON);
+        let local = (
+            (point.x - rect.min.x) / scale,
+            (point.y - rect.min.y) / scale,
+        );
+        let player = cockpit_faction(self.faction);
+        let entries = left_entries(world, movement, fog, player, window);
+        let id = |fleet: FleetKey, index: usize| {
+            world
+                .fleets
+                .get(fleet)
+                .and_then(|value| value.capital_ships.get(index))
+                .map(|ship| (fleet, ship.id))
+        };
+        if in_rect(LEFT_LIST, local) {
+            return match entries.get(left_row_at(local.1, window.left_scroll)) {
+                Some(&FleetWindowEntry::Ship { fleet, index }) => id(fleet, index),
+                _ => None,
+            };
+        }
+        if window.tab == FleetWindowTab::CapitalShips && in_rect(RIGHT_LIST, local) {
+            let mut row = right_row_at(local.1, window.right_scroll);
+            let picked = picked_entries(window, &entries);
+            for entry in &picked {
+                let ships: Vec<usize> = match *entry {
+                    FleetWindowEntry::Fleet(fleet) => {
+                        world.fleets.get(fleet).map_or_else(Vec::new, |value| {
+                            value
+                                .capital_ships
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, ship)| ship.alive)
+                                .map(|(index, _)| index)
+                                .collect()
+                        })
+                    }
+                    FleetWindowEntry::Ship { index, .. } if picked.len() > 1 => vec![index],
+                    _ => Vec::new(),
+                };
+                if let Some(&index) = ships.get(row) {
+                    return id(entry.fleet(), index);
+                }
+                row -= ships.len();
+            }
+        }
+        None
+    }
+
     /// What a Mission released at `point` takes from the Fleet window egui
     /// draws as `layer` (`+0x68`, `FUN_004a2f80`), or `None` when `layer` is
     /// none of them. The left list (4..95, 29..295) gives the entry under

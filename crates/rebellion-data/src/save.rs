@@ -923,9 +923,10 @@ pub struct SaveState {
     /// ([`restore_module9`]).
     pub ai_module9: AiModule9,
     // ── v138: the production fleet Destinations ─────────────────────────
-    /// Each production area whose Destination (`0x214`) is a fleet
-    /// (`ManufacturingState::destination_fleet`), and each product's fleet
-    /// target (`Product::target_fleet`) by id. It stays the last field: an
+    /// Each production area whose Destination (`0x214`) is a fleet or one
+    /// of its ships (`ManufacturingState::destination_target`), and each
+    /// product's fleet target, named ship and the ship it waits in
+    /// (`products::ProductFleetTarget`) by id. It stays the last field: an
     /// older body is read by appending empty ones ([`migrate_body`]). The
     /// loader puts it back into `manufacturing` and `products`, whose own
     /// encodings skip it ([`restore_production_fleets`]).
@@ -940,9 +941,9 @@ pub type ProductionFleets = (
             rebellion_core::ids::SystemKey,
             rebellion_core::manufacturing::ProductionArea,
         ),
-        rebellion_core::ids::FleetKey,
+        rebellion_core::manufacturing::FleetTarget,
     )>,
-    Vec<(u64, rebellion_core::ids::FleetKey)>,
+    Vec<rebellion_core::products::ProductFleetTarget>,
 );
 
 /// The fleet Destinations of `manufacturing` and the fleet targets of

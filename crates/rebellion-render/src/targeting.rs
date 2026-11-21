@@ -251,6 +251,26 @@ pub fn release_destination(
         .map(ReleaseTarget::System)
 }
 
+/// The capital ship a release at `point` names in the Fleet window under
+/// it ([`FleetWindowState::release_ship`]), with its fleet.
+///
+/// [`FleetWindowState::release_ship`]: crate::fleet_window::FleetWindowState::release_ship
+#[must_use]
+pub fn release_ship(
+    ctx: &egui::Context,
+    world: &GameWorld,
+    movement: &rebellion_core::movement::MovementState,
+    fog: &FogState,
+    layout: CockpitLayout,
+    windows: ReleaseWindows<'_>,
+    point: egui::Pos2,
+) -> Option<(FleetKey, u64)> {
+    let layer = window_layer_at(ctx, point)?;
+    windows
+        .fleet
+        .release_ship(world, movement, fog, layout, layer, point)
+}
+
 /// The state a Mission release reads besides the windows.
 #[derive(Clone, Copy)]
 pub struct MissionReleaseSources<'a> {

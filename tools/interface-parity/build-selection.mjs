@@ -1226,6 +1226,117 @@ async function fleetDestinationCase(page, faction, directory, log) {
   return { home, fleet, facilities: facilitiesHome, a0: a0.filter(Boolean) };
 }
 
+// A press-drag-release of a band (FUN_004534f0 case 0x200, then 0x202
+// past 4 pixels): the drag image under the pointer, then FUN_00422ce0's
+// 0x29a gives window type 9 a Destination (0x214) against the +0x70 object
+// under the release. A person's drag spans frames: two frames after the
+// press, then steps, then about 300 ms before moving away from the release.
+async function dragBand(page, band, to) {
+  const from = { x: band.left + band.width / 2, y: band.top + band.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await frames(page);
+  await page.mouse.down();
+  await frames(page);
+  await frames(page);
+  for (let step = 1; step <= 8; step += 1) {
+    await page.mouse.move(from.x + (to.x - from.x) * step / 8, from.y + (to.y - from.y) * step / 8);
+    await frames(page);
+  }
+  const shot = await page.screenshot({ animations: "disabled" });
+  await page.mouse.up();
+  await frames(page);
+  await page.waitForTimeout(300);
+  await page.mouse.move(2, 2);
+  await frames(page);
+  return shot;
+}
+
+// Fixture 96 again: the bands dragged onto the Fleet window as A0
+// 2026-11-21-build-dest-16 does (28..34). The ships (33) and troops (31)
+// bands dropped on the fleet's entry read "Destination: Fleet 1"; the
+// facilities band (29) is refused and keeps its own; the troops band
+// dropped on a ship's entry of the fleet panel (34, Victory Destroyer 2's)
+// names that ship.
+async function fleetDragCase(page, faction, directory, counted) {
+  const fixtureCode = 96 | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const band = (state, area) => state.bands.find((value) => value.area === area);
+  // The Fleet window's left list (4..95, 29..), 50-pixel entries: the fleet,
+  // then its ships.
+  const entry = (row) => ({ x: faction.galaxy.x + 5 + 40, y: faction.galaxy.y + 5 + 42 + 50 * row });
+  const waitLine = (area, text) => page.waitForFunction(([wanted, line]) =>
+    window.__openRebellionInterfaceProduction?.bands?.find((value) => value.area === wanted)?.lines?.[2] === line,
+  [area, text], { timeout: 10_000 });
+  const result = { a0: [] };
+  const before = await production(page);
+  const home = band(before, "facilities").lines[2];
+
+  const fleetSets = counted(/status=set areas=1 to_fleet=Fleet 1$/);
+  const shipsShot = await dragBand(page, band(before, "ships"), entry(0));
+  fs.writeFileSync(path.join(directory, "drag-ships-over-fleet.png"), shipsShot);
+  await waitLine("ships", "Destination: Fleet 1");
+  const ships = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "drag-ships-destination.png"), ships);
+  assert.equal(counted(/status=set areas=1 to_fleet=Fleet 1$/), fleetSets + 1, "the ships drop was not logged");
+  result.a0.push(destinationLineAgainstA0(ships, band(await production(page), "ships"),
+    "33-drag-ships-released-destination-fleet1-d364.png", "ships"));
+  // The drag image (STRATEGY 0x2841 / 0x2844, hotspot (3, 3)) under the
+  // pointer while the button is held: its white frame within the 36-pixel
+  // bitmap placed 3 pixels up and left of the pointer (A0 /32 for the
+  // Empire).
+  const over = PNG.sync.read(shipsShot);
+  const target = entry(0);
+  let lit = 0;
+  for (let y = target.y - 3; y < target.y + 33; y += 1) {
+    for (let x = target.x - 3; x < target.x + 33; x += 1) {
+      const k = (y * over.width + x) * 4;
+      if (over.data[k] === 255 && over.data[k + 1] === 255 && over.data[k + 2] === 255) lit += 1;
+    }
+  }
+  result.drag_image_white = lit;
+  assert.ok(lit > 40, `no drag image under the pointer (${lit} white pixels)`);
+
+  const troopsShot = await dragBand(page, band(await production(page), "troops"), entry(0));
+  fs.writeFileSync(path.join(directory, "drag-troops-over-fleet.png"), troopsShot);
+  await waitLine("troops", "Destination: Fleet 1");
+  const troops = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "drag-troops-destination.png"), troops);
+  result.a0.push(destinationLineAgainstA0(troops, band(await production(page), "troops"),
+    "31-drag-troops-released-destination-fleet1-d364.png", "troops"));
+
+  const refusals = counted(/status=refused drop=1 reason=0x25$/);
+  await dragBand(page, band(await production(page), "facilities"), entry(0));
+  await page.waitForTimeout(300);
+  assert.equal(counted(/status=refused drop=1 reason=0x25$/), refusals + 1, "the facilities drop was not refused");
+  assert.equal(band(await production(page), "facilities").lines[2], home);
+  fs.writeFileSync(path.join(directory, "drag-facilities-refused.png"), await page.screenshot({ animations: "disabled" }));
+
+  // The fleet chosen, the right list (101..234, 127..291) shows its
+  // ships, 50 pixels each, on the Capital Ships page (A0 /34's fleet
+  // panel); the band is dropped on the first (A0 used the second).
+  await click(page, entry(0));
+  await page.mouse.move(2, 2);
+  await frames(page);
+  const shipEntry = { x: faction.galaxy.x + 5 + 101 + 66, y: faction.galaxy.y + 5 + 127 + 25 };
+  const shipSets = counted(/status=set areas=1 to_ship=.+$/);
+  await dragBand(page, band(await production(page), "troops"), shipEntry);
+  await page.waitForTimeout(300);
+  assert.equal(counted(/status=set areas=1 to_ship=.+$/), shipSets + 1, "the ship drop was not logged");
+  const shipLine = await page.waitForFunction(() => {
+    const line = window.__openRebellionInterfaceProduction?.bands?.find((value) => value.area === "troops")?.lines?.[2];
+    return line && line !== "Destination: Fleet 1" ? line : null;
+  }, null, { timeout: 10_000 }).then((handle) => handle.jsonValue());
+  fs.writeFileSync(path.join(directory, "drag-troops-ship.png"), await page.screenshot({ animations: "disabled" }));
+  assert.match(shipLine, /^Destination: .+/);
+  result.ship = shipLine;
+  result.a0 = result.a0.filter(Boolean);
+  return result;
+}
+
 // Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.
 const overMaintenanceCode = 88;
 const A0_OVER_MAINTENANCE = { file: "11-build-selection.png", x: 255, y: 87 };
@@ -2082,6 +2193,8 @@ async function inspect(server, source, faction, executable) {
       throw new Error(`${description}: ${pattern} not logged`);
     };
     const fleetDestination = await fleetDestinationCase(page, faction, directory, logged);
+    const counted = (pattern) => consoleLines.filter(({ text }) => pattern.test(text)).length;
+    const fleetDrag = await fleetDragCase(page, faction, directory, counted);
     const shipOrderBand = await shipOrderBandCase(page, faction, directory);
     const trainingBand = await trainingBandCase(page, faction, directory);
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
@@ -2102,6 +2215,7 @@ async function inspect(server, source, faction, executable) {
       destination,
       defensesDestination,
       fleetDestination,
+      fleetDrag,
       shipOrderBand,
       trainingBand,
       idle_checks: idleChecks,

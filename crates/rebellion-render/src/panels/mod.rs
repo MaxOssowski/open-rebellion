@@ -70,6 +70,9 @@ pub enum PanelAction {
         area: rebellion_core::manufacturing::ProductionArea,
         fleet: FleetKey,
         at: SystemKey,
+        /// The ship of `fleet` whose entry was under the release
+        /// (`ManufacturingState::set_ship_destination`).
+        ship: Option<u64>,
     },
     /// Rename (`0x203`) issued from its edit: `FUN_004f6e60` sets a fleet's
     /// or, with `ship`, one of its capital ships' name.

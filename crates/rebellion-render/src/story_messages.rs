@@ -1978,14 +1978,18 @@ pub fn enemy_mission_foiled_texts(
 /// (`FUN_004f62d0`). A0 2026-11-21-build-dest-16/27: "The new Carrack
 /// Light Cruiser, Carrack Light Cruiser 1, has been deployed at Averam."
 ///
-/// port: a completed unit stands at its system, so the body's container is
-/// the system (A0 /17 names the ship a regiment boarded).
+/// The title names the system and the body the unit's container, the
+/// ship a regiment boarded when it has one (`container`): A0
+/// 2026-11-21-build-dest-16/16, 17: "Imperial Army Regiment Deployed to
+/// Averam", "The following units have been deployed to Victory Destroyer
+/// 2:".
 #[must_use]
 pub fn deployed_texts(
     world: &rebellion_core::world::GameWorld,
     kind: rebellion_core::manufacturing::BuildableKind,
     name: Option<&str>,
     system: &str,
+    container: Option<&str>,
     texts: &HashMap<u16, String>,
 ) -> Option<(String, String)> {
     use rebellion_core::manufacturing::BuildableKind;
@@ -2012,9 +2016,11 @@ pub fn deployed_texts(
         },
         MessageParameter::Named { name: system },
     ];
-    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    let unit = parameters[0];
+    let held = [unit, MessageParameter::Named { name: container.unwrap_or(system) }];
+    let mut text = fill_message_text(texts.get(&body)?, &held);
     if let Some(line) = line {
-        text.push_str(&fill_message_text(texts.get(&line)?, &parameters));
+        text.push_str(&fill_message_text(texts.get(&line)?, &held));
     }
     Some((fill_message_text(texts.get(&title)?, &parameters), text))
 }
@@ -4321,7 +4327,7 @@ mod tests {
             name: "X-wing".into(),
             ..FighterClass::default()
         });
-        let say = |kind| deployed_texts(&world, kind, None, "Fondor", &texts);
+        let say = |kind| deployed_texts(&world, kind, None, "Fondor", None, &texts);
         assert_eq!(
             say(BuildableKind::CapitalShip(frigate)),
             Some((
@@ -4337,6 +4343,7 @@ mod tests {
                 BuildableKind::CapitalShip(frigate),
                 Some("Nebulon-B Frigate 1"),
                 "Fondor",
+                None,
                 &texts
             ),
             Some((
@@ -4368,6 +4375,24 @@ mod tests {
             "{regiment:?}"
         );
         assert!(regiment.1.ends_with('\n'), "{regiment:?}");
+        // A0 2026-11-21-build-dest-16/16, 17: the title names the system,
+        // the body the ship the regiment boarded.
+        let aboard = deployed_texts(
+            &world,
+            BuildableKind::Troop(DatId::new(0x1000_0003)),
+            None,
+            "Averam",
+            Some("Victory Destroyer 2"),
+            &texts,
+        )
+        .unwrap();
+        assert!(aboard.0.ends_with(" Deployed to Averam"), "{aboard:?}");
+        assert!(
+            aboard
+                .1
+                .starts_with("The following units have been deployed to Victory Destroyer 2:\n"),
+            "{aboard:?}"
+        );
         assert_eq!(
             say(BuildableKind::SpecialForce(DatId::new(0x3c00_0009))),
             None

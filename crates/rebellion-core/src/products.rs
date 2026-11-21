@@ -67,6 +67,24 @@ pub struct Product {
     /// save's last field (save v138), so skipped here.
     #[serde(skip)]
     pub target_fleet: Option<FleetKey>,
+    /// The ship of [`Self::target_fleet`] its order named, when the
+    /// Destination was a ship ([`ManufacturingState::set_ship_destination`]).
+    #[serde(skip)]
+    pub target_ship: Option<u64>,
+    /// The capital ship (`ShipInstance::id`) a squadron or regiment placed
+    /// in a fleet waits in ([`seat`]). Saved with the fleet targets.
+    #[serde(skip)]
+    pub ship: Option<u64>,
+}
+
+/// A product's fleet target and seat ([`Product::target_fleet`],
+/// [`Product::target_ship`], [`Product::ship`]), for the save.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProductFleetTarget {
+    pub id: u64,
+    pub fleet: FleetKey,
+    pub target_ship: Option<u64>,
+    pub ship: Option<u64>,
 }
 
 /// Every unfinished product, in order of creation.
@@ -143,20 +161,27 @@ impl Products {
     /// Each product's fleet target ([`Product::target_fleet`]), by id, for
     /// the save.
     #[must_use]
-    pub fn fleet_targets(&self) -> Vec<(u64, FleetKey)> {
+    pub fn fleet_targets(&self) -> Vec<ProductFleetTarget> {
         self.items
             .iter()
-            .filter_map(|product| product.target_fleet.map(|fleet| (product.id, fleet)))
+            .filter_map(|product| {
+                product.target_fleet.map(|fleet| ProductFleetTarget {
+                    id: product.id,
+                    fleet,
+                    target_ship: product.target_ship,
+                    ship: product.ship,
+                })
+            })
             .collect()
     }
 
     /// Put the saved fleet targets back ([`Self::fleet_targets`]).
-    pub fn restore_fleet_targets(&mut self, targets: &[(u64, FleetKey)]) {
+    pub fn restore_fleet_targets(&mut self, targets: &[ProductFleetTarget]) {
         for product in &mut self.items {
-            product.target_fleet = targets
-                .iter()
-                .find(|&&(id, _)| id == product.id)
-                .map(|&(_, fleet)| fleet);
+            let saved = targets.iter().find(|target| target.id == product.id);
+            product.target_fleet = saved.map(|target| target.fleet);
+            product.target_ship = saved.and_then(|target| target.target_ship);
+            product.ship = saved.and_then(|target| target.ship);
         }
     }
 
@@ -313,44 +338,202 @@ fn place(
     Container::Fleet(fleet)
 }
 
-/// The container for a product of `kind` whose order named `fleet` at
-/// `target` (a shipyard's or training manager's Destination on a fleet,
-/// `FUN_00537180`). The planner (`FUN_00552300`) tries the fleet itself
-/// (`FUN_00552b10`), then its usable ships: a capital ship of the fleet's
-/// side goes into it; a squadron, regiment or special force goes aboard
-/// when the fleet has room ([`room_aboard`]). Without a fleet, or when it
-/// takes nothing, [`place`] decides as for the fleet's system.
+/// The container for a product of `kind` whose order named `target` (a
+/// fleet, or one ship of it) at `system` (a shipyard's or training
+/// manager's Destination, `FUN_00537180`), with the ship it waits in. The
+/// planner (`FUN_00552300`) tries the target itself (`FUN_00552b10`),
+/// then, for a fleet, its usable ships, keeping the best:
+/// - a capital ship of the fleet's side goes into the fleet;
+/// - a squadron or regiment goes aboard a ship with room ([`seat`]);
+/// - a special force goes into the fleet (people take no room).
+///
+/// Without a target, or when it takes nothing, [`place`] decides as for
+/// the fleet's system.
 ///
 /// port: the original refuses such a Build at Confirm (`FUN_005385f0` on the
 /// planner's error, `0x27`); the port places the unit at the fleet's system
-/// instead. A regiment's room counts no regiment already carried (the
-/// carried ones are not in the world); its completion embarks it only
-/// when the fleet still has room ([`board`]).
+/// instead.
 fn place_for(
     world: &mut GameWorld,
     kind: BuildableKind,
-    target: SystemKey,
+    system: SystemKey,
     is_alliance: bool,
-    fleet: Option<FleetKey>,
-) -> Container {
-    if let Some(fleet) = fleet {
-        let takes = match kind {
-            BuildableKind::CapitalShip(_) => world
-                .fleets
-                .get(fleet)
-                .is_some_and(|value| value.is_alliance == is_alliance),
-            _ => room_aboard(world, fleet, kind, is_alliance, 0),
-        };
-        if takes {
-            return Container::Fleet(fleet);
+    target: Option<crate::manufacturing::FleetTarget>,
+    carried: &dyn Fn(FleetKey) -> usize,
+) -> (Container, Option<u64>) {
+    let Some(target) = target else {
+        return (place(world, kind, system, is_alliance), None);
+    };
+    let fleet = target.fleet;
+    let own = world
+        .fleets
+        .get(fleet)
+        .is_some_and(|value| value.is_alliance == is_alliance);
+    let placed = match kind {
+        BuildableKind::CapitalShip(_) if own => Some(None),
+        BuildableKind::Fighter(_) | BuildableKind::Troop(_) if own => {
+            seat(world, fleet, kind, carried(fleet), target.ship).map(Some)
         }
-        let at = world
-            .fleets
-            .get(fleet)
-            .map_or(target, |value| value.location);
-        return place(world, kind, at, is_alliance);
+        BuildableKind::SpecialForce(_) => {
+            room_aboard(world, fleet, kind, is_alliance, 0).then_some(None)
+        }
+        _ => None,
+    };
+    if let Some(ship) = placed {
+        return (Container::Fleet(fleet), ship);
     }
-    place(world, kind, target, is_alliance)
+    let at = world
+        .fleets
+        .get(fleet)
+        .map_or(system, |value| value.location);
+    (place(world, kind, at, is_alliance), None)
+}
+
+/// The room for `kind` on each living, numbered capital ship of `fleet`,
+/// in the fleet's order: its fighter (`+0x26c`) or troop (`+0x270`)
+/// capacity less what rides it, counted in mode 3 as `CapShip_vt78`
+/// (`FUN_00500b40`) counts, unfinished units too.
+///
+/// port: the port carries regiments by fleet, so the `carried` regiments
+/// are seated as the planner would have seated them one by one
+/// ([`seat_regiments`]).
+fn ship_rooms(
+    world: &GameWorld,
+    fleet: FleetKey,
+    kind: BuildableKind,
+    carried: usize,
+) -> Vec<(u64, u32)> {
+    let Some(value) = world.fleets.get(fleet) else {
+        return Vec::new();
+    };
+    let capacity = |ship: &crate::world::ShipInstance| {
+        world
+            .capital_ship_classes
+            .get(ship.class)
+            .map_or(0, |class| match kind {
+                BuildableKind::Fighter(_) => class.fighter_capacity,
+                _ => class.troop_capacity,
+            })
+    };
+    let regiments = match kind {
+        BuildableKind::Troop(_) => seat_regiments(world, fleet, carried),
+        _ => Vec::new(),
+    };
+    value
+        .capital_ships
+        .iter()
+        .filter(|ship| ship.alive && ship.id != 0)
+        .map(|ship| {
+            let aboard = match kind {
+                BuildableKind::Fighter(_) => crate::squadrons::aboard(&value.fighters, ship.id),
+                _ => regiments.iter().filter(|&&seat| seat == ship.id).count() as u32,
+            };
+            let building = world
+                .products
+                .in_fleet(fleet)
+                .filter(|product| product.ship == Some(ship.id))
+                .filter(|product| {
+                    std::mem::discriminant(&product.kind) == std::mem::discriminant(&kind)
+                })
+                .count() as u32;
+            (ship.id, capacity(ship).saturating_sub(aboard + building))
+        })
+        .collect()
+}
+
+/// The ship a squadron or regiment of `kind` goes aboard in `fleet`
+/// (`FUN_00552300`): the named ship when the Destination names one and it
+/// has room, else the ship with the most room left, the earlier one on a
+/// tie. Each ship is weighed by `FUN_00552b10` and a later one wins only
+/// when strictly better (`FUN_0054fbb0`: no refusal, then more room `+8`,
+/// the room `CapShip_vt78` gives, capacity less what is aboard). None has
+/// room: `None` (`0x27`).
+///
+/// A0 2026-11-21-build-dest-16/12, 15, 17: Fleet 1 held an Imperial Star
+/// Destroyer (troop capacity 3) and Victory Destroyer 2 (2) and four
+/// regiments; the fifth, built for Fleet 1, went aboard Victory Destroyer
+/// 2.
+#[must_use]
+pub fn seat(
+    world: &GameWorld,
+    fleet: FleetKey,
+    kind: BuildableKind,
+    carried: usize,
+    named: Option<u64>,
+) -> Option<u64> {
+    let rooms = ship_rooms(world, fleet, kind, carried);
+    if let Some(ship) = named {
+        if rooms.iter().any(|&(id, room)| id == ship && room > 0) {
+            return Some(ship);
+        }
+    }
+    best_room(&rooms)
+}
+
+fn best_room(rooms: &[(u64, u32)]) -> Option<u64> {
+    rooms
+        .iter()
+        .filter(|&&(_, room)| room > 0)
+        .fold(None, |best: Option<(u64, u32)>, &candidate| match best {
+            Some(held) if candidate.1 <= held.1 => Some(held),
+            _ => Some(candidate),
+        })
+        .map(|(ship, _)| ship)
+}
+
+/// The ships `carried` regiments of `fleet` ride, in order: each placed as
+/// the planner places a regiment, on the ship with the most troop room
+/// left (`FUN_00552300`, [`seat`]).
+///
+/// port: the port keeps a fleet's regiments as one cargo list, not per
+/// ship; seating them again in order gives the ships the original's
+/// placement gave, as long as every one went aboard by the planner and no
+/// ship joined or left since.
+#[must_use]
+pub fn seat_regiments(world: &GameWorld, fleet: FleetKey, carried: usize) -> Vec<u64> {
+    let Some(value) = world.fleets.get(fleet) else {
+        return Vec::new();
+    };
+    let mut rooms: Vec<(u64, u32)> = value
+        .capital_ships
+        .iter()
+        .filter(|ship| ship.alive && ship.id != 0)
+        .map(|ship| {
+            let capacity = world
+                .capital_ship_classes
+                .get(ship.class)
+                .map_or(0, |class| class.troop_capacity);
+            (ship.id, capacity)
+        })
+        .collect();
+    let mut seats = Vec::with_capacity(carried);
+    for _ in 0..carried {
+        let Some(ship) = best_room(&rooms) else {
+            break;
+        };
+        if let Some(room) = rooms.iter_mut().find(|(id, _)| *id == ship) {
+            room.1 -= 1;
+        }
+        seats.push(ship);
+    }
+    seats
+}
+
+/// The name of the ship numbered `ship` in `fleet`: its own, else its
+/// class's (`FUN_004f62d0`).
+#[must_use]
+pub fn ship_name(world: &GameWorld, fleet: FleetKey, ship: u64) -> Option<&str> {
+    let value = world.fleets.get(fleet)?;
+    let index = value
+        .capital_ships
+        .iter()
+        .position(|value| value.id == ship)?;
+    world.ship_name(fleet, index).or_else(|| {
+        world
+            .capital_ship_classes
+            .get(value.capital_ships[index].class)
+            .map(|class| class.name.as_str())
+    })
 }
 
 /// The system `system`'s `area` delivers to: where its fleet Destination
@@ -445,6 +628,16 @@ fn remove(world: &mut GameWorld, id: u64) -> Option<Product> {
 ///
 /// Idempotent; queues are taken in key order so the ids are deterministic.
 pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
+    reconcile_carrying(world, manufacturing, &|_| 0);
+}
+
+/// [`reconcile`] with each fleet's `carried` regiments, which seat a
+/// regiment built for the fleet ([`seat`]).
+pub fn reconcile_carrying(
+    world: &mut GameWorld,
+    manufacturing: &ManufacturingState,
+    carried: &dyn Fn(FleetKey) -> usize,
+) {
     let mut keys: Vec<(SystemKey, ProductionArea)> =
         manufacturing.queues().keys().copied().collect();
     keys.sort_by_key(|&(system, area)| (system, area as u8));
@@ -503,18 +696,24 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
         // its Destination system (set_destination rewrites them all).
         let fleet_target = |item: &QueueItem| {
             manufacturing
-                .destination_fleet(yard, area)
+                .destination_target(yard, area)
                 .filter(|_| item.destination == manufacturing.destination(yard, area))
         };
         // Destination changes and lost fleets.
         for (&id, item) in held[..kept].iter().zip(&items) {
             let target = item.destination.unwrap_or(yard);
-            let target_fleet = fleet_target(item);
+            let fleet_target = fleet_target(item);
+            let target_fleet = fleet_target.map(|value| value.fleet);
+            let target_ship = fleet_target.and_then(|value| value.ship);
             let Some(product) = world.products.get(id).cloned() else {
                 continue;
             };
             let lost = container_system(world, product.container).is_none();
-            if product.target == target && product.target_fleet == target_fleet && !lost {
+            if product.target == target
+                && product.target_fleet == target_fleet
+                && product.target_ship == target_ship
+                && !lost
+            {
                 continue;
             }
             let Some(mut product) = world.products.take(id) else {
@@ -525,12 +724,14 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
             }
             product.target = target;
             product.target_fleet = target_fleet;
-            product.container = place_for(
+            product.target_ship = target_ship;
+            (product.container, product.ship) = place_for(
                 world,
                 product.kind,
                 target,
                 product.is_alliance,
-                target_fleet,
+                fleet_target,
+                carried,
             );
             let at = world.products.items.partition_point(|p| p.id < id);
             world.products.items.insert(at, product);
@@ -540,9 +741,10 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
                 break;
             }
             let target = item.destination.unwrap_or(yard);
-            let target_fleet = fleet_target(item);
+            let fleet_target = fleet_target(item);
             let is_alliance = is_alliance_of(world, item.kind, yard);
-            let container = place_for(world, item.kind, target, is_alliance, target_fleet);
+            let (container, ship) =
+                place_for(world, item.kind, target, is_alliance, fleet_target, carried);
             world.products.last_id += 1;
             let id = world.products.last_id;
             world.products.items.push(Product {
@@ -553,7 +755,9 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
                 yard,
                 target,
                 container,
-                target_fleet,
+                target_fleet: fleet_target.map(|value| value.fleet),
+                target_ship: fleet_target.and_then(|value| value.ship),
+                ship,
             });
         }
     }
@@ -813,11 +1017,69 @@ pub fn defenses_scrap_refused(world: &GameWorld, system: SystemKey, is_alliance:
 /// built, wherever it stands.
 #[must_use]
 pub fn current_ship_product(world: &GameWorld, system: SystemKey) -> Option<&Product> {
+    current_product(world, system, ProductionArea::Shipyard)
+}
+
+/// The current product of `system`'s `area` manager (its ProductKey
+/// `+0x74`): the oldest of its products still being built.
+#[must_use]
+pub fn current_product(
+    world: &GameWorld,
+    system: SystemKey,
+    area: ProductionArea,
+) -> Option<&Product> {
     world.products.items.iter().find(|product| {
         product.yard == system
-            && ProductionArea::of(product.kind) == ProductionArea::Shipyard
+            && ProductionArea::of(product.kind) == area
             && world.products.arrival(product.id).is_none()
     })
+}
+
+/// The ship a regiment completed aboard `completion`'s fleet boarded, as
+/// [`board`] put it there: the last of the fleet's regiments, seated as
+/// the planner seats them ([`seat_regiments`]). None for any other unit.
+#[must_use]
+pub fn boarded_ship<'w>(
+    world: &'w GameWorld,
+    transport: &crate::troop_transport::TroopTransportState,
+    completion: &CompletionEvent,
+) -> Option<&'w str> {
+    let fleet = completion.fleet?;
+    if !matches!(completion.kind, BuildableKind::Troop(_)) {
+        return None;
+    }
+    let ship = *seat_regiments(world, fleet, transport.carried_count(fleet)).last()?;
+    ship_name(world, fleet, ship)
+}
+
+/// The ship a finished squadron or regiment travelling to its fleet waits
+/// in ([`Product::ship`]), for its departure's message.
+#[must_use]
+pub fn travelling_ship<'w>(world: &'w GameWorld, departure: &Departure) -> Option<&'w str> {
+    let (product, _) = world.products.travelling().find(|(product, _)| {
+        product.yard == departure.origin
+            && product.kind == departure.kind
+            && product.name == departure.name
+            && container_system(world, product.container) == Some(departure.destination)
+    })?;
+    let Container::Fleet(fleet) = product.container else {
+        return None;
+    };
+    ship_name(world, fleet, product.ship?)
+}
+
+/// The ship `system`'s `area` names while its current product waits
+/// seated in a fleet: the manager's DeploymentKey (`+0x78`) is the
+/// product's container (`FUN_0052ac40`), a capital ship for a regiment or
+/// squadron (A0 2026-11-21-build-dest-16/12: "Destination: Victory
+/// Destroyer 2" once the regiment for Fleet 1 was confirmed).
+#[must_use]
+pub fn deployment_ship(world: &GameWorld, system: SystemKey, area: ProductionArea) -> Option<&str> {
+    let product = current_product(world, system, area)?;
+    let Container::Fleet(fleet) = product.container else {
+        return None;
+    };
+    ship_name(world, fleet, product.ship?)
 }
 
 /// `FUN_00487cc0` for an unfinished unit's Move (`0x201`): it asks when

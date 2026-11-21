@@ -488,7 +488,9 @@ pub fn day_head(
     // (FUN_00515480, slot +0xac(2)) leaves its queue.
     rebellion_core::products::destroy_lost(world, &mut states.manufacturing);
     rebellion_core::products::number_new_spares(world);
-    rebellion_core::products::reconcile(world, &states.manufacturing);
+    rebellion_core::products::reconcile_carrying(world, &states.manufacturing, &|fleet| {
+        states.troop_transport.carried_count(fleet)
+    });
     let mut mfg_advance = advance_yards(
         &mut states.production,
         world,
@@ -1588,7 +1590,9 @@ pub fn close_simulation_day(
 
     // The day's orders placed their units in their containers
     // (FUN_0052a140; rebellion_core::products).
-    rebellion_core::products::reconcile(world, &states.manufacturing);
+    rebellion_core::products::reconcile_carrying(world, &states.manufacturing, &|fleet| {
+        states.troop_transport.carried_count(fleet)
+    });
 
     // ── 13f. Each side's views of the other side's objects ──────────────
     // After movement, control and missions (FUN_004f9a60 per object;

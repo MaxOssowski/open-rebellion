@@ -357,6 +357,14 @@ pub enum ProductionArea {
     ConstructionYard,
 }
 
+/// A Destination that is a fleet, or one capital ship of it (its
+/// `ShipInstance::id`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FleetTarget {
+    pub fleet: FleetKey,
+    pub ship: Option<u64>,
+}
+
 /// Why a Destination (`0x214`) released on a fleet is refused
 /// ([`fleet_destination_area`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -471,7 +479,7 @@ pub struct ManufacturingState {
     /// or training manager takes a fleet ([`Self::set_fleet_destination`]).
     /// Saved by the save's last field (save v138), so skipped here.
     #[serde(skip)]
-    fleet_destinations: std::collections::BTreeMap<(SystemKey, ProductionArea), FleetKey>,
+    fleet_destinations: std::collections::BTreeMap<(SystemKey, ProductionArea), FleetTarget>,
 }
 
 impl ManufacturingState {
@@ -638,31 +646,82 @@ impl ManufacturingState {
         if !area.takes_fleet_destination() {
             return false;
         }
+        self.set_fleet_target(system, area, FleetTarget { fleet, ship: None }, at)
+    }
+
+    /// The Destination order (`0x214`) on `system`'s `area` released on the
+    /// capital ship numbered `ship` of `fleet` (`0x14..0x1b`, which
+    /// `FUN_00537180` takes as it takes a fleet; A0
+    /// 2026-11-21-build-dest-16/34: a troops band dropped on Victory
+    /// Destroyer 2's entry names that ship). Refused for a construction
+    /// yard's area, as for a fleet.
+    pub fn set_ship_destination(
+        &mut self,
+        system: SystemKey,
+        area: ProductionArea,
+        fleet: FleetKey,
+        ship: u64,
+        at: SystemKey,
+    ) -> bool {
+        self.set_fleet_target(
+            system,
+            area,
+            FleetTarget {
+                fleet,
+                ship: Some(ship),
+            },
+            at,
+        )
+    }
+
+    fn set_fleet_target(
+        &mut self,
+        system: SystemKey,
+        area: ProductionArea,
+        target: FleetTarget,
+        at: SystemKey,
+    ) -> bool {
+        if !area.takes_fleet_destination() {
+            return false;
+        }
         self.set_destination(system, area, at);
-        self.fleet_destinations.insert((system, area), fleet);
+        self.fleet_destinations.insert((system, area), target);
         true
     }
 
     /// The fleet `system`'s `area` delivers to, when its Destination is one
-    /// ([`Self::set_fleet_destination`]).
+    /// or one of its ships ([`Self::set_fleet_destination`]).
     #[must_use]
     pub fn destination_fleet(&self, system: SystemKey, area: ProductionArea) -> Option<FleetKey> {
+        self.fleet_destinations
+            .get(&(system, area))
+            .map(|target| target.fleet)
+    }
+
+    /// The fleet, and the ship when it names one, `system`'s `area`
+    /// delivers to ([`Self::set_ship_destination`]).
+    #[must_use]
+    pub fn destination_target(
+        &self,
+        system: SystemKey,
+        area: ProductionArea,
+    ) -> Option<FleetTarget> {
         self.fleet_destinations.get(&(system, area)).copied()
     }
 
     /// Every fleet Destination, in key order, for the save.
     #[must_use]
-    pub fn fleet_destinations(&self) -> Vec<((SystemKey, ProductionArea), FleetKey)> {
+    pub fn fleet_destinations(&self) -> Vec<((SystemKey, ProductionArea), FleetTarget)> {
         self.fleet_destinations
             .iter()
-            .map(|(&key, &fleet)| (key, fleet))
+            .map(|(&key, &target)| (key, target))
             .collect()
     }
 
     /// Put the saved fleet Destinations back ([`Self::fleet_destinations`]).
     pub fn restore_fleet_destinations(
         &mut self,
-        fleets: &[((SystemKey, ProductionArea), FleetKey)],
+        fleets: &[((SystemKey, ProductionArea), FleetTarget)],
     ) {
         self.fleet_destinations = fleets.iter().copied().collect();
     }

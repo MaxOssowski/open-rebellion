@@ -1076,6 +1076,7 @@ fn carrier(s: &mut Setup, fighters: u32, troops: u32) -> FleetKey {
         special_forces: Vec::new(),
     });
     s.world.systems[s.yard].fleets.push(fleet);
+    s.world.number_ships();
     fleet
 }
 
@@ -1856,7 +1857,7 @@ fn products_restore_their_fleet_targets_by_id() {
     reconcile(&mut s.world, &s.manufacturing);
     let targets = s.world.products.fleet_targets();
     assert_eq!(targets.len(), 2);
-    assert_ne!(targets[0].1, targets[1].1);
+    assert_ne!(targets[0].fleet, targets[1].fleet);
     // The manufacturing side round-trips too.
     let saved = s.manufacturing.fleet_destinations();
     assert_eq!(saved.len(), 2);
@@ -1933,4 +1934,300 @@ fn a_fleet_destination_delivers_to_where_the_fleet_stands_now() {
         delivery_system(&s.world, &s.manufacturing, s.yard, area),
         s.there
     );
+}
+
+/// port: an Imperial fleet at the yard of an Imperial Star Destroyer
+/// (troop capacity 3) and a Victory Destroyer (2), as A0
+/// 2026-11-21-build-dest-16's Fleet 1 (CAPSHPSD 133, 132), with their
+/// ship ids.
+fn star_destroyers(s: &mut Setup) -> (FleetKey, u64, u64) {
+    let class = |s: &mut Setup, troops| {
+        s.world.capital_ship_classes.insert(CapitalShipClass {
+            is_alliance: false,
+            hull: 50,
+            troop_capacity: troops,
+            ..CapitalShipClass::default()
+        })
+    };
+    let (isd, vd) = (class(s, 3), class(s, 2));
+    let fleet = s.world.insert_fleet(Fleet {
+        location: s.yard,
+        capital_ships: vec![
+            ShipInstance::new(isd, 50, false),
+            ShipInstance::new(vd, 50, false),
+        ],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    s.world.systems[s.yard].fleets.push(fleet);
+    s.world.number_ships();
+    let ids = &s.world.fleets[fleet].capital_ships;
+    (fleet, ids[0].id, ids[1].id)
+}
+
+#[test]
+fn a_regiment_built_for_a_fleet_boards_the_ship_with_the_most_troop_room() {
+    // FUN_00552300 weighs each ship (FUN_00552b10); FUN_0054fbb0 keeps a
+    // later one only with strictly more room (+8, CapShip_vt78: capacity
+    // +0x270 less the regiments aboard). Four regiments seat ISD, ISD, VD,
+    // ISD, so the fifth goes aboard Victory Destroyer 2, as A0
+    // 2026-11-21-build-dest-16/12 and /17 show.
+    let mut s = setup();
+    let (fleet, isd, vd) = star_destroyers(&mut s);
+    assert_eq!(seat_regiments(&s.world, fleet, 4), vec![isd, isd, vd, isd]);
+    let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+    assert_eq!(seat(&s.world, fleet, regiment, 4, None), Some(vd));
+    assert_eq!(seat(&s.world, fleet, regiment, 5, None), None);
+
+    s.manufacturing
+        .set_fleet_destination(s.yard, ProductionArea::TrainingFacility, fleet, s.yard);
+    let items = vec![QueueItem::new(regiment, 10).ordered(&mut s.world)];
+    s.manufacturing.build_units(s.yard, items);
+    reconcile_carrying(&mut s.world, &s.manufacturing, &|_| 4);
+    let product = &s.world.products.all()[0];
+    assert_eq!(product.container, Container::Fleet(fleet));
+    assert_eq!(product.ship, Some(vd));
+}
+
+#[test]
+fn a_ship_destination_seats_the_unit_on_that_ship_while_it_has_room() {
+    // FUN_00537180 takes a capital ship (0x14..0x1b) as a Destination; the
+    // planner tries the target itself first (FUN_00552b10). A0
+    // 2026-11-21-build-dest-16/34: a troops band dropped on Victory
+    // Destroyer 2 names it.
+    let mut s = setup();
+    let (fleet, isd, vd) = star_destroyers(&mut s);
+    let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+    assert!(s.manufacturing.set_ship_destination(
+        s.yard,
+        ProductionArea::TrainingFacility,
+        fleet,
+        vd,
+        s.yard
+    ));
+    assert!(!s.manufacturing.set_ship_destination(
+        s.yard,
+        ProductionArea::ConstructionYard,
+        fleet,
+        vd,
+        s.yard
+    ));
+    let items = (0..3)
+        .map(|_| QueueItem::new(regiment, 10).ordered(&mut s.world))
+        .collect();
+    s.manufacturing.build_units(s.yard, items);
+    reconcile(&mut s.world, &s.manufacturing);
+    let seats: Vec<Option<u64>> = s.world.products.all().iter().map(|p| p.ship).collect();
+    // Victory Destroyer 2 takes two; the third finds the Star Destroyer.
+    assert_eq!(seats, [Some(vd), Some(vd), Some(isd)]);
+    assert!(s
+        .world
+        .products
+        .all()
+        .iter()
+        .all(|p| p.target_ship == Some(vd)));
+}
+
+#[test]
+fn a_ship_is_named_by_its_own_name_else_its_class() {
+    // FUN_004f62d0: an object with no name of its own takes its class's.
+    let mut s = setup();
+    let (fleet, isd, vd) = star_destroyers(&mut s);
+    s.world.fleets[fleet].capital_ships[1].name = Some("Victory Destroyer 2".into());
+    s.world.fleets[fleet].capital_ships[0].name = None;
+    let class = s.world.fleets[fleet].capital_ships[0].class;
+    s.world.capital_ship_classes[class].name = "Imperial Star Destroyer".into();
+    assert_eq!(ship_name(&s.world, fleet, vd), Some("Victory Destroyer 2"));
+    assert_eq!(
+        ship_name(&s.world, fleet, isd),
+        Some("Imperial Star Destroyer")
+    );
+    assert_eq!(ship_name(&s.world, fleet, vd + isd + 1), None);
+}
+
+#[test]
+fn the_band_and_the_messages_name_the_ship_a_regiment_rides() {
+    // A0 2026-11-21-build-dest-16/12 (the band), 17 (the deployment body):
+    // Victory Destroyer 2, the ship the planner seated the regiment on.
+    let mut s = setup();
+    let (fleet, _, vd) = star_destroyers(&mut s);
+    s.world.fleets[fleet].capital_ships[1].name = Some("Victory Destroyer 2".into());
+    let class = DatId::new(0x1000_0001);
+    let regiment = BuildableKind::Troop(class);
+    let mut transport = crate::troop_transport::TroopTransportState::default();
+    let mut troops = Vec::new();
+    for _ in 0..4 {
+        let troop = s.world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: class,
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        s.world.systems[s.yard].ground_units.push(troop);
+        troops.push(troop);
+    }
+    transport.embark(&mut s.world, fleet, &troops).unwrap();
+    s.manufacturing
+        .set_fleet_destination(s.yard, ProductionArea::TrainingFacility, fleet, s.yard);
+    s.manufacturing.build_units(
+        s.yard,
+        vec![QueueItem::new(regiment, 10).ordered(&mut s.world)],
+    );
+    reconcile_carrying(&mut s.world, &s.manufacturing, &|fleet| {
+        transport.carried_count(fleet)
+    });
+    assert_eq!(
+        deployment_ship(&s.world, s.yard, ProductionArea::TrainingFacility),
+        Some("Victory Destroyer 2")
+    );
+    assert_eq!(
+        deployment_ship(&s.world, s.yard, ProductionArea::Shipyard),
+        None
+    );
+
+    // Completed at the fleet's system, it boards as the fifth regiment.
+    let fifth = s.world.troops.insert(crate::world::TroopUnit {
+        class_dat_id: class,
+        is_alliance: false,
+        regiment_strength: 100,
+    });
+    s.world.systems[s.yard].ground_units.push(fifth);
+    transport.embark(&mut s.world, fleet, &[fifth]).unwrap();
+    let done = CompletionEvent {
+        system: s.yard,
+        tick: 1,
+        kind: regiment,
+        name: None,
+        fleet: Some(fleet),
+    };
+    assert_eq!(
+        boarded_ship(&s.world, &transport, &done),
+        Some("Victory Destroyer 2")
+    );
+    let ship = CompletionEvent {
+        kind: BuildableKind::CapitalShip(s.carrack),
+        ..done.clone()
+    };
+    assert_eq!(boarded_ship(&s.world, &transport, &ship), None);
+    let ashore = CompletionEvent {
+        fleet: None,
+        ..done
+    };
+    assert_eq!(boarded_ship(&s.world, &transport, &ashore), None);
+    let _ = vd;
+}
+
+#[test]
+fn a_regiment_travelling_to_its_fleet_names_the_ship_it_waits_in() {
+    // Completed away from the fleet, it is Deployed in its container at once
+    // (FUN_0052bee0) and travels there; the message names that ship.
+    let mut s = setup();
+    let (fleet, _, vd) = star_destroyers(&mut s);
+    s.world.fleets[fleet].capital_ships[1].name = Some("Victory Destroyer 2".into());
+    s.world.fleets[fleet].location = s.there;
+    let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+    s.manufacturing.set_ship_destination(
+        s.yard,
+        ProductionArea::TrainingFacility,
+        fleet,
+        vd,
+        s.there,
+    );
+    s.manufacturing.build_units(
+        s.yard,
+        vec![QueueItem::new(regiment, 10).ordered(&mut s.world)],
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let settled = settle(
+        &mut s.world,
+        Vec::new(),
+        vec![Departure {
+            origin: s.yard,
+            destination: s.there,
+            tick: 2,
+            kind: regiment,
+            name: None,
+        }],
+    );
+    assert_eq!(settled.trips.len(), 1);
+    assert_eq!(
+        travelling_ship(&s.world, &settled.trips[0]),
+        Some("Victory Destroyer 2")
+    );
+    for other in [
+        Departure {
+            origin: s.there,
+            ..settled.trips[0].clone()
+        },
+        Departure {
+            destination: s.yard,
+            ..settled.trips[0].clone()
+        },
+        Departure {
+            kind: BuildableKind::Fighter(s.tie),
+            ..settled.trips[0].clone()
+        },
+        Departure {
+            name: Some("x".into()),
+            ..settled.trips[0].clone()
+        },
+    ] {
+        assert_eq!(travelling_ship(&s.world, &other), None);
+    }
+}
+
+#[test]
+fn a_squadron_built_for_a_fleet_seats_on_the_living_carrier_with_the_most_room() {
+    // FUN_00552300 with CapShip_vt78's fighter room (+0x26c less the
+    // squadrons aboard); a destroyed ship takes none.
+    let mut s = setup();
+    let fleet = carrier(&mut s, 1, 0);
+    let big = s.world.capital_ship_classes.insert(CapitalShipClass {
+        is_alliance: false,
+        hull: 50,
+        fighter_capacity: 2,
+        ..CapitalShipClass::default()
+    });
+    s.world.fleets[fleet]
+        .capital_ships
+        .push(ShipInstance::new(big, 50, false));
+    s.world.number_ships();
+    let ids: Vec<u64> = s.world.fleets[fleet]
+        .capital_ships
+        .iter()
+        .map(|ship| ship.id)
+        .collect();
+    let squadron = BuildableKind::Fighter(s.tie);
+    assert_eq!(seat(&s.world, fleet, squadron, 0, None), Some(ids[1]));
+    // One squadron seated on the bigger ship leaves each one room: the
+    // earlier ship wins the tie.
+    crate::squadrons::add(&mut s.world.fleets[fleet].fighters, s.tie, 1);
+    crate::squadrons::seat_squadrons(&mut s.world, fleet);
+    assert_eq!(
+        crate::squadrons::aboard(&s.world.fleets[fleet].fighters, ids[1]),
+        1
+    );
+    assert_eq!(seat(&s.world, fleet, squadron, 0, None), Some(ids[0]));
+    s.world.fleets[fleet].fighters.clear();
+    s.world.fleets[fleet].capital_ships[1].alive = false;
+    assert_eq!(seat(&s.world, fleet, squadron, 0, None), Some(ids[0]));
+    // The troop room of the same ships is none.
+    let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+    assert_eq!(seat(&s.world, fleet, regiment, 0, None), None);
+    s.world.fleets[fleet].capital_ships[1].alive = true;
+    s.world.fleets[fleet].capital_ships[1].id = 0;
+    assert_eq!(seat(&s.world, fleet, squadron, 0, None), Some(ids[0]));
+}
+
+#[test]
+fn seated_regiments_skip_destroyed_and_unnumbered_ships() {
+    let mut s = setup();
+    let (fleet, isd, vd) = star_destroyers(&mut s);
+    s.world.fleets[fleet].capital_ships[0].alive = false;
+    assert_eq!(seat_regiments(&s.world, fleet, 3), vec![vd, vd]);
+    s.world.fleets[fleet].capital_ships[0].alive = true;
+    s.world.fleets[fleet].capital_ships[1].id = 0;
+    assert_eq!(seat_regiments(&s.world, fleet, 4), vec![isd, isd, isd]);
 }
