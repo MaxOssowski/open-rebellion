@@ -148,6 +148,41 @@ The build-selection gate's `defensesDestination` step does the following on both
 
 Run `build-selection-2026-11-03T04-16-07-647Z-2127650` (Linux): the Alliance's Destination goes from Akrit'tar to F'tral. Screenshot: `defenses-destination.png`.
 
+## Against A0 on an own fleet (OBJ-07 C019, 2026-11-21)
+
+**A0.** `.artifacts/a0-vm/2026-11-21-build-dest-16` is an unedited capture:
+the Empire, slot 5, with its own Fleet 1 at Averam. Frame by frame:
+
+| A0 frames | Original | Port |
+|---|---|---|
+| 04, 07, 31, 33 | the ships and troops bands take Fleet 1: "Destination: Fleet 1" | match; the gate compares both lines with 04 and 07 |
+| 10, 29 | the facilities band is refused silently and stays "Destination: Coruscant" | match (`reason=0x25`, nothing shown) |
+| 11, 22 | Best Time To Deployment counts the trip to the fleet's system | the port measures to the fleet's current system (`products::delivery_system`); the galaxy differs, so the days are not compared |
+| 23, 24 | a Carrack ordered for Fleet 1 stands in Fleet 1 at once, unfinished; the band keeps "Destination: Fleet 1" | match in the unit tests (the product sits in the fleet; the band names the container); not in the browser |
+| 25 | the Carrack finishes in Fleet 1 | match |
+| 14, 25 | the band reads "Destination: Coruscant" again once its last unit completes | **fixed**: `ManuMgr_vt204` (`FUN_0052b8c0`) clears the TargetKey when the remaining count reaches 0 |
+| 18 | a band that built nothing keeps Fleet 1 | match |
+| 26, 27 | "Carrack Light Cruiser Deployed at Averam" / "The new Carrack Light Cruiser, Carrack Light Cruiser 1, has been deployed at Averam." | **fixed**: the body named the class twice before |
+| 12, 13 | after Confirm, the troops band reads "Destination: Victory Destroyer 2": the regiment was placed in a ship of the fleet | **open**: the port carries regiments by fleet, not by ship, and the band names Fleet 1. Which ship the planner picks (`FUN_00552300` → `FUN_00552b10`, `FUN_0054fbb0`) is not traced: it took the second ship, not the first |
+| 15, 16, 17 | the regiment is aboard Fleet 1; "Imperial Army Regiment Deployed to Averam" / "The following units have been deployed to Victory Destroyer 2" | the title and the boarding match; **open**: the body names the system |
+| 28..33 | a band dragged onto the fleet sets the Destination too | **open**: the port has no band drag (`FUN_00422ce0`, window type 9) |
+| 34 | a band dropped on a ship entry names that ship | **open**: no ship Destination and no band drag |
+
+**The gate.** Run `build-selection-2026-11-21T04-10-28-051Z-207892` passed
+on both sides. It used Linux and Arch Chromium 157.0.8103.78 through a
+temporary `.gate-build-selection-linux.mjs` copy. The test WASM was
+cargo-built (sha256 `b1ed55a451f1d8f0…`), and `result.json` has sha256
+`9dda1acdd0279488…`.
+
+- The ships and troops bands released on the fleet read "Destination:
+  Fleet 1". Their line ink is compared with A0 04 and 07, band-relative:
+  ships [6,61,93,66] against [5,60,92,66], troops [6,61,92,66] against
+  [5,60,92,66], within 2 pixels and 3 on the right.
+- The facilities band is refused with `reason=0x25`.
+
+The cell stays partial while the regiment's ship, the message's ship, the
+band drag and the ship Destination are open.
+
 ## Destination released on a fleet, corrected (OBJ-07 C019, 2026-11-21)
 
 The 2026-11-03 section below read `FUN_00537180` wrongly. Its range test is
@@ -177,7 +212,7 @@ traced.
 - The facilities band, and the facility icon (whose team holds every
   manager), are refused with `0x25`.
 - The other side's fleet is refused (logged `reason=other_side`).
-- Save v137 keeps the fleet Destinations and each product's fleet target.
+- Save v138 keeps the fleet Destinations and each product's fleet target.
 
 **Port deviation.** When the fleet has no room for a squadron or regiment,
 the original refuses the Build at Confirm (`0x27`). The port places the
