@@ -1357,6 +1357,57 @@ async function fleetDragCase(page, faction, directory, counted) {
     assert.equal(confirmed.queued, 1, JSON.stringify(confirmed));
     assert.equal(confirmed.lines[2], shipLine, JSON.stringify(confirmed));
     result.confirmed = confirmed.lines;
+
+    // A ship Destination weighs that ship alone (FUN_00552300): more
+    // regiments than its troop room left refuse the order ({1, 0x27},
+    // FUN_00550700), so Build Selection shows "n/a" and greys Confirm
+    // (FUN_00439160). The replaced regiment gives its seat back.
+    await bandOrder(page, confirmed, "build_row", directory, "fleet-drag-troops-build-again");
+    await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
+      null, { timeout: 10_000 });
+    const readOpen = async () => {
+      await page.mouse.move(2, 2);
+      await frames(page);
+      return production(page);
+    };
+    let again = await readOpen();
+    const at = { x: Math.round(again.build_selection_left), y: Math.round(again.build_selection_top) };
+    assert.equal(again.build_selection_quantity, 1, JSON.stringify(again));
+    assert.equal(again.build_selection_lacks_fleet_room, false, JSON.stringify(again));
+    let previous = again;
+    for (let step = 0; step < 12 && !again.build_selection_lacks_fleet_room; step += 1) {
+      previous = again;
+      await click(page, { x: at.x + 189 + 6, y: at.y + 196 + 4 });
+      again = await readOpen();
+    }
+    assert.equal(again.build_selection_lacks_fleet_room, true, JSON.stringify(again));
+    assert.ok(previous.build_selection_values.every((text) => text !== "n/a"), JSON.stringify(previous));
+    assert.deepEqual(again.build_selection_values, ["n/a", "n/a", "n/a", "n/a"], JSON.stringify(again));
+    assert.equal(again.build_selection_confirm_enabled, false, JSON.stringify(again));
+    fs.writeFileSync(path.join(directory, "fleet-drag-no-room.png"), await page.screenshot({ animations: "disabled" }));
+    result.no_room = { fits: previous.build_selection_quantity, refused: again.build_selection_quantity };
+    await page.keyboard.press("Escape");
+    await frames(page);
+
+    // Stop scraps the queue (FUN_00529ba0 -> FUN_0052a2c0); the scrapped
+    // products' 0x300 events bring RemainingGameObjCount to 0, and
+    // ManuMgr_vt204 (FUN_0052b8c0) sets the TargetKey to none: the band
+    // names its own system again.
+    await bandOrder(page, band(await production(page), "troops"), "stop_row", directory, "fleet-drag-stop");
+    const { galaxy } = faction;
+    const stopOrigin = {
+      x: Math.floor(galaxy.x + (galaxy.width - 424) / 2),
+      y: Math.floor(galaxy.y + (galaxy.height - 331) / 2),
+    };
+    await page.waitForTimeout(300);
+    await frames(page);
+    await click(page, { x: stopOrigin.x + 355 + 25, y: stopOrigin.y + 244 + 17 });
+    await page.mouse.move(2, 2);
+    await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands
+      ?.find(({ area }) => area === "troops")?.queued === 0, null, { timeout: 10_000 });
+    await waitLine("troops", home);
+    fs.writeFileSync(path.join(directory, "fleet-drag-stopped.png"), await page.screenshot({ animations: "disabled" }));
+    result.stopped = band(await production(page), "troops").lines;
   } else {
     await page.keyboard.press("Escape");
     await frames(page);
