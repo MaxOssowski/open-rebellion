@@ -149,7 +149,8 @@ pub(crate) fn see_live(world: &mut GameWorld, side: Faction, system: SystemKey) 
 /// support, population, resources, explored and destroyed bits and whether
 /// it holds the headquarters (families `0x20..0x21`). port: the facility
 /// lists stay the system's own; the GID's counters read the copy's
-/// (`GidFacilities`) and the uprising mark the copy's bit
+/// facilities, regiments and squadrons (`GidContents`) and the uprising
+/// mark the copy's bit
 /// (`object_views::side_uprising`).
 #[must_use]
 pub fn apparent_system<'a>(

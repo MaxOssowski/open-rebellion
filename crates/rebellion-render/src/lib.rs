@@ -1169,14 +1169,6 @@ fn gid_metric(
     // it. The idle yards (0x65..0x67) count only when the holder is the
     // viewer.
     let holder = system.control.faction();
-    let held_by = |is_alliance: bool| {
-        holder
-            == Some(if is_alliance {
-                Faction::Alliance
-            } else {
-                Faction::Empire
-            })
-    };
     let viewer = if player_is_alliance {
         Faction::Alliance
     } else {
@@ -1190,9 +1182,9 @@ fn gid_metric(
             .is_none_or(rebellion_core::manufacturing::ProductionQueue::is_empty)
     };
     // FUN_0042b330's counters take the viewer's copy (param_3 =
-    // FUN_004f2d10(view +0x9c, id)): a frozen copy counts the facilities it
-    // holds (ghidra/notes/fog-of-war.md).
-    let facilities = GidFacilities::of(world, viewer, system_key);
+    // FUN_004f2d10(view +0x9c, id)): a frozen copy counts the facilities,
+    // regiments and squadrons it holds (ghidra/notes/fog-of-war.md).
+    let facilities = GidContents::of(world, viewer, system_key);
     match mode {
         // The briefing's side displays and marked systems take their mark in
         // gid_marker_for_system.
@@ -1208,7 +1200,7 @@ fn gid_metric(
         // FUN_0042b330 case 0x91: the holder's regiments (FUN_005044f0,
         // families 0x10..0x13), armed defenses (FUN_00526e90, 0x22..0x27)
         // and squadrons (FUN_00503550).
-        GidMode::AllDefenses => gid_all_defenses(world, system_key, system, &facilities),
+        GidMode::AllDefenses => gid_all_defenses(system, &facilities),
         // FUN_0042b330 0x12: the copy's uprising bit (+0x88 bit 2).
         GidMode::Uprisings => u32::from(
             matches!(system.control, ControlKind::Uprising(_))
@@ -1294,37 +1286,11 @@ fn gid_metric(
                     && idle_area.is_none_or(|area| holder == Some(viewer) && area_idle(area))
             })
             .count() as u32,
-        GidMode::Troopers => system
-            .ground_units
-            .iter()
-            .filter(|key| {
-                world
-                    .troops
-                    .get(**key)
-                    .is_some_and(|troop| held_by(troop.is_alliance))
-            })
-            .count() as u32,
-        // hyp: the original's count is untraced; the side's squadrons aboard
-        // its fleets and on the planet (FUN_005039d0) both count.
-        GidMode::FighterSquadrons => {
-            system
-                .fleets
-                .iter()
-                .filter_map(|key| world.fleets.get(*key))
-                .filter(|fleet| held_by(fleet.is_alliance))
-                .flat_map(|fleet| fleet.fighters.iter())
-                .map(|fighters| fighters.count)
-                .sum::<u32>()
-                + match holder {
-                    Some(Faction::Alliance) => {
-                        rebellion_core::squadrons::on_planet(world, system_key, true)
-                    }
-                    Some(Faction::Empire) => {
-                        rebellion_core::squadrons::on_planet(world, system_key, false)
-                    }
-                    _ => 0,
-                }
-        }
+        // FUN_0042b330 0x71, 0x72: FUN_005044f0 (0x10..0x14) and
+        // FUN_00503550 (0x1c..0x20) count the copy's usable direct children
+        // of the holder's side: the regiments and squadrons on the planet.
+        GidMode::Troopers => holder.map_or(0, |side| facilities.regiments_of(side)),
+        GidMode::FighterSquadrons => holder.map_or(0, |side| facilities.squadrons_of(side)),
         GidMode::DeathStarShields => facilities
             .defense
             .iter()
@@ -1356,21 +1322,46 @@ struct GidFacility {
     is_shipyard: bool,
 }
 
-/// The facilities the GID's counters walk at a system: the viewer's copy's
-/// (`FUN_0042b330` takes `param_3 = FUN_004f2d10(view +0x9c, id)`). A
-/// frozen copy holds those it was last synced with; the viewer's own
-/// system, a live copy and the debug mode hold the system's own.
+/// What the GID's counters walk at a system: the viewer's copy's
+/// facilities and its usable regiments and squadrons on the planet
+/// (`FUN_0042b330` takes `param_3 = FUN_004f2d10(view +0x9c, id)`; its
+/// counters walk the copy's direct children, `FUN_00513090`). A frozen copy
+/// holds those it was last synced with: the setup push gives a core copy
+/// facilities but no units (`FUN_0051b990`), and units enter it by the
+/// intelligence pushes. The viewer's own system, a live copy and the debug
+/// mode hold the system's own.
 #[derive(Debug, Default)]
-struct GidFacilities {
+struct GidContents {
     defense: Vec<GidFacility>,
     manufacturing: Vec<GidFacility>,
     production: Vec<GidFacility>,
+    /// Each usable regiment's side.
+    regiments: Vec<rebellion_core::dat::Faction>,
+    /// The squadrons on the planet: their side and count.
+    squadrons: Vec<(rebellion_core::dat::Faction, u32)>,
 }
 
-impl GidFacilities {
+impl GidContents {
     fn of(world: &GameWorld, viewer: rebellion_core::dat::Faction, key: SystemKey) -> Self {
+        use rebellion_core::dat::Faction;
         let Some(system) = world.systems.get(key) else {
             return Self::default();
+        };
+        let side_of = |is_alliance: bool| {
+            if is_alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            }
+        };
+        // The viewer's own regiments are its live objects wherever it looks.
+        let own_regiments = || {
+            system
+                .ground_units
+                .iter()
+                .filter_map(|key| world.troops.get(*key))
+                .map(|troop| side_of(troop.is_alliance))
+                .filter(|&side| side == viewer)
         };
         let from_view = |list: &[rebellion_core::object_views::FacilityView]| {
             list.iter()
@@ -1386,10 +1377,36 @@ impl GidFacilities {
         if let viewed_contents::SystemSight::Frozen(view) =
             viewed_contents::system_sight(world, &fog, viewer, key)
         {
+            // The viewer's copies of the other side's regiments on this
+            // surface; one seen en route is not usable (FUN_004f6b90 mode 1,
+            // +0x50 bit 0).
+            let viewed = world
+                .object_views
+                .side(viewer)
+                .into_iter()
+                .flat_map(|views| views.values())
+                .filter_map(|view| {
+                    let rebellion_core::object_views::ObjectView::Regiment(regiment) = view;
+                    let here = rebellion_core::object_views::ViewPlace::Surface(system.dat_id);
+                    (regiment.place == here && regiment.arrival.is_none())
+                        .then_some(side_of(regiment.is_alliance))
+                });
             return Self {
                 defense: from_view(&view.defense_facilities),
                 manufacturing: from_view(&view.manufacturing_facilities),
                 production: from_view(&view.production_facilities),
+                regiments: viewed.chain(own_regiments()).collect(),
+                squadrons: view
+                    .fighters
+                    .iter()
+                    .filter_map(|(class, count)| {
+                        let fighter = world
+                            .fighter_classes
+                            .values()
+                            .find(|value| value.dat_id == *class)?;
+                        Some((side_of(fighter.is_alliance), *count))
+                    })
+                    .collect(),
             };
         }
         Self {
@@ -1426,7 +1443,35 @@ impl GidFacilities {
                     is_shipyard: false,
                 })
                 .collect(),
+            regiments: system
+                .ground_units
+                .iter()
+                .filter_map(|key| world.troops.get(*key))
+                .map(|troop| side_of(troop.is_alliance))
+                .collect(),
+            squadrons: system
+                .fighters
+                .iter()
+                .filter_map(|entry| {
+                    let fighter = world.fighter_classes.get(entry.class)?;
+                    Some((side_of(fighter.is_alliance), entry.count))
+                })
+                .collect(),
         }
+    }
+
+    /// `FUN_005044f0(copy, side, 1)`.
+    fn regiments_of(&self, side: rebellion_core::dat::Faction) -> u32 {
+        u32::try_from(self.regiments.iter().filter(|&&each| each == side).count())
+            .unwrap_or(u32::MAX)
+    }
+
+    /// `FUN_00503550(copy, side, 1)`.
+    fn squadrons_of(&self, side: rebellion_core::dat::Faction) -> u32 {
+        self.squadrons
+            .iter()
+            .filter(|(each, _)| *each == side)
+            .fold(0_u32, |sum, (_, count)| sum.saturating_add(*count))
     }
 }
 
@@ -1473,15 +1518,11 @@ fn gid_metric_size(mode: GidMode, value: u32) -> usize {
 }
 
 /// `0x91` All Defenses: the holder's regiments, armed defense facilities
-/// (families `0x22..0x27`) and squadrons on the planet and aboard its
-/// fleets at the system. hyp: the squadrons count as Fighter Squadrons'
-/// do (`FUN_00503550` is that display's counter).
-fn gid_all_defenses(
-    world: &GameWorld,
-    system_key: SystemKey,
-    system: &System,
-    facilities: &GidFacilities,
-) -> u32 {
+/// (families `0x22..0x27`) and squadrons in the viewer's copy
+/// (`FUN_005044f0 + FUN_00526e90 + FUN_00503550`). The squadrons are the
+/// planet's: the counters walk the system's direct children, and a fleet's
+/// squadrons ride aboard its ships (`fleet-join-split.md`).
+fn gid_all_defenses(system: &System, contents: &GidContents) -> u32 {
     use rebellion_core::dat::Faction;
     let Some(holder) = system
         .control
@@ -1490,32 +1531,17 @@ fn gid_all_defenses(
     else {
         return 0;
     };
-    let alliance = holder == Faction::Alliance;
-    let regiments = system
-        .ground_units
-        .iter()
-        .filter_map(|key| world.troops.get(*key))
-        .filter(|troop| troop.is_alliance == alliance)
-        .count();
-    let defenses = facilities
+    let defenses = contents
         .defense
         .iter()
         .filter(|facility| {
             facility.side == holder && (0x22..=0x27).contains(&facility.class.family())
         })
         .count();
-    let squadrons = system
-        .fleets
-        .iter()
-        .filter_map(|key| world.fleets.get(*key))
-        .filter(|fleet| fleet.is_alliance == alliance)
-        .flat_map(|fleet| fleet.fighters.iter())
-        .map(|fighters| fighters.count)
-        .sum::<u32>()
-        + rebellion_core::squadrons::on_planet(world, system_key, alliance);
-    u32::try_from(regiments + defenses)
-        .unwrap_or(u32::MAX)
-        .saturating_add(squadrons)
+    contents
+        .regiments_of(holder)
+        .saturating_add(u32::try_from(defenses).unwrap_or(u32::MAX))
+        .saturating_add(contents.squadrons_of(holder))
 }
 
 fn gid_marker_resource_for_size(control: ControlKind, explored: bool, size: usize) -> u32 {
@@ -2283,8 +2309,8 @@ mod interaction_tests {
         // 0x22..0x27) + FUN_00503550, for the holder; (6, 5, 3, 2, 1).
         use rebellion_core::dat::Faction;
         let all_defenses = |world: &GameWorld, key| {
-            let facilities = GidFacilities::of(world, Faction::Alliance, key);
-            gid_all_defenses(world, key, &world.systems[key], &facilities)
+            let contents = GidContents::of(world, Faction::Alliance, key);
+            gid_all_defenses(&world.systems[key], &contents)
         };
         use rebellion_core::world::{DefenseFacilityInstance, TroopUnit};
         let mut world = GameWorld::default();
@@ -2337,7 +2363,7 @@ mod interaction_tests {
         // nor is the Alliance's).
         assert_eq!(all_defenses(&world, key), 4);
         assert_eq!(gid_metric_size(GidMode::AllDefenses, 4), 2);
-        // The holder's squadrons aboard its fleets and on the planet.
+        // The holder's squadrons on the planet; a fleet's aboard its ships.
         let imperial_class = world.fighter_classes.insert(Default::default());
         let rebel_class = world
             .fighter_classes
@@ -2360,10 +2386,11 @@ mod interaction_tests {
                 .fighters
                 .push(rebellion_core::world::FighterEntry { class, count: 1, carrier: None, damage: None });
         }
-        assert_eq!(
-            all_defenses(&world, key),
-            4 + 2 + 1
-        );
+        // FUN_00503550 walks the system's direct children only
+        // (object-state-flags.md, "Child-list walk"): the planet's
+        // squadron counts, those aboard the fleets do not. Until 2026-11-21
+        // this expected 4 + 2 + 1, from the untraced fleet count.
+        assert_eq!(all_defenses(&world, key), 4 + 1);
         world.systems[key].control = ControlKind::Uncontrolled;
         assert_eq!(all_defenses(&world, key), 0);
     }
@@ -3521,11 +3548,156 @@ mod interaction_tests {
         assert_eq!(metric(false, GidMode::DeathStarShields), 0);
     }
 
+    #[test]
+    fn the_unit_displays_count_the_viewer_s_frozen_copy() {
+        // FUN_0042b330 0x71, 0x72, 0x91: FUN_005044f0 (0x10..0x14) and
+        // FUN_00503550 (0x1c..0x20) walk param_3 = FUN_004f2d10(view +0x9c,
+        // id), the viewer's copy, in mode 1 (usable, +0x50 bit 0). Its
+        // regiments and squadrons are those the copy last took
+        // (ghidra/notes/fog-of-war.md, "Ported (2026-11-21)").
+        use rebellion_core::dat::Faction;
+        use rebellion_core::object_views::{ObjectView, RegimentView, SystemView, ViewPlace};
+        use rebellion_core::world::{FighterClass, FighterEntry, TroopUnit};
+        let mut world = GameWorld::default();
+        let key = world.systems.insert(System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Naboo".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.2,
+            popularity_empire: 0.8,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(Faction::Empire),
+        });
+        let system_id = world.systems[key].dat_id;
+        let tie = world.fighter_classes.insert(FighterClass {
+            dat_id: rebellion_core::ids::DatId::new(0x1c00_0001),
+            is_empire: true,
+            ..Default::default()
+        });
+        // The Alliance's copy, frozen with two TIE squadrons on the planet.
+        world.systems[key].fighters.push(FighterEntry {
+            class: tie,
+            count: 2,
+            carrier: None,
+            damage: None,
+        });
+        let view = SystemView::of(&world, &world.systems[key], false);
+        world.object_views.alliance_systems.insert(system_id, view);
+        // And its copies of an Imperial regiment on the surface, one seen en
+        // route there (not usable, FUN_004f6b90 mode 1), one in a fleet and
+        // one on another planet.
+        let regiment = |id: u32, place: ViewPlace, arrival: Option<u64>| {
+            (
+                rebellion_core::ids::DatId::new(id),
+                ObjectView::Regiment(RegimentView {
+                    class: rebellion_core::ids::DatId::new(0x1000_0001),
+                    is_alliance: false,
+                    strength: 100,
+                    place,
+                    arrival,
+                    live: false,
+                }),
+            )
+        };
+        world.object_views.alliance.extend([
+            regiment(0x1000_0101, ViewPlace::Surface(system_id), None),
+            regiment(0x1000_0102, ViewPlace::Surface(system_id), Some(40)),
+            regiment(
+                0x1000_0103,
+                ViewPlace::Fleet {
+                    system: system_id,
+                    fleet_name: "Fleet 1".into(),
+                },
+                None,
+            ),
+            regiment(
+                0x1000_0104,
+                ViewPlace::Surface(rebellion_core::ids::DatId::new(0x9000_0002)),
+                None,
+            ),
+        ]);
+        // Since then the Empire landed three regiments and two more
+        // squadrons.
+        for _ in 0..3 {
+            let troop = world.troops.insert(TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+                is_alliance: false,
+                regiment_strength: 100,
+            });
+            world.systems[key].ground_units.push(troop);
+        }
+        world.systems[key].fighters[0].count = 4;
+        let movement = rebellion_core::movement::MovementState::new();
+        let manufacturing = ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+            marked_system: None,
+            fog: &rebellion_core::fog::FogState::new(Faction::Alliance),
+        };
+        let metric = |viewer_is_alliance, mode| {
+            gid_metric(
+                &world,
+                key,
+                &world.systems[key],
+                viewer_is_alliance,
+                mode,
+                &gid,
+            )
+        };
+        assert_eq!(metric(true, GidMode::Troopers), 1);
+        assert_eq!(metric(true, GidMode::FighterSquadrons), 2);
+        assert_eq!(metric(true, GidMode::AllDefenses), 3);
+        // The holder sees its own system.
+        assert_eq!(metric(false, GidMode::Troopers), 3);
+        assert_eq!(metric(false, GidMode::FighterSquadrons), 4);
+        assert_eq!(metric(false, GidMode::AllDefenses), 7);
+        // A core copy from the setup push holds no regiments or squadrons
+        // (FUN_0051b990 pushes only facilities 0x20..0x2f).
+        world.object_views.alliance.clear();
+        world
+            .object_views
+            .alliance_systems
+            .get_mut(&system_id)
+            .unwrap()
+            .fighters
+            .clear();
+        let metric = |mode| gid_metric(&world, key, &world.systems[key], true, mode, &gid);
+        assert_eq!(metric(GidMode::Troopers), 0);
+        assert_eq!(metric(GidMode::FighterSquadrons), 0);
+        assert_eq!(metric(GidMode::AllDefenses), 0);
+    }
+
     // FUN_0042b330 case 0x72: FUN_00503550(system, holder, 1), the holder
-    // being the system's +0x24 bits 6..7 (uVar16), whoever views. The
-    // squadrons on the planet (FUN_005039d0) join those aboard its fleets.
-    // Until 2026-10-23 this test expected the viewer's squadrons, from an
-    // untraced guess.
+    // being the system's +0x24 bits 6..7 (uVar16), whoever views. It walks
+    // the system's direct children (FUN_00513090, object-state-flags.md
+    // "Child-list walk"), so only the planet's squadrons count: a fleet's
+    // children are its capital ships, which carry its squadrons
+    // (fleet-join-split.md). Until 2026-10-23 this test expected the
+    // viewer's squadrons, from an untraced guess; until 2026-11-21 the port
+    // also counted the squadrons aboard the holder's fleets (hyp).
     #[test]
     fn the_squadron_display_counts_the_holder_s_squadrons_on_the_planet() {
         let mut world = GameWorld::default();
@@ -3563,6 +3735,23 @@ mod interaction_tests {
                     ..Default::default()
                 });
             rebellion_core::squadrons::add(&mut world.systems[key].fighters, class, count);
+            // A fleet of each side in orbit with three squadrons aboard,
+            // which the display does not count.
+            let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+                location: key,
+                capital_ships: vec![],
+                fighters: vec![rebellion_core::world::FighterEntry {
+                    class,
+                    count: 3,
+                    carrier: None,
+                    damage: None,
+                }],
+                characters: vec![],
+                is_alliance: alliance,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            });
+            world.systems[key].fleets.push(fleet);
         }
         let movement = rebellion_core::movement::MovementState::new();
         let manufacturing = ManufacturingState::new();

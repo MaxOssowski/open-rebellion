@@ -305,10 +305,9 @@ and after each A0 state below, compared with A0 pixel for pixel.
   defense displays, All Defenses' facility part) walk the viewer's copy:
   `FUN_0042b330` hands its counters `param_3 = FUN_004f2d10(view +0x9c,
   id)`. A frozen copy counts the facilities it was last synced with
-  (`lib.rs` `GidFacilities`). port: the regiments and squadrons of All
-  Defenses, Troopers and Fighter Squadrons still count the system's own;
-  the copy's regiments and squadrons are kept apart (`SystemView`,
-  regiment views).
+  (`lib.rs` `GidFacilities`, now `GidContents`). The regiments and
+  squadrons of All Defenses, Troopers and Fighter Squadrons were ported
+  2026-11-21 (below).
 - The copy's uprising bit (`+0x88` bit 2): the mode-1 sync
   (`FUN_0050e5b0`) copies it with explored, so a copy takes the system's
   bit whenever the day's view step syncs it (a live copy that changes, one
@@ -328,6 +327,46 @@ and after each A0 state below, compared with A0 pixel for pixel.
   take the setup push at the start as the app's new game does
   (`object_views::start`, `simulation::start_views`). port: the headless
   simulation keeps one fog record, which no longer gives sight.
+
+## Ported (2026-11-21): the GID's regiment and squadron counts
+
+Traced in `FUN_0042b330` (`decompiled-typed`, lines 616..642): Troopers
+(`0x71`) is `FUN_005044f0(param_3, holder, 1)`, Fighter Squadrons (`0x72`)
+`FUN_00503550(param_3, holder, 1)`, All Defenses (`0x91`) `FUN_005044f0 +
+FUN_00526e90 + FUN_00503550` with the same arguments. `param_3` is the
+viewer's copy (`FUN_004f2d10(view +0x9c, id)`), the holder its `+0x24`
+bits 6..7. Both counters are `FUN_004f6c00` over a type range (`0x10..0x14`
+regiments, `0x1c..0x20` squadrons): the iterator `FUN_00513090` walks the
+copy's **direct children** only (`object-state-flags.md`, "Child-list
+walk": `FUN_00513120` -> `+0x28`, `FUN_005f5060`; `FUN_005130d0` ->
+sibling `+0x10`), accepting the holder's side (`+0x14` = 1) and mode 1
+(`FUN_004f6b90`: `+0x50` bit 0, usable).
+
+So the displays count the copy's regiments and squadrons on the planet:
+- a frozen copy counts those it was last synced with. The setup push gives
+  a core copy facilities but no units (`FUN_0051b990`, the ranges above),
+  so an enemy core system counts 0 regiments and squadrons until a push
+  (Espionage, Reconnaissance, ...) or a live sync brings them in;
+- a unit the copy saw en route (`+0x50` bit 4) is not usable and does not
+  count;
+- squadrons aboard a fleet never count: a fleet's direct children are its
+  capital ships, which carry the squadrons (`fleet-join-split.md`). The
+  port counted the holder's fleets' squadrons (hyp since 2026-10-23); that
+  is removed for every viewer.
+
+Port (`lib.rs` `GidContents`): a frozen sight counts the viewer's regiment
+views on the surface (`ViewPlace::Surface`, no arrival) and its copy's
+planet squadrons (`SystemView.fighters`); the viewer's own regiments are
+its live objects. A live copy, the viewer's own system and the debug mode
+count the system's own regiments and planet squadrons. port: the live
+count does not test the usable bit (the port's `ground_units` and planet
+`fighters` hold no unit en route).
+
+Tests: `the_unit_displays_count_the_viewer_s_frozen_copy`,
+`the_squadron_display_counts_the_holder_s_squadrons_on_the_planet` (now
+with a fleet of each side carrying squadrons),
+`all_defenses_counts_the_holders_regiments_defenses_and_squadrons`
+(expected `4 + 2 + 1` before, from the fleets' squadrons; now `4 + 1`).
 
 ## The GID's gray cross and Yavin to the Empire (traced 2026-11-19)
 
