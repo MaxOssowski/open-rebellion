@@ -1973,12 +1973,18 @@ pub fn enemy_mission_foiled_texts(
 /// already a child of its destination, so its message names the
 /// destination at departure; its arrival is [`arrival_texts`].
 ///
+/// The unit's own name is `name`, the one its order gave it
+/// (`QueueItem::name`: a capital ship's "{class} {N}"), else its class's
+/// (`FUN_004f62d0`). A0 2026-11-21-build-dest-16/27: "The new Carrack
+/// Light Cruiser, Carrack Light Cruiser 1, has been deployed at Averam."
+///
 /// port: a completed unit stands at its system, so the body's container is
-/// the system; the port names no unit, so its name is its class's.
+/// the system (A0 /17 names the ship a regiment boarded).
 #[must_use]
 pub fn deployed_texts(
     world: &rebellion_core::world::GameWorld,
     kind: rebellion_core::manufacturing::BuildableKind,
+    name: Option<&str>,
     system: &str,
     texts: &HashMap<u16, String>,
 ) -> Option<(String, String)> {
@@ -2001,7 +2007,7 @@ pub fn deployed_texts(
     };
     let parameters = [
         MessageParameter::Unit {
-            name: &class,
+            name: name.unwrap_or(&class),
             class: &class,
         },
         MessageParameter::Named { name: system },
@@ -4315,12 +4321,28 @@ mod tests {
             name: "X-wing".into(),
             ..FighterClass::default()
         });
-        let say = |kind| deployed_texts(&world, kind, "Fondor", &texts);
+        let say = |kind| deployed_texts(&world, kind, None, "Fondor", &texts);
         assert_eq!(
             say(BuildableKind::CapitalShip(frigate)),
             Some((
                 "Nebulon-B Frigate Deployed at Fondor".into(),
                 "The new Nebulon-B Frigate, Nebulon-B Frigate, has been deployed at Fondor.".into()
+            ))
+        );
+        // A0 2026-11-21-build-dest-16/26, 27: the title names the class,
+        // the body the ship's own name from its order.
+        assert_eq!(
+            deployed_texts(
+                &world,
+                BuildableKind::CapitalShip(frigate),
+                Some("Nebulon-B Frigate 1"),
+                "Fondor",
+                &texts
+            ),
+            Some((
+                "Nebulon-B Frigate Deployed at Fondor".into(),
+                "The new Nebulon-B Frigate, Nebulon-B Frigate 1, has been deployed at Fondor."
+                    .into()
             ))
         );
         assert_eq!(

@@ -1115,6 +1115,41 @@ async function pendingSquadronCase(page, faction, directory, source) {
   return result;
 }
 
+// A band's destination line ("Destination: ...", the band's (5, 57)) as the
+// ink box of its white text, band-relative: A0 pure white, the port's
+// antialiased core (every channel 250 or more). A0
+// 2026-11-21-build-dest-16 has the Coruscant window at (120, 91), so its
+// bands at (175, 148), (175, 229) and (175, 310).
+const A0_BUILD_DEST = path.join(root, ".artifacts/a0-vm/2026-11-21-build-dest-16");
+const A0_BUILD_DEST_BANDS = { ships: [175, 148], troops: [175, 229], facilities: [175, 310] };
+function destinationLineInk(png, [ox, oy], white) {
+  let box = null;
+  for (let y = 53; y < 67; y += 1) {
+    for (let x = 3; x < 160; x += 1) {
+      const k = ((oy + y) * png.width + ox + x) * 4;
+      const lit = white ? png.data[k] === 255 && png.data[k + 1] === 255 && png.data[k + 2] === 255
+        : Math.min(png.data[k], png.data[k + 1], png.data[k + 2]) >= 250;
+      if (!lit) continue;
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+    }
+  }
+  return box;
+}
+
+// The port's band line against the same band's in an A0 frame showing the
+// same text: left, top and bottom within 2 pixels, the right edge within 3
+// (the accepted text deviation).
+function destinationLineAgainstA0(portBytes, portBand, frame, area) {
+  const file = path.join(A0_BUILD_DEST, frame);
+  if (!fs.existsSync(file)) return null;
+  const a = destinationLineInk(PNG.sync.read(fs.readFileSync(file)), A0_BUILD_DEST_BANDS[area], true);
+  const p = destinationLineInk(PNG.sync.read(portBytes), [Math.round(portBand.left), Math.round(portBand.top)], false);
+  const result = { frame, area, a0: a, port: p };
+  assert.ok(a && p && [0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 2) && Math.abs(a[2] - p[2]) <= 3,
+    JSON.stringify(result));
+  return result;
+}
+
 // Fixture code 96 is Scenario::BuildSelectionFleetDestination (95) plus
 // one: the player's fleet at the secondary system, its Fleet window at the
 // galaxy view's left. FUN_00537180 holds only a construction manager
@@ -1122,8 +1157,12 @@ async function pendingSquadronCase(page, faction, directory, source) {
 // takes a fleet (0x08..0x0f). So the ships band's Destination released on
 // the fleet names the fleet (the band shows its DeploymentKey, the
 // TargetKey while idle: FUN_0052ac40, FUN_004591b0), and the facilities
-// band's is refused and keeps its own. (A0 build-selection2/30 and 32
-// released on the other side's Fleet 1 at Yavin, which kept the band's.)
+// band's is refused and keeps its own. A0 2026-11-21-build-dest-16 (the
+// Empire's Coruscant and its own Fleet 1 at Averam): /04 ships and /07
+// troops read "Destination: Fleet 1", /10 the facilities band is refused
+// silently; the lines are compared with those frames. (A0
+// build-selection2/30 and 32 released on the other side's Fleet 1 at
+// Yavin, which kept the band's.)
 async function fleetDestinationCase(page, faction, directory, log) {
   const fixtureCode = 96 | (faction.byte << 8);
   await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
@@ -1144,10 +1183,30 @@ async function fleetDestinationCase(page, faction, directory, log) {
     /command=0x214 destination=production_destination status=set areas=1 to_fleet=(.+)$/);
   const fleet = set.match(/to_fleet=(.+)$/)[1];
   await frames(page, 4);
+  const shipsBytes = await page.screenshot({ animations: "disabled" });
   const taken = await production(page);
-  fs.writeFileSync(path.join(directory, "fleet-destination.png"), await page.screenshot({ animations: "disabled" }));
+  fs.writeFileSync(path.join(directory, "fleet-destination.png"), shipsBytes);
   assert.equal(band(taken, "ships").lines[2], `Destination: ${fleet}`, JSON.stringify(band(taken, "ships")));
   assert.notEqual(band(taken, "ships").destination, home, "the ships band kept its Destination system");
+  const a0 = [];
+  if (fleet === "Fleet 1") {
+    a0.push(destinationLineAgainstA0(shipsBytes, band(taken, "ships"),
+      "04-ships-band-destination-fleet1-d133.png", "ships"));
+  }
+
+  // The troops band takes the fleet too (A0 /07).
+  await bandOrder(page, band(taken, "troops"), "destination_row", directory, "fleet-destination-troops");
+  await click(page, fleetPoint);
+  await page.mouse.move(2, 2);
+  await frames(page, 4);
+  await page.waitForFunction((name) => window.__openRebellionInterfaceProduction?.bands
+    ?.find(({ area }) => area === "troops")?.lines?.[2] === `Destination: ${name}`, fleet, { timeout: 10_000 });
+  const troopsBytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "fleet-destination-troops.png"), troopsBytes);
+  if (fleet === "Fleet 1") {
+    a0.push(destinationLineAgainstA0(troopsBytes, band(await production(page), "troops"),
+      "07-troops-band-destination-fleet1-d133.png", "troops"));
+  }
 
   const facilities = band(taken, "facilities");
   const facilitiesHome = facilities.lines[2];
@@ -1163,7 +1222,8 @@ async function fleetDestinationCase(page, faction, directory, log) {
   assert.equal(band(after, "facilities").lines[2], facilitiesHome,
     "the refused release changed the facilities band's Destination");
   assert.equal(band(after, "ships").lines[2], `Destination: ${fleet}`);
-  return { home, fleet, facilities: facilitiesHome };
+  assert.equal(band(after, "troops").lines[2], `Destination: ${fleet}`);
+  return { home, fleet, facilities: facilitiesHome, a0: a0.filter(Boolean) };
 }
 
 // Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.

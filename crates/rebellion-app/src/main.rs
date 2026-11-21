@@ -14830,6 +14830,7 @@ impl AppDayPresentation<'_> {
             let (title, text) = rebellion_render::story_messages::deployed_texts(
                 world,
                 completion.kind,
+                completion.name.as_deref(),
                 &sys_name,
                 message_texts,
             )
@@ -14881,6 +14882,7 @@ impl AppDayPresentation<'_> {
             let (title, text) = rebellion_render::story_messages::deployed_texts(
                 world,
                 departure.kind,
+                departure.name.as_deref(),
                 &destination,
                 message_texts,
             )

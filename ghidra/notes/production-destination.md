@@ -173,7 +173,32 @@ AI's Manage Production/Manage Garrisons agent skips reserved managers.
   the original refuses the Build (`0x27`). The other side's fleet is
   refused (A0 `build-selection2/30`, `32`); the refusing check is not
   traced. The Build agent's fleet target (`agent_build.rs`) still names
-  the fleet's system. Its Reserved is ported
+  the fleet's system.
+- A0 `2026-11-21-build-dest-16` (Empire, own Fleet 1 at Averam):
+  - ships (`04`, `33`) and troops (`07`, `31`) bands take the fleet, by the
+    menu's targeting or a band drag; the facilities band is refused
+    silently (`10`, `29`);
+  - a regiment ordered for Fleet 1 names a ship of it, "Destination:
+    Victory Destroyer 2" (`12`), and its message body "deployed to Victory
+    Destroyer 2" (`17`, title "... Deployed to Averam"): the planner put it
+    in that ship (`FUN_00552300` tries the fleet's ships after the fleet).
+    Which ship it picks is not traced (Victory Destroyer 2, the second
+    ship, though the Imperial Star Destroyer came first). port: regiments
+    ride a fleet, not a ship, so the band and message name the fleet and
+    the system;
+  - a Carrack ordered for Fleet 1 stands in Fleet 1 at once with the
+    under-construction art (`23`), finishes there (`25`): "The new Carrack
+    Light Cruiser, Carrack Light Cruiser 1, has been deployed at Averam."
+    (`27`); the body names the ship's own name (ported 2026-11-21,
+    `story_messages::deployed_texts`);
+  - each band names its own system again once its last unit completed
+    (`14`, `25`), while a band that never built keeps the fleet (`18`):
+    `ManuMgr_vt204` (`FUN_0052b8c0`), the RemainingGameObjCount hook,
+    sets the TargetKey to none when the count reaches 0 (ported in
+    `ManufacturingState::add_point`; whether a Stop reaches it too is not
+    traced);
+  - a band dropped on a ship entry of the fleet panel names that ship
+    (`34`). port: no band drag, and no ship Destination. Its Reserved is ported
   since 2026-11-10 (`sector-icon-menus.md`, "The facility icon's Reserved"),
   and so is its drop, a `0x214` against the drop window's `+0x68`
   ("Drags by kind" there).

@@ -702,6 +702,15 @@ impl ManufacturingState {
                 }),
             }
         }
+        // ManuMgr_vt204 (FUN_0052b8c0), the RemainingGameObjCount hook:
+        // the count reaching 0 sets the TargetKey to none, so the band
+        // names the manager's own system again (A0
+        // 2026-11-21-build-dest-16/14 and 25: "Destination: Coruscant"
+        // once the regiment and the Carrack bound for Fleet 1 completed).
+        if queue.is_empty() && !(completions.is_empty() && departures.is_empty()) {
+            self.destinations.remove(&(system, area));
+            self.fleet_destinations.remove(&(system, area));
+        }
         (completions, departures)
     }
 
@@ -1209,6 +1218,38 @@ mod tests {
         }
         assert!(state.is_reserved(away, ProductionArea::Shipyard));
         assert!(!state.is_reserved(away, ProductionArea::TrainingFacility));
+    }
+
+    #[test]
+    fn an_area_whose_last_unit_completes_takes_its_own_system_again() {
+        // ManuMgr_vt204 (FUN_0052b8c0): the remaining count reaching 0 sets
+        // the TargetKey to none. A0 2026-11-21-build-dest-16/14, 25: the
+        // troops and ships bands bound for Fleet 1 read "Destination:
+        // Coruscant" once their unit completed; /18: a band with nothing
+        // built keeps its Destination.
+        let mut systems: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
+        let (home, away) = (systems.insert(()), systems.insert(()));
+        let mut fleets: slotmap::SlotMap<FleetKey, ()> = slotmap::SlotMap::with_key();
+        let fleet = fleets.insert(());
+        let mut state = ManufacturingState::new();
+        let area = ProductionArea::TrainingFacility;
+        assert!(state.set_fleet_destination(home, area, fleet, away));
+        assert_eq!(state.add_point(home, area, 1), (Vec::new(), Vec::new()));
+        assert_eq!(state.destination_fleet(home, area), Some(fleet));
+        state.enqueue(home, troop_item(1));
+        state.enqueue(home, troop_item(1));
+        let (_, departures) = state.add_point(home, area, 2);
+        assert_eq!(departures.len(), 1);
+        assert_eq!(state.destination(home, area), Some(away), "one unit is left");
+        let (_, departures) = state.add_point(home, area, 3);
+        assert_eq!(departures.len(), 1);
+        assert_eq!(state.destination(home, area), None);
+        assert_eq!(state.destination_fleet(home, area), None);
+        // A system Destination resets the same way.
+        state.set_destination(home, ProductionArea::Shipyard, away);
+        state.enqueue(home, cap_ship_item(1));
+        state.add_point(home, ProductionArea::Shipyard, 4);
+        assert_eq!(state.destination(home, ProductionArea::Shipyard), None);
     }
 
     #[test]
