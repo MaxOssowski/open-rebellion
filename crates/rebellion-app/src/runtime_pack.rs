@@ -96,7 +96,61 @@ impl fmt::Display for PackError {
     }
 }
 
-pub fn parse_runtime_pack(bytes: &[u8]) -> Result<RuntimePack, PackError> {
+#[cfg(test)]
+fn parse_runtime_pack(bytes: &[u8]) -> Result<RuntimePack, PackError> {
+    parse_owned_runtime_pack(bytes.to_vec())
+}
+
+/// The unused tail of the pack that is handed back to the allocator at
+/// once. Shrinking after every small entry keeps about half the pack alive
+/// under the wasm32 dlmalloc (1.5x the pack at the peak, measured with a
+/// 100 MiB pack of 8 KiB entries); a few MiB at a time keeps it at 1.05x.
+const SHRINK_SLACK: usize = 4 << 20;
+
+/// [`parse_runtime_pack`] on a pack the caller hands over. Each entry's
+/// bytes are copied out from the last entry back, and the pack is cut
+/// behind the copies, so the allocator can reuse what it no longer needs.
+/// port: a WebAssembly memory never shrinks, so copying every entry before
+/// freeing the pack left the browser build at twice the pack's size for good.
+pub fn parse_owned_runtime_pack(mut bytes: Vec<u8>) -> Result<RuntimePack, PackError> {
+    let index = index_runtime_pack(&bytes)?;
+    let mut pack = RuntimePack {
+        game_files: HashMap::new(),
+        bitmaps: HashMap::new(),
+        audio_files: HashMap::new(),
+        advisor_frames: HashMap::new(),
+        tactical_meshes: HashMap::new(),
+        tactical_textures: HashMap::new(),
+    };
+    for entry in index.into_iter().rev() {
+        let data = bytes[entry.start..entry.start + entry.len].to_vec();
+        bytes.truncate(entry.start);
+        if bytes.capacity() - bytes.len() >= SHRINK_SLACK {
+            bytes.shrink_to_fit();
+        }
+        let destination = match entry.kind {
+            KIND_GAME_DATA => &mut pack.game_files,
+            KIND_BITMAP => &mut pack.bitmaps,
+            KIND_AUDIO => &mut pack.audio_files,
+            KIND_ADVISOR_FRAME => &mut pack.advisor_frames,
+            KIND_TACTICAL_MESH => &mut pack.tactical_meshes,
+            _ => &mut pack.tactical_textures,
+        };
+        destination.insert(entry.key, data);
+    }
+    Ok(pack)
+}
+
+/// One validated pack entry: its kind, key and the place of its bytes.
+struct IndexedEntry {
+    kind: u8,
+    key: String,
+    start: usize,
+    len: usize,
+}
+
+/// Validate the whole pack and list its entries in file order.
+fn index_runtime_pack(bytes: &[u8]) -> Result<Vec<IndexedEntry>, PackError> {
     if bytes.len() < HEADER_LEN {
         return Err(PackError::Truncated("header"));
     }
@@ -118,15 +172,8 @@ pub fn parse_runtime_pack(bytes: &[u8]) -> Result<RuntimePack, PackError> {
     }
 
     let mut cursor = HEADER_LEN;
-    let mut pack = RuntimePack {
-        game_files: HashMap::with_capacity(count as usize),
-        bitmaps: HashMap::with_capacity(count as usize),
-        audio_files: HashMap::new(),
-        advisor_frames: HashMap::new(),
-        tactical_meshes: HashMap::new(),
-        tactical_textures: HashMap::new(),
-    };
-
+    let mut entries = Vec::with_capacity(count as usize);
+    let mut seen: [std::collections::HashSet<String>; 6] = Default::default();
     for _ in 0..count {
         let entry_header = take(bytes, &mut cursor, ENTRY_HEADER_LEN, "entry header")?;
         let kind = entry_header[0];
@@ -148,26 +195,27 @@ pub fn parse_runtime_pack(bytes: &[u8]) -> Result<RuntimePack, PackError> {
         let key = std::str::from_utf8(key_bytes)
             .map_err(|_| PackError::InvalidUtf8)?
             .to_owned();
-        let data = take(bytes, &mut cursor, data_len, "entry data")?.to_vec();
+        let start = cursor;
+        take(bytes, &mut cursor, data_len, "entry data")?;
 
-        let destination = match kind {
-            KIND_GAME_DATA => &mut pack.game_files,
-            KIND_BITMAP => &mut pack.bitmaps,
-            KIND_AUDIO => &mut pack.audio_files,
-            KIND_ADVISOR_FRAME => &mut pack.advisor_frames,
-            KIND_TACTICAL_MESH => &mut pack.tactical_meshes,
-            KIND_TACTICAL_TEXTURE => &mut pack.tactical_textures,
-            other => return Err(PackError::UnknownKind(other)),
-        };
-        if destination.insert(key.clone(), data).is_some() {
+        if kind > KIND_TACTICAL_TEXTURE {
+            return Err(PackError::UnknownKind(kind));
+        }
+        if !seen[kind as usize].insert(key.clone()) {
             return Err(PackError::DuplicateKey(key));
         }
+        entries.push(IndexedEntry {
+            kind,
+            key,
+            start,
+            len: data_len,
+        });
     }
 
     if cursor != bytes.len() {
         return Err(PackError::TrailingBytes(bytes.len() - cursor));
     }
-    Ok(pack)
+    Ok(entries)
 }
 
 fn take<'a>(
@@ -246,6 +294,78 @@ mod tests {
         assert_eq!(
             parse_runtime_pack(&absurd),
             Err(PackError::TooManyEntries(MAX_ENTRIES as u32 + 1))
+        );
+    }
+
+    #[test]
+    fn entries_larger_than_the_shrink_slack_keep_their_own_bytes() {
+        // Three entries past SHRINK_SLACK each, so the pack is cut and
+        // shrunk between copies, and a small one before them.
+        let big = |fill: u8| vec![fill; SHRINK_SLACK + 3];
+        let (one, two, three) = (big(1), big(2), big(3));
+        let bytes = pack(&[
+            (KIND_GAME_DATA, "SYSTEMSD.DAT", b"systems"),
+            (KIND_AUDIO, "music/a.wav", &one),
+            (KIND_BITMAP, "common-dll/1", &two),
+            (KIND_AUDIO, "music/b.wav", &three),
+        ]);
+
+        let parsed = parse_owned_runtime_pack(bytes).unwrap();
+
+        assert_eq!(parsed.game_files["SYSTEMSD.DAT"], b"systems");
+        assert_eq!(parsed.audio_files["music/a.wav"], one);
+        assert_eq!(parsed.bitmaps["common-dll/1"], two);
+        assert_eq!(parsed.audio_files["music/b.wav"], three);
+        assert_eq!(parsed.audio_files.len(), 2);
+    }
+
+    #[test]
+    fn the_entry_and_key_limits_are_inclusive_and_trailing_bytes_are_counted() {
+        let keys: Vec<String> = (0..MAX_ENTRIES).map(|id| id.to_string()).collect();
+        let entries: Vec<(u8, &str, &[u8])> = keys
+            .iter()
+            .map(|key| (KIND_BITMAP, key.as_str(), b"".as_slice()))
+            .collect();
+        assert_eq!(
+            parse_runtime_pack(&pack(&entries)).unwrap().bitmaps.len(),
+            MAX_ENTRIES
+        );
+
+        let longest = "k".repeat(MAX_KEY_LEN);
+        assert!(parse_runtime_pack(&pack(&[(KIND_GAME_DATA, &longest, b"x")])).is_ok());
+        let too_long = "k".repeat(MAX_KEY_LEN + 1);
+        assert_eq!(
+            parse_runtime_pack(&pack(&[(KIND_GAME_DATA, &too_long, b"x")])),
+            Err(PackError::KeyTooLong(
+                u16::try_from(MAX_KEY_LEN + 1).unwrap()
+            ))
+        );
+
+        let mut trailing = pack(&[(KIND_GAME_DATA, "SYSTEMSD.DAT", b"systems")]);
+        trailing.extend_from_slice(&[0, 0]);
+        assert_eq!(
+            parse_runtime_pack(&trailing),
+            Err(PackError::TrailingBytes(2))
+        );
+    }
+
+    #[test]
+    fn a_key_may_repeat_across_kinds_but_not_within_one() {
+        let across = pack(&[
+            (KIND_BITMAP, "shared", b"bitmap"),
+            (KIND_AUDIO, "shared", b"audio"),
+        ]);
+        let parsed = parse_runtime_pack(&across).unwrap();
+        assert_eq!(parsed.bitmaps["shared"], b"bitmap");
+        assert_eq!(parsed.audio_files["shared"], b"audio");
+
+        let within = pack(&[
+            (KIND_TACTICAL_TEXTURE, "T.BMP/1033", b"one"),
+            (KIND_TACTICAL_TEXTURE, "T.BMP/1033", b"two"),
+        ]);
+        assert_eq!(
+            parse_runtime_pack(&within),
+            Err(PackError::DuplicateKey("T.BMP/1033".to_string()))
         );
     }
 

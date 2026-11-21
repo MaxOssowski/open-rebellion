@@ -91,7 +91,7 @@ async fn install_runtime_pack() -> Result<SimulationDataManifest, (&'static str,
             format!("data/runtime.orpk failed to load: {error:?}"),
         )
     })?;
-    let mut pack = crate::runtime_pack::parse_runtime_pack(&bytes)
+    let mut pack = crate::runtime_pack::parse_owned_runtime_pack(bytes)
         .map_err(|error| ("runtime_pack_decode", error.to_string()))?;
     let data = compute_simulation_data_manifest(
         pack.game_files

@@ -1173,9 +1173,11 @@ fn draw_loading_progress(label: &str, loaded: usize, total: usize) {
 
 #[cfg(target_arch = "wasm32")]
 fn install_runtime_pack(
-    bytes: &[u8],
+    bytes: Vec<u8>,
 ) -> Result<std::collections::HashMap<String, Vec<u8>>, String> {
-    let mut pack = runtime_pack::parse_runtime_pack(bytes).map_err(|error| error.to_string())?;
+    let pack_len = bytes.len();
+    let mut pack =
+        runtime_pack::parse_owned_runtime_pack(bytes).map_err(|error| error.to_string())?;
     for required in REQUIRED_WASM_DATA {
         if !pack.game_files.contains_key(*required) {
             return Err(format!("required entry is missing: {required}"));
@@ -1248,7 +1250,7 @@ fn install_runtime_pack(
         audio_file_count,
         tactical_mesh_count,
         tactical_texture_count,
-        bytes.len()
+        pack_len
     );
     Ok(pack.audio_files)
 }
@@ -1366,7 +1368,7 @@ async fn load_wasm_assets() -> std::collections::HashMap<String, Vec<u8>> {
     next_frame().await;
 
     match macroquad::file::load_file("data/runtime.orpk").await {
-        Ok(bytes) => install_runtime_pack(&bytes)
+        Ok(bytes) => install_runtime_pack(bytes)
             .unwrap_or_else(|error| panic!("Invalid data/runtime.orpk: {error}")),
         Err(error) => {
             eprintln!(
