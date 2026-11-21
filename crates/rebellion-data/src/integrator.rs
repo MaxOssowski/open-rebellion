@@ -251,6 +251,20 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "to": at(*into),
             })
         }
+        AIAction::JoinShips { fleet, ships, into } => {
+            let at = |key| {
+                world
+                    .fleets
+                    .get(key)
+                    .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location))
+            };
+            serde_json::json!({
+                "type": "JoinShips",
+                "ships": ships.len(),
+                "from": at(*fleet),
+                "to": at(*into),
+            })
+        }
         AIAction::MoveShips { fleet, ships, to }
         | AIAction::MoveShipsIntoSpare { fleet, ships, to } => {
             let from = world
@@ -2590,6 +2604,24 @@ fn apply_ai_actions_inner(
                     matches!(side, AiFaction::Alliance),
                 )
                 .is_ok()
+            }),
+            AIAction::JoinShips { fleet, ships, into } => ai_state.faction.is_some_and(|side| {
+                let roster = rebellion_core::fleet_join::roster(world, *fleet);
+                roster.is_some_and(|roster| {
+                    rebellion_core::fleet_join::join_fleet(
+                        world,
+                        movement_state,
+                        troop_transport,
+                        &rebellion_core::fleet_join::FleetMover::Ships {
+                            fleet: *fleet,
+                            ships: ships.clone(),
+                            roster,
+                        },
+                        *into,
+                        matches!(side, AiFaction::Alliance),
+                    )
+                    .is_ok()
+                })
             }),
             AIAction::MoveShips { fleet, ships, to } => ai_state.faction.is_some_and(|side| {
                 let roster = rebellion_core::fleet_join::roster(world, *fleet);

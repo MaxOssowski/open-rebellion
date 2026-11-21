@@ -880,6 +880,7 @@ impl LiveCampaign<'_> {
             day_rolls: self.day_rolls.clone(),
             research_planner_bits: rebellion_data::save::research_bits(self.ai, self.ai2.as_ref()),
             ai_module_a: rebellion_data::save::module_a(self.ai, self.ai2.as_ref()),
+            ai_module9: rebellion_data::save::module9(self.ai, self.ai2.as_ref()),
         }
     }
 
@@ -920,6 +921,7 @@ impl LiveCampaign<'_> {
             &state.research_planner_bits,
         );
         rebellion_data::save::restore_module_a(self.ai, self.ai2.as_mut(), &state.ai_module_a);
+        rebellion_data::save::restore_module9(self.ai, self.ai2.as_mut(), &state.ai_module9);
         *self.repair = state.repair;
         *self.production = state.production;
         *self.autoscrap = state.autoscrap;
@@ -15838,6 +15840,12 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
                     .fleets
                     .get(*into)
                     .map(|fleet| (format!("{side} fleet joining a fleet"), fleet.location)),
+                AIAction::JoinShips { ships, into, .. } => world.fleets.get(*into).map(|fleet| {
+                    (
+                        format!("{side} moving {} ship(s) into a fleet", ships.len()),
+                        fleet.location,
+                    )
+                }),
                 AIAction::MoveShips { ships, to, .. }
                 | AIAction::MoveShipsIntoSpare { ships, to, .. } => Some((
                     format!("{side} moving {} ship(s) to system", ships.len()),

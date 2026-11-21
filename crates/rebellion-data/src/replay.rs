@@ -920,6 +920,7 @@ impl ReplayRuntime {
             day_rolls: _,
             research_planner_bits,
             ai_module_a,
+            ai_module9,
         } = state;
         let (mut ai, mut ai2) = (ai, ai2);
         ai.module_c = ai_command_planners.0;
@@ -929,6 +930,7 @@ impl ReplayRuntime {
         crate::save::restore_sector_links(&mut ai, ai2.as_mut(), &ai_sector_links);
         crate::save::restore_research_bits(&mut ai, ai2.as_mut(), &research_planner_bits);
         crate::save::restore_module_a(&mut ai, ai2.as_mut(), &ai_module_a);
+        crate::save::restore_module9(&mut ai, ai2.as_mut(), &ai_module9);
         let mut world = world;
         world.object_views = object_views;
         world.object_views.system_bits = system_copy_bits;
@@ -1114,6 +1116,7 @@ impl ReplayRuntime {
                 self.states.ai2.as_ref(),
             ),
             ai_module_a: crate::save::module_a(&self.states.ai, self.states.ai2.as_ref()),
+            ai_module9: crate::save::module9(&self.states.ai, self.states.ai2.as_ref()),
             ai_command_planners: crate::save::command_planners(
                 &self.states.ai,
                 self.states.ai2.as_ref(),
@@ -1447,6 +1450,7 @@ mod tests {
             day_rolls: Vec::new(),
             research_planner_bits: crate::save::AiResearchBits::default(),
             ai_module_a: crate::save::AiModuleA::default(),
+            ai_module9: crate::save::AiModule9::default(),
             ai_command_planners: crate::save::AiCommandPlanners::default(),
             ai_sector_links: crate::save::AiSectorLinks::default(),
         }

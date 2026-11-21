@@ -296,6 +296,23 @@ fn accepts(
             is_alliance,
         )
         .is_ok(),
+        // The same validation with the ships for the mover, chosen against
+        // the fleet as it stands (fleet_join::roster).
+        AIAction::JoinShips { fleet, ships, into } => crate::fleet_join::roster(world, *fleet)
+            .is_some_and(|roster| {
+                crate::fleet_join::validate_join(
+                    world,
+                    movement,
+                    &crate::fleet_join::FleetMover::Ships {
+                        fleet: *fleet,
+                        ships: ships.clone(),
+                        roster,
+                    },
+                    *into,
+                    is_alliance,
+                )
+                .is_ok()
+            }),
         // The move command's validation (FUN_00578d00): the side's own
         // squadrons, then the squadron move's checks.
         AIAction::MoveSquadrons {
@@ -544,6 +561,11 @@ pub struct AIState {
     /// (`SaveState::ai_module_a`, v136), so this encoding skips it.
     #[serde(skip)]
     pub module_a: crate::ai_module_a::ModuleA,
+    /// Module 9's fields and planners (`FUN_004cf0a0`, controller
+    /// `+0x11c`). The save keeps it apart (`SaveState::ai_module9`, v137),
+    /// so this encoding skips it.
+    #[serde(skip)]
+    pub module9: crate::ai_module9::Module9,
     /// Module `0xb`'s fields (`FUN_004c8820`).
     #[serde(default)]
     pub module_b: crate::ai_module_b::ModuleB,
@@ -979,6 +1001,7 @@ impl AIState {
             module6: crate::ai_module6::Module6::default(),
             module7: crate::ai_module7::Module7::default(),
             module_a: crate::ai_module_a::ModuleA::default(),
+            module9: crate::ai_module9::Module9::default(),
             module_b: crate::ai_module_b::ModuleB::default(),
             strategy: crate::ai_strategy::Strategy::default(),
             module8: crate::ai_module8::Module8::default(),
@@ -1268,6 +1291,18 @@ pub enum AIAction {
     /// (`FUN_004b0c90`), carried out by [`crate::fleet_join::join_fleet`].
     JoinFleet { fleet: FleetKey, into: FleetKey },
 
+    /// Move capital ships of one of the side's fleets into another of its
+    /// fleets (`0x201` whose objects are the ships and whose target is a
+    /// fleet): module 9's planner gathering ships for its fleet
+    /// (`FUN_00475490`, `FUN_00475890`), carried out by
+    /// [`crate::fleet_join::join_fleet`] with the ships for its mover. The
+    /// ships are their places in the fleet.
+    JoinShips {
+        fleet: FleetKey,
+        ships: Vec<usize>,
+        into: FleetKey,
+    },
+
     /// Planetary Bombardment (`kind` `0x220..0x223`) of `system` by the
     /// side's `fleets`: a sector plan object's bombarder at its target
     /// (`FUN_004b1330`), resolved by [`crate::bombardment::resolve`].
@@ -1407,6 +1442,20 @@ fn research_kind(tech: TechType) -> MissionKind {
 /// through the characters. The loader keeps a character's record index
 /// without its family byte, so a minor character is one that is not
 /// major.
+/// The records (`+0x30`) of the people aboard the fleets, by character.
+fn people_aboard(world: &GameWorld, planner: &Planner<'_>) -> HashMap<CharacterKey, u32> {
+    world
+        .fleets
+        .values()
+        .flat_map(|f| f.characters.iter().copied())
+        .filter_map(|c| {
+            planner
+                .flags(crate::missions::MissionMember::Character(c))
+                .map(|flags| (c, flags))
+        })
+        .collect()
+}
+
 fn minor_classes(world: &GameWorld, is_alliance: bool) -> i32 {
     let count = world
         .characters
@@ -1598,6 +1647,7 @@ impl AISystem {
                         6 => state.module6.refused(),
                         7 => state.module7.refused(),
                         8 => state.module8.refused(),
+                        9 => state.module9.refused(),
                         0xa => state.module_a.refused(),
                         0xb => state.module_b.refused(),
                         0xc => state.module_c.refused(),
@@ -1779,8 +1829,8 @@ impl AISystem {
                 coin: &mut coin,
             };
             state.strategy.step(&mut io);
-            // States 4 (FUN_004e57e0) and 6 (FUN_004e5870); state 5
-            // (FUN_004e69d0, the planners of FUN_00474070) is not ported.
+            // States 4 (FUN_004e57e0), 5 (FUN_004e69d0, module 9's
+            // planners) and 6 (FUN_004e5870).
             let is_alliance = matches!(ctx.faction, AiFaction::Alliance);
             state.module_c.strategy_requests(
                 crate::ai_module_c::guarded(galaxy),
@@ -1788,6 +1838,10 @@ impl AISystem {
                 crate::ai_module_c::holds_coruscant(galaxy),
                 is_alliance,
             );
+            let wanted = crate::ai_module9::headquarters_count(galaxy);
+            Self::with_planner_io(state, planner, ctx, galaxy, tallies, |state, io| {
+                state.balance(io, wanted);
+            });
             let mut io = crate::ai_module_c::InputsC {
                 world: ctx.world,
                 galaxy,
@@ -1800,6 +1854,17 @@ impl AISystem {
         }
         if id == 8 {
             return Self::module8_step(state, planner, ctx, galaxy, tallies);
+        }
+        if id == 9 {
+            let need = crate::ai_module9::heaviest_attack(
+                ctx.world,
+                &galaxy.classes,
+                ctx.research_state,
+                matches!(ctx.faction, AiFaction::Alliance),
+            );
+            return Self::with_planner_io(state, planner, ctx, galaxy, tallies, |module9, io| {
+                module9.step(io, need)
+            });
         }
         if id == 0xc {
             let mut io = crate::ai_module_c::InputsC {
@@ -1833,6 +1898,39 @@ impl AISystem {
         }
     }
 
+    /// Run `f` on module 9 with a planner's view of the pass
+    /// ([`crate::ai_planner::PlannerIo`]), as module 8's planners see it:
+    /// its planners keep the controller at `+0x4c` (`FUN_00474070`, from
+    /// the list `+0x11c`'s `+0x10`, `FUN_004178f0`).
+    fn with_planner_io<R>(
+        state: &mut AIState,
+        planner: &mut Planner<'_>,
+        ctx: &ModuleInputs<'_>,
+        galaxy: &mut crate::ai_records::Galaxy,
+        tallies: crate::ai_module1::Tallies,
+        f: impl FnOnce(&mut crate::ai_module9::Module9, &mut crate::ai_planner::PlannerIo<'_>) -> R,
+    ) -> R {
+        let people = people_aboard(ctx.world, planner);
+        let mut random = |n| planner.random(n);
+        let mut io = crate::ai_planner::PlannerIo {
+            world: ctx.world,
+            galaxy,
+            ship_holds: &mut state.ship_holds,
+            fleet_holds: &mut state.fleet_holds,
+            kinds: &mut state.record_kinds,
+            transport: ctx.transport,
+            people: &people,
+            controller_flags: state.controller.flags_with(&tallies),
+            is_alliance: matches!(ctx.faction, AiFaction::Alliance),
+            day: ctx.tick,
+            seen: &state.seen,
+            swept: &mut state.swept,
+            random: &mut random,
+            officers: &mut state.module_c.planners,
+        };
+        f(&mut state.module9, &mut io)
+    }
+
     /// One step of module 8 ([`crate::ai_module8::Module8::step`]): its
     /// planners and their plan objects (`FUN_00477630`, kinds 1 to 6).
     fn module8_step(
@@ -1846,17 +1944,7 @@ impl AISystem {
         let step = {
             // The records of the people aboard the side's fleets
             // (FUN_004b06b0 reads +0x30).
-            let people: HashMap<CharacterKey, u32> = ctx
-                .world
-                .fleets
-                .values()
-                .flat_map(|f| f.characters.iter().copied())
-                .filter_map(|c| {
-                    planner
-                        .flags(crate::missions::MissionMember::Character(c))
-                        .map(|flags| (c, flags))
-                })
-                .collect();
+            let people = people_aboard(ctx.world, planner);
             let mut random = |n| planner.random(n);
             let mut io = crate::ai_module8::Inputs8 {
                 world: ctx.world,
@@ -1903,12 +1991,12 @@ impl AISystem {
     ///   strategy ([`Self::research_strategy`]).
     /// - 4, the missions: one entry of its list ([`Self::mission_step`]).
     ///
-    /// port: modules 9 and `0xe` have no port counterpart and order
-    /// nothing (`ghidra/notes/ai-production-modules.md`). Modules 1, 2, 3,
-    /// 5, 6, 7, 8, `0xa`, `0xb` and `0xc` are ported ([`crate::ai_module1`],
+    /// port: module `0xe` has no port counterpart and orders nothing
+    /// (`ghidra/notes/ai-production-modules.md`). Modules 1, 2, 3, 5, 6, 7,
+    /// 8, 9, `0xa`, `0xb` and `0xc` are ported ([`crate::ai_module1`],
     /// [`crate::ai_module2`], [`crate::ai_module3`], [`crate::ai_module5`],
     /// [`crate::ai_module6`], [`crate::ai_module7`], [`crate::ai_module8`],
-    /// [`crate::ai_module_a`], [`crate::ai_module_b`],
+    /// [`crate::ai_module9`], [`crate::ai_module_a`], [`crate::ai_module_b`],
     /// [`crate::ai_module_c`]) and run in [`Self::step_module`].
     fn run_module(
         id: u8,
@@ -10829,16 +10917,16 @@ mod tests {
     }
 
     /// Module indices in [`MODULE_IDS`]: the strategy, the missions, the
-    /// sector fleet planners, and module 9, which has no port counterpart
-    /// and so issues only what its queue holds.
+    /// sector fleet planners, and module `0xe`, which has no port
+    /// counterpart and so issues only what its queue holds.
     const STRATEGY: usize = 0;
     const MISSIONS: usize = 6;
     const FLEETS: usize = 8;
-    const QUEUE: usize = 9;
+    const QUEUE: usize = 13;
 
     /// An order a module keeps in its queue (port: a heuristic module
     /// decides several at once and issues one a step; the scheduler tests
-    /// queue theirs on module 9).
+    /// queue theirs on module `0xe`).
     fn queued(id: u64) -> AIAction {
         AIAction::AbortMission { mission_id: id }
     }
@@ -10871,7 +10959,7 @@ mod tests {
         state.mark_busy(ship.character().unwrap());
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(1)]);
         assert_eq!(state.module_cursor, Some(QUEUE));
-        // Round from module 0xe to 9 again: the rest order nothing.
+        // Round from module 0xe to 0xe again: the rest order nothing.
         state.module_pending[QUEUE] = vec![queued(2)];
         assert_eq!(cadence_pass(&mut state, &world), vec![queued(2)]);
         assert_eq!(state.module_cursor, Some(QUEUE));
@@ -11531,6 +11619,84 @@ mod tests {
         assert_eq!((state.module_b.phase, state.module_b.state), (0, 0));
         assert_eq!(state.module_priority[11], 0);
         assert_eq!(state.orders_today, 0);
+    }
+
+    /// An Alliance headquarters with a fleet of two heavy ships (class flag
+    /// 1, `FUN_004739b0`) of the starting research order.
+    fn headquarters_fleet() -> (GameWorld, SystemKey, FleetKey) {
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let hq = add_system(&mut world, sector, 0.9, 0.1);
+        world.systems[hq].control = ControlKind::Controlled(crate::dat::Faction::Alliance);
+        world.systems[hq].is_headquarters = true;
+        let class = world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                is_alliance: true,
+                hull: 10,
+                turbolaser_fore: 1,
+                weapon_recharge_rate: 3,
+                ..Default::default()
+            });
+        let fleet = world.fleets.insert(crate::world::Fleet {
+            location: hq,
+            capital_ships: crate::world::ShipInstance::make(class, 10, true, 2),
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[hq].fleets.push(fleet);
+        world.number_ships();
+        (world, hq, fleet)
+    }
+
+    #[test]
+    fn the_strategy_keeps_a_module_nine_planner_for_the_headquarters() {
+        // The strategy's state 5 (FUN_004e69d0): one planner per controller
+        // +0x224, the own headquarters not blockaded (sector +0x1a0).
+        let (world, _, _) = headquarters_fleet();
+        let mut state = AIState::new(AiFaction::Alliance);
+        cadence_pass(&mut state, &world);
+        assert_eq!(state.module9.planners.len(), 1);
+        assert_eq!(state.module9.planners[0].id, 1);
+    }
+
+    #[test]
+    fn module_nine_takes_a_heavy_ship_for_its_headquarters_fleet() {
+        // Module 9 (FUN_004cf2c0) steps its planner within one tick: the
+        // headquarters claimed (FUN_004744b0), the balance short by the
+        // best heavy class's attack (FUN_00474b90, controller +0x164 from
+        // FUN_0042e210), and one heavy ship covers it (FUN_00475490): Create
+        // Fleet 0x270 for the system, which the validator accepts.
+        let (world, hq, fleet) = headquarters_fleet();
+        let mut state = AIState::new(AiFaction::Alliance);
+        state.module9.planners = vec![crate::ai_module9::HqPlanner {
+            id: 1,
+            ..Default::default()
+        }];
+        state.module9.next_id = 2;
+        state.module_priority[9] = 5;
+
+        let orders = cadence_pass(&mut state, &world);
+
+        assert_eq!(
+            orders,
+            vec![AIAction::CreateFleet {
+                fleet,
+                ships: vec![0],
+                to: hq,
+            }]
+        );
+        let p = &state.module9.planners[0];
+        assert_eq!((p.state, p.system, p.balance), (5, Some(hq), 0));
+        assert_eq!(state.module_priority[9], 1);
+        let id = world.fleets[fleet].capital_ships[0].id;
+        assert_eq!(
+            state.ship_holds[&id].flags & crate::ai_module9::SHIP_HELD,
+            crate::ai_module9::SHIP_HELD
+        );
     }
 
     #[test]

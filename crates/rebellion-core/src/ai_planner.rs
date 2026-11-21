@@ -74,7 +74,7 @@ impl PlannerIo<'_> {
         }
     }
 
-    fn ship(&self, id: u64) -> Option<&ShipRecord> {
+    pub(crate) fn ship(&self, id: u64) -> Option<&ShipRecord> {
         self.galaxy
             .fleets
             .values()
@@ -83,7 +83,7 @@ impl PlannerIo<'_> {
     }
 
     /// Change a ship record and keep the change across refreshes.
-    fn edit_ship(&mut self, id: u64, edit: impl FnOnce(&mut ShipRecord)) {
+    pub(crate) fn edit_ship(&mut self, id: u64, edit: impl FnOnce(&mut ShipRecord)) {
         let Some(record) = self
             .galaxy
             .fleets

@@ -75,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 136;
+pub const SAVE_VERSION: u32 = 137;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -160,7 +160,11 @@ pub const V134: u32 = 134;
 /// its last field.
 pub const V135: u32 = 135;
 
-/// Whether a save of `version` loads (the current one, or v116 to v135
+/// v136: the save without the AI's module 9 (`SaveState::ai_module9`), its
+/// last field.
+pub const V136: u32 = 136;
+
+/// Whether a save of `version` loads (the current one, or v116 to v136
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -324,6 +328,11 @@ fn migrate_body(
         // An older save ran no module 0xa: it starts its cycle afresh,
         // with no sites.
         body.extend(bincode::serialize(&AiModuleA::default())?);
+    }
+    if version <= V136 {
+        // An older save ran no module 9: it has no planners, and the
+        // strategy adds them afresh.
+        body.extend(bincode::serialize(&AiModule9::default())?);
     }
     Ok((body, tuning))
 }
@@ -645,6 +654,9 @@ fn fingerprint_with(
 ) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V136 {
+            fields.remove("ai_module9");
+        }
         if version <= V135 {
             fields.remove("ai_module_a");
         }
@@ -886,6 +898,34 @@ pub struct SaveState {
     /// ([`migrate_body`]). The loaders put it back into the AI states,
     /// whose own encoding skips it ([`restore_module_a`]).
     pub ai_module_a: AiModuleA,
+    // ── v137: the AI's module 9 ─────────────────────────────────────────
+    /// Module 9 (`FUN_004cf0a0`) and its headquarters planners of `ai`,
+    /// then `ai2`. It stays the last field: an older body is read by
+    /// appending a fresh one ([`migrate_body`]). The loaders put it back
+    /// into the AI states, whose own encoding skips it
+    /// ([`restore_module9`]).
+    pub ai_module9: AiModule9,
+}
+
+/// [`SaveState::ai_module9`]: module 9 of `ai` and of `ai2`.
+pub type AiModule9 = (
+    rebellion_core::ai_module9::Module9,
+    Option<rebellion_core::ai_module9::Module9>,
+);
+
+/// Module 9 of `ai` and `ai2` for [`SaveState::ai_module9`].
+#[must_use]
+pub fn module9(ai: &AIState, ai2: Option<&AIState>) -> AiModule9 {
+    (ai.module9.clone(), ai2.map(|a| a.module9.clone()))
+}
+
+/// Put `saved` back into `ai` and `ai2`; a second side without one starts
+/// afresh.
+pub fn restore_module9(ai: &mut AIState, ai2: Option<&mut AIState>, saved: &AiModule9) {
+    ai.module9 = saved.0.clone();
+    if let Some(ai2) = ai2 {
+        ai2.module9 = saved.1.clone().unwrap_or_default();
+    }
 }
 
 /// [`SaveState::ai_module_a`]: module `0xa` of `ai` and of `ai2`.
@@ -972,7 +1012,8 @@ pub fn restore_sector_links(ai: &mut AIState, ai2: Option<&mut AIState>, links: 
 
 impl SaveState {
     /// Put [`Self::ai_command_planners`], then the sector links, the
-    /// research planners' bits and module `0xa`, back into the AI states.
+    /// research planners' bits and modules `0xa` and 9, back into the AI
+    /// states.
     pub fn restore_command_planners(&mut self) {
         let (first, second) = self.ai_command_planners.clone();
         self.ai.module_c = first;
@@ -982,6 +1023,7 @@ impl SaveState {
         restore_sector_links(&mut self.ai, self.ai2.as_mut(), &self.ai_sector_links);
         restore_research_bits(&mut self.ai, self.ai2.as_mut(), &self.research_planner_bits);
         restore_module_a(&mut self.ai, self.ai2.as_mut(), &self.ai_module_a);
+        restore_module9(&mut self.ai, self.ai2.as_mut(), &self.ai_module9);
     }
 }
 
@@ -1616,6 +1658,7 @@ pub(crate) mod tests {
             day_rolls: Vec::new(),
             research_planner_bits: AiResearchBits::default(),
             ai_module_a: AiModuleA::default(),
+            ai_module9: AiModule9::default(),
         }
     }
 
@@ -2089,9 +2132,22 @@ pub(crate) mod tests {
         bincode::serialize(&AiResearchBits::default()).unwrap().len() + module_a_tail()
     }
 
-    /// The length of the fresh module `0xa` v136 added.
+    /// The length of the fresh module `0xa` v136 added, and what came
+    /// after.
     fn module_a_tail() -> usize {
-        bincode::serialize(&AiModuleA::default()).unwrap().len()
+        bincode::serialize(&AiModuleA::default()).unwrap().len() + module9_tail()
+    }
+
+    /// The length of the fresh module 9 v137 added.
+    fn module9_tail() -> usize {
+        bincode::serialize(&AiModule9::default()).unwrap().len()
+    }
+
+    /// `state` written as a v136 file: no module 9. `state` holds a fresh
+    /// one.
+    fn write_v136(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.ai_module9, AiModule9::default());
+        write_old(saves_dir, state, V136, module9_tail())
     }
 
     /// `state` written as a v135 file: no module `0xa`. `state` holds a
@@ -2678,6 +2734,80 @@ pub(crate) mod tests {
         // Module 0xa counts in the current fingerprint.
         let mut cleared = state.clone();
         cleared.ai_module_a = AiModuleA::default();
+        assert_ne!(
+            compute_state_fingerprint(&cleared).unwrap(),
+            compute_state_fingerprint(&state).unwrap()
+        );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&state).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v136_save_loads_with_a_fresh_module9() {
+        // v137 keeps module 9 (SaveState::ai_module9); a v136 save ran
+        // none, and both sides start with no planners.
+        use rebellion_core::ai::{AIState, AiFaction};
+        let saves_dir = tmp_dir("v136_migration");
+        let mut state = minimal_save_state();
+        state.ai2 = Some(AIState::new(AiFaction::Alliance));
+        write_v136(&saves_dir, &state);
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v136 save migrates");
+        assert_eq!(loaded.ai_module9, AiModule9::default());
+        assert_eq!(loaded.ai.module9, Default::default());
+        assert_eq!(loaded.ai2.as_ref().unwrap().module9, Default::default());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V136).unwrap(),
+            fingerprint_as(&loaded, V136).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_module9_of_both_sides() {
+        // AIState::module9 is skipped by the AI's own encoding; the save
+        // carries it after the other fields and the loader puts it back.
+        use rebellion_core::ai::{AIState, AiFaction};
+        use rebellion_core::ai_module9::{HqPlanner, Module9};
+        let saves_dir = tmp_dir("module9");
+        let mut state = minimal_save_state();
+        state.ai.module9 = Module9 {
+            state: 3,
+            current: 1,
+            next: 0,
+            planners: vec![HqPlanner {
+                id: 1,
+                state: 4,
+                ships: vec![7, 9],
+                balance: -120,
+                dirty: true,
+                ..HqPlanner::default()
+            }],
+            next_id: 2,
+        };
+        let mut ai2 = AIState::new(AiFaction::Alliance);
+        ai2.module9 = Module9 {
+            state: 2,
+            next_id: 5,
+            ..Module9::default()
+        };
+        state.ai2 = Some(ai2);
+        state.ai_module9 = module9(&state.ai, state.ai2.as_ref());
+        save_slot(&saves_dir, 0, "Module 9", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(loaded.ai.module9, state.ai.module9);
+        assert_eq!(
+            loaded.ai2.as_ref().unwrap().module9,
+            state.ai2.as_ref().unwrap().module9
+        );
+        // Module 9 counts in the current fingerprint.
+        let mut cleared = state.clone();
+        cleared.ai_module9 = AiModule9::default();
         assert_ne!(
             compute_state_fingerprint(&cleared).unwrap(),
             compute_state_fingerprint(&state).unwrap()
