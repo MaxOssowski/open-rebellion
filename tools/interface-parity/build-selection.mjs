@@ -1116,20 +1116,20 @@ async function pendingSquadronCase(page, faction, directory, source) {
 }
 
 // A band's destination line ("Destination: ...", the band's (5, 57)) as the
-// ink box of its white text, band-relative: A0 pure white, the port's
-// antialiased core (every channel 250 or more). A0
+// ink box of its white text, band-relative: pixels of 200 or more in every
+// channel and near-neutral (channels within 12), from the band's row 58,
+// which leaves out the band pictures' bright art. A0
 // 2026-11-21-build-dest-16 has the Coruscant window at (120, 91), so its
 // bands at (175, 148), (175, 229) and (175, 310).
 const A0_BUILD_DEST = path.join(root, ".artifacts/a0-vm/2026-11-21-build-dest-16");
 const A0_BUILD_DEST_BANDS = { ships: [175, 148], troops: [175, 229], facilities: [175, 310] };
-function destinationLineInk(png, [ox, oy], white) {
+function destinationLineInk(png, [ox, oy]) {
   let box = null;
-  for (let y = 53; y < 67; y += 1) {
+  for (let y = 58; y < 67; y += 1) {
     for (let x = 3; x < 160; x += 1) {
       const k = ((oy + y) * png.width + ox + x) * 4;
-      const lit = white ? png.data[k] === 255 && png.data[k + 1] === 255 && png.data[k + 2] === 255
-        : Math.min(png.data[k], png.data[k + 1], png.data[k + 2]) >= 250;
-      if (!lit) continue;
+      const channels = [png.data[k], png.data[k + 1], png.data[k + 2]];
+      if (Math.min(...channels) < 200 || Math.max(...channels) - Math.min(...channels) > 12) continue;
       box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
     }
   }
@@ -1142,8 +1142,8 @@ function destinationLineInk(png, [ox, oy], white) {
 function destinationLineAgainstA0(portBytes, portBand, frame, area) {
   const file = path.join(A0_BUILD_DEST, frame);
   if (!fs.existsSync(file)) return null;
-  const a = destinationLineInk(PNG.sync.read(fs.readFileSync(file)), A0_BUILD_DEST_BANDS[area], true);
-  const p = destinationLineInk(PNG.sync.read(portBytes), [Math.round(portBand.left), Math.round(portBand.top)], false);
+  const a = destinationLineInk(PNG.sync.read(fs.readFileSync(file)), A0_BUILD_DEST_BANDS[area]);
+  const p = destinationLineInk(PNG.sync.read(portBytes), [Math.round(portBand.left), Math.round(portBand.top)]);
   const result = { frame, area, a0: a, port: p };
   assert.ok(a && p && [0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 2) && Math.abs(a[2] - p[2]) <= 3,
     JSON.stringify(result));
