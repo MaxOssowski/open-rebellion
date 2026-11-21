@@ -368,6 +368,16 @@ with a fleet of each side carrying squadrons),
 `all_defenses_counts_the_holders_regiments_defenses_and_squadrons`
 (expected `4 + 2 + 1` before, from the fleets' squadrons; now `4 + 1`).
 
+Gates on the worktree's test WASM (sha256 `b9304d9f2f5f`, Arch Chromium
+157): `fog-a0.mjs` pass (`fog-a0-2026-11-21T06-18-46-147Z`), `gid-a0.mjs`
+pass (`gid-a0-2026-11-21T06-39-21-734Z`), `run.mjs --all` (GID catalog)
+152/152 (`2026-11-21T06-19-31-494Z-1081225`). Against batch b273's run
+(`2026-11-21T04-44-49-583Z-623486`) only `fighter-squadrons` (both sides,
+640x480) changed: at day 1 the systems whose squadrons sit only aboard
+fleets (the Empire's at Coruscant, the Alliance's fleet systems) now take
+the smallest mark. No A0 frame of Fighter Squadrons exists yet (item 9
+below).
+
 ## The GID's gray cross and Yavin to the Empire (traced 2026-11-19)
 
 A0 2026-11-19-fog-13 (an unedited new Empire game) seemed to disagree with
@@ -435,3 +445,7 @@ load the same state:
    then the other side's view of the same system (edited save, header
    byte `0x16` flip) still gray.
 8. Day 1, the System Finder's Unexplored tab.
+9. Day 1, the GID on Fighter Squadrons (menu, `0x72`) per side: a system
+   whose squadrons are all aboard a fleet (Coruscant for the Empire) takes
+   the smallest mark if the counter walks only the planet (traced
+   2026-11-21).
