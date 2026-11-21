@@ -220,7 +220,10 @@ over a quota, or fail reads. `tools/interface-parity/save-storage.mjs`
 checks the browser path: a compressed byte body, save, reload, load,
 migration of an old base64 body and of a `bytes:` one, the body's size
 against the old base64 form, and a full quota (Chromium
-`Storage.overrideQuotaForOrigin`).
+`Storage.overrideQuotaForOrigin`). With `GATE_BROWSER=firefox` it and
+`game-options-smoke.mjs` run in the installed Firefox over WebDriver BiDi
+(`tools/interface-parity/browser-under-test.mjs`); the quota step is
+Chromium-only and skipped there.
 
 ## API
 

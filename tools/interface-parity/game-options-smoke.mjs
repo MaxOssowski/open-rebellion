@@ -1,6 +1,7 @@
 // Implementation smoke only; this does not replace original-executable/independent browser acceptance.
 // Serve a production WASM build with contributor-owned runtime assets first.
-import { chromium } from 'playwright-core';
+// GATE_BROWSER=firefox runs it in the installed Firefox (browser-under-test.mjs).
+import { browserName, launchUnderTest } from './browser-under-test.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -9,11 +10,7 @@ import { PNG } from 'pngjs';
 const url = process.env.OPTIONS_TEST_URL ?? 'http://127.0.0.1:8769';
 const output = process.env.OPTIONS_TEST_OUTPUT ?? '/tmp/open-rebellion-options-smoke';
 await fs.mkdir(output, { recursive: true });
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH,
-  headless: true,
-  args: ['--mute-audio', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-});
+const browser = await launchUnderTest();
 const results = [];
 try {
   for (const faction of ['alliance', 'empire']) {
@@ -48,6 +45,8 @@ try {
     const screenshot = name => page.screenshot({ path: path.join(output, `${faction}-${name}.png`) });
     const click = async (x, y) => { await page.mouse.click(x, y, { delay: 300 }); await page.waitForTimeout(350); };
     const key = async value => { await page.keyboard.press(value, { delay: 100 }); await page.waitForTimeout(350); };
+    // Firefox drops keys typed faster than the game's frames read them.
+    const type = async text => { await page.keyboard.type(text, { delay: 60 }); await page.waitForTimeout(350); };
     // The page's save slots (web/gl.js rebellionSaveStore: IndexedDB).
     const storage = () => page.evaluate(() => rebellionSaveStore.entries());
     const store = async values => assert.equal(await page.evaluate(v => rebellionSaveStore.write(v), values), 1, 'the fixture write commits');
@@ -78,7 +77,7 @@ try {
       await screenshot('campaign-options');
       await click(350, 180);
       await key('Control+a');
-      await page.keyboard.type(`${faction} options smoke`);
+      await type(`${faction} options smoke`);
       await click(110, 181);
       const saved = await storage();
       // The keys carry the save format's version (save.rs: SAVE_VERSION).
@@ -190,10 +189,10 @@ try {
       assert.equal(await page.getByRole('heading', { name: 'Game closed' }).count(), 0);
       await screenshot('browser-restarted');
       assert.equal(errors.length, 0, errors.join('\n'));
-      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'saved notice', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 kept and unlisted', 'return/re-entry', 'empty row for a zero-length save: Load disabled, Save without question', 'corrupt-body load error keeps bytes', 'browser exit/restart', 'no page errors'] });
+      results.push({ faction, browser: `${browserName} ${browser.version()}`, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'saved notice', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 kept and unlisted', 'return/re-entry', 'empty row for a zero-length save: Load disabled, Save without question', 'corrupt-body load error keeps bytes', 'browser exit/restart', 'no page errors'] });
     } catch (error) {
       await screenshot('failure').catch(() => {});
-      results.push({ faction, status: 'fail', error: String(error) });
+      results.push({ faction, browser: `${browserName} ${browser.version()}`, status: 'fail', error: String(error) });
       throw error;
     } finally {
       await fs.writeFile(path.join(output, `${faction}-logs.json`), JSON.stringify({ consoleLog, errors, network }, null, 2));

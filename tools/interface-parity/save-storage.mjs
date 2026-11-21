@@ -9,7 +9,9 @@
 // Serve a production WASM build with its runtime pack first:
 //   SAVE_TEST_URL=http://127.0.0.1:8791 CHROMIUM_PATH=/usr/bin/chromium \
 //     node tools/interface-parity/save-storage.mjs
-import { chromium } from 'playwright-core';
+// GATE_BROWSER=firefox runs it in the installed Firefox; the quota step
+// needs Chromium's DevTools protocol and is skipped there.
+import { browserName, launchUnderTest } from './browser-under-test.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -18,12 +20,8 @@ import { PNG } from 'pngjs';
 const url = process.env.SAVE_TEST_URL ?? 'http://127.0.0.1:8791';
 const output = process.env.SAVE_TEST_OUTPUT ?? '/tmp/open-rebellion-save-storage';
 await fs.mkdir(output, { recursive: true });
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH,
-  headless: true,
-  args: ['--mute-audio', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-});
-const result = { status: 'fail', browser: browser.version(), checks: [] };
+const browser = await launchUnderTest();
+const result = { status: 'fail', browser: `${browserName} ${browser.version()}`, checks: [] };
 const consoleLog = [], errors = [], network = [];
 const context = await browser.newContext({ viewport: { width: 1280, height: 960 } });
 const page = await context.newPage();
@@ -36,6 +34,8 @@ const screenshot = name => page.screenshot({ path: path.join(output, `${name}.pn
 // Playwright release frame: hold, then wait before moving away.
 const click = async (x, y) => { await page.mouse.click(x, y, { delay: 300 }); await page.waitForTimeout(350); };
 const key = async value => { await page.keyboard.press(value, { delay: 100 }); await page.waitForTimeout(350); };
+// Firefox drops keys typed faster than the game's frames read them.
+const type = async text => { await page.keyboard.type(text, { delay: 60 }); await page.waitForTimeout(350); };
 // The slot entries as IndexedDB holds them, read past the page's copy;
 // bytes come back as "bytes:" and their base64, as the page's
 // rebellionSaveStore.entries() gives them.
@@ -124,7 +124,7 @@ try {
   const closed = PNG.sync.read(await page.screenshot());
   await click(350, 180);
   await key('Control+a');
-  await page.keyboard.type('indexeddb save');
+  await type('indexeddb save');
   await click(110, 181);
   await waitFor(async () => Object.keys(await indexedDb()).some(k => /^rebellion_meta_v\d+_0$/.test(k)), 'the save in IndexedDB');
   const stored = await indexedDb();
@@ -200,46 +200,50 @@ try {
   await page.waitForTimeout(1500);
   check('a localStorage save moves into IndexedDB on load and loads');
 
-  // 4. A full quota: the save fails and shows the failed message alone
-  // (the original has no disk-full string; the cause goes to the console),
-  // and the stored slot stays as it was.
-  const before = await indexedDb();
-  const cdp = await context.newCDPSession(page);
-  // A one-byte quota: the origin's storage is full (Chromium enforces it
-  // on IndexedDB transactions with QuotaExceededError).
-  await cdp.send('Storage.overrideQuotaForOrigin', { origin: new URL(url).origin, quotaSize: 1 });
-  // Chromium keeps the free space an IndexedDB write last found for about
-  // 30 s (a probe on Chromium 157: a write 35 s after the override fails,
-  // one at once passes), so wait past it.
-  await page.waitForTimeout(35_000);
-  await key('F1');
-  // Into the empty second row, so the write grows the origin's usage (an
-  // overwrite of the same size passes Chromium's quota check).
-  await click(350, 265);
-  await key('Control+a');
-  await page.keyboard.type('over the quota');
-  await click(110, 265);
-  await waitFor(async () => consoleLog.some(line => line.includes('[save] slot=1 commit failed: QuotaExceeded')), 'the quota failure');
-  await page.waitForTimeout(500);
-  await screenshot('05-quota-failed');
-  assert.ok(consoleLog.some(line => line.includes('QuotaExceededError')), 'IndexedDB refused the write for its quota');
-  const failedDiff = await dialogDiff(closed);
-  assert.ok(failedDiff > 40000, `the failed message shows (${failedDiff} pixels)`);
-  const errorLine = await stripDiff(closed);
-  assert.ok(errorLine < 50, `no line under the window (${errorLine} pixels changed)`);
-  assert.deepEqual(await indexedDb(), before, 'the failed save leaves IndexedDB as it was');
-  assert.deepEqual(
-    await page.evaluate(() => rebellionSaveStore.entries()),
-    before,
-    'the page copy rolls back to what IndexedDB holds',
-  );
-  assert.ok(!Object.keys(before).some(key => /_1$/.test(key)), 'the second slot was empty');
-  check('a save over the quota shows Failed To Save alone, logs QuotaExceededError, and the slot stays empty');
-  await screenshot('06-quota-row-restored');
-  await click(637, 600);
-  await screenshot('06-after-failed-ok');
-  assert.ok(await dialogDiff(closed) < 40000, 'OK closes the failed message');
-  await cdp.send('Storage.overrideQuotaForOrigin', { origin: new URL(url).origin });
+  if (browserName === 'chromium') {
+    // 4. A full quota: the save fails and shows the failed message alone
+    // (the original has no disk-full string; the cause goes to the console),
+    // and the stored slot stays as it was.
+    const before = await indexedDb();
+    const cdp = await context.newCDPSession(page);
+    // A one-byte quota: the origin's storage is full (Chromium enforces it
+    // on IndexedDB transactions with QuotaExceededError).
+    await cdp.send('Storage.overrideQuotaForOrigin', { origin: new URL(url).origin, quotaSize: 1 });
+    // Chromium keeps the free space an IndexedDB write last found for about
+    // 30 s (a probe on Chromium 157: a write 35 s after the override fails,
+    // one at once passes), so wait past it.
+    await page.waitForTimeout(35_000);
+    await key('F1');
+    // Into the empty second row, so the write grows the origin's usage (an
+    // overwrite of the same size passes Chromium's quota check).
+    await click(350, 265);
+    await key('Control+a');
+    await type('over the quota');
+    await click(110, 265);
+    await waitFor(async () => consoleLog.some(line => line.includes('[save] slot=1 commit failed: QuotaExceeded')), 'the quota failure');
+    await page.waitForTimeout(500);
+    await screenshot('05-quota-failed');
+    assert.ok(consoleLog.some(line => line.includes('QuotaExceededError')), 'IndexedDB refused the write for its quota');
+    const failedDiff = await dialogDiff(closed);
+    assert.ok(failedDiff > 40000, `the failed message shows (${failedDiff} pixels)`);
+    const errorLine = await stripDiff(closed);
+    assert.ok(errorLine < 50, `no line under the window (${errorLine} pixels changed)`);
+    assert.deepEqual(await indexedDb(), before, 'the failed save leaves IndexedDB as it was');
+    assert.deepEqual(
+      await page.evaluate(() => rebellionSaveStore.entries()),
+      before,
+      'the page copy rolls back to what IndexedDB holds',
+    );
+    assert.ok(!Object.keys(before).some(key => /_1$/.test(key)), 'the second slot was empty');
+    check('a save over the quota shows Failed To Save alone, logs QuotaExceededError, and the slot stays empty');
+    await screenshot('06-quota-row-restored');
+    await click(637, 600);
+    await screenshot('06-after-failed-ok');
+    assert.ok(await dialogDiff(closed) < 40000, 'OK closes the failed message');
+    await cdp.send('Storage.overrideQuotaForOrigin', { origin: new URL(url).origin });
+  } else {
+    result.skipped = ['the quota step: it needs Chromium\'s Storage.overrideQuotaForOrigin'];
+  }
   assert.equal(errors.length, 0, errors.join('\n'));
   check('no page errors');
   result.status = 'pass';
