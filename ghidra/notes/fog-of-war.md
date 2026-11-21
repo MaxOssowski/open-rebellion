@@ -378,6 +378,88 @@ fleets (the Empire's at Coruscant, the Alliance's fleet systems) now take
 the smallest mark. No A0 frame of Fighter Squadrons exists yet (item 9
 below).
 
+## A0 comparison (2026-11-21, `2026-11-21-gid-units-17`)
+
+Unedited new games per side (Empire days 4..14, Alliance days 2..14;
+README in that folder). The browser fixture NewGame (code 156) is the
+browser seed's new game: its holders and garrisons differ from A0's random
+games, so each comparison pairs systems in the same situation.
+
+1. **Squadrons only aboard a fleet** (A0 Drall, Empire: planet Fighter
+   Squadrons empty e-31, one TIE aboard Fleet 2 e-26, smallest Empire mark
+   e-02). Match. The browser seed's Drall is the same case
+   (`the_new_game_fixture_carries_drall_s_one_squadron_aboard_its_fleet`);
+   `gid-a0.mjs` compares its Fighter Squadrons mark with e-02's (10150,
+   every non-key pixel). Against the WASM before `fabd2d3b` (sha256
+   `deb4ab820574`) the same gate fails: Drall 10151 (the fleet's squadron
+   counted). Correction to the gate note above: the Empire's Coruscant
+   keeps the largest mark (its planet squadrons, as A0 e-02).
+2. **Enemy core systems** (A0: the Alliance's Coruscant and Bortras, the
+   Empire's Corfai and Duros: the other side's smallest cross in Fighter
+   Squadrons and Troopers, unchanged by day 14). Match: `gid-a0.mjs`
+   checks every core system each game gives the other side, A0's and the
+   port's, at that side's smallest mark in both displays, and Coruscant's
+   exact mark to each side. The sector window (A0 a-23): Coruscant (units,
+   no defense facility) shows only its facility icon, Bortras (a GenCore
+   Level I) the Empire's defenses icon: `FUN_0045ce80` counts the copy,
+   which holds the facilities but no units. Match: `fog-a0.mjs` compares
+   the browser seed's Commenor and Drall (regiments, no defense facility:
+   no defenses icon) with A0's Coruscant, and its Coruscant (a GenCore
+   Level I and units: the Empire's defenses icon) with A0's Bortras
+   (`the_new_game_fixture_lights_an_enemy_core_defenses_icon_by_its_facilities_alone`).
+   The right-click menu on the planet (t23: Move, Confirmed Move,
+   Encyclopedia, Status, Scrap) is the system's object menu; no menu holds
+   a Defenses entry, in the original or the port (`object_menu.rs`).
+   Seed difference, not a fog rule: the browser seed's Coruscant holds a
+   GenCore Level I (stage `0xf`, `CoreSystem_vt1cc` `FUN_00566de0` rolls
+   facilities for every system, Coruscant included); both A0 games' had
+   none. Two games do not show whether the roll can give Coruscant a
+   shield; untraced.
+3. **The Empire's copy of Yavin** (A0 e-44..e-48: six heroes, two Alliance
+   Army Regiments, X-wing, Y-wing). Match for these:
+   `Event319_Handle` case 10 pushes every child `0x01..0xff` of the system,
+   its fleets and their ships (three ranges in `FUN_0050d5a0`), and the
+   port's push copies the regiments (`push_system`) and the system's
+   squadrons, special forces and characters (`SystemView::of`)
+   (`the_new_game_fixture_s_empire_copy_of_yavin_lists_its_heroes_regiments_and_squadrons`;
+   `gid-a0.mjs`: Yavin's medium Alliance mark to both sides).
+   Open: the port's copy also lists the Longprobe Y-wing Recon Team (special
+   force `0x3c000003`, seeded at Yavin), which the Alliance's own view lists
+   (a-11, day 3) but the Empire's day-14 view does not (e-44). The setup
+   creates Yavin's garrison at stage `0x12` (`FUN_0051aa50` ->
+   `FUN_0051acb0`), before the push at `0x18`, so the push should copy it
+   unless it was created elsewhere or left Yavin by day 14 and its frozen
+   copy was dropped. A0 frame to take: the Empire's Yavin Personnel page on
+   day 1 of a new Empire game.
+4. **"All Defenses" is not in the GID menu.** Match: the port's Defense
+   submenu (`cockpit.rs` `gid_submenu_items`) holds the same five rows, and
+   a click on a category row selects nothing. `gid-a0.mjs` compares the
+   Empire's submenu with A0 work/s18: frame and icons every pixel. Not
+   ported: A0 draws Death Star Shields' icon (10142) only to its column 9,
+   the row's fill from column 10 (untraced; the gate leaves those columns
+   out).
+5. **Enemy and neutral Defenses windows** (A0 a-24..a-28, e-39..e-41).
+   Match: `FUN_004a9ce0` sets each unit tab's art by the copy's side bits
+   (`+0x148`) and count: the side's empty art for an empty page, the gray
+   art (`0x2942`, `0x2949`, `0x2950`) for side 0; `FUN_004a90d0` writes
+   "Garrison Requirement" only when the copy's side is the viewer's
+   (`the_new_game_fixture_s_enemy_core_defenses_windows_list_no_units_or_garrison`).
+   Fixed: the port took the window's side (tab art, title, garrison line,
+   rail icon) from the live system; `FUN_004a25c0` -> `FUN_004f3220` makes
+   the window's object the viewer's copy, so a frozen copy shows the side
+   it last saw (`the_window_takes_its_side_from_the_viewers_frozen_copy`).
+   Its rows already read the copy.
+
+Gates on the worktree's test WASM with the window-side fix (sha256
+`4e219fb453de`, Arch Chromium 157): `gid-a0.mjs` pass
+(`gid-a0-2026-11-21T07-45-04-406Z`), `fog-a0.mjs` pass
+(`fog-a0-2026-11-21T07-45-56-338Z`), `sector-quadrants.mjs` pass (a
+Linux-manifest copy, `sector-quadrants-2026-11-21T07-46-55-323Z-1337309`).
+Before the fix (sha256
+`b9304d9f2f5f`) both passed too (`gid-a0-2026-11-21T07-28-39-647Z`,
+`fog-a0-2026-11-21T07-33-23-908Z`); the pre-`fabd2d3b` WASM fails gid-a0
+at Drall (`gid-a0-2026-11-21T07-36-28-810Z`).
+
 ## The GID's gray cross and Yavin to the Empire (traced 2026-11-19)
 
 A0 2026-11-19-fog-13 (an unedited new Empire game) seemed to disagree with
@@ -445,7 +527,6 @@ load the same state:
    then the other side's view of the same system (edited save, header
    byte `0x16` flip) still gray.
 8. Day 1, the System Finder's Unexplored tab.
-9. Day 1, the GID on Fighter Squadrons (menu, `0x72`) per side: a system
-   whose squadrons are all aboard a fleet (Coruscant for the Empire) takes
-   the smallest mark if the counter walks only the planet (traced
-   2026-11-21).
+9. Taken (A0 `2026-11-21-gid-units-17`, days 2..14; "A0 comparison
+   (2026-11-21)" above). Still open: the Empire's Yavin Personnel page on
+   day 1 (the Recon Team).
