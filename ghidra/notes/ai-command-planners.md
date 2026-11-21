@@ -245,7 +245,7 @@ States: 1, cancelled: `FUN_004bc520` (as `FUN_004bbba0`, without slot
 - Controller `+4` `0x80`: a sector record with `+0x2c` 4 and `0x200`
   (Coruscant held, `FUN_0041b7e0`).
 - **State 5** (`FUN_004e69d0`) keeps planners of another kind
-  (`FUN_00474070`, vtable `0x65a3a0`; hyp: module 9's) at `+0x224` (sector
+  (`FUN_00474070`, vtable `0x65a3a0`; module 9's, `ai-module-9.md`) at `+0x224` (sector
   `+0x1a0`), not module `0xc`'s as `ai-sector-plans.md` first read it.
 - **State 6** (`FUN_004e5870`): system `0x90000109` (Coruscant) record
   `+0x30` takes `0x10000000` while it has bit 1, else loses it. The

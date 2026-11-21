@@ -1632,4 +1632,5 @@ first ground battle moved from day 323 to day 457.
   (the pushes before `FUN_004f5cd0`): Create Fleet `0x270` in state 2
   (`0x474b1b`) and Move `0x201` in states 5, 6 and 7 (`0x474f5e`,
   `0x4752d2`, `0x475434`). Worth porting next, as a stage of its own
-  (not traced further here).
+  (not traced further here). Read in full and ported 2026-11-21:
+  `ai-module-9.md`.

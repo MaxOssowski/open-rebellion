@@ -1067,6 +1067,11 @@ port:
   Create Fleet of `FUN_004782a0` and `FUN_00478aa0` reads its origin
   from an unset local; the port uses the ships' system.
 - hyp: controller `+0x164`, `+0x168` have no writer found and read as 0.
+  Refuted 2026-11-21 (`ai-module-9.md`, state 3): `FUN_0042e210` writes
+  `+0x150` and `+0x160..+0x174` (the class tree `+0x138`'s `+0x18`,
+  `+0x28..+0x3c`) at setup and on each Shipyard research notification;
+  `+0x164` is the best `values[0]` of the side's researched heavy ship
+  classes. The sector planners' port still reads them as 0.
 
 ## Ported (2026-10-15, save v51): the ships' records
 
