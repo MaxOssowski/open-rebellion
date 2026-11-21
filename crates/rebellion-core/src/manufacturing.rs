@@ -575,7 +575,7 @@ impl ManufacturingState {
     /// the current construction"; the units are built one after another
     /// ("Number to build", Fig. 3.25).
     pub fn build(&mut self, system: SystemKey, item: &QueueItem, count: u32) {
-        self.stop(system, ProductionArea::of(item.kind));
+        self.scrap_queue(system, ProductionArea::of(item.kind));
         for _ in 0..count {
             self.enqueue(system, item.clone());
         }
@@ -587,16 +587,36 @@ impl ManufacturingState {
         let Some(first) = items.first() else {
             return;
         };
-        self.stop(system, ProductionArea::of(first.kind));
+        self.scrap_queue(system, ProductionArea::of(first.kind));
         for item in items {
             self.enqueue(system, item);
         }
     }
 
     /// Stop: `system`'s `area` drops every unit it was building (manual
-    /// p. 84, "Stopping Construction").
+    /// p. 84, "Stopping Construction"). Stop (`0x213`, `ManuMgr_vt1f8`
+    /// `FUN_00529ba0`) scraps the queue (`FUN_0052a2c0`); each scrapped
+    /// product leaves it through event `0x300` (`FUN_0052a710`), and the
+    /// RemainingGameObjCount reaching 0 sets the TargetKey to none
+    /// (`ManuMgr_vt204`, `FUN_0052b8c0`), so an area that was building
+    /// takes its own system again. So does a manager left without yards
+    /// (`FUN_00529dd0` scraps through the same `FUN_0052a2c0`).
     pub fn stop(&mut self, system: SystemKey, area: ProductionArea) {
-        self.queues.remove(&(system, area));
+        if self
+            .scrap_queue(system, area)
+            .is_some_and(|queue| !queue.is_empty())
+        {
+            self.destinations.remove(&(system, area));
+            self.fleet_destinations.remove(&(system, area));
+        }
+    }
+
+    /// The queue scrap Build shares with Stop (`FUN_0052a2c0`). Build
+    /// (`FUN_00529ab0`) creates its units before the scrapped products'
+    /// `0x300` events run, so its count never reaches 0 and the
+    /// Destination stays.
+    fn scrap_queue(&mut self, system: SystemKey, area: ProductionArea) -> Option<ProductionQueue> {
+        self.queues.remove(&(system, area))
     }
 
     /// Where `system`'s `area` delivers what it builds, when not at home.
@@ -1309,6 +1329,50 @@ mod tests {
         state.enqueue(home, cap_ship_item(1));
         state.add_point(home, ProductionArea::Shipyard, 4);
         assert_eq!(state.destination(home, ProductionArea::Shipyard), None);
+    }
+
+    #[test]
+    fn stopping_an_area_that_builds_resets_its_destination_but_a_new_order_keeps_it() {
+        // Stop (0x213) is ManuMgr_vt1f8 (FUN_00529ba0): it scraps the queue
+        // (FUN_0052a2c0, each product's +0xac with cause 0x16). Each
+        // destroyed product's existing change comes back as event 0x300
+        // (FUN_005140c0 -> FUN_00529cf0 -> FUN_0052a710), which drops it
+        // and sets RemainingGameObjCount (FUN_0052a7d0); at 0, ManuMgr_vt204
+        // (FUN_0052b8c0) sets the TargetKey to none. Build (FUN_00529ab0)
+        // scraps too but creates the new units before those events run,
+        // so the count never reaches 0 (A0 2026-11-21-build-dest-16/12: the
+        // confirmed regiment keeps the fleet).
+        let mut systems: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
+        let (home, away) = (systems.insert(()), systems.insert(()));
+        let mut fleets: slotmap::SlotMap<FleetKey, ()> = slotmap::SlotMap::with_key();
+        let fleet = fleets.insert(());
+        let mut state = ManufacturingState::new();
+        let area = ProductionArea::TrainingFacility;
+        assert!(state.set_fleet_destination(home, area, fleet, away));
+        state.build(home, &troop_item(3), 2);
+        assert_eq!(state.destination_fleet(home, area), Some(fleet));
+
+        state.stop(home, area);
+
+        assert_eq!(state.destination(home, area), None);
+        assert_eq!(state.destination_fleet(home, area), None);
+        // A system Destination resets the same way; another area keeps its own.
+        state.set_destination(home, ProductionArea::Shipyard, away);
+        state.set_destination(home, ProductionArea::ConstructionYard, away);
+        state.enqueue(home, cap_ship_item(4));
+        state.stop(home, ProductionArea::Shipyard);
+        assert_eq!(state.destination(home, ProductionArea::Shipyard), None);
+        assert_eq!(
+            state.destination(home, ProductionArea::ConstructionYard),
+            Some(away)
+        );
+        // An area with nothing to scrap keeps its Destination: no product
+        // leaves, so RemainingGameObjCount does not change.
+        state.stop(home, ProductionArea::ConstructionYard);
+        assert_eq!(
+            state.destination(home, ProductionArea::ConstructionYard),
+            Some(away)
+        );
     }
 
     #[test]
