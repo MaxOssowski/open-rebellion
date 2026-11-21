@@ -431,6 +431,13 @@ games, so each comparison pairs systems in the same situation.
    unless it was created elsewhere or left Yavin by day 14 and its frozen
    copy was dropped. A0 frame to take: the Empire's Yavin Personnel page on
    day 1 of a new Empire game.
+   Settled for the start (2026-11-21, A0
+   `.artifacts/a0-vm/2026-11-21-blockade-18` t2-00..t2-07, two new Empire
+   games, day 2): the Empire's Yavin Personnel page lists the six heroes and
+   the Longprobe Y-wing Recon Team, as the port's push does. Still open: why
+   the day-14 view (e-44) no longer lists the team (it likely left Yavin and
+   the Empire's copy of a departed unit was dropped); the port's handling of
+   a departed unit's copy is not compared with A0.
 4. **"All Defenses" is not in the GID menu.** Match: the port's Defense
    submenu (`cockpit.rs` `gid_submenu_items`) holds the same five rows, and
    a click on a category row selects nothing. `gid-a0.mjs` compares the
