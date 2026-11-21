@@ -767,6 +767,22 @@ pub fn apply_seeds_from_files_with_rng<R: Rng + ?Sized>(
     Ok(())
 }
 
+/// A new campaign's galaxy seed from the wall clock, in seconds since the
+/// Unix epoch (the browser's `Date.now()`, miniquad `date::now`). The
+/// original game is laid out afresh each time it is played (manual p. 49,
+/// "the game begins randomly every time you play"; the Alliance HQ starts
+/// "at a random system on the Galactic Rim", p. 45), so a new game must not
+/// reuse the fixed seed the browser fixtures load with.
+#[must_use]
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "A clock reading only needs to vary between games; microseconds fit in u64."
+)]
+pub fn campaign_seed_from_clock(seconds: f64) -> u64 {
+    (seconds.max(0.0) * 1_000_000.0) as u64
+}
+
 fn make_seed_rng(seed_options: &SeedOptions) -> Xoshiro256PlusPlus {
     Xoshiro256PlusPlus::seed_from_u64(seed_options.rng_seed.unwrap_or_else(default_seed))
 }
@@ -2676,6 +2692,46 @@ mod tests {
         let hq2 = find_rebel_hq(&world2);
         assert!(hq1.is_some(), "Rebel HQ should exist in world 1");
         assert_eq!(hq1, hq2, "Same RNG seed must produce same Rebel HQ system");
+    }
+
+    // Manual p. 45: the Alliance HQ "begins the game at a random system on
+    // the Galactic Rim"; p. 49: "the game begins randomly every time you
+    // play". New games started a few seconds apart must not share one HQ.
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn new_games_started_at_different_times_place_the_rebel_hq_at_different_rim_systems() {
+        let path = gdata_path();
+        let hq_for = |seconds: f64| -> u32 {
+            let options = SeedOptions {
+                rng_seed: Some(campaign_seed_from_clock(seconds)),
+                ..SeedOptions::default()
+            };
+            let world = crate::load_game_data_with_options(&path, &options).expect("load");
+            world
+                .systems
+                .values()
+                .find(|s| s.is_headquarters && s.control.is_controlled_by(Faction::Alliance))
+                .map(|s| s.dat_id.raw())
+                .expect("rebel HQ")
+        };
+        let start = 1_795_000_000.0;
+        let places: std::collections::BTreeSet<u32> = (0..8)
+            .map(|game| hq_for(start + f64::from(game) * 7.0))
+            .collect();
+        assert!(
+            places.len() >= 4,
+            "eight games put the HQ at only {places:?}"
+        );
+    }
+
+    #[test]
+    fn a_campaign_seed_follows_the_clock_reading() {
+        assert_eq!(campaign_seed_from_clock(1.5), 1_500_000);
+        assert_ne!(
+            campaign_seed_from_clock(1_795_000_000.0),
+            campaign_seed_from_clock(1_795_000_001.0)
+        );
+        assert_eq!(campaign_seed_from_clock(-3.0), 0);
     }
 
     // ── M4: Character stat rolling + placement tests ────────────────────────

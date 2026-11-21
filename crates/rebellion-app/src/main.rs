@@ -3995,8 +3995,15 @@ async fn main() {
                                 // OPEN_REBELLION_SEED fixes it.
                                 #[cfg(not(target_arch = "wasm32"))]
                                 rng_seed: dev_commands::campaign_seed(),
+                                // The browser's default seed is the fixed 0
+                                // its fixtures load with; a new game reads
+                                // the clock (Date.now) instead.
                                 #[cfg(target_arch = "wasm32")]
-                                rng_seed: None,
+                                rng_seed: Some(
+                                    rebellion_data::seeds::campaign_seed_from_clock(
+                                        macroquad::miniquad::date::now(),
+                                    ),
+                                ),
                             };
                             campaign_config = CampaignConfig::from_seed_options(
                                 seed_options,
