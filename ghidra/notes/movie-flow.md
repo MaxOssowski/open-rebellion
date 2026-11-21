@@ -221,6 +221,11 @@ Port (`main.rs`, `message_log.rs`, `story_messages.rs`):
 - Every movie is fitted into the 640 by 480 client (`movie_client`), in
   the native player and in the browser's `<video>`, whose bars let the
   canvas show through.
+- Checked 2026-11-21 (`tools/interface-parity/film-geometry.mjs`): every
+  browser film 101..108, 201, 202 is 640 by 324, lights nothing outside
+  rows 78..401 at 640 by 480, and lines up with an A0 frame at offset
+  (0, 0) (best of +-10 px each way) for 101, 102, 103, 106, 107, 108,
+  201 and 202. No A0 frame of 104 or 105 exists yet.
 - port: the strategic clock holds during the movie, as in every cutscene;
   hyp: the original's keeps running (nothing on the path pauses it).
 - port: a waiting movie is not saved; whether the original saves `+0x28`
