@@ -168,11 +168,12 @@ AI's Manage Production/Manage Garrisons agent skips reserved managers.
   (`ManufacturingState::set_fleet_destination`, save v138; logged
   `status=set areas=1 to_fleet=NAME`). The products are then placed in the
   fleet (`FUN_00552300` tries the target first; `products::reconcile`),
-  travel to its system when finished, and the band names the fleet. port:
-  a unit the fleet has no room for is placed at the fleet's system, where
-  the original refuses the Build (`0x27`). The other side's fleet is
+  travel to its system when finished, and the band names the fleet. A
+  Build whose squadrons or regiments find no room in the fleet, or in the
+  ship it names, is not valid (2026-11-21, "Build with no room aboard"
+  below; `build_selection::lacks_fleet_room`). The other side's fleet is
   refused (A0 `build-selection2/30`, `32`); the refusing check is not
-  traced. The Build agent's fleet target (`agent_build.rs`) still names
+  found ("The other side's fleet" below). The Build agent's fleet target (`agent_build.rs`) still names
   the fleet's system. Its Reserved is ported since 2026-11-10
   (`sector-icon-menus.md`, "The facility icon's Reserved"), and so is its
   drop, a `0x214` against the drop window's `+0x68` ("Drags by kind"
@@ -206,8 +207,8 @@ AI's Manage Production/Manage Garrisons agent skips reserved managers.
     (`14`, `25`), while a band that never built keeps the fleet (`18`):
     `ManuMgr_vt204` (`FUN_0052b8c0`), the RemainingGameObjCount hook,
     sets the TargetKey to none when the count reaches 0 (ported in
-    `ManufacturingState::add_point`; whether a Stop reaches it too is not
-    traced);
+    `ManufacturingState::add_point`; a Stop reaches it too, "Stop resets
+    the Destination" below);
   - a band dragged (`28`..`33`): `FUN_004534f0` (the window's procedure)
     starts a drag on a move with the button held inside the bands'
     rectangle (8, 0x39)..(0xe6, 0x11a). The drag image is the window's
@@ -227,6 +228,99 @@ AI's Manage Production/Manage Garrisons agent skips reserved managers.
   (`build-delivery.md`).
 - port: the Destination targeting mode (cursor crosshairs, click a system)
   parallels the Mission targeting mode.
+
+## Build with no room aboard (read 2026-11-21)
+
+Build Selection's check (`FUN_005385f0`, the build orders' `vt+0x50`)
+asks, per unit, `FUN_00551a20` -> `FUN_00552300` (the planner) for the
+manager's TargetKey:
+
+- The planner weighs the target (`FUN_00552b10`). For a system
+  (`0x90..0x97`) it then weighs the system's fleets; for a fleet
+  (`0x08..0x0f`) each of its ships (`FUN_00502e30`, `FUN_00552b10`); a
+  capital ship (`0x14..0x1b`) is weighed alone (`FUN_00552300` lines
+  60..120).
+- A fleet's room (`Fleet_vt78`, `FUN_004fe160`) is unlimited for capital
+  ships (rows `0x14..0x1c`) and nothing for any other row, with its own
+  refusal; a ship's (`CapShip_vt78`, `FUN_00500b40`) is its fighter
+  (`+0x26c`) or troop (`+0x270`) capacity less what rides it.
+  `FUN_00550700` records `{1, 0x27}` for a node that accepts the row but
+  has no room and no "unlimited" (`0x5508a2`).
+- `FUN_0054fbb0` keeps the first candidate with no refusal and more room;
+  with none, the planner copies the kept candidate's refusal to the order
+  (`LAB_0055275a`). Each unit then lowers its node's room by one
+  (`FUN_00552dd0` -> `FUN_00550eb0`, `FUN_0054ff00`), so the order fits
+  while its number is at most the room left in the target.
+- The manager's own queued products give their room back first
+  (`FUN_00552210` -> `FUN_00552000` -> `FUN_00552dd0` in mode 0), as
+  Confirm scraps them.
+
+An order with a refusal is not valid: Build Selection shows "n/a" in the
+four values and greys Confirm (`FUN_00438220`, `FUN_00439160`;
+`manufacturing-build-selection.md`). Ported 2026-11-21:
+`build_selection::lacks_fleet_room` in `build_selection::estimate`, with
+`products::ship_rooms_but` for the room left. A0 shows no Build refused
+this way; the reading rests on the decompile.
+
+port: `products::seat` still seats a unit a named ship cannot take on
+another ship of the fleet, where the original's planner keeps the ship
+alone. That only happens when the ship's room drops after Confirm.
+
+## Stop resets the Destination (read 2026-11-21)
+
+Stop (`0x213`) reaches `ManuMgr_vt1f8` (`FUN_00529ba0`), which scraps the
+queue with `FUN_0052a2c0`: each product's slot `+0xac` with cause `0x16`
+(`GameObj_SetDestroyedReason`, `FUN_004f71d0`, then the destroyed bit
+`FUN_004f7560`). The destroyed bit clears the derived existing bit
+(`0x004f7bc0`), so event `0x300` (`FUN_005140c0`) runs for each product:
+not completed and with a builder (`+0x38`), it calls `FUN_00529cf0` ->
+`FUN_0052a710`, which drops the destroyed product and sets
+RemainingGameObjCount (`FUN_0052a7d0`). At 0, `ManuMgr_vt204`
+(`FUN_0052b8c0`) sets the TargetKey to none, so the band names its own
+system again. A manager left without yards scraps through the same
+`FUN_0052a2c0` (`FUN_00529dd0`). Build (`FUN_00529ab0`) scraps too, but it
+creates the new units (`FUN_0052a140`) before the `0x300` events run, so
+the count never reaches 0 and the Destination stays (A0
+`2026-11-21-build-dest-16/12`). Ported 2026-11-21 in
+`ManufacturingState::stop` (`build` and `build_units` scrap through
+`scrap_queue`, which keeps it). A0 shows no Stop on a band with a
+Destination elsewhere; the reading rests on the decompile.
+
+## The other side's fleet (read 2026-11-21, not found)
+
+A0 `build-selection2/30`, `32`: the Empire's empty ships band released on
+Fleet 1 in Yavin's Fleet window (an Alliance system) keeps "Destination:
+Chandrila"; `33`: released on Yavin's planet, it takes Yavin. The checks
+read so far do not refuse that fleet:
+
+- The targeting release (`FUN_00422ce0`, `0x214`) takes the window's
+  `+0x70` (`FUN_004a3130`: the left list's item under the point, else the
+  window's subject) with no side test, sets it (order `+0x2c`) and submits
+  (`FUN_0041ce20`).
+- `FUN_00537180` refuses `1`/`0x28` for a destination of another side only
+  when some product queued at a manager is not a capital ship (the
+  manager's `+0x54 -> +0x18` list through `FUN_00528820`, read at
+  `0x537326..0x5373e8`). The band was empty.
+- Its per-command checks read the manager's `+0x58`, the
+  RemainingGameObjCount. At 0 (an empty band) they test only the
+  destination's state (`0x20`, `0x21`, `0x22`) and family (`0x25`); a
+  fleet passes. With products queued they run the planner for each
+  (`FUN_00552210`, `FUN_00551900`, `FUN_00583f50`).
+- The route (`FUN_005513a0`) finds the destination in the side's table
+  (`FUN_00552e80` -> `FUN_00553130` -> `FUN_004f2d10`, else `1`/`0x22`)
+  and its container (`FUN_00552ff0`, else `1`/`0x23`). `Fleet_vt74`
+  (`FUN_004fe0d0`) -> `FUN_00553410` gives `{1, 0x24}` for a fleet of
+  another side, but `FUN_00550700` writes it to the node's own status
+  (`ecx = esp+0x28` at `0x5508ac`), not the order's.
+- The command's check (`FUN_0057e0d0`): `ManuMgr_vt1e4` (`FUN_00528650`)
+  needs the destination in the ordering side's table (`FUN_004f2d10`,
+  else `{1, 1}`), then routes only when `+0x58` is not 0.
+
+Left: whether the other side's fleet is in the side's table at all
+(`FUN_0053efd0` -> `FUN_00585dc0`, `FUN_005844e0`), whether `FUN_004a3130`'s
+list hit test (`FUN_00609d80`, `FUN_00609d10`) returns that fleet's item,
+and whether that Fleet 1 was the Alliance's. port: the refusal stays
+(`reason=other_side`).
 
 ## Open
 

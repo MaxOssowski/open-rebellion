@@ -148,6 +148,57 @@ The build-selection gate's `defensesDestination` step does the following on both
 
 Run `build-selection-2026-11-03T04-16-07-647Z-2127650` (Linux): the Alliance's Destination goes from Akrit'tar to F'tral. Screenshot: `defenses-destination.png`.
 
+## No room aboard, Stop, and the other side's fleet (OBJ-07 C019, 2026-11-21)
+
+These settle the three deviations left below. The traces are in
+`ghidra/notes/production-destination.md`: "Build with no room aboard",
+"Stop resets the Destination" and "The other side's fleet".
+
+- **No room aboard (ported).** Build Selection's check (`FUN_005385f0`)
+  runs the planner per unit on the manager's TargetKey (`FUN_00551a20` ->
+  `FUN_00552300`). A fleet weighs its ships; a capital ship is weighed
+  alone. A ship with no troop or fighter room left records `{1, 0x27}`
+  (`FUN_00550700`), and the order is not valid. Build Selection then shows
+  "n/a" and greys Confirm (`FUN_00439160`). The units the order replaces
+  give their seats back. The port's check is `build_selection::lacks_fleet_room`,
+  part of `estimate`.
+- **Stop (ported).** Stop scraps the queue (`FUN_00529ba0` ->
+  `FUN_0052a2c0`). The scrapped products' `0x300` events bring
+  RemainingGameObjCount to 0, and `ManuMgr_vt204` (`FUN_0052b8c0`) sets the
+  TargetKey to none, so the band names its own system again. Build scraps
+  too, but creates its units first and keeps the Destination (A0 12).
+- **The other side's fleet (not found).** The checks read so far
+  (`FUN_00537180`'s `0x28`, its per-command checks, the route
+  `FUN_005513a0`, `Fleet_vt74` -> `FUN_00553410`, `ManuMgr_vt1e4`) do not
+  refuse the empty ships band of A0 `build-selection2/30`, `32`. The port
+  keeps its refusal (`reason=other_side`).
+
+A0 shows neither a Build refused for room nor a Stop on a band with a
+Destination elsewhere. Both ports rest on the decompile.
+
+**The gate.** The `fleetDrag` step now goes on after the regiment
+confirmed for the ship:
+
+- it opens Build Selection on the troops band again and raises the
+  number until the fixture reports the fleet-room refusal; at that number
+  the four values read "n/a" and Confirm is disabled, while the number
+  before shows values;
+- it stops the troops band, and the band names its own system again.
+
+Run `build-selection-2026-11-21T05-45-50-611Z-978556` passed on both
+sides: Linux, Arch Chromium 157.0.8103.78 through a temporary
+`.gate-build-selection-linux.mjs` copy, cargo-built test WASM without
+wasm-opt (sha256 `7a85fbfb798b8ce6…`), `result.json` sha256
+`501d2644fd983872…`. On both sides Imperial Star Destroyer 1 seats 3
+regiments: 3 show values and 4 read "n/a" (`fleet-drag-no-room.png`).
+After Stop the troops band reads "No Troops in training" and
+"Destination: Akrit'tar" (`fleet-drag-stopped.png`). The base build has
+no fleet-room refusal, so the "n/a" assertion fails there; the unit tests
+`a_build_for_a_fleet_or_ship_without_room_for_its_units_is_not_valid`,
+`a_squadron_build_for_a_fleet_needs_fighter_room_aboard` and
+`stopping_an_area_that_builds_resets_its_destination_but_a_new_order_keeps_it`
+fail without the change.
+
 ## The A0 own-fleet gaps closed (OBJ-07 C019, 2026-11-21)
 
 These close the rows left open in the table below.
@@ -194,11 +245,9 @@ The message bodies and the per-ship seating are checked by unit tests,
 not in the browser. A0's ship names differ from the fixture's, so those
 lines are not compared by pixels.
 
-**Remaining port deviations.**
-- A unit with no room aboard waits at the fleet's system; the original
-  refuses the Build (`0x27`).
-- The check that refuses the other side's fleet is not traced.
-- Whether a Stop resets the Destination is not traced.
+**Remaining port deviations.** Settled in the section above: the Build
+with no room aboard and the Stop are ported; the check that refuses the
+other side's fleet is still not found.
 
 ## Against A0 on an own fleet (OBJ-07 C019, 2026-11-21)
 
