@@ -158,9 +158,22 @@ AI's Manage Production/Manage Garrisons agent skips reserved managers.
   (`ManufacturingState::set_destination`) in their place.
 - The facility icon's menu enables Destination when the system has a
   manufacturing facility of the player's (port: its production areas). The
-  targeting release on a planet or a fleet sets every area's destination
+  targeting release on a planet sets every area's destination
   (`PanelAction::SetDestination`), logged as `[interface] command=0x214
-  destination=production_destination status=set`. Its Reserved is ported
+  destination=production_destination status=set`. A release on a fleet
+  (2026-11-21): `FUN_00537180` holds only the construction managers
+  (`0xa0..0xa1`) to a system (`move-order.md`, "Destination checks"), so
+  the icon's team, which holds every manager, is refused with `1`/`0x25`,
+  while a ships or troops band's own manager takes a fleet of its side
+  (`ManufacturingState::set_fleet_destination`, save v138; logged
+  `status=set areas=1 to_fleet=NAME`). The products are then placed in the
+  fleet (`FUN_00552300` tries the target first; `products::reconcile`),
+  travel to its system when finished, and the band names the fleet. port:
+  a unit the fleet has no room for is placed at the fleet's system, where
+  the original refuses the Build (`0x27`). The other side's fleet is
+  refused (A0 `build-selection2/30`, `32`); the refusing check is not
+  traced. The Build agent's fleet target (`agent_build.rs`) still names
+  the fleet's system. Its Reserved is ported
   since 2026-11-10 (`sector-icon-menus.md`, "The facility icon's Reserved"),
   and so is its drop, a `0x214` against the drop window's `+0x68`
   ("Drags by kind" there).

@@ -921,6 +921,7 @@ impl ReplayRuntime {
             research_planner_bits,
             ai_module_a,
             ai_module9,
+            production_fleets,
         } = state;
         let (mut ai, mut ai2) = (ai, ai2);
         ai.module_c = ai_command_planners.0;
@@ -936,6 +937,12 @@ impl ReplayRuntime {
         world.object_views.system_bits = system_copy_bits;
         world.object_views.system_uprisings = system_copy_uprisings;
         world.products = products;
+        let mut manufacturing = manufacturing;
+        crate::save::restore_production_fleets(
+            &mut manufacturing,
+            &mut world.products,
+            &production_fleets,
+        );
         let mut troop_transport = troop_transport;
         rebellion_core::squadrons::restore_damaged_squadrons(
             &mut world,
@@ -1117,6 +1124,10 @@ impl ReplayRuntime {
             ),
             ai_module_a: crate::save::module_a(&self.states.ai, self.states.ai2.as_ref()),
             ai_module9: crate::save::module9(&self.states.ai, self.states.ai2.as_ref()),
+            production_fleets: crate::save::production_fleets(
+                &self.states.manufacturing,
+                &self.world.products,
+            ),
             ai_command_planners: crate::save::command_planners(
                 &self.states.ai,
                 self.states.ai2.as_ref(),
@@ -1451,6 +1462,7 @@ mod tests {
             research_planner_bits: crate::save::AiResearchBits::default(),
             ai_module_a: crate::save::AiModuleA::default(),
             ai_module9: crate::save::AiModule9::default(),
+            production_fleets: crate::save::ProductionFleets::default(),
             ai_command_planners: crate::save::AiCommandPlanners::default(),
             ai_sector_links: crate::save::AiSectorLinks::default(),
         }

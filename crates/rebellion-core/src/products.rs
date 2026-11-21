@@ -62,6 +62,11 @@ pub struct Product {
     /// The system its order (or the last Destination) named.
     pub target: SystemKey,
     pub container: Container,
+    /// The fleet its order (or the last Destination) named, when that was
+    /// a fleet ([`ManufacturingState::destination_fleet`]). Saved by the
+    /// save's last field (save v138), so skipped here.
+    #[serde(skip)]
+    pub target_fleet: Option<FleetKey>,
 }
 
 /// Every unfinished product, in order of creation.
@@ -133,6 +138,26 @@ impl Products {
             .iter()
             .find(|&&(trip, _)| trip == id)
             .map(|&(_, day)| day)
+    }
+
+    /// Each product's fleet target ([`Product::target_fleet`]), by id, for
+    /// the save.
+    #[must_use]
+    pub fn fleet_targets(&self) -> Vec<(u64, FleetKey)> {
+        self.items
+            .iter()
+            .filter_map(|product| product.target_fleet.map(|fleet| (product.id, fleet)))
+            .collect()
+    }
+
+    /// Put the saved fleet targets back ([`Self::fleet_targets`]).
+    pub fn restore_fleet_targets(&mut self, targets: &[(u64, FleetKey)]) {
+        for product in &mut self.items {
+            product.target_fleet = targets
+                .iter()
+                .find(|&&(id, _)| id == product.id)
+                .map(|&(_, fleet)| fleet);
+        }
     }
 
     fn take(&mut self, id: u64) -> Option<Product> {
@@ -288,6 +313,66 @@ fn place(
     Container::Fleet(fleet)
 }
 
+/// The container for a product of `kind` whose order named `fleet` at
+/// `target` (a shipyard's or training manager's Destination on a fleet,
+/// `FUN_00537180`). The planner (`FUN_00552300`) tries the fleet itself
+/// (`FUN_00552b10`), then its usable ships: a capital ship of the fleet's
+/// side goes into it; a squadron, regiment or special force goes aboard
+/// when the fleet has room ([`room_aboard`]). Without a fleet, or when it
+/// takes nothing, [`place`] decides as for the fleet's system.
+///
+/// port: the original refuses such a Build at Confirm (`FUN_005385f0` on the
+/// planner's error, `0x27`); the port places the unit at the fleet's system
+/// instead. A regiment's room counts no regiment already carried (the
+/// carried ones are not in the world); its completion embarks it only
+/// when the fleet still has room ([`board`]).
+fn place_for(
+    world: &mut GameWorld,
+    kind: BuildableKind,
+    target: SystemKey,
+    is_alliance: bool,
+    fleet: Option<FleetKey>,
+) -> Container {
+    if let Some(fleet) = fleet {
+        let takes = match kind {
+            BuildableKind::CapitalShip(_) => world
+                .fleets
+                .get(fleet)
+                .is_some_and(|value| value.is_alliance == is_alliance),
+            _ => room_aboard(world, fleet, kind, is_alliance, 0),
+        };
+        if takes {
+            return Container::Fleet(fleet);
+        }
+        let at = world
+            .fleets
+            .get(fleet)
+            .map_or(target, |value| value.location);
+        return place(world, kind, at, is_alliance);
+    }
+    place(world, kind, target, is_alliance)
+}
+
+/// The system `system`'s `area` delivers to: where its fleet Destination
+/// stands now, else its Destination system, else its own system. The
+/// transit to a fleet ends at the fleet's system (`FUN_00555b30` takes
+/// both ends' systems, `FUN_00555540`).
+#[must_use]
+pub fn delivery_system(
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    system: SystemKey,
+    area: ProductionArea,
+) -> SystemKey {
+    manufacturing
+        .destination_fleet(system, area)
+        .and_then(|fleet| world.fleets.get(fleet))
+        .map_or_else(
+            || manufacturing.destination(system, area).unwrap_or(system),
+            |fleet| fleet.location,
+        )
+}
+
 /// The `0x300` handler (`Event300_GameObjExistingChanged_Handle`,
 /// `FUN_005140c0`) runs in the tick after the order: the product's
 /// Existing change makes its spare real (`FUN_004fe630`) and numbers it
@@ -414,14 +499,22 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
         for &id in &held[kept..] {
             remove(world, id);
         }
+        // The manager's fleet Destination applies to the units that take
+        // its Destination system (set_destination rewrites them all).
+        let fleet_target = |item: &QueueItem| {
+            manufacturing
+                .destination_fleet(yard, area)
+                .filter(|_| item.destination == manufacturing.destination(yard, area))
+        };
         // Destination changes and lost fleets.
         for (&id, item) in held[..kept].iter().zip(&items) {
             let target = item.destination.unwrap_or(yard);
+            let target_fleet = fleet_target(item);
             let Some(product) = world.products.get(id).cloned() else {
                 continue;
             };
             let lost = container_system(world, product.container).is_none();
-            if product.target == target && !lost {
+            if product.target == target && product.target_fleet == target_fleet && !lost {
                 continue;
             }
             let Some(mut product) = world.products.take(id) else {
@@ -431,7 +524,14 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
                 drop_if_emptied(world, product.container);
             }
             product.target = target;
-            product.container = place(world, product.kind, target, product.is_alliance);
+            product.target_fleet = target_fleet;
+            product.container = place_for(
+                world,
+                product.kind,
+                target,
+                product.is_alliance,
+                target_fleet,
+            );
             let at = world.products.items.partition_point(|p| p.id < id);
             world.products.items.insert(at, product);
         }
@@ -440,8 +540,9 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
                 break;
             }
             let target = item.destination.unwrap_or(yard);
+            let target_fleet = fleet_target(item);
             let is_alliance = is_alliance_of(world, item.kind, yard);
-            let container = place(world, item.kind, target, is_alliance);
+            let container = place_for(world, item.kind, target, is_alliance, target_fleet);
             world.products.last_id += 1;
             let id = world.products.last_id;
             world.products.items.push(Product {
@@ -452,6 +553,7 @@ pub fn reconcile(world: &mut GameWorld, manufacturing: &ManufacturingState) {
                 yard,
                 target,
                 container,
+                target_fleet,
             });
         }
     }

@@ -302,8 +302,9 @@ pub enum Scenario {
     BuildSelectionDefensesDestination = 94,
     /// As `BuildSelectionDefensesDestination` with a player's fleet moved to
     /// the secondary system and its Fleet window in place of the Defenses
-    /// window: a band's Destination released on the fleet is refused (A0
-    /// build-selection2/30, 32, 35).
+    /// window: the ships band's Destination released on the fleet takes it,
+    /// the facilities band's is refused (`FUN_00537180`: only a
+    /// construction manager, `0xa0..0xa1`, wants a system).
     BuildSelectionFleetDestination = 95,
     /// As `FleetAssault` with no regiment of the other side's on the
     /// planet: the assault takes the system, and the Assault Summary reads

@@ -1117,9 +1117,13 @@ async function pendingSquadronCase(page, faction, directory, source) {
 
 // Fixture code 96 is Scenario::BuildSelectionFleetDestination (95) plus
 // one: the player's fleet at the secondary system, its Fleet window at the
-// galaxy view's left. A band's Destination released on the fleet is
-// refused: a production manager's must be a system (FUN_00537180, 1/0x25),
-// as A0 build-selection2/30, 32, 35 kept the band's.
+// galaxy view's left. FUN_00537180 holds only a construction manager
+// (0xa0..0xa1) to a system (else 1/0x25); a shipyard manager (0xa2..0xa3)
+// takes a fleet (0x08..0x0f). So the ships band's Destination released on
+// the fleet names the fleet (the band shows its DeploymentKey, the
+// TargetKey while idle: FUN_0052ac40, FUN_004591b0), and the facilities
+// band's is refused and keeps its own. (A0 build-selection2/30 and 32
+// released on the other side's Fleet 1 at Yavin, which kept the band's.)
 async function fleetDestinationCase(page, faction, directory, log) {
   const fixtureCode = 96 | (faction.byte << 8);
   await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
@@ -1128,19 +1132,38 @@ async function fleetDestinationCase(page, faction, directory, log) {
   await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
     null, { timeout: 10_000 });
   const before = await production(page);
-  const ships = before.bands.find(({ area }) => area === "ships");
+  const band = (state, area) => state.bands.find((value) => value.area === area);
+  const ships = band(before, "ships");
   const home = ships.destination;
-  await bandOrder(page, ships, "destination_row", directory, "fleet-destination");
   // The Fleet window's first entry, in its left list at (4..95, 29..).
-  await click(page, { x: faction.galaxy.x + 5 + 40, y: faction.galaxy.y + 5 + 42 });
+  const fleetPoint = { x: faction.galaxy.x + 5 + 40, y: faction.galaxy.y + 5 + 42 };
+  await bandOrder(page, ships, "destination_row", directory, "fleet-destination");
+  await click(page, fleetPoint);
   await page.mouse.move(2, 2);
-  await log("the fleet release is refused",
+  const set = await log("the ships band takes the fleet",
+    /command=0x214 destination=production_destination status=set areas=1 to_fleet=(.+)$/);
+  const fleet = set.match(/to_fleet=(.+)$/)[1];
+  await frames(page, 4);
+  const taken = await production(page);
+  fs.writeFileSync(path.join(directory, "fleet-destination.png"), await page.screenshot({ animations: "disabled" }));
+  assert.equal(band(taken, "ships").lines[2], `Destination: ${fleet}`, JSON.stringify(band(taken, "ships")));
+  assert.notEqual(band(taken, "ships").destination, home, "the ships band kept its Destination system");
+
+  const facilities = band(taken, "facilities");
+  const facilitiesHome = facilities.lines[2];
+  await bandOrder(page, facilities, "destination_row", directory, "fleet-destination-facilities");
+  await click(page, fleetPoint);
+  await page.mouse.move(2, 2);
+  await log("the facilities band refuses the fleet",
     /command=0x214 destination=production_destination status=refused reason=0x25$/);
   await frames(page, 4);
-  const after = (await production(page)).bands.find(({ area }) => area === "ships").destination;
-  fs.writeFileSync(path.join(directory, "fleet-destination.png"), await page.screenshot({ animations: "disabled" }));
-  assert.equal(after, home, "the refused release changed the band's Destination");
-  return { home, after };
+  const after = await production(page);
+  fs.writeFileSync(path.join(directory, "fleet-destination-facilities.png"),
+    await page.screenshot({ animations: "disabled" }));
+  assert.equal(band(after, "facilities").lines[2], facilitiesHome,
+    "the refused release changed the facilities band's Destination");
+  assert.equal(band(after, "ships").lines[2], `Destination: ${fleet}`);
+  return { home, fleet, facilities: facilitiesHome };
 }
 
 // Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.

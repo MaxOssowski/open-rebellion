@@ -62,6 +62,15 @@ pub enum PanelAction {
         area: Option<rebellion_core::manufacturing::ProductionArea>,
         destination: SystemKey,
     },
+    /// Destination (`0x214`) released on a fleet: `system`'s `area`
+    /// (a shipyard or training manager) delivers aboard `fleet`, standing at
+    /// `at` (`ManufacturingState::set_fleet_destination`).
+    SetFleetDestination {
+        system: SystemKey,
+        area: rebellion_core::manufacturing::ProductionArea,
+        fleet: FleetKey,
+        at: SystemKey,
+    },
     /// Rename (`0x203`) issued from its edit: `FUN_004f6e60` sets a fleet's
     /// or, with `ship`, one of its capital ships' name.
     Rename {
@@ -254,6 +263,7 @@ impl PanelAction {
             Self::Retire(_)
                 | Self::JoinFleet { .. }
                 | Self::SetDestination { .. }
+                | Self::SetFleetDestination { .. }
                 | Self::Rename { .. }
                 | Self::RenameProduct { .. }
                 | Self::CreateFleet { .. }

@@ -21,7 +21,7 @@ use std::collections::{HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{CapitalShipKey, DatId, FighterKey, SystemKey};
+use crate::ids::{CapitalShipKey, DatId, FighterKey, FleetKey, SystemKey};
 
 // ---------------------------------------------------------------------------
 // BuildableKind
@@ -347,13 +347,68 @@ impl ProductionQueue {
 /// `0xa0..0xaf`, `FUN_0052c170`): the agent's Destination (`0x214`) and
 /// build orders act on construction managers (`0xa0..0xa1`) and training
 /// managers (`0xa4..0xa5`; `ghidra/notes/manage-automation.md`), and the
-/// manual gives each area its own Destination (p. 84, Fig. 3.75). hyp:
-/// shipyards are `0xa2..0xa3`.
+/// manual gives each area its own Destination (p. 84, Fig. 3.75).
+/// Shipyards are `0xa2..0xa3`: the manager's Status titles that family
+/// 6185 "Ship Construction" (`FUN_0044acd0`, `status-window.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ProductionArea {
     Shipyard,
     TrainingFacility,
     ConstructionYard,
+}
+
+/// Why a Destination (`0x214`) released on a fleet is refused
+/// ([`fleet_destination_area`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FleetDestinationRefusal {
+    /// The team holds a construction manager (`0xa0..0xa1`): `FUN_00537180`
+    /// sends it through `FUN_00553410` and wants a system, else `1`/`0x25`.
+    /// The facility icon's team is every manager of the system
+    /// (`FUN_00512700` kind 4, `FUN_0052c170`), so it always holds one.
+    Construction,
+    /// The fleet is the other side's. A0 build-selection2/30 and 32 (the
+    /// Empire's ships band released on the Alliance's Fleet 1 at Yavin)
+    /// kept the band's Destination; the refusing check is not traced.
+    OtherSide,
+}
+
+impl FleetDestinationRefusal {
+    /// The status the order logs: `0x25` for [`Self::Construction`]; none
+    /// is traced for [`Self::OtherSide`].
+    #[must_use]
+    pub const fn status(self) -> Option<u32> {
+        match self {
+            // FUN_00537180 after FUN_00553410: {1, 0x25}.
+            Self::Construction => Some(0x25),
+            Self::OtherSide => None,
+        }
+    }
+}
+
+/// The Destination order (`0x214`) on `area` (a band's own manager), or on
+/// every manager of the system (`None`, the facility icon), released on
+/// `fleet`, for the side `is_alliance`: the area that takes the fleet, or
+/// why the order is refused. `FUN_00537180` holds only construction
+/// managers (`0xa0..0xa1`) to a system; a shipyard (`0xa2..0xa3`) or
+/// training manager (`0xa4..0xa5`) takes a system, a fleet (`0x08..0x0f`)
+/// or a capital ship (`0x14..0x1b`).
+pub fn fleet_destination_area(
+    world: &crate::world::GameWorld,
+    area: Option<ProductionArea>,
+    fleet: FleetKey,
+    is_alliance: bool,
+) -> Result<ProductionArea, FleetDestinationRefusal> {
+    let area = area
+        .filter(|area| area.takes_fleet_destination())
+        .ok_or(FleetDestinationRefusal::Construction)?;
+    if world
+        .fleets
+        .get(fleet)
+        .is_none_or(|value| value.is_alliance != is_alliance)
+    {
+        return Err(FleetDestinationRefusal::OtherSide);
+    }
+    Ok(area)
 }
 
 impl ProductionArea {
@@ -362,6 +417,15 @@ impl ProductionArea {
         Self::TrainingFacility,
         Self::ConstructionYard,
     ];
+
+    /// Whether this area's manager takes a fleet as its Destination:
+    /// `FUN_00537180` holds only a construction manager (`0xa0..0xa1`) to
+    /// a system; a shipyard (`0xa2..0xa3`) or training manager
+    /// (`0xa4..0xa5`) takes a fleet (`0x08..0x0f`) too.
+    #[must_use]
+    pub const fn takes_fleet_destination(self) -> bool {
+        !matches!(self, Self::ConstructionYard)
+    }
 
     /// The area that builds `kind`.
     #[must_use]
@@ -401,6 +465,13 @@ pub struct ManufacturingState {
     /// `ManuMgr_SetReserved` `FUN_00529710`, the manager's `Reserved`): the
     /// player's agent leaves them alone (manual p. 86).
     reserved: std::collections::BTreeSet<(SystemKey, ProductionArea)>,
+    /// The production areas whose Destination (`0x214`, manager TargetKey
+    /// `+0x7c`) is a fleet, with the fleet; `destinations` then holds the
+    /// system the fleet stood at when the order was given. Only a shipyard
+    /// or training manager takes a fleet ([`Self::set_fleet_destination`]).
+    /// Saved by the save's last field (save v138), so skipped here.
+    #[serde(skip)]
+    fleet_destinations: std::collections::BTreeMap<(SystemKey, ProductionArea), FleetKey>,
 }
 
 impl ManufacturingState {
@@ -410,6 +481,7 @@ impl ManufacturingState {
             queues: HashMap::new(),
             destinations: HashMap::new(),
             reserved: std::collections::BTreeSet::new(),
+            fleet_destinations: std::collections::BTreeMap::new(),
         }
     }
 
@@ -535,6 +607,7 @@ impl ManufacturingState {
         area: ProductionArea,
         destination: SystemKey,
     ) {
+        self.fleet_destinations.remove(&(system, area));
         let target = (destination != system).then_some(destination);
         match target {
             Some(destination) => self.destinations.insert((system, area), destination),
@@ -545,6 +618,53 @@ impl ManufacturingState {
                 item.destination = target;
             }
         }
+    }
+
+    /// The Destination order (`0x214`) on `system`'s `area` released on
+    /// `fleet`, standing at `at`. `FUN_00537180` refuses any destination but
+    /// a system (`0x90..0x97`) for a construction manager (`0xa0..0xa1`,
+    /// then `FUN_00553410`, else `1`/`0x25`), and takes a system, a fleet
+    /// (`0x08..0x0f`) or a capital ship (`0x14..0x1b`) for every other
+    /// manager, so a construction yard's area refuses here (`false`). The
+    /// products are then placed aboard the fleet
+    /// ([`crate::products::reconcile`], `FUN_00552300`).
+    pub fn set_fleet_destination(
+        &mut self,
+        system: SystemKey,
+        area: ProductionArea,
+        fleet: FleetKey,
+        at: SystemKey,
+    ) -> bool {
+        if !area.takes_fleet_destination() {
+            return false;
+        }
+        self.set_destination(system, area, at);
+        self.fleet_destinations.insert((system, area), fleet);
+        true
+    }
+
+    /// The fleet `system`'s `area` delivers to, when its Destination is one
+    /// ([`Self::set_fleet_destination`]).
+    #[must_use]
+    pub fn destination_fleet(&self, system: SystemKey, area: ProductionArea) -> Option<FleetKey> {
+        self.fleet_destinations.get(&(system, area)).copied()
+    }
+
+    /// Every fleet Destination, in key order, for the save.
+    #[must_use]
+    pub fn fleet_destinations(&self) -> Vec<((SystemKey, ProductionArea), FleetKey)> {
+        self.fleet_destinations
+            .iter()
+            .map(|(&key, &fleet)| (key, fleet))
+            .collect()
+    }
+
+    /// Put the saved fleet Destinations back ([`Self::fleet_destinations`]).
+    pub fn restore_fleet_destinations(
+        &mut self,
+        fleets: &[((SystemKey, ProductionArea), FleetKey)],
+    ) {
+        self.fleet_destinations = fleets.iter().copied().collect();
     }
 
     /// One yard cycle of `system`'s `area` has ended on day `tick`: add

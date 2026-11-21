@@ -1,6 +1,6 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v137, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v136 migrations"
+description: "Native and browser save v138, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v136 migrations"
 category: "agent-docs"
 created: 2026-03-15
 updated: 2026-11-21
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v137. v116 to v136 still load
+serializable snapshot. The current format is v138. v116 to v137 still load
 through their migrations (below); no other version does.
 
-## Native format (v137)
+## Native format (v138)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -83,6 +83,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `research_planner_bits` | `(Vec<u32>, Option<Vec<u32>>)` (v134, the last field): each research planner's `+0x20` bits (`ResearchPlanner::pending`: `0x80` past its failure limit, the Mission Report's check and abort), of `ai` then `ai2`, in the planners' order. The AI's own encoding skips them; the loaders put them back (`save::restore_research_bits`). An older save has none |
 | `ai_module_a` | `(ModuleA, Option<ModuleA>)` (v136, the last field): module `0xa` of `ai` then `ai2` (`FUN_004cc6b0`: its cycle, planner walk, site, destination, class, counts and sites). The AI's own encoding skips it; the loaders put it back (`save::restore_module_a`). An older save ran none and starts it afresh |
 | `ai_module9` | `(Module9, Option<Module9>)` (v137, the last field): module 9 of `ai` then `ai2` (`FUN_004cf0a0`: its state, planner walk and the headquarters planners, each with its state, held ships, fleet, system, balance and refresh flag). The AI's own encoding skips it; the loaders put it back (`save::restore_module9`). An older save ran none and starts with no planners |
+| `production_fleets` | `(Vec<((SystemKey, ProductionArea), FleetKey)>, Vec<(u64, FleetKey)>)` (v138, the last field): each production area whose Destination (`0x214`) is a fleet (`ManufacturingState::destination_fleet`; a shipyard or training manager may name one, `FUN_00537180`), and each product's fleet target (`Product::target_fleet`) by id. The manufacturing and product encodings skip them; the loaders put them back (`save::restore_production_fleets`). An older save has none |
 | `ai_day` | `rebellion_core::ai_schedule::AiDay` (v132, the last field): the current day's AI passes (the passes the day has, those run, the bombardment stream's state, and the day's end owed: the loyalty watch and the days it closes). The app runs one pass a sub-tick, so a save made within a day resumes at its next pass. A v131 or older save was made between days and loads with a finished day |
 | `system_copy_uprisings` | `SystemCopyUprisings` (v131): each side's copies' uprising bit (`+0x88` bit 2) by the system's id (`ObjectViews::system_uprisings`, `ghidra/notes/fog-of-war.md`). The views' own encoding skips it; the loaders put it back. A v130 or older save's copies take each system's own bit at load (`object_views::seed_uprisings`) |
 
@@ -113,9 +114,9 @@ fingerprint proves only that one recorded logical snapshot matches. F-011B4
 adds exact-artifact native/WASM checkpoint equivalence for the seed-42 fixture;
 interactive app/playtest and combat-path convergence remain open.
 
-## The v116 to v136 migrations
+## The v116 to v137 migrations
 
-The loader reads `SAVE_VERSION` (137), `V136`, `V135`, `V134`, `V133`, `V132`, `V131`, `V130`, `V129`, `V128`, `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
+The loader reads `SAVE_VERSION` (138), `V137`, `V136`, `V135`, `V134`, `V133`, `V132`, `V131`, `V130`, `V129`, `V128`, `V127`, `V126`, `V125`, `V124`, `V123`, `V122`, `V121`, `V120`, `V119`, `V118`, `V117` and
 `MIGRATED_VERSION` (116). Any other version is rejected with a message to
 start a new game.
 
@@ -143,7 +144,9 @@ body before v135 holds the retired tuning configuration after
 are appended, and the old fingerprint is checked with it as its
 `game_config` key (`fingerprint_with`). Every body before v136 lacks
 module `0xa` (`ai_module_a`) and starts it afresh; every body before v137
-lacks module 9 (`ai_module9`) and starts with no planners. A v123 or older save's queued units are placed in their
+lacks module 9 (`ai_module9`) and starts with no planners; every body
+before v138 lacks the production fleet Destinations and loads with none
+(the port refused a fleet Destination before). A v123 or older save's queued units are placed in their
 containers on load (`products::reconcile`); its deliveries stay trips.
 A v127 body has v128's layout, but its blockade map tracked regiments
 aboard fleets, which the original never rolls

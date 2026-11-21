@@ -1716,3 +1716,221 @@ fn a_facility_product_of_the_new_holders_side_stays() {
     let product = &s.world.products.all()[0];
     assert_eq!(product.container, Container::System(s.there));
 }
+
+#[test]
+fn a_shipyard_destination_on_a_fleet_builds_its_ships_aboard_that_fleet() {
+    // FUN_00537180 holds only a construction manager (0xa0..0xa1) to a
+    // system; a shipyard manager's Destination may be a fleet (0x08..0x0f).
+    // The planner FUN_00552300 then tries the fleet itself first
+    // (FUN_00552b10), so the ordered ships wait in it, not in a spare.
+    let mut s = setup();
+    let fleet = carrier(&mut s, 0, 0);
+    s.world.fleets[fleet].location = s.there;
+    assert!(s.manufacturing.set_fleet_destination(
+        s.yard,
+        ProductionArea::Shipyard,
+        fleet,
+        s.there
+    ));
+    s.order(BuildableKind::CapitalShip(s.carrack), 2);
+    assert_eq!(s.world.products.in_fleet(fleet).count(), 2);
+    assert_eq!(s.world.fleets.len(), 1, "no spare was made");
+    assert!(s
+        .world
+        .products
+        .all()
+        .iter()
+        .all(|p| p.target == s.there && p.target_fleet == Some(fleet)));
+    // Completed away from the yard, each travels to the fleet's system
+    // (FUN_005150c0 -> FUN_00556430 from the manager to its container).
+    let name = s.world.products.all()[0].name.clone();
+    let settled = settle(
+        &mut s.world,
+        vec![CompletionEvent {
+            system: s.yard,
+            tick: 3,
+            kind: BuildableKind::CapitalShip(s.carrack),
+            name,
+            fleet: None,
+        }],
+        Vec::new(),
+    );
+    assert_eq!(settled.trips.len(), 1);
+    assert_eq!(settled.trips[0].destination, s.there);
+}
+
+#[test]
+fn a_fleet_destination_set_later_moves_the_queued_ships_and_a_system_one_moves_them_back() {
+    // The Destination's fire (FUN_0052a380) re-places each queued product
+    // (ship-deployment-fleet.md): into the fleet, then into the spare of
+    // the system once the Destination names that system again.
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let spare = s.only_fleet();
+    let fleet = carrier(&mut s, 0, 0);
+    s.manufacturing
+        .set_fleet_destination(s.yard, ProductionArea::Shipyard, fleet, s.yard);
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.products.in_fleet(fleet).count(), 1);
+    assert!(
+        !s.world.fleets.contains_key(spare),
+        "the emptied spare went"
+    );
+    s.manufacturing
+        .set_destination(s.yard, ProductionArea::Shipyard, s.yard);
+    assert_eq!(
+        s.manufacturing
+            .destination_fleet(s.yard, ProductionArea::Shipyard),
+        None
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    assert_eq!(s.world.products.in_fleet(fleet).count(), 0);
+    let product = &s.world.products.all()[0];
+    assert_eq!(product.target_fleet, None);
+    assert!(matches!(product.container, Container::Fleet(other) if other != fleet));
+}
+
+#[test]
+fn a_construction_yard_destination_refuses_a_fleet() {
+    // FUN_00537180: a construction manager (0xa0..0xa1) goes through
+    // FUN_00553410 and must name a system (0x90..0x97), else 1/0x25; a
+    // training manager (0xa4..0xa5) takes a fleet.
+    let mut s = setup();
+    let fleet = carrier(&mut s, 0, 0);
+    assert!(!s.manufacturing.set_fleet_destination(
+        s.yard,
+        ProductionArea::ConstructionYard,
+        fleet,
+        s.there
+    ));
+    assert_eq!(
+        s.manufacturing
+            .destination(s.yard, ProductionArea::ConstructionYard),
+        None
+    );
+    assert!(s.manufacturing.set_fleet_destination(
+        s.yard,
+        ProductionArea::TrainingFacility,
+        fleet,
+        s.there
+    ));
+    assert_eq!(
+        s.manufacturing
+            .destination_fleet(s.yard, ProductionArea::TrainingFacility),
+        Some(fleet)
+    );
+}
+
+#[test]
+fn a_squadron_for_a_fleet_destination_goes_aboard_only_with_room() {
+    // FUN_00552300 weighs the fleet's usable ships' room (FUN_00550700);
+    // with none the original refuses (0x27). port: the unit then waits on
+    // the fleet's system.
+    let mut s = setup();
+    let fleet = carrier(&mut s, 1, 0);
+    s.world.fleets[fleet].location = s.there;
+    s.manufacturing
+        .set_fleet_destination(s.yard, ProductionArea::Shipyard, fleet, s.there);
+    s.order(BuildableKind::Fighter(s.tie), 2);
+    let containers: Vec<Container> = s.world.products.all().iter().map(|p| p.container).collect();
+    assert_eq!(
+        containers,
+        [Container::Fleet(fleet), Container::System(s.there)]
+    );
+}
+
+#[test]
+fn products_restore_their_fleet_targets_by_id() {
+    let mut s = setup();
+    let first = carrier(&mut s, 0, 0);
+    let second = carrier(&mut s, 0, 0);
+    s.manufacturing
+        .set_fleet_destination(s.yard, ProductionArea::Shipyard, first, s.yard);
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    s.manufacturing
+        .set_fleet_destination(s.yard, ProductionArea::TrainingFacility, second, s.yard);
+    s.manufacturing.enqueue(
+        s.yard,
+        QueueItem::new(BuildableKind::SpecialForce(DatId::new(0x3c00_0001)), 10),
+    );
+    reconcile(&mut s.world, &s.manufacturing);
+    let targets = s.world.products.fleet_targets();
+    assert_eq!(targets.len(), 2);
+    assert_ne!(targets[0].1, targets[1].1);
+    // The manufacturing side round-trips too.
+    let saved = s.manufacturing.fleet_destinations();
+    assert_eq!(saved.len(), 2);
+    let mut manufacturing = ManufacturingState::new();
+    manufacturing.restore_fleet_destinations(&saved);
+    assert_eq!(
+        manufacturing.destination_fleet(s.yard, ProductionArea::TrainingFacility),
+        Some(second)
+    );
+    assert_eq!(manufacturing.fleet_destinations(), saved);
+    let mut loaded = s.world.products.clone();
+    loaded.restore_fleet_targets(&[]);
+    assert!(loaded.all().iter().all(|p| p.target_fleet.is_none()));
+    loaded.restore_fleet_targets(&targets);
+    assert_eq!(loaded, s.world.products);
+}
+
+#[test]
+fn a_band_destination_on_a_fleet_of_its_side_names_its_area_and_the_icon_s_is_refused() {
+    // FUN_00537180: a shipyard (0xa2..0xa3) or training manager
+    // (0xa4..0xa5) takes a fleet; a construction manager (0xa0..0xa1)
+    // wants a system, else 1/0x25, and the facility icon's team
+    // (FUN_00512700 kind 4) holds every manager of the system. A0
+    // build-selection2/30, 32: the other side's fleet left the band's.
+    use crate::manufacturing::{fleet_destination_area, FleetDestinationRefusal};
+    let mut s = setup();
+    let own = carrier(&mut s, 0, 0);
+    assert_eq!(
+        fleet_destination_area(&s.world, Some(ProductionArea::Shipyard), own, false),
+        Ok(ProductionArea::Shipyard)
+    );
+    assert_eq!(
+        fleet_destination_area(&s.world, Some(ProductionArea::TrainingFacility), own, false),
+        Ok(ProductionArea::TrainingFacility)
+    );
+    let construction = Err(FleetDestinationRefusal::Construction);
+    assert_eq!(
+        fleet_destination_area(&s.world, Some(ProductionArea::ConstructionYard), own, false),
+        construction
+    );
+    assert_eq!(
+        fleet_destination_area(&s.world, None, own, false),
+        construction
+    );
+    assert_eq!(FleetDestinationRefusal::Construction.status(), Some(0x25));
+    assert_eq!(
+        fleet_destination_area(&s.world, Some(ProductionArea::Shipyard), own, true),
+        Err(FleetDestinationRefusal::OtherSide)
+    );
+    assert_eq!(FleetDestinationRefusal::OtherSide.status(), None);
+}
+
+#[test]
+fn a_fleet_destination_delivers_to_where_the_fleet_stands_now() {
+    // FUN_00555b30 takes the system of each end (FUN_00555540): a product
+    // bound for a fleet travels to the fleet's system.
+    let mut s = setup();
+    let fleet = carrier(&mut s, 0, 0);
+    let area = ProductionArea::Shipyard;
+    assert_eq!(
+        delivery_system(&s.world, &s.manufacturing, s.yard, area),
+        s.yard
+    );
+    s.manufacturing
+        .set_fleet_destination(s.yard, area, fleet, s.yard);
+    s.world.fleets[fleet].location = s.there;
+    assert_eq!(
+        delivery_system(&s.world, &s.manufacturing, s.yard, area),
+        s.there
+    );
+    s.manufacturing.set_destination(s.yard, area, s.there);
+    s.world.fleets[fleet].location = s.yard;
+    assert_eq!(
+        delivery_system(&s.world, &s.manufacturing, s.yard, area),
+        s.there
+    );
+}

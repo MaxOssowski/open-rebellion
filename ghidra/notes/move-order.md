@@ -579,9 +579,13 @@ built:
 5. Routes via `FUN_00551060`, `FUN_00551190`, `FUN_005513a0`.
 6. Per command whose object's `+0x58` is zero:
    - resolves the destination again through `FUN_00504e60` (`1`/`0x22`);
-   - an object of family `0xa0..0xa2` calls `FUN_00553410` on the
-     destination;
-   - otherwise the checks read the **destination**: `+0x50` bit 2 clear gives
+   - an object of family `0xa0..0xa1` (the range test is `0xa0 <= family <
+     0xa2`; the construction managers, `status-window.md`)
+     calls `FUN_00553410` on the destination, then wants a system
+     (`0x90..0x97`), else `1`/`0x25`;
+   - otherwise (the shipyard managers `0xa2..0xa3`, the training managers
+     `0xa4..0xa5`, any other team member) the checks read the
+     **destination**: `+0x50` bit 2 clear gives
      `1`/`0x20`, bit 4 set `1`/`0x21`, bit 3 set on a non-system `1`/`0x22`;
      the destination must be a system (`0x90..0x98`), a fleet (`0x08..0x10`)
      or a capital ship (`0x14..0x1c`), else `1`/`0x25`;

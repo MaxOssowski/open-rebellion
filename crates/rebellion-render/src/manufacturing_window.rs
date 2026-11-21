@@ -158,13 +158,19 @@ pub fn band(
     system: SystemKey,
     area: ProductionArea,
 ) -> Band {
-    let destination_system = manufacturing.destination(system, area).unwrap_or(system);
+    let destination_system =
+        rebellion_core::products::delivery_system(world, manufacturing, system, area);
+    // An idle band names the manager's DeploymentKey, its TargetKey
+    // (FUN_0052ac40, FUN_004591b0): a fleet when the Destination is one.
+    let target_fleet = manufacturing
+        .destination_fleet(system, area)
+        .and_then(|fleet| world.fleet_name(fleet));
     let destination = format!(
         "Destination: {}",
-        world
+        target_fleet.unwrap_or_else(|| world
             .systems
             .get(destination_system)
-            .map_or("", |value| value.name.as_str())
+            .map_or("", |value| value.name.as_str()))
     );
     let queue = manufacturing
         .queue(system, area)
@@ -902,6 +908,58 @@ mod tests {
         world.set_ship_spare(system, true, spare);
         assert_eq!(shown(&world).destination, "Destination: Fleet 2");
         assert_eq!(shown(&world).status, "Carrack Light Cruiser 2");
+    }
+
+    // An idle band names its manager's DeploymentKey, the TargetKey with no
+    // product (FUN_0052ac40, FUN_004591b0): a fleet when a shipyard's or
+    // training manager's Destination is one (FUN_00537180). A ship ordered
+    // then waits in that fleet, which the band names too.
+    #[test]
+    fn a_band_whose_destination_is_a_fleet_names_the_fleet() {
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Coruscant", ALLIANCE);
+        let away = add_system(&mut world, "Denab", ALLIANCE);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0041),
+            name: "Carrack Light Cruiser".into(),
+            is_alliance: true,
+            ..CapitalShipClass::default()
+        });
+        let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+            location: away,
+            capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, true)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[away].fleets.push(fleet);
+        let name = world.fleet_name(fleet).expect("a named fleet").to_owned();
+        let mut manufacturing = ManufacturingState::new();
+        assert!(manufacturing.set_fleet_destination(system, ProductionArea::Shipyard, fleet, away));
+        let shown = |world: &GameWorld, manufacturing: &ManufacturingState, area| {
+            band(world, manufacturing, true, system, area).destination
+        };
+        assert_eq!(
+            shown(&world, &manufacturing, ProductionArea::Shipyard),
+            format!("Destination: {name}")
+        );
+        assert_eq!(
+            shown(&world, &manufacturing, ProductionArea::TrainingFacility),
+            "Destination: Coruscant"
+        );
+        manufacturing.build(
+            system,
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(&mut world),
+            1,
+        );
+        rebellion_core::products::reconcile(&mut world, &manufacturing);
+        assert_eq!(world.products.in_fleet(fleet).count(), 1);
+        assert_eq!(
+            shown(&world, &manufacturing, ProductionArea::Shipyard),
+            format!("Destination: {name}")
+        );
     }
 
     // FUN_00457c90: a product's name, portrait and units left, "Building: " for

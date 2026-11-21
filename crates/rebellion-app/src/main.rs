@@ -881,6 +881,10 @@ impl LiveCampaign<'_> {
             research_planner_bits: rebellion_data::save::research_bits(self.ai, self.ai2.as_ref()),
             ai_module_a: rebellion_data::save::module_a(self.ai, self.ai2.as_ref()),
             ai_module9: rebellion_data::save::module9(self.ai, self.ai2.as_ref()),
+            production_fleets: rebellion_data::save::production_fleets(
+                self.manufacturing,
+                &self.world.products,
+            ),
         }
     }
 
@@ -7729,20 +7733,30 @@ async fn main() {
                                     area,
                                     destination,
                                 }),
-                                // FUN_00537180: a production manager's
-                                // (0xa0..0xa2) Destination must be a system
-                                // (0x90..0x97), else 1/0x25; a fleet is
-                                // refused and the band keeps its own (A0
-                                // build-selection2/30, 32, 35).
+                                // FUN_00537180: a construction manager's
+                                // (0xa0..0xa1) Destination must be a system,
+                                // else 1/0x25; a shipyard or training
+                                // manager takes a fleet of its side.
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::Destination { .. },
-                                    target: ReleaseTarget::Fleet { .. },
-                                }) => {
-                                    macroquad::logging::info!(
-                                        "[interface] command=0x214 destination=production_destination status=refused reason={:#x}",
-                                        0x25
-                                    );
-                                }
+                                    order: TargetOrder::Destination { system, area },
+                                    target: ReleaseTarget::Fleet { fleet, system: at },
+                                }) => match rebellion_core::manufacturing::fleet_destination_area(
+                                    &world,
+                                    area,
+                                    fleet,
+                                    player_faction == MissionFaction::Alliance,
+                                ) {
+                                    Ok(area) => panel_actions.push(PanelAction::SetFleetDestination {
+                                        system,
+                                        area,
+                                        fleet,
+                                        at,
+                                    }),
+                                    Err(refusal) => macroquad::logging::info!(
+                                        "[interface] command=0x214 destination=production_destination status=refused reason={}",
+                                        refusal.status().map_or_else(|| "other_side".to_owned(), |status| format!("{status:#x}"))
+                                    ),
+                                },
                                 // FUN_0049e380 takes the destination;
                                 // the agent then finds the producer,
                                 // points it there and opens Build
@@ -11558,6 +11572,19 @@ fn apply_panel_action(
                     .systems
                     .get(destination)
                     .map_or("", |value| value.name.as_str())
+            );
+        }
+        PanelAction::SetFleetDestination {
+            system,
+            area,
+            fleet,
+            at,
+        } => {
+            let set = mfg_state.set_fleet_destination(system, area, fleet, at);
+            macroquad::logging::info!(
+                "[interface] command=0x214 destination=production_destination status={} areas=1 to_fleet={}",
+                if set { "set" } else { "refused" },
+                world.fleet_name(fleet).unwrap_or("")
             );
         }
         PanelAction::RenameProduct { product, name } => {

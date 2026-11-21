@@ -380,7 +380,7 @@ pub fn estimate(
     unallocated: i32,
 ) -> BuildEstimate {
     let (refined, maintenance) = unit_costs(world, kind).unwrap_or_default();
-    let destination = manufacturing.destination(system, area).unwrap_or(system);
+    let destination = crate::products::delivery_system(world, manufacturing, system, area);
     let maintenance = maintenance.saturating_mul(count);
     BuildEstimate {
         refined_material: refined.saturating_mul(count),

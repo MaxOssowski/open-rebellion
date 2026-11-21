@@ -75,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 137;
+pub const SAVE_VERSION: u32 = 138;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -164,7 +164,11 @@ pub const V135: u32 = 135;
 /// last field.
 pub const V136: u32 = 136;
 
-/// Whether a save of `version` loads (the current one, or v116 to v136
+/// v137: the save without the production fleet Destinations
+/// (`SaveState::production_fleets`), its last field.
+pub const V137: u32 = 137;
+
+/// Whether a save of `version` loads (the current one, or v116 to v137
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -334,6 +338,11 @@ fn migrate_body(
         // strategy adds them afresh.
         body.extend(bincode::serialize(&AiModule9::default())?);
     }
+    if version <= V137 {
+        // An older save's production areas named no fleet as their
+        // Destination: the port refused one.
+        body.extend(bincode::serialize(&ProductionFleets::default())?);
+    }
     Ok((body, tuning))
 }
 
@@ -480,6 +489,11 @@ pub fn decode_body(
     );
     state.world.object_views = state.object_views.clone();
     state.world.products = state.products.clone();
+    restore_production_fleets(
+        &mut state.manufacturing,
+        &mut state.world.products,
+        &state.production_fleets,
+    );
     rebellion_core::squadrons::restore_damaged_squadrons(
         &mut state.world,
         &mut state.troop_transport.squadrons,
@@ -654,6 +668,9 @@ fn fingerprint_with(
 ) -> anyhow::Result<StateFingerprint> {
     let mut canonical_state = serde_json::to_value(state)?;
     if let serde_json::Value::Object(fields) = &mut canonical_state {
+        if version <= V137 {
+            fields.remove("production_fleets");
+        }
         if version <= V136 {
             fields.remove("ai_module9");
         }
@@ -905,6 +922,47 @@ pub struct SaveState {
     /// into the AI states, whose own encoding skips it
     /// ([`restore_module9`]).
     pub ai_module9: AiModule9,
+    // ── v138: the production fleet Destinations ─────────────────────────
+    /// Each production area whose Destination (`0x214`) is a fleet
+    /// (`ManufacturingState::destination_fleet`), and each product's fleet
+    /// target (`Product::target_fleet`) by id. It stays the last field: an
+    /// older body is read by appending empty ones ([`migrate_body`]). The
+    /// loader puts it back into `manufacturing` and `products`, whose own
+    /// encodings skip it ([`restore_production_fleets`]).
+    pub production_fleets: ProductionFleets,
+}
+
+/// [`SaveState::production_fleets`]: the areas' fleet Destinations and the
+/// products' fleet targets.
+pub type ProductionFleets = (
+    Vec<(
+        (
+            rebellion_core::ids::SystemKey,
+            rebellion_core::manufacturing::ProductionArea,
+        ),
+        rebellion_core::ids::FleetKey,
+    )>,
+    Vec<(u64, rebellion_core::ids::FleetKey)>,
+);
+
+/// The fleet Destinations of `manufacturing` and the fleet targets of
+/// `products` for [`SaveState::production_fleets`].
+#[must_use]
+pub fn production_fleets(
+    manufacturing: &rebellion_core::manufacturing::ManufacturingState,
+    products: &rebellion_core::products::Products,
+) -> ProductionFleets {
+    (manufacturing.fleet_destinations(), products.fleet_targets())
+}
+
+/// Put `fleets` back into `manufacturing` and `products`.
+pub fn restore_production_fleets(
+    manufacturing: &mut rebellion_core::manufacturing::ManufacturingState,
+    products: &mut rebellion_core::products::Products,
+    fleets: &ProductionFleets,
+) {
+    manufacturing.restore_fleet_destinations(&fleets.0);
+    products.restore_fleet_targets(&fleets.1);
 }
 
 /// [`SaveState::ai_module9`]: module 9 of `ai` and of `ai2`.
@@ -1659,6 +1717,7 @@ pub(crate) mod tests {
             research_planner_bits: AiResearchBits::default(),
             ai_module_a: AiModuleA::default(),
             ai_module9: AiModule9::default(),
+            production_fleets: ProductionFleets::default(),
         }
     }
 
@@ -2140,7 +2199,24 @@ pub(crate) mod tests {
 
     /// The length of the fresh module 9 v137 added.
     fn module9_tail() -> usize {
-        bincode::serialize(&AiModule9::default()).unwrap().len()
+        bincode::serialize(&AiModule9::default())
+            .unwrap()
+            .len()
+            + production_fleets_tail()
+    }
+
+    /// The length of the empty production fleets v138 added.
+    fn production_fleets_tail() -> usize {
+        bincode::serialize(&ProductionFleets::default())
+            .unwrap()
+            .len()
+    }
+
+    /// `state` written as a v137 file: no production fleets. `state` holds
+    /// none.
+    fn write_v137(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        assert_eq!(state.production_fleets, ProductionFleets::default());
+        write_old(saves_dir, state, V137, production_fleets_tail())
     }
 
     /// `state` written as a v136 file: no module 9. `state` holds a fresh
@@ -2738,6 +2814,80 @@ pub(crate) mod tests {
             compute_state_fingerprint(&cleared).unwrap(),
             compute_state_fingerprint(&state).unwrap()
         );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&state).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_v137_save_loads_with_no_fleet_destination() {
+        // v138 keeps each production area's fleet Destination and each
+        // product's fleet target (SaveState::production_fleets); the port
+        // refused a fleet Destination before, so a v137 save had none.
+        let saves_dir = tmp_dir("v137_fleet_migration");
+        let state = minimal_save_state();
+        write_v137(&saves_dir, &state);
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v137 save migrates");
+        assert_eq!(loaded.production_fleets, ProductionFleets::default());
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        assert_eq!(
+            fingerprint_as(&state, V137).unwrap(),
+            fingerprint_as(&loaded, V137).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_save_keeps_a_shipyards_fleet_destination_and_its_products_targets() {
+        // FUN_00537180 lets a shipyard manager (0xa2..0xa3) name a fleet;
+        // the manufacturing and product encodings skip it, so the save
+        // carries it in its last field and the loader puts it back.
+        use rebellion_core::manufacturing::{BuildableKind, ProductionArea, QueueItem};
+        use rebellion_core::world::{CapitalShipClass, Fleet, ShipInstance};
+        let saves_dir = tmp_dir("production_fleets");
+        let mut state = minimal_save_state();
+        let yard = state.world.systems.keys().next().expect("a system");
+        let class = state.world.capital_ship_classes.insert(CapitalShipClass {
+            hull: 10,
+            ..CapitalShipClass::default()
+        });
+        let fleet = state.world.insert_fleet(Fleet {
+            location: yard,
+            capital_ships: vec![ShipInstance::new(class, 10, false)],
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        state.world.systems[yard].fleets.push(fleet);
+        assert!(state.manufacturing.set_fleet_destination(
+            yard,
+            ProductionArea::Shipyard,
+            fleet,
+            yard
+        ));
+        let item = QueueItem::new(BuildableKind::CapitalShip(class), 10).ordered(&mut state.world);
+        state.manufacturing.build_units(yard, vec![item]);
+        rebellion_core::products::reconcile(&mut state.world, &state.manufacturing);
+        state.products = state.world.products.clone();
+        state.production_fleets = production_fleets(&state.manufacturing, &state.products);
+        assert_eq!(state.production_fleets.0.len(), 1);
+        assert_eq!(state.production_fleets.1.len(), 1);
+        save_slot(&saves_dir, 0, "Fleet", &state, &[]).unwrap();
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(
+            loaded
+                .manufacturing
+                .destination_fleet(yard, ProductionArea::Shipyard),
+            Some(fleet)
+        );
+        assert_eq!(loaded.products, state.products);
+        assert_eq!(loaded.world.products, state.products);
         assert_eq!(
             meta.state_fingerprint,
             compute_state_fingerprint(&state).unwrap()
