@@ -983,7 +983,7 @@ impl SectorPlanner {
     /// with no enemy fleet or role bound there (`+0x30` forbidding
     /// `0x700201`), seen longest ago (`FUN_0041a3a0`, order 1). Kind 2
     /// (`FUN_004ba0d0`) sends such a lone fleet, when its `values[2]` and
-    /// `values[3]` reach controller `+0x164` and `+0x168` (read as 0), to
+    /// `values[3]` reach controller `+0x164` and `+0x168`, to
     /// the first system of the opponent not yet visited
     /// ([`SectorPlanner::sweep_left`]), which joins the visited list. Kind 5
     /// (`FUN_004b3400`) sends such a lone fleet, when the plan has no base,
@@ -1001,11 +1001,10 @@ impl SectorPlanner {
                 .get(&fleet)
                 .is_some_and(|r| r.flags & 0xa00 == 0);
         if lone && self.kind == 2 {
-            let strong = io
-                .galaxy
-                .fleets
-                .get(&fleet)
-                .is_some_and(|r| r.values[2] >= 0 && r.values[3] >= 0);
+            let strong = io.galaxy.fleets.get(&fleet).is_some_and(|r| {
+                r.values[2] >= io.galaxy.floors.heavy_attack
+                    && r.values[3] >= io.galaxy.floors.laser_defense
+            });
             if let Some(next) = self
                 .sector
                 .filter(|_| strong)
@@ -1027,13 +1026,12 @@ impl SectorPlanner {
         }
         if lone && self.kind == 6 && self.base.is_none() {
             // FUN_004b6b70: with values[2] and values[3] at least
-            // controller +0x164 and +0x168 (read as 0), a random system of
+            // controller +0x164 and +0x168, a random system of
             // the sector without +0x30 0x700201.
-            let strong = io
-                .galaxy
-                .fleets
-                .get(&fleet)
-                .is_some_and(|r| r.values[2] >= 0 && r.values[3] >= 0);
+            let strong = io.galaxy.fleets.get(&fleet).is_some_and(|r| {
+                r.values[2] >= io.galaxy.floors.heavy_attack
+                    && r.values[3] >= io.galaxy.floors.laser_defense
+            });
             if let Some(sector) = self.sector.filter(|_| strong) {
                 let masks = [ANY, ANY, Mask::new(0, 0x70_0201)];
                 if let Some(system) = crate::ai_planner::random_system(io, sector, masks) {
@@ -1215,8 +1213,6 @@ fn settle_role(io: &mut PlannerIo<'_>, fleet: FleetKey) -> Option<AIAction> {
 /// controller `+0x168`), and its troops (`values[9]`) the system's
 /// regiments (`v[23]`) unless it has fighters (`values[19]`). Its regiments
 /// (`values[12]`) must reach the system's garrison need (`v[52]`).
-///
-/// hyp: controller `+0x168` reads as 0.
 fn fleet_assaults(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> bool {
     let (Some(target), Some(record)) = (io.galaxy.system(system), io.galaxy.fleets.get(&fleet))
     else {
@@ -1227,7 +1223,11 @@ fn fleet_assaults(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> boo
     }
     let at = io.world.fleets.get(fleet).map(|f| f.location) == Some(system);
     let v = &target.values;
-    let (shields, troops) = if at { (0, 0) } else { (v[27].max(0), v[23]) };
+    let (shields, troops) = if at {
+        (0, 0)
+    } else {
+        (v[27].max(io.galaxy.floors.laser_defense), v[23])
+    };
     record.values[3] >= shields
         && v[52] <= record.values[12]
         && (record.values[19] > 0 || troops <= record.values[9])
@@ -1271,9 +1271,6 @@ fn land_one(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> Option<AI
 /// Target Military Facilities (`0x220`) when `v[7] + v[18]` is above `x`
 /// and `v[18]` above 0; else General Bombardment (`0x222`) when `v[18]`
 /// or `v[33]` is above 0.
-///
-/// hyp: controller `+0x168` has no writer found and reads as 0, as for
-/// kind 3's wants (`FUN_004b4920`).
 fn bombardment(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> Option<u32> {
     let target = io.galaxy.system(system).filter(|r| r.kind & 4 != 0)?;
     let sector = io
@@ -1287,7 +1284,7 @@ fn bombardment(io: &PlannerIo<'_>, fleet: FleetKey, system: SystemKey) -> Option
     let shields = if location == Some(system) {
         0
     } else {
-        v[27].max(0)
+        v[27].max(io.galaxy.floors.laser_defense)
     };
     if shields > record.values[3] || record.values[6] <= v[8] || v[11] != 0 {
         return None;
@@ -2410,6 +2407,11 @@ mod tests {
         assert_eq!(code(&mut fx), None);
         record(&mut fx, f).values[3] = 3;
         assert_eq!(code(&mut fx), Some(0x222));
+        // Or controller +0x168 (FUN_0042e210) when higher.
+        fx.galaxy.floors.laser_defense = 4;
+        assert_eq!(code(&mut fx), None);
+        record(&mut fx, f).values[3] = 4;
+        assert_eq!(code(&mut fx), Some(0x222));
         // Not the opponent's (+0x30 without 4).
         edit_system(&mut fx, 1, |r| r.kind &= !4);
         assert_eq!(code(&mut fx), None);
@@ -2445,6 +2447,26 @@ mod tests {
             with(&mut fx, |io| bombardment(io, f, fx_system(io, 1))),
             Some(0x222)
         );
+    }
+
+    #[test]
+    fn an_assault_from_elsewhere_needs_the_class_tree_s_laser_floor() {
+        // FUN_004ae240: elsewhere, values[3] must reach the larger of the
+        // system's shields v[27] and controller +0x168 (FUN_0042e210).
+        let mut fx = fixture();
+        let mut p = planner(&fx);
+        let f = held(&mut fx, &mut p, 0, 1);
+        edit_system(&mut fx, 1, |r| {
+            r.kind = 0x24;
+            r.values[27] = 1;
+        });
+        let assaults = |fx: &mut Fx| with(fx, |io| fleet_assaults(io, f, fx_system(io, 1)));
+        record(&mut fx, f).values[3] = 3;
+        assert!(assaults(&mut fx));
+        fx.galaxy.floors.laser_defense = 4;
+        assert!(!assaults(&mut fx));
+        record(&mut fx, f).values[3] = 4;
+        assert!(assaults(&mut fx));
     }
 
     fn fx_system(io: &PlannerIo<'_>, at: usize) -> SystemKey {
@@ -2823,7 +2845,7 @@ mod tests {
     #[test]
     fn kind_two_sends_a_lone_fleet_to_each_system_of_the_opponent_once() {
         // FUN_004ba0d0: one held fleet, without 0xa00, values[2] and [3]
-        // at least controller +0x164/+0x168 (0): the first of
+        // at least controller +0x164/+0x168 (0 in this fixture): the first of
         // FUN_0041a3a0(+0x30 0x20 forbidding 0x700201) not on +0x5c, which
         // joins it; with none, kind 3's chain.
         let setup = || {
@@ -4112,7 +4134,7 @@ mod tests {
     fn kind_six_s_lone_strong_fleet_without_a_base_goes_to_a_system_not_the_side_s() {
         // FUN_004b6b70: one held fleet, no base, record without +0x38
         // 0xa00, values[2] and values[3] at least controller +0x164 and
-        // +0x168 (0): a random system of the sector without +0x30
+        // +0x168 (0 in this fixture): a random system of the sector without +0x30
         // 0x700201, explored or not; then kind 3's chain.
         let mut fx = fixture();
         let mut p = kind_six(&fx);
@@ -4130,6 +4152,14 @@ mod tests {
             assert_eq!(home(&mut fx, &mut p), None);
             record(&mut fx, f).values[at] = 0;
         }
+        // The floors are the class tree's (FUN_0042e210, 0x4b6b70).
+        fx.galaxy.floors.heavy_attack = 5;
+        assert_eq!(home(&mut fx, &mut p), None);
+        record(&mut fx, f).values[2] = 5;
+        fx.galaxy.floors.laser_defense = 6;
+        assert_eq!(home(&mut fx, &mut p), None);
+        record(&mut fx, f).values[3] = 6;
+        assert_eq!(home(&mut fx, &mut p), Some(fx.systems[1]));
         p.base = Some(fx.systems[0]);
         assert_eq!(home(&mut fx, &mut p), Some(fx.systems[0]));
     }

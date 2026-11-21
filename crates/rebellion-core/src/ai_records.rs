@@ -1097,9 +1097,10 @@ impl SystemRecord {
     /// says so (`object_views::side_explored`; hyp: the record reads the
     /// side's copy, as every other reader, `ghidra/notes/fog-of-war.md`);
     /// a yard area is idle when its queue is empty (manager `+0x58`).
-    /// hyp: the thresholds the record reads at `+0x40` (`+0x24`, `+0x28`;
-    /// the controller's object at `+0x138`) have no writer found and read
-    /// as 0; object `+0x50` bit 3 (`+0x30` bit `0x10`) and the controller
+    /// The thresholds the record reads at `+0x40` (`+0x24`, `+0x28`; the
+    /// controller's object at `+0x138`) are [`ClassFloors`]'
+    /// `regiment_defense` and `fighter_defense`.
+    /// hyp: object `+0x50` bit 3 (`+0x30` bit `0x10`) and the controller
     /// bits `0x1000000`/4 (`+0x28` bit `0x40000000`) read as clear.
     #[must_use]
     #[expect(
@@ -1123,6 +1124,7 @@ impl SystemRecord {
         let mut f2c = 0;
         let mut f30 = kind & KEPT_KIND;
         let mut v = [0i32; 60];
+        let floors = ClassFloors::of(world, inputs.classes, inputs.research, inputs.is_alliance);
         if (0x92..=0x93).contains(&sys.dat_id.family()) {
             f30 |= 0x40;
         }
@@ -1188,13 +1190,15 @@ impl SystemRecord {
                 let counted = if f28 & 0x83e0_0000 == 0 {
                     class.flags & CLASS_OFFENSIVE == 0
                 } else {
-                    // hyp: the threshold `+0x40 -> +0x24` is 0.
-                    class.values[1] >= 0
+                    // The threshold `+0x40 -> +0x24`, [`ClassFloors`].
+                    class.values[1] >= floors.regiment_defense
                 };
                 // The decompile sets 0x20000000 for a counted regiment of an
                 // unmarked system and the class bits for a marked one; a
                 // counted unmarked regiment is never offensive, so both read
-                // the class. An uncounted one is offensive (threshold 0).
+                // the class. An uncounted one gives its class bits to
+                // +0x30 (0x4000 offensive, 0x8000 defensive); in an unmarked
+                // system it is offensive.
                 if counted {
                     v[17] += 1;
                     if class.flags & CLASS_OFFENSIVE != 0 {
@@ -1204,7 +1208,9 @@ impl SystemRecord {
                         f28 |= 0x2000_0000;
                     }
                 } else {
-                    f30 |= 0x4000;
+                    if class.flags & CLASS_OFFENSIVE != 0 {
+                        f30 |= 0x4000;
+                    }
                     if class.flags & CLASS_DEFENSIVE != 0 {
                         f30 |= 0x8000;
                     }
@@ -1400,7 +1406,7 @@ impl SystemRecord {
             // FUN_005039d0 (mode 3, either side): the squadrons on the planet
             // (0x1c..0x1f). A counted one is the side's in an unmarked
             // system, or one whose class +0x34 reaches the threshold
-            // `+0x40 -> +0x28` (hyp: 0). port: every squadron is active
+            // `+0x40 -> +0x28` (ClassFloors). port: every squadron is active
             // (+0x50 bit 0); its strengths are at its craft
             // (FUN_00473610/620/630).
             for entry in &sys.fighters {
@@ -1410,7 +1416,9 @@ impl SystemRecord {
                 for _ in 0..entry.count {
                     v[23] += 1;
                     v[32] += class.maintenance;
-                    if f30 & 1 != 0 && (f28 & 0x83e0_0000 == 0 || class.values[1] >= 0) {
+                    if f30 & 1 != 0
+                        && (f28 & 0x83e0_0000 == 0 || class.values[1] >= floors.fighter_defense)
+                    {
                         v[24] += 1;
                     }
                     v[26] += at_strength(class.values[0], class, entry);
@@ -2126,11 +2134,116 @@ pub fn pick<T: Copy + PartialEq>(lists: &[Vec<T>]) -> Option<T> {
     best.map(|(item, _)| item)
 }
 
+/// The class tree's figures (the controller's object at `+0x138`, its
+/// `+0x24..+0x3c` = controller `+0x15c..+0x174`), which `FUN_0042e210`
+/// and `FUN_0042e330` write at setup (`FUN_0042dd00`) and on each
+/// Shipyard and Training Facility research notification (`FUN_004198a0`,
+/// `FUN_00419870`): each `FUN_0042e960(side, level, mask, key, 1)`, the
+/// class records of the side (`+0x28`) with a flag of `mask` and a
+/// research order at most the tree's level, ranked on the class's `key`
+/// value (slot `+4`), the largest picked, and that value; 0 with none.
+/// The levels themselves are `+0x150` (Ship), `+0x154` (Troop) and
+/// `+0x158` (Facility).
+///
+/// port: computed from the side's current levels when the records are
+/// built; the original keeps what the last notification wrote. The
+/// ranking's coin on equal keys cannot change the value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ClassFloors {
+    /// `+0x15c`: the defensive regiments' (flag `0x2000`) best defense
+    /// (key `0x2000`, `values[1]`), by the Troop level. A marked system's
+    /// regiment counts toward its garrison at this defense (`FUN_00433e40`
+    /// via `+0x40 -> +0x24`).
+    pub regiment_defense: i32,
+    /// `+0x160`: the squadrons' (`0x200000`) best `values[1]` (key
+    /// `0x400`). A marked system's squadron counts at this (`+0x28`).
+    pub fighter_defense: i32,
+    /// `+0x164`: the heavy ships' (flag 1) best attack (`0x200`,
+    /// `values[0]`).
+    pub heavy_attack: i32,
+    /// `+0x168`: the laser ships' (flag 2) best `values[1]` (`0x400`).
+    pub laser_defense: i32,
+    /// `+0x16c`: the capital ships' (`0x100000`) best hangar room (`0x80`,
+    /// `values[5]`).
+    pub hangars: i32,
+    /// `+0x170`: the capital ships' best troop room (`0x100`,
+    /// `values[6]`).
+    pub troop_room: i32,
+    /// `+0x174`: the bombarding ships' (`0x800`) best bombardment
+    /// (`0x800`, `values[2]`).
+    pub bombardment: i32,
+}
+
+impl ClassFloors {
+    /// `FUN_0042e210` and `FUN_0042e330` for the side `is_alliance`.
+    #[must_use]
+    pub fn of(
+        world: &GameWorld,
+        classes: &ClassRecords,
+        research: &crate::research::ResearchState,
+        is_alliance: bool,
+    ) -> Self {
+        use crate::research::TechType;
+        let side = if is_alliance { 1 } else { 2 };
+        let level = |tech| research.level(is_alliance, tech);
+        // FUN_0042e960: of `records`, the best `value` among the side's
+        // with a flag of `mask` and a research order the level reaches.
+        let best = |records: &mut dyn Iterator<Item = &ClassRecord>,
+                    tech,
+                    mask: u32,
+                    value: &dyn Fn(&ClassRecord) -> i32| {
+            let level = level(tech);
+            records
+                .filter(|r| {
+                    r.side == side
+                        && r.flags & mask != 0
+                        && u32::try_from(r.research_order).is_ok_and(|o| o <= level)
+                })
+                .map(value)
+                .max()
+                .unwrap_or(0)
+        };
+        let ships = || {
+            world
+                .capital_ship_classes
+                .keys()
+                .filter_map(|k| classes.ship(k))
+        };
+        let ship = |mask, value: &dyn Fn(&ClassRecord) -> i32| {
+            best(&mut ships(), TechType::Ship, mask, value)
+        };
+        let mut fighters = world
+            .fighter_classes
+            .keys()
+            .filter_map(|k| classes.fighter(k));
+        let mut regiments = classes
+            .by_class
+            .iter()
+            .filter(|(id, _)| (0x10..=0x13).contains(&id.family()))
+            .map(|(_, r)| r);
+        Self {
+            regiment_defense: best(&mut regiments, TechType::Troop, CLASS_DEFENSIVE, &|r| {
+                r.values[1]
+            }),
+            fighter_defense: best(&mut fighters, TechType::Ship, CLASS_FIGHTER, &|r| {
+                r.values[1]
+            }),
+            heavy_attack: ship(1, &|r| r.values[0]),
+            laser_defense: ship(2, &|r| r.values[1]),
+            hangars: ship(CLASS_SHIP, &|r| r.values[5]),
+            troop_room: ship(CLASS_SHIP, &|r| r.values[6]),
+            bombardment: ship(0x800, &|r| r.values[2]),
+        }
+    }
+}
+
 /// The AI's records of the galaxy for one side, as phase 4 refreshes them
 /// (`FUN_00418500`): class, fleet, system and sector records.
 #[derive(Debug, Clone, Default)]
 pub struct Galaxy {
     pub classes: ClassRecords,
+    /// The class tree's figures (controller `+0x15c..+0x174`).
+    pub floors: ClassFloors,
     pub fleets: HashMap<crate::ids::FleetKey, FleetRecord>,
     /// One per sector, in the world's sector order.
     pub sectors: Vec<SectorRecord>,
@@ -2196,8 +2309,10 @@ impl Galaxy {
                 SectorRecord::build(sector, position, systems)
             })
             .collect();
+        let floors = ClassFloors::of(world, &classes, inputs.research, inputs.is_alliance);
         Self {
             classes,
+            floors,
             fleets,
             sectors,
         }
@@ -2957,9 +3072,17 @@ mod tests {
         );
 
         // A marked own system (a yard mark, 0x200000) counts a squadron whose
-        // class +0x34 reaches the threshold; hyp: the threshold is 0.
+        // class +0x34 reaches the class tree's +0x28 (FUN_0042e210: the
+        // side's best squadron +0x34, here the X-wing's own 60).
         let r = system_record(&fixture, true, 0x20_0000);
         assert_eq!((r.values[24], r.values[38]), (3, 3 - side_constants::S38C));
+        // A better squadron class of the side raises it past these.
+        let better = wing(&mut fixture.world, true);
+        fixture.world.fighter_classes[better].maneuverability = 4;
+        let r = system_record(&fixture, true, 0x20_0000);
+        assert_eq!((r.values[24], r.values[38]), (0, -side_constants::S38C));
+        let r = system_record(&fixture, true, 0);
+        assert_eq!(r.values[24], 3);
 
         // An opponent's system counts them all, none toward a goal, and adds
         // the active ones to +0xbc.
@@ -4457,6 +4580,111 @@ mod tests {
         let r = system_record(&fixture, true, 0);
 
         assert_eq!(r.state & (2 | 0x200 | 0x400_0000), 2);
+    }
+
+    #[test]
+    fn a_marked_system_counts_a_regiment_only_at_the_best_defense() {
+        // FUN_00433e40: a marked system's regiment counts when its class
+        // +0x34 reaches the class tree's +0x24 (FUN_0042e330: the side's
+        // best defensive regiment by the Troop level); an uncounted one
+        // gives +0x30 its class bits (0x8000 defensive, 0x4000 offensive).
+        let mut fixture = system_fixture();
+        let elite = DatId::new(0x1000_0002);
+        fixture.world.buildable_classes.insert(
+            elite,
+            BuildableClass {
+                is_alliance: true,
+                ..BuildableClass::default()
+            },
+        );
+        fixture.world.troop_classes.insert(
+            elite,
+            crate::world::TroopClassDef {
+                attack_strength: 1,
+                defense_strength: 9,
+                detection: 0,
+                uprising_defense: 0,
+            },
+        );
+        let r = system_record(&fixture, true, 0x20_0000);
+        assert_eq!(r.values[17], 0);
+        assert_eq!(r.kind & (0x4000 | 0x8000), 0x8000);
+        assert_eq!(r.state & 0x3000_0000, 0);
+        // Unmarked, the defensive regiments still count.
+        let r = system_record(&fixture, true, 0);
+        assert_eq!(r.values[17], 2);
+    }
+
+    #[test]
+    fn the_class_tree_s_floors_are_the_side_s_best_researched_classes() {
+        // FUN_0042e210 / FUN_0042e330 -> FUN_0042e960(side, level, mask,
+        // key, 1): the largest key value among the side's classes with a
+        // flag of mask and a research order the level reaches.
+        let mut world = GameWorld::default();
+        let mut ship = |c: CapitalShipClass| {
+            world.capital_ship_classes.insert(CapitalShipClass {
+                is_alliance: true,
+                hull: 10,
+                weapon_recharge_rate: 3,
+                ..c
+            })
+        };
+        // Heavy (1): 3 x 100 = 300; laser (2): 6 lasers, maneuver 2.
+        ship(CapitalShipClass {
+            turbolaser_fore: 1,
+            fighter_capacity: 4,
+            bombardment_modifier: 1,
+            ..CapitalShipClass::default()
+        });
+        ship(CapitalShipClass {
+            laser_cannon_fore: 6,
+            maneuverability: 2,
+            ..CapitalShipClass::default()
+        });
+        ship(CapitalShipClass {
+            troop_capacity: 5,
+            research_order: 1,
+            ..CapitalShipClass::default()
+        });
+        world.fighter_classes.insert(FighterClass {
+            is_alliance: true,
+            squadron_size: 2,
+            laser_cannon_fore: 1,
+            maneuverability: 3,
+            ..FighterClass::default()
+        });
+        let classes = ClassRecords::build(&world);
+        let mut research = crate::research::ResearchState::new();
+        let f = ClassFloors::of(&world, &classes, &research, true);
+        let laser = classes
+            .ships
+            .values()
+            .filter(|r| r.flags & 2 != 0)
+            .map(|r| r.values[1])
+            .max()
+            .unwrap();
+        assert!(laser > 0);
+        assert_eq!(
+            f,
+            ClassFloors {
+                regiment_defense: 0,
+                fighter_defense: 60,
+                heavy_attack: 300,
+                laser_defense: laser,
+                hangars: 4,
+                troop_room: 0,
+                bombardment: 1,
+            }
+        );
+        research.alliance.ship = 1;
+        assert_eq!(
+            ClassFloors::of(&world, &classes, &research, true).troop_room,
+            5
+        );
+        assert_eq!(
+            ClassFloors::of(&world, &classes, &research, false),
+            ClassFloors::default()
+        );
     }
 
     #[test]

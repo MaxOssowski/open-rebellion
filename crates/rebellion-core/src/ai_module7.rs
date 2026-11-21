@@ -1189,9 +1189,11 @@ mod tests {
     #[test]
     fn the_raised_goals_reach_the_records() {
         // FUN_00433e40: v[38] = counted squadrons less the side's goal
-        // (+0x38c for an own marked system).
+        // (+0x38c for an own marked system). In a marked system a squadron
+        // counts when its class +0x34 reaches the class tree's +0x28 (the
+        // best squadron's, FUN_0042e210): the strong class.
         let (mut f, w) = squadron_fixture();
-        crate::squadrons::add(&mut f.world.systems[f.empty].fighters, w.cheap, 2);
+        crate::squadrons::add(&mut f.world.systems[f.empty].fighters, w.strong, 2);
         let mut state = AIState::new(AiFaction::Alliance);
         // records_of reads the setup goals; build with raised ones.
         let classes = crate::ai_records::ClassRecords::build(&f.world);

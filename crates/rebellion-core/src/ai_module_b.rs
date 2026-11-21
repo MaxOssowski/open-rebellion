@@ -390,8 +390,8 @@ impl ModuleB {
     ///
     /// port: module 8's sector planners (controller `+0xd8`) are not
     /// ported, so no request counts and the bombardment and interdictor
-    /// roles never come up. hyp: no writer of controller `+0x16c` is found;
-    /// it reads as 0.
+    /// roles never come up. Controller `+0x16c` is the class tree's best
+    /// hangar room ([`crate::ai_records::ClassFloors::hangars`]).
     fn choose_role(&mut self, io: &Inputs<'_>) {
         let t = io.tallies;
         let open = |role: Role| self.tried & role.tried == 0;
@@ -403,7 +403,7 @@ impl ModuleB {
             ARMED
         } else if open(LASERS) && t.lasers < 1 {
             LASERS
-        } else if open(CARRIERS) && t.hangars <= 0 {
+        } else if open(CARRIERS) && t.hangars <= io.galaxy.floors.hangars {
             CARRIERS
         } else {
             Role {
@@ -1367,6 +1367,23 @@ mod tests {
             ..short
         };
         assert_eq!(role(&mut state, no_hangars, true), CARRIERS);
+        // Carriers while +0x27c is at most controller +0x16c, the class
+        // tree's best hangar room (FUN_0042e210).
+        let mut galaxy = records_of(&f, &state);
+        galaxy.floors.hangars = 1;
+        let carriers = with_io(
+            &f,
+            &mut state,
+            &mut galaxy,
+            short,
+            true,
+            &Default::default(),
+            |m, io| {
+                m.choose_role(io);
+                m.role
+            },
+        );
+        assert_eq!(carriers, CARRIERS);
         for tried in [ARMED, LASERS, CARRIERS] {
             state.module_b.tried = tried.tried;
             let all = Tallies {

@@ -14,11 +14,9 @@
 //! - Module 9 moves ships into its fleet with
 //!   [`AIAction::JoinShips`], the ships' Move `0x201` with a fleet for its
 //!   target.
-//! - Controller `+0x164` ([`heaviest_attack`]) is computed each pass from
-//!   the side's research level, where the original keeps what
-//!   `FUN_0042e210` wrote at setup and at each Shipyard research
-//!   notification. The coin draws of its ranking are not made: they cannot
-//!   change the value.
+//! - Controller `+0x164` is
+//!   [`crate::ai_records::ClassFloors::heavy_attack`], computed with the
+//!   records.
 //! - As for the regiments, one refused person refuses the people's Move
 //!   ([`crate::ai`]'s validator), so a fleet carrying a prisoner of the
 //!   other side lands no one.
@@ -121,33 +119,6 @@ pub struct HqPlanner {
     pub dirty: bool,
 }
 
-/// Controller `+0x164` (`FUN_0042e210` -> `FUN_0042e960(side, level, 1,
-/// 0x200, 1)`): of the side's capital ship classes with flag 1 and a
-/// research order at most the side's Ship level, the greatest `values[0]`
-/// (key `0x200`, `FUN_00473930`); 0 with none.
-#[must_use]
-pub fn heaviest_attack(
-    world: &GameWorld,
-    classes: &ClassRecords,
-    research: &crate::research::ResearchState,
-    is_alliance: bool,
-) -> i32 {
-    let side = if is_alliance { 1 } else { 2 };
-    let level = research.level(is_alliance, crate::research::TechType::Ship);
-    world
-        .capital_ship_classes
-        .keys()
-        .filter_map(|key| classes.ship(key))
-        .filter(|r| {
-            r.side == side
-                && r.flags & HEAVY != 0
-                && u32::try_from(r.research_order).is_ok_and(|order| order <= level)
-        })
-        .map(|r| r.values[0])
-        .max()
-        .unwrap_or(0)
-}
-
 /// Controller `+0x224` (`FUN_0041b7e0`): the sector records' `+0x1a0`, the
 /// side's headquarters systems not blockaded.
 #[must_use]
@@ -180,7 +151,7 @@ impl Module9 {
     }
 
     /// One step (`FUN_004cf2c0`). `need` is controller `+0x164`
-    /// ([`heaviest_attack`]).
+    /// ([`crate::ai_records::ClassFloors::heavy_attack`]).
     pub fn step(&mut self, io: &mut PlannerIo<'_>, need: i32) -> Step {
         match self.state {
             2 => {
@@ -1030,15 +1001,15 @@ mod tests {
         fx.world.capital_ship_classes[empire].is_alliance = false;
         fx.world.capital_ship_classes[empire].is_empire = true;
         let classes = ClassRecords::build(&fx.world);
+        let floors = |w: &GameWorld, c: &ClassRecords, r: &crate::research::ResearchState, a| {
+            crate::ai_records::ClassFloors::of(w, c, r, a).heavy_attack
+        };
         let mut research = crate::research::ResearchState::new();
-        assert_eq!(heaviest_attack(&fx.world, &classes, &research, true), 300);
-        assert_eq!(heaviest_attack(&fx.world, &classes, &research, false), 800);
+        assert_eq!(floors(&fx.world, &classes, &research, true), 300);
+        assert_eq!(floors(&fx.world, &classes, &research, false), 800);
         research.alliance.ship = 2;
-        assert_eq!(heaviest_attack(&fx.world, &classes, &research, true), 700);
-        assert_eq!(
-            heaviest_attack(&GameWorld::default(), &classes, &research, true),
-            0
-        );
+        assert_eq!(floors(&fx.world, &classes, &research, true), 700);
+        assert_eq!(floors(&GameWorld::default(), &classes, &research, true), 0);
     }
 
     #[test]

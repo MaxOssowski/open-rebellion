@@ -454,8 +454,8 @@ impl SectorPlanner {
     /// and `+0x198` with `+0x138`, `+0x3c` the largest garrison need
     /// `+0x134`, each with its controller floor, then kind 4's tail.
     ///
-    /// hyp: controller `+0x164`, `+0x168`, `+0x16c` and `+0x174` have no
-    /// writer found and read as 0.
+    /// The controller floors are the class tree's figures
+    /// ([`crate::ai_records::ClassFloors`], `FUN_0042e210`).
     fn want(&mut self, io: &mut PlannerIo<'_>) {
         if !ported_kind(self.kind) {
             return;
@@ -465,6 +465,7 @@ impl SectorPlanner {
             self.want_invasion(io);
             return;
         }
+        let floors = io.galaxy.floors;
         let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) else {
             return;
         };
@@ -475,8 +476,8 @@ impl SectorPlanner {
             w[0] = w[0].max(v(0x190) * 3 / 2);
             let mut ships = v(0x194) * 3 / 2;
             if r.summary & 8 != 0 {
-                // Controller +0x168 (read as 0) when higher.
-                ships = ships.max(0);
+                // Controller +0x168 when higher.
+                ships = ships.max(floors.laser_defense);
             }
             w[1] = w[1].max(ships);
             w[3] = w[3].max((v(0x138) + v(0x198)) * 12 / 10);
@@ -493,12 +494,11 @@ impl SectorPlanner {
             return;
         }
         if self.kind == 6 {
-            // FUN_004b6a60, each term floored by controller +0x164..+0x170
-            // (read as 0).
-            w[0] = w[0].max((v(0x190) * 3 / 2).max(0));
-            w[1] = w[1].max((v(0x194) * 3 / 2 + v(0x13c) * 3 / 2).max(0));
-            w[3] = w[3].max(((v(0x198) + v(0x138)) * 3 / 2).max(0));
-            w[2] = w[2].max(v(0x134).max(0));
+            // FUN_004b6a60, each term floored by controller +0x164..+0x170.
+            w[0] = w[0].max((v(0x190) * 3 / 2).max(floors.heavy_attack));
+            w[1] = w[1].max((v(0x194) * 3 / 2 + v(0x13c) * 3 / 2).max(floors.laser_defense));
+            w[3] = w[3].max(((v(0x198) + v(0x138)) * 3 / 2).max(floors.hangars));
+            w[2] = w[2].max(v(0x134).max(floors.troop_room));
             if io.controller_flags & 4 != 0 && v(0x19c) > 0 {
                 w[4] = 1;
             }
@@ -513,17 +513,17 @@ impl SectorPlanner {
         match self.kind {
             1 => {
                 w[0] = w[0].max(v(0x190) * 12 / 10);
-                w[5] = w[5].max((v(0x144) * 11 / 10).max(0));
+                w[5] = w[5].max((v(0x144) * 11 / 10).max(floors.bombardment));
             }
             2 => {
-                w[0] = w[0].max((v(0x190) * 3 / 2).max(0));
-                w[1] = w[1].max((v(0x13c) * 3 / 2 + v(0x194) * 3 / 2).max(0));
-                w[3] = w[3].max(((v(0x138) + v(0x198)) * 3 / 2).max(0));
+                w[0] = w[0].max((v(0x190) * 3 / 2).max(floors.heavy_attack));
+                w[1] = w[1].max((v(0x13c) * 3 / 2 + v(0x194) * 3 / 2).max(floors.laser_defense));
+                w[3] = w[3].max(((v(0x138) + v(0x198)) * 3 / 2).max(floors.hangars));
             }
-            _ => w[0] = w[0].max((v(0x190) * 12 / 10).max(0)),
+            _ => w[0] = w[0].max((v(0x190) * 12 / 10).max(floors.heavy_attack)),
         }
         if self.kind != 2 {
-            w[1] = w[1].max((v(0x194) * 12 / 10).max(0));
+            w[1] = w[1].max((v(0x194) * 12 / 10).max(floors.laser_defense));
             w[3] = w[3].max((v(0x198) + v(0x138)) * 12 / 10);
         }
         w[2] = 0;
@@ -616,18 +616,19 @@ impl SectorPlanner {
     /// planner has (`+0x94`, `+0x98`); `+0x58` 1.
     ///
     /// hyp: without a target `+0x3c` compares the `+0x40` value left in the
-    /// register.
+    /// register (after its floor).
     fn want_invasion(&mut self, io: &PlannerIo<'_>) {
+        let floors = io.galaxy.floors;
         let Some(r) = self.sector.and_then(|s| io.galaxy.sector(s)) else {
             return;
         };
         let v = |offset| r.values[sector_at(offset)];
         let target = self.plan_target.and_then(|t| io.galaxy.system(t));
         let w = &mut self.wanted;
-        w[0] = w[0].max((v(0x190) * 3 / 2).max(0));
+        w[0] = w[0].max((v(0x190) * 3 / 2).max(floors.heavy_attack));
         let shields = target.map_or(0, |t| t.values[27] * 3 / 2);
-        w[1] = w[1].max((v(0x194) * 3 / 2 + shields).max(0));
-        let troops = ((v(0x198) + v(0x138)) * 11 / 10).max(0);
+        w[1] = w[1].max((v(0x194) * 3 / 2 + shields).max(floors.laser_defense));
+        let troops = ((v(0x198) + v(0x138)) * 11 / 10).max(floors.hangars);
         w[3] = w[3].max(troops);
         w[2] = w[2].max(target.map_or(troops, |t| t.values[52]));
         if io.controller_flags & 4 != 0 && v(0x19c) > 0 {
@@ -2258,6 +2259,48 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn each_plan_kind_s_wants_meet_the_class_tree_s_floors() {
+        // The plans' slot +0x50 floors its terms by controller +0x164..
+        // +0x174 (FUN_0042e210): kind 3 (FUN_004b4920) +0x34, +0x38; kind 1
+        // (FUN_004bb510) +0x38, +0x48; kind 2 (FUN_004b9fe0) +0x34, +0x38,
+        // +0x40; kind 5 (FUN_004b3300) +0x38 with an opponent system only;
+        // kind 6 (FUN_004b6a60) +0x34, +0x38, +0x40, +0x3c; kind 4
+        // (FUN_004b8b70) +0x34, +0x38, +0x40, and +0x3c from +0x40's value
+        // without a target.
+        let mut fx = fixture();
+        fx.galaxy.floors = crate::ai_records::ClassFloors {
+            heavy_attack: 100,
+            laser_defense: 200,
+            hangars: 300,
+            troop_room: 400,
+            bombardment: 500,
+            ..Default::default()
+        };
+        let mut want = |fx: &mut Fx, kind: u32| {
+            let mut p = SectorPlanner {
+                kind,
+                ..planner(fx)
+            };
+            with(fx, |io| p.want(io));
+            [
+                p.wanted[0],
+                p.wanted[1],
+                p.wanted[2],
+                p.wanted[3],
+                p.wanted[5],
+            ]
+        };
+        assert_eq!(want(&mut fx, 3), [100, 200, 0, 0, 0]);
+        assert_eq!(want(&mut fx, 1), [0, 200, 0, 0, 500]);
+        assert_eq!(want(&mut fx, 2), [100, 200, 0, 300, 0]);
+        assert_eq!(want(&mut fx, 5), [0, 0, 1, 0, 0]);
+        assert_eq!(want(&mut fx, 6), [100, 200, 400, 300, 0]);
+        assert_eq!(want(&mut fx, 4), [100, 200, 300, 300, 0]);
+        fx.galaxy.sectors[0].summary |= 8;
+        assert_eq!(want(&mut fx, 5), [0, 200, 1, 0, 0]);
+    }
+
+    #[test]
     fn kind_three_wants_more_than_its_sector_s_threat() {
         // FUN_004b4920: 1.2 times +0x190 (as an integer), and of +0x198 +
         // +0x138.
@@ -2283,7 +2326,7 @@ pub(crate) mod tests {
     fn kind_one_wants_kind_three_s_navy_without_its_floor_and_a_tenth_more_troops() {
         // FUN_004bb510: +0x34 1.2 x +0x190 with no controller floor (a
         // negative threat stays negative), +0x38 and +0x40 as kind 3's,
-        // +0x48 1.1 x +0x144 (floor controller +0x174, read as 0); kind 3
+        // +0x48 1.1 x +0x144 (floor controller +0x174, 0 in this fixture); kind 3
         // (FUN_004b4920) leaves +0x48.
         let mut fx = fixture();
         {
@@ -2327,7 +2370,7 @@ pub(crate) mod tests {
     fn kind_two_wants_half_again_its_sector_s_threat() {
         // FUN_004b9fe0: +0x34 3/2 x +0x190, +0x38 3/2 x +0x13c + 3/2 x
         // +0x194, +0x40 3/2 x (+0x138 + +0x198), each at least the
-        // controller's +0x164, +0x168, +0x16c (read as 0).
+        // controller's +0x164, +0x168, +0x16c (0 in this fixture).
         let mut fx = fixture();
         {
             let s = &mut fx.galaxy.sectors[0];
@@ -2862,7 +2905,7 @@ pub(crate) mod tests {
     #[test]
     fn kind_five_wants_half_again_its_sector_s_threat_and_one_regiment() {
         // FUN_004b3300: +0x34 1.5 x +0x190; +0x38 1.5 x +0x194 (or
-        // controller +0x168, read as 0, with +0x2c 8); +0x40 1.2 x (+0x138
+        // controller +0x168, 0 in this fixture, with +0x2c 8); +0x40 1.2 x (+0x138
         // + +0x198); +0x3c at least 1; +0x44 1 with controller +4 bit 4 and
         // +0x19c above 0; +0x4c 1 with 0x1000000; +0x50, +0x54 the
         // planner's +0x94, +0x98; +0x58 1. Each never less than before.
@@ -2957,7 +3000,7 @@ pub(crate) mod tests {
     fn kind_six_wants_half_again_its_sector_s_forces_and_the_largest_garrison() {
         // FUN_004b6a60: +0x34 1.5 x +0x190; +0x38 1.5 x +0x194 + 1.5 x
         // +0x13c; +0x40 1.5 x (+0x198 + +0x138); +0x3c +0x134; each floored
-        // by controller +0x164..+0x170 (read as 0) and never less than
+        // by controller +0x164..+0x170 (0 in this fixture) and never less than
         // before; then kind 4's tail.
         let mut fx = fixture();
         {

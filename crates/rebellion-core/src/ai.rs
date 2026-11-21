@@ -1856,12 +1856,8 @@ impl AISystem {
             return Self::module8_step(state, planner, ctx, galaxy, tallies);
         }
         if id == 9 {
-            let need = crate::ai_module9::heaviest_attack(
-                ctx.world,
-                &galaxy.classes,
-                ctx.research_state,
-                matches!(ctx.faction, AiFaction::Alliance),
-            );
+            // Controller +0x164 (FUN_0042e210).
+            let need = galaxy.floors.heavy_attack;
             return Self::with_planner_io(state, planner, ctx, galaxy, tallies, |module9, io| {
                 module9.step(io, need)
             });
