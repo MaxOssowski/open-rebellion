@@ -1333,6 +1333,34 @@ async function fleetDragCase(page, faction, directory, counted) {
   fs.writeFileSync(path.join(directory, "drag-troops-ship.png"), await page.screenshot({ animations: "disabled" }));
   assert.match(shipLine, /^Destination: .+/);
   result.ship = shipLine;
+
+  // A0 /12: a regiment confirmed for the fleet waits in a ship of it, and
+  // the band names that ship (its DeploymentKey); here the band's ship
+  // while it has room.
+  await bandOrder(page, band(await production(page), "troops"), "build_row", directory, "fleet-drag-troops-build");
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
+    null, { timeout: 10_000 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  const opened = await production(page);
+  result.regiment_values = opened.build_selection_values;
+  if (opened.build_selection_values.every((text) => text !== "n/a")) {
+    const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
+    await click(page, { x: origin.x + 73 + 33, y: origin.y + 224 + 16 });
+    await page.mouse.move(2, 2);
+    await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === false,
+      null, { timeout: 10_000 });
+    await frames(page);
+    const confirmed = band(await production(page), "troops");
+    fs.writeFileSync(path.join(directory, "drag-troops-ship-confirmed.png"),
+      await page.screenshot({ animations: "disabled" }));
+    assert.equal(confirmed.queued, 1, JSON.stringify(confirmed));
+    assert.equal(confirmed.lines[2], shipLine, JSON.stringify(confirmed));
+    result.confirmed = confirmed.lines;
+  } else {
+    await page.keyboard.press("Escape");
+    await frames(page);
+  }
   result.a0 = result.a0.filter(Boolean);
   return result;
 }
