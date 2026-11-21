@@ -1202,7 +1202,7 @@ fn draw_reference_rail(
                 let icon = match entry {
                     RailEntry::System(window) => rail_icon(world, window.system),
                     RailEntry::Defenses { system, .. } => {
-                        crate::defenses_window::rail_icon(world, *system)
+                        crate::defenses_window::rail_icon(world, cockpit_faction(faction), *system)
                     }
                     RailEntry::Missions { system, .. } => {
                         crate::missions_window::rail_icon(world, fog, missions, faction, *system)
@@ -3805,7 +3805,7 @@ mod tests {
         let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
         assert!(
             painted.contains(&(
-                crate::defenses_window::rail_icon(&world, systems[0]),
+                crate::defenses_window::rail_icon(&world, Faction::Alliance, systems[0]),
                 slot.min
             )),
             "{painted:?}"

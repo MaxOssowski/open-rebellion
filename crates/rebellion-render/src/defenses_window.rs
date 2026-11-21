@@ -645,7 +645,7 @@ impl DefensesWindowState {
         let selected = selection.first().copied();
         Some(DefensesWindowReport {
             origin: window.logical_position,
-            side: shown_side(world, system),
+            side: shown_side(world, player, system),
             page: window.page,
             counts: DefensesPage::ALL.map(|page| {
                 page_rows(world, fog, missions, production, player, system, page).len()
@@ -899,20 +899,22 @@ pub enum DefensesWindowAction {
     },
 }
 
-/// The side the window shows (`+0x148`): the system's side bits
-/// (`FUN_004a8790`), refreshed when they change (`FUN_004a7f50`).
-fn shown_side(world: &GameWorld, system: SystemKey) -> u8 {
-    world
-        .systems
-        .get(system)
+/// The side the window shows (`+0x148`): the side bits of `player`'s copy
+/// of the system (`FUN_004a8790`), refreshed when they change
+/// (`FUN_004a7f50`).
+fn shown_side(world: &GameWorld, player: Faction, system: SystemKey) -> u8 {
+    // FUN_004a25c0 -> FUN_004f3220: the window's object is the viewer's
+    // copy, and the tabs (FUN_004a9ce0's +0x148), title, garrison line
+    // (FUN_004a90d0) and rail icon (FUN_004aa4a0) read its side bits.
+    crate::viewed_contents::apparent_system(world, player, system)
         .map_or(0, |value| control_side(value.control))
 }
 
 /// A minimized Defenses window's rail icon (`FUN_004aa4a0`): 11533 for side
-/// 1, 11534 for side 2, 11535 otherwise, by the system's side bits.
+/// 1, 11534 for side 2, 11535 otherwise, by the side bits of `player`'s copy.
 #[must_use]
-pub fn rail_icon(world: &GameWorld, system: SystemKey) -> u32 {
-    match shown_side(world, system) {
+pub fn rail_icon(world: &GameWorld, player: Faction, system: SystemKey) -> u32 {
+    match shown_side(world, player, system) {
         1 => RAIL_ICONS[0],
         2 => RAIL_ICONS[1],
         _ => RAIL_ICONS[2],
@@ -970,7 +972,7 @@ fn page_rows(
     // A frozen copy keeps the system's side as it was seen.
     let side = match sight {
         crate::viewed_contents::SystemSight::Frozen(view) => control_side(view.control),
-        _ => shown_side(world, system),
+        _ => shown_side(world, player, system),
     };
     let other = side != faction_side(player);
     let visible = opposing_contents_visible(world, fog, player, system);
@@ -1473,7 +1475,8 @@ fn garrison_line(
     system: SystemKey,
     page: DefensesPage,
 ) -> Option<String> {
-    if page != DefensesPage::Regiments || shown_side(world, system) != faction_side(player) {
+    if page != DefensesPage::Regiments || shown_side(world, player, system) != faction_side(player)
+    {
         return None;
     }
     let requirement = economy
@@ -1793,7 +1796,7 @@ fn draw_defenses_window(
         return result;
     };
     let player = cockpit_faction(faction);
-    let side = shown_side(world, window.system);
+    let side = shown_side(world, player, window.system);
     let rows = page_rows(
         world,
         fog,
@@ -3674,15 +3677,35 @@ mod tests {
     }
 
     #[test]
+    fn the_window_takes_its_side_from_the_viewers_frozen_copy() {
+        // FUN_004a25c0 -> FUN_004f3220: the window's object is the viewer's
+        // copy. Its side bits (+0x24 >> 6) choose the tabs' art
+        // (FUN_004a9ce0, +0x148), the title strip and the rail icon
+        // (FUN_004aa4a0). The Alliance's frozen copy keeps the Empire's
+        // side after the system fell neutral out of its sight.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let view =
+            rebellion_core::object_views::SystemView::of(&world, &world.systems[system], false);
+        let id = world.systems[system].dat_id;
+        world.object_views.alliance_systems.insert(id, view);
+        world.systems[system].control = ControlKind::Uncontrolled;
+
+        assert_eq!(rail_icon(&world, Faction::Alliance, system), 11534);
+        assert_eq!(shown_side(&world, Faction::Alliance, system), 2);
+        // With no copy (a test's world), the system's own side.
+        assert_eq!(rail_icon(&world, Faction::Empire, system), 11535);
+    }
+
+    #[test]
     fn the_rail_icon_title_strip_and_selected_color_follow_the_systems_side() {
         // FUN_004aa4a0: 11533, 11534, else 11535; FUN_004a9800's strips;
         // FUN_004a9ce0's +0xdc.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Empire));
-        assert_eq!(rail_icon(&world, system), 11534);
+        assert_eq!(rail_icon(&world, Faction::Empire, system), 11534);
         world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
-        assert_eq!(rail_icon(&world, system), 11533);
+        assert_eq!(rail_icon(&world, Faction::Empire, system), 11533);
         world.systems[system].control = ControlKind::Contested;
-        assert_eq!(rail_icon(&world, system), 11535);
+        assert_eq!(rail_icon(&world, Faction::Empire, system), 11535);
 
         assert_eq!(
             [1, 2, 3].map(|side| [title_resource(side, true), title_resource(side, false)]),
