@@ -148,6 +148,67 @@ The build-selection gate's `defensesDestination` step does the following on both
 
 Run `build-selection-2026-11-03T04-16-07-647Z-2127650` (Linux): the Alliance's Destination goes from Akrit'tar to F'tral. Screenshot: `defenses-destination.png`.
 
+## Destination released on a fleet, corrected (OBJ-07 C019, 2026-11-21)
+
+The 2026-11-03 section below read `FUN_00537180` wrongly. Its range test is
+`0xa0 <= family < 0xa2`, so only the construction managers (`0xa0..0xa1`,
+"Facilities Under Construction", `FUN_0044acd0`) go through `FUN_00553410`
+and must name a system (else `1/0x25`). A shipyard manager (`0xa2..0xa3`)
+or training manager (`0xa4..0xa5`) takes a system, a fleet (`0x08..0x0f`)
+or a capital ship (`0x14..0x1b`), provided the destination is completed,
+not en route, and not destroyed. The planner `FUN_00552300` then tries the
+fleet itself first, so the ordered ships wait in that fleet. On completion
+they travel from the yard to the fleet's system (`FUN_005150c0`,
+`FUN_00556430`; `FUN_00555b30` takes each end's system).
+
+**What the A0 captures show.** In `build-selection2/30` and `32`, the
+Empire's ships band was released on Fleet 1 at Yavin. Yavin is the
+Alliance's system (red title), and Fleet 1 is the Alliance's fleet. In
+`35`, the release point in Selonia's Fleet window shows no fleet. So the
+three captures show the other side's fleet refused, and no release on the
+player's own fleet. Which check refuses the other side's fleet is not
+traced.
+
+**The port now.**
+- A ships or troops band's Destination released on a fleet of its own side
+  is set (`ManufacturingState::set_fleet_destination`; logged
+  `status=set areas=1 to_fleet=NAME`). The band reads `Destination: Fleet
+  N`, and the products are placed in the fleet (`products::reconcile`).
+- The facilities band, and the facility icon (whose team holds every
+  manager), are refused with `0x25`.
+- The other side's fleet is refused (logged `reason=other_side`).
+- Save v137 keeps the fleet Destinations and each product's fleet target.
+
+**Port deviation.** When the fleet has no room for a squadron or regiment,
+the original refuses the Build at Confirm (`0x27`). The port places the
+unit at the fleet's system instead.
+
+**The gate.** The `fleetDestination` step (fixture 96) now does the following:
+
+- releases the ships band's Destination on the player's fleet;
+- asserts the log and the band line `Destination: Fleet 1`;
+- releases the facilities band's Destination on the same fleet;
+- asserts `reason=0x25` and an unchanged facilities band.
+
+On the base, the first assertion fails: the base WASM logs a refusal for
+the ships band.
+
+Run `build-selection-2026-11-21T01-06-50-261Z-1776891` (Linux, Arch
+Chromium 157.0.8103.78 through a temporary `.gate-build-selection-linux.mjs`
+copy, not the pinned build) passed on both sides. The test WASM was built
+with `cargo build --release --target wasm32-unknown-unknown -p
+rebellion-app --features interface-test-fixtures` into the worktree's site,
+without wasm-opt (sha256 `98f59136770a49c5…`). `result.json` sha256
+`18ab7c5898a99a57…`. Screenshots: `fleet-destination.png`,
+`fleet-destination-facilities.png`. An earlier run in the same session
+(`…T00-58-51-823Z-1634139`) failed in `facilityRoomCase` (8 against 6
+classes walked). That run overlapped a `cargo mutants` run, and the rerun
+passed.
+
+The A0 captures show no release on the player's own fleet, so acceptance
+of an own fleet rests on the decompile alone. The cell stays partial until
+an A0 capture shows it.
+
 ## Destination released on a fleet is refused (OBJ-07 C019, 2026-11-03)
 
 **A0.** In `build-selection2/30`, `32` and `35`, a band's Destination was released on Fleet windows: Yavin's Fleet 1, then Selonia's fleet. Each time the band kept its Destination.
