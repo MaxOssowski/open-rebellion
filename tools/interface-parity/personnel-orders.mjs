@@ -35,6 +35,9 @@ const CHARACTER_COMMAND = 69;
 const CHARACTER_MOVE = 70;
 // Scenario::CharacterEvacuation (153).
 const CHARACTER_EVACUATION = 154;
+// Scenario::CaptiveTransport (160): the agent, then the other side's
+// character the player's side holds captive, at the primary system.
+const CAPTIVE_TRANSPORT = 161;
 // `galaxy` is the galaxy view: the Defenses window opens 5 pixels in from
 // its top-right corner (mission-dialog.mjs), and the order confirmation is
 // centred in it (fleet-move.mjs).
@@ -154,6 +157,26 @@ async function shot(page, directory, label) {
 function agentCell(faction) {
   const windowLeft = faction.galaxy.x + faction.galaxy.width - 235 - 5;
   return { x: windowLeft + 42, y: faction.galaxy.y + 5 + 116 };
+}
+
+// The page's second cell, 70 pixels right of the first (FUN_00609ae0).
+function captiveCell(faction) {
+  const agent = agentCell(faction);
+  return { x: agent.x + 70, y: agent.y };
+}
+
+async function clickWith(page, at, key) {
+  await page.keyboard.down(key);
+  await frames(page);
+  await click(page, at);
+  await page.waitForTimeout(300);
+  await page.keyboard.up(key);
+  await frames(page);
+}
+
+function rowEnabled(menu, row) {
+  assert.notEqual(row, null, `the menu has the row: ${JSON.stringify(menu)}`);
+  return menu.row_states[row][1];
 }
 
 function confirmationCheckmark(faction) {
@@ -292,6 +315,41 @@ const cases = [
       const refused = await log.logged("the enemy system refuses the unit's Move", new RegExp(
         `special_force_move unit=.+ to=Some\\("${escapeRegExp(menu.target_name)}"\\) fleet=None result=Err\\("1/0x28"\\)$`));
       return { menu, refused };
+    },
+  },
+  {
+    name: "captive-alone",
+    code: CAPTIVE_TRANSPORT,
+    // FUN_0054bb90 moves the captive (+0x1d4) to the captured list and
+    // fails 0x40/0x91 on the empty team; FUN_0051fe20 greys the 0x241.
+    async run(page, faction, directory) {
+      await page.waitForTimeout(300);
+      const menu = await openMenu(page, captiveCell(faction), directory, "captive");
+      assert.equal(rowEnabled(menu, menu.move_row), false, `a captive's own Move is grey: ${JSON.stringify(menu)}`);
+      assert.equal(menu.confirmed_move_enabled, false, JSON.stringify(menu));
+      return { menu };
+    },
+  },
+  {
+    name: "captive-with-jailer",
+    code: CAPTIVE_TRANSPORT,
+    // Manual p. 96: the captive moves "as long as one character or
+    // SpecForce unit acts as 'jailer'". The agent and captive, selected
+    // together (Ctrl), share one 0x241 (FUN_0053cbc0); the release on the
+    // player's other system sends both (MissionState::dispatch_guarded,
+    // the captive on the captured list).
+    async run(page, faction, directory, log) {
+      await click(page, agentCell(faction));
+      await page.waitForTimeout(300);
+      await clickWith(page, captiveCell(faction), "Control");
+      await page.waitForTimeout(300);
+      const menu = await openMenu(page, captiveCell(faction), directory, "pair");
+      assert.equal(rowEnabled(menu, menu.move_row), true, `the pair's Move is enabled: ${JSON.stringify(menu)}`);
+      await choose(page, menu, menu.move_row, "Move");
+      await release(page, menu);
+      const moved = await log.logged("the release sends jailer and captive", new RegExp(
+        `members_move members=2 to=Some\\("${escapeRegExp(menu.target_name)}"\\) fleet=None result=Ok\\(\\d+\\)$`));
+      return { menu, moved };
     },
   },
   {
@@ -620,7 +678,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "personnel-orders",
-    scope: "test-only Personnel orders through their original entries: a character's Move to its side's system and its refusal at the other side's (1/0x28), a special force's Move refused there, a character's and a special force's Retire through the confirmation (0x242), and a mission icon's Abort, disabled while the mission is only ordered and confirmed once it runs (0x250), on both sides",
+    scope: "test-only Personnel orders through their original entries: a captive's own Move greyed and its Move with a jailer selected beside it (FUN_0054bb90, manual p. 96), a character's Move to its side's system and its refusal at the other side's (1/0x28), a special force's Move refused there, a character's and a special force's Retire through the confirmation (0x242), and a mission icon's Abort, disabled while the mission is only ordered and confirmed once it runs (0x250), on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

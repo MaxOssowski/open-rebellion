@@ -712,6 +712,12 @@ pub enum Scenario {
     /// (`FUN_005180e0`) ends the game, as in A0 2026-11-17-edited-saves-5
     /// run 2 (caption film 103, then 105 and the main menu).
     EndingAssaultCoruscant = 159,
+    /// `CharacterMove` with a character of the other side held captive by
+    /// the player's side at the primary system, after the agent on the
+    /// personnel page. Moved alone its Move is grey (`FUN_0054bb90`
+    /// `0x40`/`0x91`); selected with the agent, its jailer, the pair moves
+    /// (manual p. 96). See [`place_captive`].
+    CaptiveTransport = 160,
 }
 
 impl Scenario {
@@ -877,6 +883,7 @@ impl Scenario {
             157 => Self::TritonArrived,
             158 => Self::TritonStale,
             159 => Self::EndingAssaultCoruscant,
+            160 => Self::CaptiveTransport,
             _ => return None,
         })
     }
@@ -947,6 +954,7 @@ impl Scenario {
             || self == Self::CharacterCommand
             || self == Self::CharacterMove
             || self == Self::CharacterEvacuation
+            || self == Self::CaptiveTransport
             || self == Self::CharacterBoard
             || self == Self::CharacterAboard
             || self == Self::ReconTargeting
@@ -1206,7 +1214,7 @@ pub fn apply(
         Scenario::Uprising => {
             world.systems[primary].control = ControlKind::Uprising(player_control);
         }
-        Scenario::CharacterMove | Scenario::CharacterEvacuation => {
+        Scenario::CharacterMove | Scenario::CharacterEvacuation | Scenario::CaptiveTransport => {
             world.systems[secondary].control = ControlKind::Controlled(player_control);
         }
         _ => {}
@@ -1252,6 +1260,7 @@ pub fn apply(
                 Scenario::CharacterCommand
                     | Scenario::CharacterMove
                     | Scenario::CharacterEvacuation
+                    | Scenario::CaptiveTransport
                     | Scenario::CharacterBoard
                     | Scenario::CharacterAboard
             ) || c.can_be_admiral
@@ -1280,6 +1289,7 @@ pub fn apply(
                 | Scenario::CharacterCommand
                 | Scenario::CharacterMove
                 | Scenario::CharacterEvacuation
+                | Scenario::CaptiveTransport
                 | Scenario::CharacterBoard
                 | Scenario::CharacterAboard
         ) || request.scenario.targets_an_object()
@@ -1320,6 +1330,9 @@ pub fn apply(
 
     if request.scenario == Scenario::SubdueSuccess {
         place_subdue(request, world, missions, uprisings, agent, primary);
+    }
+    if request.scenario == Scenario::CaptiveTransport {
+        place_captive(world, agent, primary, player_is_alliance);
     }
 
     let mut transit_fleet = None;
@@ -2151,6 +2164,7 @@ pub fn apply(
             | Scenario::CharacterCommand
             | Scenario::CharacterMove
             | Scenario::CharacterEvacuation
+            | Scenario::CaptiveTransport
     ) {
         // The primary system's Defenses window at the galaxy view's right
         // edge holds the agent first on its personnel page; the second
@@ -4901,6 +4915,57 @@ fn coruscant_key(world: &GameWorld) -> Option<SystemKey> {
         .iter()
         .find(|(_, system)| system.dat_id.index() == 0x109)
         .map(|(key, _)| key)
+}
+
+/// The `CaptiveTransport` captive: the first character of the other side
+/// after `agent` in the arena, held by the player's side at `primary`, so
+/// the Defenses window's personnel page lists it right after the agent.
+fn place_captive(
+    world: &mut GameWorld,
+    agent: Option<CharacterKey>,
+    primary: SystemKey,
+    player_is_alliance: bool,
+) {
+    let after_agent = world
+        .characters
+        .keys()
+        .skip_while(|&key| Some(key) != agent)
+        .skip(1);
+    let captive = after_agent.clone().find(|&key| {
+        let c = &world.characters[key];
+        c.is_alliance != player_is_alliance && !c.is_killed
+    });
+    let Some(captive) = captive else {
+        return;
+    };
+    // Nobody else stands between them on the page.
+    let others: Vec<CharacterKey> = world
+        .characters
+        .iter()
+        .filter(|&(key, c)| {
+            Some(key) != agent && key != captive && c.current_system == Some(primary)
+        })
+        .map(|(key, _)| key)
+        .collect();
+    for key in others {
+        world.characters[key].current_system = None;
+    }
+    for fleet in world.fleets.values_mut() {
+        fleet.characters.retain(|&key| key != captive);
+    }
+    let character = &mut world.characters[captive];
+    character.current_system = Some(primary);
+    character.current_fleet = None;
+    character.ship = None;
+    character.on_mission = false;
+    character.injury = 0;
+    character.is_captive = true;
+    character.captured_by = Some(if player_is_alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    });
+    character.command = rebellion_core::character_command::CommandKind::None;
 }
 
 /// The `EndingAssaultCoruscant` scenario's game: the Alliance headquarters
@@ -14341,6 +14406,60 @@ mod tests {
         let applied = apply_to_loading_world_with(request, |_| {});
         let fleet = applied.world.fleets.keys().next().unwrap();
         assert_eq!(applied.world.fleets[fleet].capital_ships.len(), 1);
+    }
+
+    #[test]
+    fn the_captive_transport_scenario_holds_a_captive_beside_its_jailer() {
+        // Manual p. 96: the captor moves a captive with a jailer.
+        // FUN_0054bb90 refuses the captive alone (0x40/0x91); the pair's
+        // 0x241 keeps the agent in its team.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::CaptiveTransport, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                world.characters.insert(rebellion_core::world::Character {
+                    name: "Admiral".into(),
+                    can_be_admiral: true,
+                    ..Default::default()
+                });
+                for name in ["Prisoner A", "Prisoner B"] {
+                    world.characters.insert(rebellion_core::world::Character {
+                        name: name.into(),
+                        is_alliance: faction != CockpitFaction::Alliance,
+                        is_empire: faction == CockpitFaction::Alliance,
+                        ..Default::default()
+                    });
+                }
+            });
+            let primary = applied.world.systems.keys().next().unwrap();
+            let alliance = faction == CockpitFaction::Alliance;
+            let player = if alliance {
+                MissionFaction::Alliance
+            } else {
+                MissionFaction::Empire
+            };
+            assert!(request.scenario.reports_object_menu());
+            let here: Vec<_> = applied
+                .world
+                .characters
+                .iter()
+                .filter(|(_, c)| c.current_system == Some(primary))
+                .map(|(key, _)| key)
+                .collect();
+            let [agent, captive] = here[..] else {
+                panic!("{faction:?}: {here:?}");
+            };
+            assert!(!applied.world.characters[agent].is_captive);
+            assert!(applied.world.characters[captive].is_captive);
+            let state = &applied.missions;
+            let member = MissionMember::Character;
+            assert!(!state.move_order_enabled(&applied.world, player, &[member(captive)]));
+            assert!(state.move_order_enabled(
+                &applied.world,
+                player,
+                &[member(agent), member(captive)]
+            ));
+        }
+        assert_eq!(Scenario::decode(160), Some(Scenario::CaptiveTransport));
     }
 
     #[test]
