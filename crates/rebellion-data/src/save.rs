@@ -75,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 138;
+pub const SAVE_VERSION: u32 = 139;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -168,7 +168,12 @@ pub const V136: u32 = 136;
 /// (`SaveState::production_fleets`), its last field.
 pub const V137: u32 = 137;
 
-/// Whether a save of `version` loads (the current one, or v116 to v137
+/// v138: the same layout as v139, from before every system rolled its
+/// energy and raw materials: its unpopulated systems hold 0/0, which
+/// [`decode_body`] rolls ([`crate::seeds::roll_missing_resources`]).
+pub const V138: u32 = 138;
+
+/// Whether a save of `version` loads (the current one, or v116 to v138
 /// through their migrations).
 #[must_use]
 pub fn version_loads(version: u32) -> bool {
@@ -538,6 +543,13 @@ pub fn decode_body(
         // system's uprising bit now.
         rebellion_core::object_views::seed_uprisings(&mut state.world, &state.uprising);
         state.system_copy_uprisings = state.world.object_views.system_uprisings.clone();
+    }
+    if version <= V138 {
+        let config = state.campaign_config;
+        crate::seeds::roll_missing_resources(
+            &mut state.world,
+            config.difficulty.gnprtb_index(config.player_faction),
+        );
     }
     state.object_views = state.world.object_views.clone();
     if version <= V123 {
@@ -2890,6 +2902,104 @@ pub(crate) mod tests {
         assert_eq!(
             fingerprint_as(&state, V137).unwrap(),
             fingerprint_as(&loaded, V137).unwrap()
+        );
+    }
+
+    /// `state` written as a v138 file: the current layout, older values.
+    fn write_v138(saves_dir: &std::path::Path, state: &SaveState) -> usize {
+        let body = bincode::serialize(state).unwrap();
+        write_body(saves_dir, state, V138, &body)
+    }
+
+    #[test]
+    fn a_v138_save_rolls_resources_for_its_systems_left_without_any() {
+        // FUN_00566d40 (Core) and FUN_0056a550 (Rim) roll every system's
+        // energy and raw materials; v138 and older left unpopulated
+        // systems at 0/0, so the load rolls them (seeds::roll_missing_resources).
+        use rebellion_core::object_views::{SystemCopyBits, SystemView};
+        let saves_dir = tmp_dir("v138_resources");
+        let mut state = minimal_save_state();
+        let entry = |id: u32, value: i32| rebellion_core::world::GnprtbEntry {
+            parameter_id: id,
+            development: value,
+            alliance_sp_easy: value,
+            alliance_sp_medium: value,
+            alliance_sp_hard: value,
+            empire_sp_easy: value,
+            empire_sp_medium: value,
+            empire_sp_hard: value,
+            multiplayer: value,
+        };
+        // GNPRTB.DAT as shipped (ghidra/generated/parameters.tsv).
+        state.world.gnprtb = rebellion_core::world::GnprtbParams::new(vec![
+            entry(7711, 0),
+            entry(7712, 15),
+            entry(7713, 0),
+            entry(7714, 15),
+            entry(7721, 10),
+            entry(7722, 4),
+            entry(7723, 5),
+            entry(7724, 9),
+        ]);
+        let mut keys = state.world.systems.keys();
+        let (empty, rolled) = (keys.next().unwrap(), keys.next().unwrap());
+        state.world.systems[empty].is_populated = false;
+        state.world.systems[rolled].total_energy = 6;
+        state.world.systems[rolled].raw_materials = 2;
+        let id = state.world.systems[empty].dat_id;
+        let views = &mut state.world.object_views;
+        views.alliance_systems.insert(id, SystemView::bare());
+        views.system_bits.alliance.insert(
+            id,
+            SystemCopyBits {
+                explored: true,
+                destroyed: false,
+            },
+        );
+        views.empire_systems.insert(id, SystemView::bare());
+        views
+            .system_bits
+            .empire
+            .insert(id, SystemCopyBits::default());
+        state.object_views = state.world.object_views.clone();
+        state.system_copy_bits = state.world.object_views.system_bits.clone();
+        write_v138(&saves_dir, &state);
+
+        let (meta, loaded) = load_slot(&saves_dir, 0).expect("a v138 save loads");
+        let system = &loaded.world.systems[empty];
+        assert!(
+            (10..=14).contains(&system.total_energy),
+            "{}",
+            system.total_energy
+        );
+        assert!(system.raw_materials <= system.total_energy);
+        assert!(system.raw_materials >= 5);
+        assert_eq!(loaded.world.systems[rolled].total_energy, 6);
+        assert_eq!(loaded.world.systems[rolled].raw_materials, 2);
+        let views = &loaded.world.object_views;
+        assert_eq!(
+            views.alliance_systems[&id].total_energy,
+            system.total_energy
+        );
+        assert_eq!(
+            views.alliance_systems[&id].raw_materials,
+            system.raw_materials
+        );
+        assert_eq!(views.empire_systems[&id].total_energy, 0);
+        assert_eq!(
+            loaded.object_views.alliance_systems[&id].total_energy,
+            system.total_energy
+        );
+        assert_eq!(
+            meta.state_fingerprint,
+            compute_state_fingerprint(&loaded).unwrap()
+        );
+        // The same save rolls the same values each time it loads.
+        let (_, again) = load_slot(&saves_dir, 0).unwrap();
+        assert_eq!(again.world.systems[empty].total_energy, system.total_energy);
+        assert_eq!(
+            again.world.systems[empty].raw_materials,
+            system.raw_materials
         );
     }
 

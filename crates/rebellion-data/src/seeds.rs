@@ -1496,16 +1496,20 @@ fn load_syfc_table_from_files(
     }
 }
 
-/// Compute energy and raw materials for all populated systems.
+/// Roll every system's energy and raw materials, populated or not.
 ///
-/// Original formulas from GNPRTB:
-/// - Core energy: `clamp(param_7721 + random(0..param_7722), 0, 15)`
-/// - Core raw:    `clamp(param_7723 + random(0..param_7724), 0, 15)`, then `min(raw, energy)`
-/// - Rim energy:  `clamp(param_7725 + random(0..param_7726) + random(0..param_7727), 0, 15)`
-/// - Rim raw:     `clamp(1 + random(0..14), 0, 15)`, then `min(raw, energy)`
+/// Every system's setup roll sets both values: a Rim system's
+/// (`RimSystem_vtbc` `FUN_0056a550`) after its populated roll on both
+/// branches, a Core system's (`CoreSystem_vtbc` `FUN_00566d40`) always.
+/// The manual shows the tracks under an unpopulated planet ("Endor Has
+/// Resources, but Is Unpopulated", p. 49).
 ///
-/// Stock values: core energy base=10, rand=4; core raw base=5, rand=9;
-/// rim energy base=1, rand1=4, rand2=9.
+/// - Core energy `FUN_00559670`: `clamp(7721 + draw(7722), 7713, 7714)`.
+/// - Core raw `FUN_005596a0`: `clamp(clamp(7723 + draw(7724), 7711, 7712), 7711, energy)`.
+/// - Rim energy `FUN_00559970`: `clamp(7725 + draw(7726) + draw(7727), 7713, 7714)`.
+/// - Rim raw `FUN_005599c0`: `clamp(clamp(7728 + draw(7729), 7711, 7712), 7711, energy)`.
+///
+/// `draw(n)` is `FUN_0053e290`, a draw from `0..=n`.
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
@@ -1517,19 +1521,23 @@ fn initialize_energy_and_raw_materials<R: Rng + ?Sized>(
     rng: &mut R,
 ) {
     let diff = seed_options.gnprtb_index();
+    let param = |id: u16| world.gnprtb.value(id, diff);
+    let raw_bounds = (param(7711), param(7712));
+    let energy_bounds = (param(7713), param(7714));
+    let core = ResourceRoll {
+        energy_base: param(7721),
+        energy_draws: [param(7722), 0],
+        raw_base: param(7723),
+        raw_draw: param(7724),
+    };
+    let rim = ResourceRoll {
+        energy_base: param(7725),
+        energy_draws: [param(7726), param(7727)],
+        raw_base: param(7728),
+        raw_draw: param(7729),
+    };
 
-    // Core params
-    let core_energy_base = world.gnprtb.value(7721, diff).max(0) as u32; // 10
-    let core_energy_rand = world.gnprtb.value(7722, diff).max(0) as u32; // 4
-    let core_raw_base = world.gnprtb.value(7723, diff).max(0) as u32; // 5
-    let core_raw_rand = world.gnprtb.value(7724, diff).max(0) as u32; // 9
-                                                                      // Rim params
-    let rim_energy_base = world.gnprtb.value(7725, diff).max(0) as u32; // 1
-    let rim_energy_rand1 = world.gnprtb.value(7726, diff).max(0) as u32; // 4
-    let rim_energy_rand2 = world.gnprtb.value(7727, diff).max(0) as u32; // 9
-
-    // Collect system info to avoid borrow issues.
-    let system_info: Vec<(SystemKey, SectorGroup, bool)> = world
+    let system_info: Vec<(SystemKey, SectorGroup)> = world
         .systems
         .iter()
         .map(|(k, sys)| {
@@ -1537,57 +1545,141 @@ fn initialize_energy_and_raw_materials<R: Rng + ?Sized>(
                 .sectors
                 .get(sys.sector)
                 .map_or(SectorGroup::RimOuter, |s| s.group);
-            (k, group, sys.is_populated)
+            (k, group)
         })
         .collect();
 
-    for (key, group, is_populated) in system_info {
-        if !is_populated {
-            continue; // Unpopulated systems get no energy/raw.
-        }
-
-        let (energy, raw) = match group {
-            SectorGroup::Core => {
-                let e = (core_energy_base
-                    + if core_energy_rand > 0 {
-                        rng.gen_range(0..core_energy_rand)
-                    } else {
-                        0
-                    })
-                .min(15);
-                let r = (core_raw_base
-                    + if core_raw_rand > 0 {
-                        rng.gen_range(0..core_raw_rand)
-                    } else {
-                        0
-                    })
-                .min(15)
-                .min(e); // raw capped by energy
-                (e, r)
-            }
-            SectorGroup::RimInner | SectorGroup::RimOuter => {
-                let e = (rim_energy_base
-                    + if rim_energy_rand1 > 0 {
-                        rng.gen_range(0..rim_energy_rand1)
-                    } else {
-                        0
-                    }
-                    + if rim_energy_rand2 > 0 {
-                        rng.gen_range(0..rim_energy_rand2)
-                    } else {
-                        0
-                    })
-                .min(15);
-                let r = (1 + rng.gen_range(0u32..14)).min(15).min(e); // raw capped by energy
-                (e, r)
-            }
+    for (key, group) in system_info {
+        let roll = match group {
+            SectorGroup::Core => &core,
+            SectorGroup::RimInner | SectorGroup::RimOuter => &rim,
         };
-
+        let (energy, raw) = roll.roll(raw_bounds, energy_bounds, rng);
         if let Some(sys) = world.systems.get_mut(key) {
-            sys.total_energy = energy as u8;
-            sys.raw_materials = raw as u8;
+            sys.total_energy = energy.clamp(0, i32::from(u8::MAX)) as u8;
+            sys.raw_materials = raw.clamp(0, i32::from(u8::MAX)) as u8;
         }
     }
+}
+
+/// port: gives a save made before every system rolled its resources the
+/// energy and raw materials its unpopulated systems never got (save v138
+/// and older left them 0/0; [`initialize_energy_and_raw_materials`]).
+/// Each system with no energy rolls as a new game would
+/// (`FUN_0056a550`, `FUN_00566d40`), from a stream seeded by its id, so
+/// the same save always gets the same values. A side's explored copy of it
+/// that still shows the 0/0 values takes the new ones, as though it had
+/// been seen with them; an unexplored copy stays bare.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "Rolled values are clamped to 0..=255 before narrowing."
+)]
+pub fn roll_missing_resources(world: &mut GameWorld, gnprtb_index: u8) {
+    let param = |id: u16| world.gnprtb.value(id, gnprtb_index);
+    let raw_bounds = (param(7711), param(7712));
+    let energy_bounds = (param(7713), param(7714));
+    let core = ResourceRoll {
+        energy_base: param(7721),
+        energy_draws: [param(7722), 0],
+        raw_base: param(7723),
+        raw_draw: param(7724),
+    };
+    let rim = ResourceRoll {
+        energy_base: param(7725),
+        energy_draws: [param(7726), param(7727)],
+        raw_base: param(7728),
+        raw_draw: param(7729),
+    };
+    let missing: Vec<(SystemKey, DatId, SectorGroup)> = world
+        .systems
+        .iter()
+        .filter(|(_, sys)| sys.total_energy == 0 && !sys.is_destroyed)
+        .map(|(key, sys)| {
+            let group = world
+                .sectors
+                .get(sys.sector)
+                .map_or(SectorGroup::RimOuter, |s| s.group);
+            (key, sys.dat_id, group)
+        })
+        .collect();
+    for (key, id, group) in missing {
+        let roll = match group {
+            SectorGroup::Core => &core,
+            SectorGroup::RimInner | SectorGroup::RimOuter => &rim,
+        };
+        let mut rng =
+            Xoshiro256PlusPlus::seed_from_u64(0x5245_534f_5552_4345 ^ u64::from(id.raw()));
+        let (energy, raw) = roll.roll(raw_bounds, energy_bounds, &mut rng);
+        let energy = energy.clamp(0, i32::from(u8::MAX)) as u8;
+        let raw = raw.clamp(0, i32::from(u8::MAX)) as u8;
+        if let Some(sys) = world.systems.get_mut(key) {
+            sys.total_energy = energy;
+            sys.raw_materials = raw;
+        }
+        let views = &mut world.object_views;
+        for (copies, bits) in [
+            (&mut views.alliance_systems, &views.system_bits.alliance),
+            (&mut views.empire_systems, &views.system_bits.empire),
+        ] {
+            let explored = bits.get(&id).is_some_and(|b| b.explored);
+            if let Some(view) = copies.get_mut(&id) {
+                if explored && view.total_energy == 0 {
+                    view.total_energy = energy;
+                    view.raw_materials = raw;
+                }
+            }
+        }
+    }
+}
+
+/// One sector group's energy and raw-material roll (GNPRTB 7721..7729).
+struct ResourceRoll {
+    energy_base: i32,
+    /// Core draws once (`FUN_00559670`), Rim twice (`FUN_00559970`).
+    energy_draws: [i32; 2],
+    raw_base: i32,
+    raw_draw: i32,
+}
+
+impl ResourceRoll {
+    fn roll<R: Rng + ?Sized>(
+        &self,
+        raw_bounds: (i32, i32),
+        energy_bounds: (i32, i32),
+        rng: &mut R,
+    ) -> (i32, i32) {
+        let mut energy = self.energy_base;
+        for draw in self.energy_draws {
+            energy += original_draw(draw, rng);
+        }
+        let energy = clamp_original(energy, energy_bounds.0, energy_bounds.1);
+        let raw = clamp_original(
+            self.raw_base + original_draw(self.raw_draw, rng),
+            raw_bounds.0,
+            raw_bounds.1,
+        );
+        (energy, clamp_original(raw, raw_bounds.0, energy))
+    }
+}
+
+/// `FUN_0053e290(n)`: a draw from `0..=n`, or `n..=0` for a negative `n`.
+/// A zero `n` asks `FUN_005f5700` for one value, which takes no draw.
+fn original_draw<R: Rng + ?Sized>(n: i32, rng: &mut R) -> i32 {
+    if n == 0 {
+        0
+    } else if n > 0 {
+        rng.gen_range(0..=n)
+    } else {
+        -rng.gen_range(0..=-n)
+    }
+}
+
+/// `FUN_0053e0f0(value, low, high)`: `FUN_0053e130` takes the larger of
+/// value and low, then `FUN_0053e140` the smaller of that and high, so
+/// `high` wins when the bounds cross.
+fn clamp_original(value: i32, low: i32, high: i32) -> i32 {
+    value.max(low).min(high)
 }
 
 /// One row of SYFCCRTB/SYFCRMTB.
@@ -3114,9 +3206,14 @@ mod tests {
 
     // ── M6: Energy/raw materials and procedural facility tests ──────────
 
+    // RimSystem_vtbc FUN_0056a550 and CoreSystem_vtbc FUN_00566d40 roll
+    // energy and raw materials for every system, populated or not (manual
+    // p. 49: "Endor Has Resources, but Is Unpopulated"). The earlier
+    // "unpopulated systems have 0 energy" assertion cited no source and is
+    // contradicted by both functions.
     #[test]
     #[ignore = "requires original data/base DAT files"]
-    fn energy_and_raw_materials_respect_param_ranges() {
+    fn every_system_rolls_energy_and_raw_materials_whether_or_not_it_is_populated() {
         let path = gdata_path();
         let seed_options = SeedOptions {
             rng_seed: Some(42),
@@ -3125,45 +3222,143 @@ mod tests {
         let world = crate::load_game_data_with_options(&path, &seed_options)
             .expect("load_game_data_with_options failed");
 
-        let mut populated_with_energy = 0;
-        let mut populated_count = 0;
-
+        let mut unpopulated = 0;
+        let mut unpopulated_with_raw = 0;
         for (_, sys) in &world.systems {
-            if sys.is_populated {
-                populated_count += 1;
-                // Energy should be in [1, 15] for populated systems.
-                assert!(
-                    sys.total_energy >= 1 && sys.total_energy <= 15,
-                    "Populated system '{}' energy={} should be in [1, 15]",
-                    sys.name,
-                    sys.total_energy
-                );
-                // Raw materials <= energy (capped by energy).
-                assert!(
-                    sys.raw_materials <= sys.total_energy,
-                    "System '{}' raw_materials={} should be <= total_energy={}",
-                    sys.name,
-                    sys.raw_materials,
-                    sys.total_energy
-                );
-                if sys.total_energy > 0 {
-                    populated_with_energy += 1;
+            // Rim energy is at least GNPRTB 7725 = 1, Core at least 7721 = 10;
+            // both are clamped to 7714 = 15.
+            assert!(
+                (1..=15).contains(&sys.total_energy),
+                "system '{}' energy={} should be in [1, 15]",
+                sys.name,
+                sys.total_energy
+            );
+            // FUN_005599c0 / FUN_005596a0 clamp raw materials to the energy.
+            assert!(
+                sys.raw_materials <= sys.total_energy,
+                "system '{}' raw_materials={} should be <= total_energy={}",
+                sys.name,
+                sys.raw_materials,
+                sys.total_energy
+            );
+            if !sys.is_populated {
+                unpopulated += 1;
+                if sys.raw_materials > 0 {
+                    unpopulated_with_raw += 1;
                 }
-            } else {
-                // Unpopulated systems should have 0 energy/raw.
-                assert_eq!(
-                    sys.total_energy, 0,
-                    "Unpopulated system '{}' should have 0 energy, got {}",
-                    sys.name, sys.total_energy
-                );
             }
         }
-
-        assert!(populated_count > 0, "Should have populated systems");
-        assert_eq!(
-            populated_count, populated_with_energy,
-            "All populated systems should have energy"
+        assert!(unpopulated > 10, "the Rim keeps unpopulated systems");
+        assert!(
+            unpopulated_with_raw * 2 > unpopulated,
+            "{unpopulated_with_raw} of {unpopulated} unpopulated systems have raw materials"
         );
+    }
+
+    /// A draw sequence for [`ResourceRoll::roll`]: each `next_u32` returns
+    /// the next queued value.
+    struct Queued(std::collections::VecDeque<u32>, usize);
+
+    impl rand::RngCore for Queued {
+        fn next_u32(&mut self) -> u32 {
+            self.1 += 1;
+            self.0.pop_front().unwrap_or(0)
+        }
+        fn next_u64(&mut self) -> u64 {
+            u64::from(self.next_u32())
+        }
+        fn fill_bytes(&mut self, dest: &mut [u8]) {
+            rand::RngCore::try_fill_bytes(self, dest).unwrap();
+        }
+        fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+            for byte in dest {
+                *byte = 0;
+            }
+            Ok(())
+        }
+    }
+
+    // FUN_0053e290(n) draws 0..=n: the highest draws reach base + n.
+    #[test]
+    fn a_rim_roll_reaches_the_top_of_each_draw() {
+        let rim = ResourceRoll {
+            energy_base: 1,
+            energy_draws: [4, 9],
+            raw_base: 1,
+            raw_draw: 14,
+        };
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(11);
+        let rolls: Vec<(i32, i32)> = (0..2000)
+            .map(|_| rim.roll((0, 15), (0, 15), &mut rng))
+            .collect();
+        assert_eq!(rolls.iter().map(|r| r.0).max(), Some(14));
+        assert_eq!(rolls.iter().map(|r| r.0).min(), Some(1));
+        assert_eq!(rolls.iter().map(|r| r.1).max(), Some(14));
+    }
+
+    // FUN_005599c0: raw materials never exceed the system's energy, and
+    // FUN_00559970 clamps energy to GNPRTB 7713..7714.
+    #[test]
+    fn rim_raw_materials_never_exceed_the_systems_energy() {
+        let rim = ResourceRoll {
+            energy_base: 1,
+            energy_draws: [4, 9],
+            raw_base: 1,
+            raw_draw: 14,
+        };
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
+        for _ in 0..500 {
+            let (energy, raw) = rim.roll((0, 15), (0, 12), &mut rng);
+            assert!((1..=12).contains(&energy), "energy {energy}");
+            assert!(
+                (1..=energy).contains(&raw),
+                "raw {raw} over energy {energy}"
+            );
+        }
+    }
+
+    // FUN_0053e290(0) asks FUN_005f5700 for one value, which returns 0
+    // without a draw; a Core roll (one energy draw) takes two draws.
+    #[test]
+    fn a_zero_draw_takes_no_random_number() {
+        let core = ResourceRoll {
+            energy_base: 10,
+            energy_draws: [4, 0],
+            raw_base: 5,
+            raw_draw: 9,
+        };
+        let mut rng = Queued(std::collections::VecDeque::new(), 0);
+        let _ = core.roll((0, 15), (0, 15), &mut rng);
+        let core_draws = rng.1;
+        let mut rng = Queued(std::collections::VecDeque::new(), 0);
+        let _ = ResourceRoll {
+            energy_draws: [4, 9],
+            ..core
+        }
+        .roll((0, 15), (0, 15), &mut rng);
+        assert!(rng.1 > core_draws, "a second energy draw takes numbers");
+        assert_eq!(original_draw(0, &mut rng), 0);
+        let before = rng.1;
+        let _ = original_draw(0, &mut rng);
+        assert_eq!(rng.1, before);
+    }
+
+    // FUN_0053e290 with a negative n draws n..=0.
+    #[test]
+    fn a_negative_draw_stays_between_n_and_zero() {
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(3);
+        let draws: Vec<i32> = (0..200).map(|_| original_draw(-3, &mut rng)).collect();
+        assert!(draws.iter().all(|d| (-3..=0).contains(d)));
+        assert!(draws.contains(&-3) && draws.contains(&0));
+    }
+
+    // FUN_0053e0f0: the high bound wins when the bounds cross.
+    #[test]
+    fn the_original_clamp_lets_the_high_bound_win() {
+        assert_eq!(clamp_original(7, 0, 15), 7);
+        assert_eq!(clamp_original(-2, 0, 15), 0);
+        assert_eq!(clamp_original(20, 0, 15), 15);
+        assert_eq!(clamp_original(5, 9, 3), 3);
     }
 
     /// The eight SYFCCRTB.DAT rows and seven SYFCRMTB.DAT rows as

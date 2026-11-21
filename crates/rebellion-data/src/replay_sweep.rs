@@ -493,10 +493,11 @@ mod tests {
         // here from the runner directly.
         let dir = original_data();
         let load = || crate::load_game_data_with_options(&dir, &campaign_seed_options(1)).unwrap();
-        // Seed 1's first ground battle falls on day 635 (day 457 before
-        // module 9 was ported, day 323 before module 0xa, day 1 to 210
-        // under its stand-in).
-        let run = run_sweep_campaign(load(), 1, 640, AiPassSchedule::Burst).unwrap();
+        // Seed 1's first ground battle falls on day 842 (day 635 before
+        // unpopulated systems rolled their energy and raw materials, day
+        // 457 before module 9 was ported, day 323 before module 0xa, day 1
+        // to 210 under its stand-in).
+        let run = run_sweep_campaign(load(), 1, 845, AiPassSchedule::Burst).unwrap();
 
         let mut runner = dual_ai_runner(load(), 1).unwrap();
         assert_eq!(
@@ -504,7 +505,7 @@ mod tests {
             runner.fingerprint().unwrap().to_string()
         );
         let (mut orders, mut events, mut space, mut ground) = (0, 0, 0, 0);
-        for _ in 0..640 {
+        for _ in 0..845 {
             let day = runner.run_day(AiPassSchedule::Burst);
             orders += u64::from(day.ai_orders);
             events += day.events.len() as u64;
@@ -534,11 +535,12 @@ mod tests {
             ticks,
             [
                 25, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 375, 400, 425,
-                450, 475, 500, 525, 550, 575, 600, 625, 640
+                450, 475, 500, 525, 550, 575, 600, 625, 650, 675, 700, 725, 750, 775, 800, 825,
+                845
             ]
         );
         let last = runner.fingerprint().unwrap().to_string();
-        assert_eq!(run.samples[25].state_fingerprint, last);
+        assert_eq!(run.samples[33].state_fingerprint, last);
         assert_eq!(run.final_fingerprint, last);
         assert_ne!(
             run.samples[0].state_fingerprint,
