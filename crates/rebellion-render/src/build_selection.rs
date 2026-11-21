@@ -404,6 +404,7 @@ pub fn draw_build_selection(
     layout: CockpitLayout,
     cache: &mut BmpCache,
     unallocated_maintenance: i32,
+    carried: &dyn Fn(rebellion_core::ids::FleetKey) -> usize,
 ) -> Option<BuildSelectionAction> {
     let dialog = state.dialog.as_mut()?;
     let scale = layout.scale;
@@ -418,6 +419,7 @@ pub fn draw_build_selection(
         dialog.quantity(),
         dialog.is_alliance,
         unallocated_maintenance,
+        carried,
     );
     let valid = estimate.completion.is_some();
     let mut action = None;
@@ -993,6 +995,7 @@ mod tests {
                     layout,
                     &mut cache,
                     unallocated,
+                    &|_| 0,
                 ) {
                     emitted = Some(action);
                 }
@@ -1417,6 +1420,7 @@ mod tests {
                             layout,
                             &mut cache,
                             ROOMY,
+                            &|_| 0,
                         );
                     },
                 ));

@@ -237,8 +237,9 @@ pub struct BuildEstimate {
     /// valid, which shows "n/a" in all four values and disables Confirm
     /// (`FUN_00439160`): the manager has no yard to build with, the
     /// order's maintenance exceeds its side's ([`exceeds_maintenance`]),
-    /// or its destination has no room for the facilities
-    /// ([`lacks_facility_room`]).
+    /// its destination has no room for the facilities
+    /// ([`lacks_facility_room`]), or the fleet or ship it names has no room
+    /// for the squadrons or regiments ([`lacks_fleet_room`]).
     pub completion: Option<u32>,
     /// Best time to deployment: the days from the manager's system to its
     /// destination.
@@ -359,6 +360,61 @@ pub fn lacks_facility_room(
     short(system.total_energy, facilities) || (mine && short(system.raw_materials, mines))
 }
 
+/// Whether `count` squadrons or regiments of `kind` find no room in the
+/// fleet, or the ship of it, that `ordering`'s Destination names, which
+/// makes the order not valid: Build Selection shows "n/a" and greys
+/// Confirm (`FUN_00438220`, `FUN_00439160`).
+///
+/// `FUN_005385f0` asks, per unit, `FUN_00551a20` -> `FUN_00552300` for the
+/// manager's TargetKey. The planner weighs the target (`FUN_00552b10`) and,
+/// for a fleet only, each of its ships (`FUN_00502e30`); a capital ship
+/// target is weighed alone. A fleet takes capital ships without limit but
+/// refuses every other row (`Fleet_vt78`, `FUN_004fe160`); a ship's room is
+/// its fighter or troop capacity less what rides it (`CapShip_vt78`,
+/// `FUN_00500b40`), and a node that accepts with no room left records
+/// `{1, 0x27}` (`FUN_00550700`). With no candidate free of refusal the
+/// planner copies the kept one's refusal to the order. Each unit lowers
+/// its ship's room by one (`FUN_00550eb0`, `FUN_0054ff00`), so the order
+/// fits while `count` is at most the room left in the target. The units
+/// `ordering` is building give their room back first ([`ship_rooms_but`]).
+///
+/// port: a fleet the port no longer has is not refused here; its products
+/// are placed again ([`crate::products::reconcile`]).
+///
+/// [`ship_rooms_but`]: crate::products::ship_rooms_but
+#[must_use]
+pub fn lacks_fleet_room(
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    ordering: (SystemKey, ProductionArea),
+    kind: BuildableKind,
+    count: u32,
+    carried: &dyn Fn(crate::ids::FleetKey) -> usize,
+) -> bool {
+    if !matches!(kind, BuildableKind::Fighter(_) | BuildableKind::Troop(_)) {
+        return false;
+    }
+    let Some(target) = manufacturing.destination_target(ordering.0, ordering.1) else {
+        return false;
+    };
+    if !world.fleets.contains_key(target.fleet) {
+        return false;
+    }
+    let rooms = crate::products::ship_rooms_but(
+        world,
+        target.fleet,
+        kind,
+        carried(target.fleet),
+        Some(ordering),
+    );
+    let room: u32 = rooms
+        .iter()
+        .filter(|&&(ship, _)| target.ship.is_none_or(|named| named == ship))
+        .map(|&(_, room)| room)
+        .sum();
+    room < count
+}
+
 /// Price `count` units of `kind` at `system`'s `area` for a side whose
 /// unallocated maintenance is `unallocated`
 /// ([`crate::side_resources::MaintenanceTotals::unallocated`]), with
@@ -378,6 +434,7 @@ pub fn estimate(
     count: u32,
     is_alliance: bool,
     unallocated: i32,
+    carried: &dyn Fn(crate::ids::FleetKey) -> usize,
 ) -> BuildEstimate {
     let (refined, maintenance) = unit_costs(world, kind).unwrap_or_default();
     let destination = crate::products::delivery_system(world, manufacturing, system, area);
@@ -400,6 +457,7 @@ pub fn estimate(
                     kind,
                     count,
                 )
+                && !lacks_fleet_room(world, manufacturing, (system, area), kind, count, carried)
         }),
         deployment: transit_days(world, kind, system, destination),
     }
@@ -673,6 +731,7 @@ mod tests {
             3,
             true,
             ROOMY,
+            &|_| 0,
         );
         assert_eq!(
             at_home,
@@ -695,6 +754,7 @@ mod tests {
             1,
             true,
             ROOMY,
+            &|_| 0,
         );
         assert_eq!(sent.completion, Some(32));
         assert!(sent.deployment > 0);
@@ -710,6 +770,7 @@ mod tests {
             1,
             true,
             ROOMY,
+            &|_| 0,
         );
         assert_eq!(empire.completion, None);
     }
@@ -734,6 +795,7 @@ mod tests {
                 count,
                 true,
                 unallocated,
+                &|_| 0,
             )
         };
 
@@ -800,6 +862,7 @@ mod tests {
                 count,
                 true,
                 ROOMY,
+                &|_| 0,
             )
             .completion
             .is_some()
@@ -950,6 +1013,7 @@ mod tests {
                 count,
                 true,
                 ROOMY,
+                &|_| 0,
             )
             .completion
             .is_some()

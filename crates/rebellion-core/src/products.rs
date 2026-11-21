@@ -403,6 +403,22 @@ fn ship_rooms(
     kind: BuildableKind,
     carried: usize,
 ) -> Vec<(u64, u32)> {
+    ship_rooms_but(world, fleet, kind, carried, None)
+}
+
+/// [`ship_rooms`] with the products of `replaced`, the manager (system and
+/// area) whose queue an order replaces, giving their room back: Build's
+/// check (`FUN_005385f0` -> `FUN_00552210` -> `FUN_00552000` ->
+/// `FUN_00552dd0` in mode 0) adds their need back before the new units
+/// ask for theirs, as Confirm scraps them (`FUN_0052a2c0`).
+#[must_use]
+pub fn ship_rooms_but(
+    world: &GameWorld,
+    fleet: FleetKey,
+    kind: BuildableKind,
+    carried: usize,
+    replaced: Option<(SystemKey, ProductionArea)>,
+) -> Vec<(u64, u32)> {
     let Some(value) = world.fleets.get(fleet) else {
         return Vec::new();
     };
@@ -434,6 +450,9 @@ fn ship_rooms(
                 .filter(|product| product.ship == Some(ship.id))
                 .filter(|product| {
                     std::mem::discriminant(&product.kind) == std::mem::discriminant(&kind)
+                })
+                .filter(|product| {
+                    replaced != Some((product.yard, ProductionArea::of(product.kind)))
                 })
                 .count() as u32;
             (ship.id, capacity(ship).saturating_sub(aboard + building))

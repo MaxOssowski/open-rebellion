@@ -2231,3 +2231,88 @@ fn seated_regiments_skip_destroyed_and_unnumbered_ships() {
     s.world.fleets[fleet].capital_ships[1].id = 0;
     assert_eq!(seat_regiments(&s.world, fleet, 4), vec![isd, isd, isd]);
 }
+
+#[test]
+fn a_build_for_a_fleet_or_ship_without_room_for_its_units_is_not_valid() {
+    // FUN_005385f0 runs the planner per unit (FUN_00551a20 -> FUN_00552300)
+    // on the manager's TargetKey: a fleet target weighs its ships, a ship
+    // target only that ship (FUN_00552b10); a ship with no room left gives
+    // {1, 0x27} (FUN_00550700, CapShip_vt78 FUN_00500b40), which leaves
+    // the order invalid: "n/a" and Confirm greyed (FUN_00439160).
+    let mut s = setup();
+    let (fleet, isd, vd) = star_destroyers(&mut s);
+    let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+    let area = ProductionArea::TrainingFacility;
+    let lacks = |s: &Setup, count, carried: usize| {
+        crate::build_selection::lacks_fleet_room(
+            &s.world,
+            &s.manufacturing,
+            (s.yard, area),
+            regiment,
+            count,
+            &|_| carried,
+        )
+    };
+    // No fleet Destination: nothing to check here.
+    assert!(!lacks(&s, 9, 0));
+    assert!(s.manufacturing.set_fleet_destination(s.yard, area, fleet, s.yard));
+    // The fleet seats 3 + 2 regiments.
+    assert!(!lacks(&s, 5, 0));
+    assert!(lacks(&s, 6, 0));
+    // Four aboard leave one seat.
+    assert!(!lacks(&s, 1, 4));
+    assert!(lacks(&s, 2, 4));
+    assert!(lacks(&s, 1, 5));
+    // A ship Destination weighs that ship alone.
+    assert!(s.manufacturing.set_ship_destination(s.yard, area, fleet, vd, s.yard));
+    assert!(!lacks(&s, 2, 0));
+    assert!(lacks(&s, 3, 0));
+    assert!(s.manufacturing.set_ship_destination(s.yard, area, fleet, isd, s.yard));
+    assert!(!lacks(&s, 3, 0));
+    // The units the order replaces give their seats back; another
+    // yard's unit seated aboard keeps its seat.
+    let items = (0..3)
+        .map(|_| QueueItem::new(regiment, 10).ordered(&mut s.world))
+        .collect();
+    s.manufacturing.build_units(s.yard, items);
+    reconcile(&mut s.world, &s.manufacturing);
+    assert!(s.world.products.all().iter().all(|p| p.ship == Some(isd)));
+    assert!(!lacks(&s, 3, 0));
+    s.world.products.items[0].yard = s.there;
+    assert!(lacks(&s, 3, 0));
+    assert!(!lacks(&s, 2, 0));
+    // A ship takes no seat.
+    let ship = BuildableKind::CapitalShip(s.carrack);
+    assert!(s.manufacturing.set_fleet_destination(s.yard, ProductionArea::Shipyard, fleet, s.yard));
+    assert!(!crate::build_selection::lacks_fleet_room(
+        &s.world,
+        &s.manufacturing,
+        (s.yard, ProductionArea::Shipyard),
+        ship,
+        50,
+        &|_| 0,
+    ));
+}
+
+#[test]
+fn a_squadron_build_for_a_fleet_needs_fighter_room_aboard() {
+    // CapShip_vt78 (FUN_00500b40): the fighter capacity (+0x26c) less the
+    // squadrons aboard; a fleet itself takes no squadron (Fleet_vt78,
+    // FUN_004fe160).
+    let mut s = setup();
+    let fleet = carrier(&mut s, 2, 0);
+    let squadron = BuildableKind::Fighter(s.tie);
+    assert!(s.manufacturing.set_fleet_destination(s.yard, ProductionArea::Shipyard, fleet, s.yard));
+    let lacks = |s: &Setup, count| {
+        crate::build_selection::lacks_fleet_room(
+            &s.world,
+            &s.manufacturing,
+            (s.yard, ProductionArea::Shipyard),
+            squadron,
+            count,
+            &|_| 0,
+        )
+    };
+    assert!(!lacks(&s, 2));
+    assert!(lacks(&s, 3));
+}

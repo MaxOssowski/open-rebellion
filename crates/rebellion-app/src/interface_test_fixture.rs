@@ -7493,6 +7493,10 @@ struct FixtureProduction {
     /// Whether Confirm is enabled: `FUN_00439160` disables it when
     /// `FUN_00538220` refuses the order, the four values then "n/a".
     build_selection_confirm_enabled: Option<bool>,
+    /// Whether the fleet or ship the band's Destination names has no room
+    /// for the order's squadrons or regiments
+    /// (`build_selection::lacks_fleet_room`, the planner's `0x27`).
+    build_selection_lacks_fleet_room: Option<bool>,
     build_selection_index: Option<usize>,
     /// The shown class's name (`FUN_00437880`).
     build_selection_class: Option<String>,
@@ -7513,6 +7517,7 @@ fn production_report(
     systems: &SystemWindowState,
     sectors: &SectorWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
+    carried: &dyn Fn(rebellion_core::ids::FleetKey) -> usize,
 ) -> Option<FixtureProduction> {
     let primary = world.systems.keys().next()?;
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
@@ -7581,6 +7586,7 @@ fn production_report(
             dialog.quantity(),
             is_alliance,
             unallocated,
+            carried,
         )
     });
     Some(FixtureProduction {
@@ -7594,6 +7600,16 @@ fn production_report(
             .dialog()
             .map(|dialog| rebellion_render::manufacturing_window::product(world, dialog.kind()).0),
         build_selection_confirm_enabled: build_selection_estimate.map(|e| e.completion.is_some()),
+        build_selection_lacks_fleet_room: build_selection.dialog().map(|dialog| {
+            rebellion_core::build_selection::lacks_fleet_room(
+                world,
+                manufacturing,
+                (primary, dialog.area()),
+                dialog.kind(),
+                dialog.quantity(),
+                carried,
+            )
+        }),
         build_selection_values: build_selection_estimate.map(|estimate| {
             use rebellion_render::build_selection::{cost_text, days_text};
             let valid = estimate.completion.is_some();
@@ -7628,6 +7644,7 @@ pub fn emit_production(
     systems: &SystemWindowState,
     sectors: &SectorWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
+    carried: &dyn Fn(rebellion_core::ids::FleetKey) -> usize,
 ) {
     // ProductionDelivery's shipyard band shows its product one point short.
     // AdvancedBases reports the Training Facilities tab and first cell.
@@ -7647,6 +7664,7 @@ pub fn emit_production(
         systems,
         sectors,
         build_selection,
+        carried,
     )
     else {
         return;

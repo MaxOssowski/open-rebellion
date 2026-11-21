@@ -6726,6 +6726,7 @@ async fn main() {
                             &uprising_state,
                             cockpit_state.faction,
                         ),
+                        &|fleet| troop_transport_state.carried_count(fleet),
                     ) {
                         Some(BuildSelectionAction::Confirm {
                             system,
@@ -6767,6 +6768,7 @@ async fn main() {
                             &system_window_state,
                             &sector_window_state,
                             &build_selection_state,
+                            &|fleet| troop_transport_state.carried_count(fleet),
                         );
                     }
 
