@@ -1103,15 +1103,34 @@ impl SystemRecord {
     /// hyp: object `+0x50` bit 3 (`+0x30` bit `0x10`) and the controller
     /// bits `0x1000000`/4 (`+0x28` bit `0x40000000`) read as clear.
     #[must_use]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "One refresh, in the decompile's order."
-    )]
     pub fn build_kept(
         inputs: &SystemInputs<'_>,
         system: crate::ids::SystemKey,
         marks: u32,
         kind: u32,
+    ) -> Option<Self> {
+        let floors = ClassFloors::of(
+            inputs.world,
+            inputs.classes,
+            inputs.research,
+            inputs.is_alliance,
+        );
+        Self::build_with_floors(inputs, system, marks, kind, &floors)
+    }
+
+    /// [`Self::build_kept`] with the side's [`ClassFloors`] already read:
+    /// they are the same for every system of a refresh, so
+    /// [`Galaxy::build`] reads them once (port: a cost saving only).
+    #[expect(
+        clippy::too_many_lines,
+        reason = "One refresh, in the decompile's order."
+    )]
+    fn build_with_floors(
+        inputs: &SystemInputs<'_>,
+        system: crate::ids::SystemKey,
+        marks: u32,
+        kind: u32,
+        floors: &ClassFloors,
     ) -> Option<Self> {
         use crate::manufacturing::ProductionArea;
         use side_constants::*;
@@ -1124,7 +1143,6 @@ impl SystemRecord {
         let mut f2c = 0;
         let mut f30 = kind & KEPT_KIND;
         let mut v = [0i32; 60];
-        let floors = ClassFloors::of(world, inputs.classes, inputs.research, inputs.is_alliance);
         if (0x92..=0x93).contains(&sys.dat_id.family()) {
             f30 |= 0x40;
         }
@@ -2289,6 +2307,7 @@ impl Galaxy {
             fleets: &fleets,
             ..*inputs
         };
+        let floors = ClassFloors::of(world, &classes, inputs.research, inputs.is_alliance);
         let sectors = world
             .sectors
             .keys()
@@ -2299,7 +2318,13 @@ impl Galaxy {
                     .filter(|(_, sys)| sys.sector == sector)
                     .filter_map(|(key, _)| {
                         let kept = |map: &HashMap<_, u32>| map.get(&key).copied().unwrap_or(0);
-                        SystemRecord::build_kept(&inputs, key, kept(marks), kept(kinds))
+                        SystemRecord::build_with_floors(
+                            &inputs,
+                            key,
+                            kept(marks),
+                            kept(kinds),
+                            &floors,
+                        )
                     })
                     .collect();
                 let position = world
@@ -2309,7 +2334,6 @@ impl Galaxy {
                 SectorRecord::build(sector, position, systems)
             })
             .collect();
-        let floors = ClassFloors::of(world, &classes, inputs.research, inputs.is_alliance);
         Self {
             classes,
             floors,
