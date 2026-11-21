@@ -29,6 +29,9 @@
 //   3 is seen): Coruscant's cell (226, 150) shows 10160, and a-01 (day 5,
 //   Fleet 2 en route) shows the Imperial 10150 there. The port's mark sits
 //   at its system's FUN_00425d00 corner, every non-key pixel as A0's.
+// - Fog item 9: the Defense submenu and the unit displays (Fighter
+//   Squadrons, Troopers) of a new game per side (NewGame, code 156)
+//   against A0 2026-11-21-gid-units-17 (see that section).
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node gid-a0.mjs [--out=DIR]
@@ -432,6 +435,199 @@ try {
   assert.equal(both.diff.port_sha256, both.diff.a0_sha256, JSON.stringify(both));
   both.sha256 = shown.sha256;
   result.both_sides = both;
+
+  // CMD-02 (fog item 9): the unit displays and the Defense submenu against
+  // A0 2026-11-21-gid-units-17 (unedited new games, Empire days 4..14,
+  // Alliance days 2..14). NewGame (code 156) is the browser seed's new
+  // game, whose holders differ from A0's random game; only what the
+  // viewer's copy decides is compared.
+  // - The Defense submenu (Empire, A0 work/s18): five rows, Planetary
+  //   Defense Batteries .. Death Star Shields, no All Defenses (FUN_004511e0;
+  //   All Defenses 0x91 is a briefing display only). Its frame and icons
+  //   every pixel; the fill and the text are the accepted menu-shade and
+  //   text-width deviations. A click on the Defense row selects nothing.
+  // - Fighter Squadrons (0x72) and Troopers (0x71): FUN_0042b330 counts the
+  //   viewer's copy's direct children (FUN_00503550 / FUN_005044f0 over
+  //   FUN_00513090). Coruscant's largest Empire mark to the Empire and its
+  //   smallest to the Alliance (a frozen core copy holds no units, setup
+  //   push FUN_0051b990); Yavin's medium Alliance mark to both sides (the
+  //   Empire's level-10 push); Drall, whose one TIE squadron is aboard its
+  //   fleet in both games (A0 e-26, e-31), the smallest Empire Fighter
+  //   Squadrons mark. Every core system each game gives the other side
+  //   shows that side's smallest mark in both displays.
+  {
+    const UNITS = path.join(ROOT, ".artifacts/a0-vm/2026-11-21-gid-units-17");
+    // sha256 first 12 hex, as that folder's README and SHA256SUMS list them.
+    const UNIT_FILES = {
+      e02: ["e-02-gid-fighter-squadrons-d4.png", "a43154df5086"],
+      e03: ["e-03-gid-troopers-d4.png", "8cdf995fd42e"],
+      a02: ["a-02-gid-fighter-squadrons-d2.png", "b03e63392084"],
+      a03: ["a-03-gid-troopers-d2.png", "c3c25ef9255b"],
+      // work/s18 is a raw frame (no SHA256SUMS line): its hash here.
+      s18: ["work/s18.png", "b133f605e9e3"],
+    };
+    const unitA0 = {};
+    for (const [key, [file, sha]] of Object.entries(UNIT_FILES)) {
+      const bytes = await fs.readFile(path.join(UNITS, file));
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      assert.equal(hash.slice(0, 12), sha, `A0 ${file}`);
+      unitA0[key] = PNG.sync.read(bytes);
+      (result.units_a0 ??= {})[key] = { file, sha256: hash };
+    }
+    const NEW_GAME = 156;
+    const EMPIRE = 2;
+    // The GID control and its menus (A0 README, pick.py): the root's
+    // Defense row, then the submenu's Fighter Squadrons and Troopers rows.
+    const MENU = {
+      [EMPIRE]: { control: [535, 445], root: 490, sub: 285 },
+      [ALLIANCE]: { control: [460, 412], root: 440, sub: 235 },
+    };
+    const DEFENSE_ROW = 361;
+    const FIGHTERS_ROW = 313;
+    const TROOPERS_ROW = 335;
+    const press = async (page) => {
+      await page.mouse.down();
+      await page.waitForTimeout(80);
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+    };
+    const openDefense = async (page, side) => {
+      const menu = MENU[side];
+      await page.mouse.move(...menu.control, { steps: 3 });
+      await page.waitForTimeout(200);
+      await press(page);
+      await page.mouse.move(menu.root, DEFENSE_ROW, { steps: 4 });
+      await page.waitForTimeout(500);
+    };
+    const pick = async (page, side, row) => {
+      await openDefense(page, side);
+      const { sub } = MENU[side];
+      await page.mouse.move(sub, DEFENSE_ROW, { steps: 6 });
+      await page.waitForTimeout(300);
+      await page.mouse.move(sub, row, { steps: 4 });
+      await page.waitForTimeout(300);
+      await press(page);
+      await page.mouse.move(2, 470, { steps: 4 });
+      await page.waitForTimeout(700);
+    };
+    const records = [];
+    for (let i = 0; i < systemsd.readUInt32LE(4); i += 1) {
+      const record = 16 + i * 44;
+      records.push({ name: names[systemsd.readUInt16LE(record + 20)], core: systemsd.readUInt32LE(record + 16) === 0x90,
+        x: systemsd.readUInt16LE(record + 36), y: systemsd.readUInt16LE(record + 38) });
+    }
+    // FUN_00426ee0's tables, smallest first.
+    const ALLIANCE_MARKS = [10149, 10148, 10147, 10146];
+    const EMPIRE_MARKS = [10150, 10151, 10152, 10153];
+    const games = [
+      { side: EMPIRE, label: "empire", fighters: "e02", troopers: "e03", enemy: ALLIANCE_MARKS,
+        named: { Coruscant: [10153, 10153], Yavin: [10148, 10148], Drall: [10150, null] } },
+      { side: ALLIANCE, label: "alliance", fighters: "a02", troopers: "a03", enemy: EMPIRE_MARKS,
+        named: { Coruscant: [10150, 10150], Yavin: [10148, 10148] } },
+    ];
+    result.units = {};
+    for (const game of games) {
+      const page = await (await browser.newContext({ viewport: { width: 640, height: 480 } })).newPage();
+      page.on("pageerror", (error) => errors.push(String(error)));
+      await page.goto(`http://127.0.0.1:${server.address().port}/?fixture-code=${NEW_GAME | (game.side << 8)}`);
+      await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status === "ready", null,
+        { timeout: 30_000 });
+      const ready = await page.evaluate(() => window.__openRebellionInterfaceReady);
+      await page.locator("#glcanvas").focus();
+      await page.mouse.move(2, 470);
+      await page.waitForTimeout(800);
+      // The side's galaxy origin: the port's drawn primary point less half
+      // its cell, less FUN_00425d00's scaled point (A0's is the same).
+      const origin = [Math.round(ready.primary_screen_x - 8.5) - ((ready.primary_system_x * 607) >> 10),
+        Math.round(ready.primary_screen_y - 8.5) - ((ready.primary_system_y * 437) >> 10)];
+      const cell = (value) => [((value.x * 607) >> 10) + origin[0], ((value.y * 437) >> 10) + origin[1]];
+      const entry = { origin, named: {}, enemy_core: { a0: {}, port: {} } };
+
+      if (game.side === EMPIRE) {
+        // The Defense submenu (A0 s18: the pointer rests on the Defense row
+        // at (500, 370)).
+        await openDefense(page, game.side);
+        await page.mouse.move(500, 370, { steps: 2 });
+        await page.waitForTimeout(500);
+        const shown = await stable(page, "empire-defense-submenu");
+        // gid_submenu_rect: (183, 254), 240 by 122; rows from 7 + 22 k, each
+        // icon at x 30 (FUN_004511e0).
+        const [left, top, width, height] = [183, 254, 240, 122];
+        const exact = { frame: [0, 0], icons: [0, 0] };
+        const check = (kind, x, y) => {
+          exact[kind][0] += 1;
+          if (!same(shown.png, unitA0.s18, x, y)) exact[kind][1] += 1;
+        };
+        for (let x = left; x < left + width; x += 1) for (const y of [top, top + 1, top + height - 2, top + height - 1]) check("frame", x, y);
+        // FUN_00607740: the sides on every second row.
+        for (let y = top + 2; y < top + height - 2; y += 2) for (const x of [left, left + 1, left + width - 2, left + width - 1]) check("frame", x, y);
+        // The rows' STRATEGY icons (cockpit.rs gid_submenu_items, the
+        // Empire's), their non-key pixels.
+        // Not ported: A0 draws Death Star Shields' icon (10142) only to its
+        // column 9; from column 10 its row shows the menu's fill (untraced,
+        // ledger note), so those columns are left out.
+        for (const [row, id] of [11610, 10124, 10126, 10127, 10142].entries()) {
+          for (const [x, y] of await artPixels(id)) {
+            if (id !== 10142 || x < 10) check("icons", left + 30 + x, top + 7 + 22 * row + y);
+          }
+        }
+        entry.defense_submenu = { sha256: shown.sha256, rect: [left, top, width, height], exact };
+        assert.equal(exact.frame[1], 0, JSON.stringify(entry.defense_submenu));
+        assert.equal(exact.icons[1], 0, JSON.stringify(entry.defense_submenu));
+        // A click on the Defense row selects no display: the galaxy's marks
+        // stay as they were (the root and submenu stay over them).
+        const coruscant = cell(records.find((r) => r.name === "Coruscant"));
+        const before = await markAt(shown.png, coruscant);
+        await page.mouse.move(MENU[game.side].root, DEFENSE_ROW, { steps: 2 });
+        await page.waitForTimeout(300);
+        await press(page);
+        const clicked = await stable(page, "empire-defense-row-clicked");
+        entry.defense_row_click = { before, after: await markAt(clicked.png, coruscant) };
+        assert.equal(entry.defense_row_click.after, entry.defense_row_click.before, JSON.stringify(entry.defense_row_click));
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(400);
+      }
+
+      await pick(page, game.side, FIGHTERS_ROW);
+      const fighters = await stable(page, `${game.label}-fighter-squadrons`);
+      await pick(page, game.side, TROOPERS_ROW);
+      const troopers = await stable(page, `${game.label}-troopers`);
+      entry.sha256 = { fighters: fighters.sha256, troopers: troopers.sha256 };
+      for (const [name, [fighterMark, trooperMark]] of Object.entries(game.named)) {
+        const at_ = cell(records.find((r) => r.name === name));
+        const row = {};
+        for (const [display, png, a0Png, expected] of [["fighters", fighters.png, unitA0[game.fighters], fighterMark],
+          ["troopers", troopers.png, unitA0[game.troopers], trooperMark]]) {
+          if (expected === null) continue;
+          const marks = { a0: await markAt(a0Png, at_), port: await markAt(png, at_) };
+          assert.equal(marks.a0, expected, `A0 ${game.label} ${name} ${display}`);
+          marks.diff = await markDiffAt(png, at_, a0Png, at_, expected);
+          row[display] = marks;
+          assert.equal(marks.port, expected, `${game.label} ${name} ${display}: ${JSON.stringify(marks)}`);
+          assert.equal(marks.diff.different, 0, `${game.label} ${name} ${display}: ${JSON.stringify(marks)}`);
+        }
+        entry.named[name] = row;
+      }
+      // Every core system the other side holds in each game: its smallest
+      // mark in both displays.
+      for (const value of records.filter((r) => r.core)) {
+        const at_ = cell(value);
+        for (const [who, f, t] of [["a0", unitA0[game.fighters], unitA0[game.troopers]], ["port", fighters.png, troopers.png]]) {
+          const marks = [await markAt(f, at_), await markAt(t, at_)];
+          if (marks.some((id) => game.enemy.includes(id))) entry.enemy_core[who][value.name] = marks;
+        }
+      }
+      for (const who of ["a0", "port"]) {
+        const held = Object.entries(entry.enemy_core[who]);
+        assert.ok(held.length > 0, `${game.label} ${who}: no core system of the other side`);
+        for (const [name, marks] of held) {
+          assert.deepEqual(marks, [game.enemy[0], game.enemy[0]], `${game.label} ${who} ${name}: ${JSON.stringify(marks)}`);
+        }
+      }
+      result.units[game.label] = entry;
+      await page.context().close();
+    }
+  }
 
   assert.deepEqual(errors, []);
   result.status = "pass";

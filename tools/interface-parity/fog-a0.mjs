@@ -65,6 +65,9 @@ const A0_FILES = {
   gid_enroute: ["2026-11-19-fog-14/e-04-gid-popular-support-fleet1-enroute-past-half-d30.png", "858a751af2c4"],
   gid_arrived: ["2026-11-19-fog-14/e-10-sector-mayagil-and-gid-after-arrival-clean-d43.png", "2ca9165a6138"],
 };
+// A0 2026-11-21-gid-units-17 a-23: the Alliance's Sesswenna on day 3.
+const A0_UNITS_A23 = ["2026-11-21-gid-units-17/a-23-sector-sesswenna-empire-core-death-star-shields-d3.png",
+  "07807eddd3bf"];
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const [key, value = "true"] = arg.replace(/^--/, "").split("=");
   return [key, value];
@@ -419,6 +422,81 @@ try {
       assert.deepEqual(row, name === "Yavin" ? ["red", true, true] : ["white", false, false], `A0 a-04 ${name}`);
     }
     assert.deepEqual(portShows, a0Shows, JSON.stringify(result.alliance_sumitra));
+  }
+
+  // The Alliance's view of the Empire's core systems' defenses icon (kind
+  // 8, FUN_0045ce80), against A0 2026-11-21-gid-units-17 a-23 (the
+  // Alliance's Sesswenna, day 3, its left window at (60, 35)). The icon
+  // counts the viewer's copy, which the setup push (FUN_0051b990) gives the
+  // core system's facilities (0x20..0x2f) but none of its units:
+  // - A0's Coruscant holds regiments, squadrons and the Emperor but no
+  //   defense facility (e-11..e-15): no defenses icon, only the Empire's
+  //   facility icon (kind 4, 10779). The browser seed's Commenor and Drall
+  //   (Corellian) hold regiments and no defense facility: no defenses icon.
+  // - A0's Bortras holds a GenCore Level I (a-28): the Empire's defenses
+  //   icon (10781). The browser seed's Coruscant holds one (and its units):
+  //   the same icon.
+  // The premises are asserted by the_new_game_fixture_lights_an_enemy_
+  // core_defenses_icon_by_its_facilities_alone. Quadrants from the planet's
+  // corner + 18 (cx, cy): kind 4 at (cx - 28, cy - 19), kind 8 at (cx - 28,
+  // cy + 1) (sector-quadrants.md).
+  {
+    const a0Origin = [60, 35];
+    const a23Bytes = await fs.readFile(path.join(A0_DIR, A0_UNITS_A23[0]));
+    const a23 = PNG.sync.read(a23Bytes);
+    const a23Sha = createHash("sha256").update(a23Bytes).digest("hex");
+    assert.equal(a23Sha.slice(0, 12), A0_UNITS_A23[1], "A0 a-23");
+    assert.ok(windowOrigins(a23).some(([x, y]) => x === a0Origin[0] && y === a0Origin[1]), "A0 a-23: no left window");
+    // Whether every non-key pixel of `id` shows at `at`.
+    const shows = async (png, id, [x, y]) => (await artPixels(id))
+      .every(([dx, dy, p]) => at(png, x + dx, y + dy).join() === p.join());
+    const quadrants = async (png, windowOrigin, name) => {
+      const [px, py] = planet(system(name), windowOrigin);
+      const [cx, cy] = [px + 18, py + 18];
+      const icons = async (ids, corner) => Object.fromEntries(await Promise.all(ids.map(async (id) =>
+        [id, await shows(png, id, corner)])));
+      return { facility: await icons([10771, 10779, 10787], [cx - 28, cy - 19]),
+        defenses: await icons([10773, 10781, 10789], [cx - 28, cy + 1]) };
+    };
+    const NO_DEFENSES = { 10773: false, 10781: false, 10789: false };
+    const EMPIRE_DEFENSES = { 10773: false, 10781: true, 10789: false };
+    const a0Coruscant = await quadrants(a23, a0Origin, "Coruscant");
+    const a0Bortras = await quadrants(a23, a0Origin, "Bortras");
+    assert.deepEqual(a0Coruscant, { facility: { 10771: false, 10779: true, 10787: false }, defenses: NO_DEFENSES },
+      "A0 a-23 Coruscant");
+    assert.deepEqual(a0Bortras.defenses, EMPIRE_DEFENSES, "A0 a-23 Bortras");
+    const opened = async (name, label) => {
+      const previous = (await stable(alliance.page, `alliance-before-${label}`)).png;
+      const before = windowOrigins(previous);
+      await finder(alliance.page, name);
+      const shown = await stable(alliance.page, `alliance-${label}`);
+      const origins = windowOrigins(shown.png);
+      // A new window, or the one the finder's sector replaced (the
+      // sector's planet changed under the old window's corner).
+      const changed = ([x, y]) => {
+        const [px, py] = planet(system(name), [x, y]);
+        return at(shown.png, px + 18, py + 18).join() !== at(previous, px + 18, py + 18).join();
+      };
+      const origin = origins.find(([x, y]) => !before.some(([bx, by]) => bx === x && by === y))
+        ?? origins.find(changed);
+      assert.ok(origin, `${label}: no new window (${JSON.stringify(origins)})`);
+      return { shown, origin };
+    };
+    const corellian = await opened("Commenor", "Corellian");
+    const sesswenna = await opened("Coruscant", "Sesswenna");
+    result.alliance_defenses_icons = {
+      a0: { sha256: a23Sha, Coruscant: a0Coruscant, Bortras: a0Bortras },
+      corellian: { origin: corellian.origin, sha256: corellian.shown.sha256,
+        Commenor: await quadrants(corellian.shown.png, corellian.origin, "Commenor"),
+        Drall: await quadrants(corellian.shown.png, corellian.origin, "Drall") },
+      sesswenna: { origin: sesswenna.origin, sha256: sesswenna.shown.sha256,
+        Coruscant: await quadrants(sesswenna.shown.png, sesswenna.origin, "Coruscant") },
+    };
+    const icons = result.alliance_defenses_icons;
+    assert.deepEqual(icons.corellian.Commenor.defenses, a0Coruscant.defenses, JSON.stringify(icons));
+    assert.deepEqual(icons.corellian.Drall.defenses, a0Coruscant.defenses, JSON.stringify(icons));
+    assert.deepEqual(icons.sesswenna.Coruscant.defenses, a0Bortras.defenses, JSON.stringify(icons));
+    assert.deepEqual(icons.sesswenna.Coruscant.facility, a0Coruscant.facility, JSON.stringify(icons));
   }
 
   // Triton before, on and after the fleet's visit (fog-14).
