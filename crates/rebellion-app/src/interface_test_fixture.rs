@@ -11080,6 +11080,185 @@ mod tests {
         );
     }
 
+    /// `name`'s Defenses window as `faction` sees it in `world`: each
+    /// page's report (`FUN_004a9ce0` tabs, `FUN_004a90d0` rows and the
+    /// garrison line).
+    fn defenses_pages(
+        world: &GameWorld,
+        faction: CockpitFaction,
+        name: &str,
+    ) -> Vec<rebellion_render::defenses_window::DefensesWindowReport> {
+        let system = named_system(world, name);
+        let layout = CockpitState::new(faction).layout_for(640.0, 480.0);
+        let mut defenses = DefensesWindowState::default();
+        assert!(defenses.open(world, system, (100, 100), faction, layout));
+        let manufacturing = ManufacturingState::default();
+        let deliveries = rebellion_core::delivery::DeliveryState::default();
+        let fog = FogState::new(match faction {
+            CockpitFaction::Alliance => Faction::Alliance,
+            CockpitFaction::Empire => Faction::Empire,
+        });
+        let production = rebellion_render::defenses_window::DefensesProduction {
+            manufacturing: &manufacturing,
+            deliveries: &deliveries,
+            regiments: &[],
+            squadrons: &[],
+        };
+        DefensesPage::ALL
+            .into_iter()
+            .map(|page| {
+                defenses.show_page(system, page);
+                defenses
+                    .report(
+                        world,
+                        &fog,
+                        &MissionState::default(),
+                        production,
+                        &EconomyState::default(),
+                        system,
+                    )
+                    .expect("the window is open")
+            })
+            .collect()
+    }
+
+    // A0 2026-11-21-gid-units-17 (unedited new games): the Alliance's view
+    // of the Empire's core Bortras (a-25..a-27: 0b64b21d6a2b, 7f74bd9ba3fd,
+    // 31ac26bcca76) lists no personnel, regiments or squadrons and no
+    // Garrison Requirement line; the Empire's view of the Alliance's core
+    // Corfai (e-39..e-41: 6db0cb39783c, da5a2b9cf843, 07b95e61a662) the
+    // same. FUN_004a25c0 -> FUN_004f3220 reads the viewer's copy, which the
+    // setup push (FUN_0051b990) gives facilities but no units; FUN_004a90d0
+    // writes TEXTSTRA 6471 only when the copy's side is the viewer's.
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_new_game_fixture_s_enemy_core_defenses_windows_list_no_units_or_garrison() {
+        for (faction, holder, name) in [
+            (CockpitFaction::Alliance, 2, "Coruscant"),
+            (CockpitFaction::Alliance, 2, "Commenor"),
+            (CockpitFaction::Empire, 1, "Corfai"),
+        ] {
+            let world = new_game(Scenario::NewGame, faction);
+            let live = &world.systems[named_system(&world, name)];
+            assert!(
+                live.ground_units.len() + live.fighters.len() > 0,
+                "{name} holds units the copy must not show"
+            );
+            for report in defenses_pages(&world, faction, name) {
+                assert_eq!(report.side, holder, "{name}");
+                assert_eq!(report.garrison, None, "{name} {:?}", report.page);
+                // Personnel, Trooper Regiments, Fighter Squadrons.
+                assert_eq!(report.counts[..3], [0, 0, 0], "{name} {:?}", report.page);
+            }
+        }
+    }
+
+    // A0 2026-11-21-gid-units-17 e-44..e-46 (ab66aca7ac37, 2f530d9261ee,
+    // 4686560f93a4): the Empire's Yavin lists Leia Organa, Luke Skywalker,
+    // Han Solo, Wedge Antilles, Chewbacca and Jan Dodonna, two Alliance Army
+    // Regiments, an X-wing and a Y-wing: the setup's level-10 push
+    // (Event319_Handle(10, 2), FUN_0050d5a0 case 10: every child 0x01..0xff
+    // of the system, its fleets and their ships, synced in mode 1).
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_new_game_fixture_s_empire_copy_of_yavin_lists_its_heroes_regiments_and_squadrons() {
+        let world = new_game(Scenario::NewGame, CockpitFaction::Empire);
+        let pages = defenses_pages(&world, CockpitFaction::Empire, "Yavin");
+        let page = |page| {
+            pages
+                .iter()
+                .find(|report| report.page == page)
+                .expect("each page")
+        };
+        assert!(pages.iter().all(|report| report.side == 1));
+        let personnel = &page(DefensesPage::Personnel).rows;
+        for hero in [
+            "Leia Organa",
+            "Luke Skywalker",
+            "Han Solo",
+            "Wedge Antilles",
+            "Chewbacca",
+            "Jan Dodonna",
+        ] {
+            assert!(
+                personnel.iter().any(|row| row == hero),
+                "{hero}: {personnel:?}"
+            );
+        }
+        assert_eq!(page(DefensesPage::Regiments).rows.len(), 2);
+        assert_eq!(page(DefensesPage::Regiments).garrison, None);
+        assert_eq!(page(DefensesPage::Squadrons).rows, ["X-wing", "Y-wing"]);
+        assert!(page(DefensesPage::Shields).rows.is_empty());
+        assert!(page(DefensesPage::Batteries).rows.is_empty());
+    }
+
+    // A0 2026-11-21-gid-units-17 a-23 (07807eddd3bf, the Alliance's
+    // Sesswenna on day 3): the Empire's core Coruscant, which holds
+    // regiments, squadrons and the Emperor but no defense facility (e-11..
+    // e-15), shows no defenses icon; Bortras, which holds a GenCore Level I
+    // (a-28), shows the Empire's. FUN_0045ce80 counts the viewer's copy
+    // (FUN_004f3220), and the setup push (FUN_0051b990) gives a core copy
+    // its facilities (0x20..0x2f) but no units. The browser seed's Commenor
+    // and Drall hold regiments and no defense facility, its Coruscant a
+    // GenCore Level I (fog-a0.mjs compares their icons with a-23).
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_new_game_fixture_lights_an_enemy_core_defenses_icon_by_its_facilities_alone() {
+        let world = new_game(Scenario::NewGame, CockpitFaction::Alliance);
+        let side = |name| {
+            rebellion_render::quadrant_icons::quadrant_side(
+                &world,
+                &FogState::new(Faction::Alliance),
+                &MissionState::default(),
+                &MovementState::default(),
+                rebellion_render::quadrant_icons::Travellers {
+                    regiments: &[],
+                    squadrons: &[],
+                },
+                Faction::Alliance,
+                named_system(&world, name),
+                rebellion_render::quadrant_icons::Quadrant::Defenses,
+            )
+        };
+        for name in ["Commenor", "Drall"] {
+            let live = &world.systems[named_system(&world, name)];
+            assert!(live.control.is_controlled_by(Faction::Empire), "{name}");
+            assert!(
+                !live.ground_units.is_empty() && live.defense_facilities.is_empty(),
+                "{name}"
+            );
+            assert_eq!(side(name), None, "{name}");
+        }
+        let coruscant = &world.systems[named_system(&world, "Coruscant")];
+        assert_eq!(coruscant.defense_facilities.len(), 1);
+        assert_eq!(side("Coruscant"), Some(2));
+    }
+
+    // A0 2026-11-21-gid-units-17: the Empire's Drall holds no squadron on
+    // its planet (e-31, a05fee9087eb) and one TIE Fighter aboard Fleet 2
+    // (e-26, acd453b96a53), and takes the smallest Fighter Squadrons mark
+    // (e-02): FUN_00503550 walks the copy's direct children, and a fleet's
+    // are its ships. The browser seed's Drall is the same case (gid-a0.mjs
+    // compares its mark with e-02's).
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_new_game_fixture_carries_drall_s_one_squadron_aboard_its_fleet() {
+        let world = new_game(Scenario::NewGame, CockpitFaction::Empire);
+        let drall = named_system(&world, "Drall");
+        assert!(world.systems[drall]
+            .control
+            .is_controlled_by(Faction::Empire));
+        assert!(world.systems[drall].fighters.is_empty());
+        let aboard: u32 = world
+            .fleets
+            .values()
+            .filter(|fleet| fleet.location == drall && !fleet.is_alliance)
+            .flat_map(|fleet| &fleet.fighters)
+            .map(|entry| entry.count)
+            .sum();
+        assert_eq!(aboard, 1);
+    }
+
     // A0 2026-11-19-fog-14 e-05 (ed937647a151): Triton bare while the
     // fleet is in hyperspace; e-06 (5048b9273d8b): its mark and tracks on
     // arrival; e-13 (b2ef05cac7f5), e-28 (63ba3e75ac9b): the day-44 tracks
