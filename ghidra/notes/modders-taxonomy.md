@@ -156,14 +156,14 @@ Two combat resolution modes: `CONVERT_TO_TACT` (2D tactical view, player-control
 
 | Address | Lines | Purpose |
 |---------|-------|---------|
-| FUN_00560d50 | 232 | **Ground combat main** — dispatches on entity family. Ships (0x30-0x3b) delegate to space path; Death Star (0x34) calls FUN_005617b0; troops (0x14-0x1b) iterate all units at the system. **No friendly fire**: same-faction units skip. Uses `FUN_004f25c0(system, type=3)` to iterate. |
+| FUN_00560d50 | 232 | **Container change of a character or capital ship** (re-traced 2026-11-22; was read as ground combat). Called from `FUN_00514a60` (event 0x320). A capital ship (0x14-0x1b) puts each content item with `+0x96` set through FUN_004ee350; a character (0x30-0x3b) does too unless it moved between ships of one fleet; the Emperor (0x34) first updates the seat of power (FUN_005617b0). See `ground-combat.md`. |
 | FUN_004ee350 | 30 | **Per-unit resolution** — sets regiment strength (`+0x96`) to new value, fires vtable `+0x330`. Current implementation: set to 0 (destroy). Actual damage formula is upstream. |
-| FUN_005617b0 | 68 | **Death Star planet destruction** — family 0x34 only. Checks `alive_flag & 1` (target alive) AND `status_flags & 1` (DS operational). Faction control check: `+0x24 & 0xc0 == 0x80` = Empire control. Calls FUN_0055f650 (superlaser effect). Hardcoded DatId `0x90000109` likely references the targeted system. |
+| FUN_005617b0 | 68 | **CharacterMgr_SetSeatOfPower** (re-traced 2026-11-22; was read as Death Star planet destruction). For the Emperor (family 0x34): on when he is not captive (`+0xac` bit 0 clear), `+0x50` bit 0 is set and he is at `0x90000109` (Coruscant) while the Empire holds it (`+0x24 & 0xc0 == 0x80`). |
 
 **Ground combat entity type ranges (DatId family byte):** corrected
-2026-11-22 from the DAT files (`entity-system.md`); the old table, and the
-rows above that use it (FUN_00560d50, FUN_005617b0), shifted the labels and
-are not re-traced.
+2026-11-22 from the DAT files (`entity-system.md`); the old table shifted
+the labels, and the rows above (FUN_00560d50, FUN_005617b0) are re-traced
+with the corrected ones.
 
 | Range | Type |
 |-------|------|

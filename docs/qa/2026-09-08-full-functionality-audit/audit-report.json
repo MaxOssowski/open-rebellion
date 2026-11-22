@@ -2244,7 +2244,8 @@
         "entity-system.md:383 conflicts with two iterator recoveries on the fleet type range",
         "2026-10-14 fix: agent_docs/ghidra-re.md, agent_docs/systems/ai-parity-tracker.md, agent_docs/simulation.md and agent_docs/architecture.md no longer call FUN_004927c0 the master tick, 0x1f0 a daily AI trigger, or FUN_00508250 a per-tick pass; each cites ghidra/notes/timer-scheduler.md",
         "2026-11-22 fix: the DatId family table is read from the shipped DAT files (FLEETSD 0x08, TROOPSD 0x10, CAPSHPSD 0x14, FIGHTSD 0x1c, the facility files 0x22-0x2d, MJCHARSD 0x30, MNCHARSD 0x38, SPECFCSD 0x3c, SYSTEMSD 0x90) and corrected in entity-system.md (with FUN_00502020's three ranges), COMBAT-SUMMARY.md, annotated-functions.md, cpp-class-hierarchy.md, ground-combat.md and modders-taxonomy.md; the March and April plans and the 2026-03-27 source-tree report carry a note that their addresses need community-address-remap.md",
-        "Open: the ground-combat descriptions written on the old family labels (FUN_00560d50, FUN_005617b0) are marked but not re-traced"
+        "Re-traced 2026-11-22: FUN_00560d50 is not ground combat but the container change of a character or capital ship (called from FUN_00514a60, event 0x320), and FUN_005617b0 is CharacterMgr_SetSeatOfPower for the Emperor (0x34), not Death Star planet destruction (ground-combat.md, modders-taxonomy.md)",
+        "Open: other annotated-functions.md descriptions may still name a range by its old label; that note says so"
       ],
       "acceptance": "Each false claim is corrected at its source and every note citation resolves to a .c line in our build."
     },

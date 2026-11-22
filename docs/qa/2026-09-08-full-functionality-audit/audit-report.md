@@ -3762,8 +3762,13 @@ cross-runtime proof remain open
   cpp-class-hierarchy.md, ground-combat.md and modders-taxonomy.md. The
   March and April plans and the 2026-03-27 source-tree report carry a note
   that their addresses need community-address-remap.md.
-- Open: the ground-combat descriptions written on the old family labels
-  (FUN_00560d50, FUN_005617b0) are marked but not re-traced.
+- Re-traced (2026-11-22): FUN_00560d50 is not ground combat but the
+  container change of a character or capital ship (called from
+  FUN_00514a60, event 0x320), and FUN_005617b0 is
+  CharacterMgr_SetSeatOfPower for the Emperor (0x34), not Death Star
+  planet destruction (ground-combat.md, modders-taxonomy.md).
+- Open: other annotated-functions.md descriptions may still name a range
+  by its old label; that note says so.
 - Acceptance: Each false claim is corrected at its source and every note
   citation resolves to a .c line in our build.
 

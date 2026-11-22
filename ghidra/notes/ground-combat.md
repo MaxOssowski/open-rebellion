@@ -13,38 +13,29 @@ updated: 2026-03-16
 > this note's family ranges are wrong (`0x14..0x1b` are capital ships;
 > regiments are `0x10..0x13`).
 
-## Entry Point
+## FUN_00560d50 is not ground combat (re-traced 2026-11-22)
 
-`FUN_00560d50` (232 lines) — called from system battle orchestrator (`FUN_00514a60`).
+`FUN_00560d50(object, old, new, ctx)` is called only from `FUN_00514a60`
+(`Event320_Handle`, the 0x320 event when an object changes container), after
+`FUN_005457f0`. With the DAT family bytes (`entity-system.md`):
 
-## Entity Classification
+1. An object that is neither a character (`0x30..0x3b`) nor a capital ship
+   (`0x14..0x1b`) returns 1 at once.
+2. A capital ship: `FUN_00504f70` gives its object; when that is a capital
+   ship, `FUN_004f25c0(ship, 3)` walks its contents and every item whose
+   `+0x96` is not 0 goes through `FUN_004ee350(0, ctx)`.
+3. A character: `FUN_00505190` gives its object. The Emperor (family `0x34`,
+   MJCHARSD `0x34000280`) calls `FUN_005617b0`,
+   `CharacterMgr_SetSeatOfPower`: the seat of power is on when he is not
+   captive (`+0xac` bit 0 clear), `+0x50` bit 0 is set, and he is at
+   `0x90000109` (Coruscant) while the Empire holds it (`+0x24 & 0xc0 ==
+   0x80`); otherwise off. A character whose `+0x96` is not 0 then goes
+   through `FUN_004ee350(0, ctx)`, except when the old and new containers
+   are both capital ships (`0x14..0x1b`) of the same fleet (`0x08..0x0f`):
+   a move between ships of one fleet changes nothing.
 
-Ground combat classifies entities by DatId family byte (`id >> 24`):
-
-> Corrected 2026-11-22: this table shifted the labels. From the shipped DAT
-> files `0x14-0x1b` is capital ships, `0x30-0x3b` characters, `0x08-0x0f`
-> fleets, `0x10-0x13` regiments (`entity-system.md`). The flow below was
-> written with the old labels and is not re-traced.
-
-| Family Range | Type (old label in brackets) |
-|-------------|------|
-| `0x14-0x1b` | Capital ships; `0x18` the Death Star (was: troops / special forces) |
-| `0x30-0x3b` | Characters (was: capital ships) |
-| `0x34` | A major character (was: Death Star handler `FUN_005617b0`) |
-| `0x08-0x0f` | Fleets (was: characters) |
-
-## Flow
-
-1. Check if entity is a ship (family 0x30-0x3b) → delegate to space path
-2. Check if entity is a troop (family 0x14-0x1b) → enter ground combat
-3. Get parent object via `FUN_00504f70`
-4. Validate parent is also a troop (family 0x14-0x1b)
-5. If family == 0x34: call **Death Star handler** `FUN_005617b0`
-6. Iterate all troops at system via `FUN_004f25c0` (type=3)
-7. For each troop: check regiment strength at `offset +0x96` (short)
-8. If strength > 0: call `FUN_004ee350` (per-unit combat resolution)
-9. Validate both sides are valid characters (family 0x08-0x0f)
-10. Check same-side (`param_2 == param_1` → skip, no friendly fire)
+The earlier reading here (troops, a Death Star handler, "no friendly fire")
+came from shifted family labels.
 
 ## Per-Unit Combat: FUN_004ee350 (30 lines)
 
