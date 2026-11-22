@@ -160,14 +160,17 @@ Two combat resolution modes: `CONVERT_TO_TACT` (2D tactical view, player-control
 | FUN_004ee350 | 30 | **Per-unit resolution** — sets regiment strength (`+0x96`) to new value, fires vtable `+0x330`. Current implementation: set to 0 (destroy). Actual damage formula is upstream. |
 | FUN_005617b0 | 68 | **Death Star planet destruction** — family 0x34 only. Checks `alive_flag & 1` (target alive) AND `status_flags & 1` (DS operational). Faction control check: `+0x24 & 0xc0 == 0x80` = Empire control. Calls FUN_0055f650 (superlaser effect). Hardcoded DatId `0x90000109` likely references the targeted system. |
 
-**Ground combat entity type ranges (DatId family byte):**
+**Ground combat entity type ranges (DatId family byte):** corrected
+2026-11-22 from the DAT files (`entity-system.md`); the old table, and the
+rows above that use it (FUN_00560d50, FUN_005617b0), shifted the labels and
+are not re-traced.
 
 | Range | Type |
 |-------|------|
-| 0x08-0x0f | Characters |
-| 0x14-0x1b | Troops / Special Forces (combat-eligible ground units) |
-| 0x30-0x3b | Capital Ships (delegated to space path) |
-| 0x34 | Death Star (special handler) |
+| 0x08-0x0f | Fleets |
+| 0x10-0x13 | Regiments |
+| 0x14-0x1b | Capital ships (0x18 the Death Star) |
+| 0x30-0x3b | Characters |
 
 ### Bombardment
 

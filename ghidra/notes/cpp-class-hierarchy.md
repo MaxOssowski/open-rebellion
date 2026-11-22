@@ -135,7 +135,7 @@ CRebObject (base)
 │   │   │                         DEATHSTAR_WITHDRAW
 │   │   │
 │   │   └── CFighterSquadron
-│   │          Family bytes: 0x71-0x72 (shield absorb special path), 0x30-0x3b range
+│   │          Family bytes: 0x1c-0x1f (FIGHTSD; corrected 2026-11-22, was "0x71-0x72, 0x30-0x3b")
 │   │          +0x60  int   SquadSizeDamage (craft lost; squadron-strength.md)
 │   │          Virtual (override):
 │   │            +0x244 GetMaxSquadSize()             → error "Invalid_SquadSizeDamage_value_"

@@ -21,12 +21,17 @@ updated: 2026-03-16
 
 Ground combat classifies entities by DatId family byte (`id >> 24`):
 
-| Family Range | Type |
+> Corrected 2026-11-22: this table shifted the labels. From the shipped DAT
+> files `0x14-0x1b` is capital ships, `0x30-0x3b` characters, `0x08-0x0f`
+> fleets, `0x10-0x13` regiments (`entity-system.md`). The flow below was
+> written with the old labels and is not re-traced.
+
+| Family Range | Type (old label in brackets) |
 |-------------|------|
-| `0x14-0x1b` | Troops / Special Forces (combat-eligible ground units) |
-| `0x30-0x3b` | Capital Ships (checked for bombardment, not ground combat) |
-| `0x34` | Special entity — Death Star handler (`FUN_005617b0`, 68 lines) |
-| `0x08-0x0f` | Characters (checked for side validation) |
+| `0x14-0x1b` | Capital ships; `0x18` the Death Star (was: troops / special forces) |
+| `0x30-0x3b` | Characters (was: capital ships) |
+| `0x34` | A major character (was: Death Star handler `FUN_005617b0`) |
+| `0x08-0x0f` | Fleets (was: characters) |
 
 ## Flow
 

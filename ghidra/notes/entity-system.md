@@ -380,14 +380,38 @@ param_2 = secondary context). The event IDs form a contiguous block `0x180–0x1
 
 | Address | Size | Purpose |
 |---------|------|---------|
-| `FUN_00502020` | 897 | Garrison/fleet strength aggregator — iterates entities by DatId family byte. Family ranges: `0x10–0x14` = troops, `0x1c–0x20` = facilities, `0x30–0x40` = ships. |
+| `FUN_00502020` | 897 | Iterates objects and keeps those whose DatId family byte is in `0x30..0x40` (characters and special forces), `0x1c..0x20` (fighter squadrons) or `0x10..0x14` (regiments), each tested for its side (`(+0x24 ^ this+0x24) & 0xc0`). Corrected 2026-11-22: this row called them ships, facilities and troops. |
 | `FUN_00555540` | — | Fleet strength getter for bombardment side |
 | `FUN_004f2640` | — | Fleet unit iterator (used in FUN_004ff7a0 callers) — params: `side=1, type=2` |
 
 **CFleet contains**:
-- Capital ship list (families `0x30–0x3b`)
-- Fighter squadron list (families `0x71–0x72`)
-- Character list (families `0x08–0x0f`)
+- Capital ship list (families `0x14..0x1c`)
+- Fighter squadron list (families `0x1c..0x20`)
+- Character list (families `0x30..0x3c`)
+
+Corrected 2026-11-22 from the DAT family bytes (table below); the list
+used to give `0x30–0x3b`, `0x71–0x72` and `0x08–0x0f`.
+
+**DatId family bytes:**
+
+| Family byte | DAT file (header and record `family_id`) | Objects |
+|---|---|---|
+| `0x08` (`0x08..0x0f`) | FLEETSD | fleets |
+| `0x10` (`0x10..0x13`) | TROOPSD | regiments |
+| `0x14`, `0x18` (`0x14..0x1b`) | CAPSHPSD | capital ships; `0x18` the Death Star |
+| `0x1c` (`0x1c..0x1f`) | FIGHTSD | fighter squadrons |
+| `0x22..0x25` | DEFFACSD | defenses (shields, batteries) |
+| `0x28..0x2a` | MANFACSD | shipyards, training and construction facilities |
+| `0x2c..0x2d` | PROFACSD | mines and refineries |
+| `0x30..0x35` (`0x30..0x37`) | MJCHARSD | major characters |
+| `0x38` (`0x38..0x3b`) | MNCHARSD | minor characters |
+| `0x3c` (`0x3c..0x3f`) | SPECFCSD | special forces |
+| `0x40..0x7f` | — | missions |
+| `0x90`, `0x92` | SYSTEMSD | systems |
+
+Read from the shipped DAT files with `cargo run -p dat-dumper -- -g data/base -f <FILE>`
+(2026-11-22). Range checks in the code are half-open in the decompile
+(`uVar < 0x30 || 0x3f < uVar` is `0x30..0x40`).
 - Entry point: `FUN_004ff7a0` (FleetBattleNotif) is the canonical start of the battle trigger chain
 
 ### 3.3 Fleet–Battle Integration

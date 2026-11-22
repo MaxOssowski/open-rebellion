@@ -11,11 +11,15 @@ updated: 2026-03-16
 Generated from Ghidra decompilation of REBEXE.EXE (Star Wars Rebellion 1998, LucasArts).
 Cross-referenced with: combat-formulas.md, space-combat.md, ground-combat.md, bombardment.md.
 
-Entity family byte quick reference (from `id >> 0x18`):
-- `0x08-0x0f` — Characters (major + minor)
-- `0x14-0x1b` — Troops / Special Forces
-- `0x30-0x3b` — Capital Ships + Fighters
-- `0x34` — Death Star (special ship)
+Entity family byte quick reference (from `id >> 0x18`; corrected 2026-11-22
+from the DAT files, see `entity-system.md` — the old list shifted the labels,
+so descriptions below that name a range by its old label are not re-traced):
+- `0x08-0x0f` — Fleets
+- `0x10-0x13` — Regiments
+- `0x14-0x1b` — Capital ships (`0x18` the Death Star)
+- `0x1c-0x1f` — Fighter squadrons
+- `0x30-0x3b` — Characters (major `0x30..0x37`, minor `0x38..0x3b`)
+- `0x3c-0x3f` — Special forces
 - `0x71` — Fighter squadron type (shield absorb alt-path, exact match only — NOT a range)
 - `0x73-0x74` — Special combat entity (combat result special path, see FUN_005445d0)
 - `0x90-0x98` — Star Systems
@@ -1328,7 +1332,7 @@ int resolve_weapon_fire(void* battle_state, int side, void* context) {
 ### Key Offsets
 | Offset | Type | Field Name | Notes |
 |--------|------|-----------|-------|
-| `entity_id >> 24` | byte | family_byte | Entity class (0x30-0x3b=ship, 0x14-0x1b=troop, 0x08-0x0f=char) |
+| `entity_id >> 24` | byte | family_byte | Entity class (0x14-0x1b=capital ship, 0x10-0x13=regiment, 0x30-0x3b=character; corrected 2026-11-22) |
 | `entity+0x96` | `short` | regiment_strength | Zero = non-combat unit |
 
 ### Pseudocode (annotated)

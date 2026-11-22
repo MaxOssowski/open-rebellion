@@ -75,15 +75,20 @@ Weapon damage calls FUN_00543b60 twice (once per side) with vtable dispatch at +
 
 ## Entity Type Codes (DatId Family Byte)
 
+Corrected 2026-11-22 from the shipped DAT files; the old table shifted the
+labels (it called `0x14-0x1b` troops, `0x30-0x3b` capital ships and
+`0x08-0x0f` characters). The full table is in `entity-system.md`.
+
 | Range | Type |
 |-------|------|
-| 0x08-0x0f | Characters |
-| 0x10-0x13 | Troops (general) |
-| 0x14-0x1b | Troops/Special Forces (combat-eligible) |
-| 0x1c-0x1f | Facilities |
-| 0x30-0x3b | Capital Ships |
-| 0x34 | Special (Death Star?) |
-| 0x90-0x98 | Systems |
+| 0x08-0x0f | Fleets (FLEETSD) |
+| 0x10-0x13 | Regiments (TROOPSD) |
+| 0x14-0x1b | Capital ships (CAPSHPSD); 0x18 the Death Star |
+| 0x1c-0x1f | Fighter squadrons (FIGHTSD) |
+| 0x22-0x2d | Facilities (DEFFACSD, MANFACSD, PROFACSD) |
+| 0x30-0x3b | Characters (MJCHARSD, MNCHARSD) |
+| 0x3c-0x3f | Special forces (SPECFCSD) |
+| 0x90-0x92 | Systems |
 
 ## Mission Type Codes
 
