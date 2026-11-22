@@ -20,8 +20,10 @@ so descriptions below that name a range by its old label are not re-traced):
 - `0x1c-0x1f` — Fighter squadrons
 - `0x30-0x3b` — Characters (major `0x30..0x37`, minor `0x38..0x3b`)
 - `0x3c-0x3f` — Special forces
-- `0x71` — Fighter squadron type (shield absorb alt-path, exact match only — NOT a range)
-- `0x73-0x74` — Special combat entity (combat result special path, see FUN_005445d0)
+- `0x40-0x7f` — Missions (MISSNSD): `0x71` Dagobah, `0x72` Vacation /
+  Sabbatical, `0x73` Pickup. The readings below that call `0x71` a fighter
+  type or `0x73`/`0x74` a "special entity" (FUN_005445d0, the shield path)
+  predate this and are unverified.
 - `0x90-0x98` — Star Systems
 
 ---
@@ -1325,7 +1327,7 @@ int resolve_weapon_fire(void* battle_state, int side, void* context) {
 - FUN_00504f70 (get parent entity)
 - FUN_004f25c0 (iterate all units at system, type=3)
 - FUN_004ee350 (apply regiment strength change)
-- FUN_005617b0 (Death Star handler for family 0x34)
+- FUN_005617b0 (CharacterMgr_SetSeatOfPower, for the Emperor, family 0x34; re-traced 2026-11-22)
 - FUN_00504dc0 (get faction side for unit)
 - FUN_004f6b70 (get character association)
 
@@ -1394,7 +1396,7 @@ bool ground_combat(void* battle, uint* attacker_id, uint* defender_id,
 ### Game Rules Extracted
 - **No friendly fire**: `param_2 == param_1` (same faction ID) causes the combat call to be skipped
 - **Regiment strength 0 = skip**: units with zero strength are non-combatants even during ground combat
-- **Death Star triggers at family 0x34** — the family check is exact, not ranged
+- **The Emperor (family 0x34, an exact check) updates the seat of power** (re-traced 2026-11-22; was read as a Death Star trigger)
 - Ground combat calls `FUN_004ee350(unit, 0, context)` — applying strength 0 (destroy) to each unit. The actual damage calculation must happen upstream, as this appears to be the kill step.
 - Both parent validation checks confirm entity family before operating — strong type safety at runtime
 
@@ -1657,7 +1659,11 @@ The three event registrars differ in parameter count:
 1. No friendly fire: same-faction units do not fight
 2. Regiment strength `+0x96` (short) — zero means destroyed
 3. Troop damage = calling `FUN_004ee350(unit, 0, ctx)` — setting strength to 0
-4. Death Star (family 0x34) gets its own handler called before normal ground combat
+4. The Emperor (family 0x34) updates the seat of power first (FUN_005617b0)
+
+Corrected 2026-11-22: FUN_00560d50 is the container change of a character
+or capital ship (event 0x320), not ground combat; see `ground-combat.md`.
+The findings above were read with shifted family labels.
 
 **Key findings for character system:**
 
