@@ -3776,10 +3776,14 @@ cross-runtime proof remain open
   addresses aside), 4,329 resolve to our typed decompile corpus or a
   `ghidra/notes/FUN_*.c`. Seven do not: `FUN_00417780`, `FUN_00438220`,
   `FUN_00500db0`, `FUN_00558050`, `FUN_0055e9a0`, `FUN_00568ee0`,
-  `FUN_005f6590` (thunks or functions the corpus lacks; not yet decompiled
-  here).
-- Open: those seven, and other annotated-functions.md descriptions that may
-  still name a range by its old label; that note says so.
+  `FUN_005f6590`. Ghidra headless (read-only project) settles them: four are
+  thunks the corpus leaves out (`FUN_00500db0`, `FUN_00558050`,
+  `FUN_00568ee0`, `FUN_005f6590`), two are code Ghidra never made a function
+  (`0x00417780`, `0x0055e9a0`), and `0x00438220` lies mid-instruction in
+  `FUN_00437f80` (production-destination.md now cites that). Each has a
+  `ghidra/notes/FUN_*.c`, so every cited address resolves.
+- Open: other annotated-functions.md descriptions may still name a range by
+  its old label; that note says so.
 - Acceptance: Each false claim is corrected at its source and every note
   citation resolves to a .c line in our build.
 

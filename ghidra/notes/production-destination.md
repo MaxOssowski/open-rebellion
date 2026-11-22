@@ -256,7 +256,7 @@ manager's TargetKey:
   Confirm scraps them.
 
 An order with a refusal is not valid: Build Selection shows "n/a" in the
-four values and greys Confirm (`FUN_00438220`, `FUN_00439160`;
+four values and greys Confirm (`FUN_00437f80` near `0x00438220`, `FUN_00439160`;
 `manufacturing-build-selection.md`). Ported 2026-11-21:
 `build_selection::lacks_fleet_room` in `build_selection::estimate`, with
 `products::ship_rooms_but` for the room left. A0 shows no Build refused

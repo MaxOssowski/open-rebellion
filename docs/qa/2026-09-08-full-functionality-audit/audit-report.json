@@ -2247,7 +2247,8 @@
         "Re-traced 2026-11-22: FUN_00560d50 is not ground combat but the container change of a character or capital ship (called from FUN_00514a60, event 0x320), and FUN_005617b0 is CharacterMgr_SetSeatOfPower for the Emperor (0x34), not Death Star planet destruction (ground-combat.md, modders-taxonomy.md)",
         "Re-traced 2026-11-22: FUN_005445d0 is the DarthPickup check (0x73 the Pickup mission; FUN_00534640 is Role_SetMissionResignRequest) and FUN_00544130 the LukePalace check (0x71 the Dagobah mission), not combat result, special victory and shield phases (annotated-functions.md)",
         "Citation check 2026-11-22: of 4,336 REBEXE FUN_ addresses cited in ghidra/notes/*.md (vtable PTR_FUN_ data and TACTICAL.DLL 6d... addresses aside), 4,329 resolve to our typed decompile corpus or a ghidra/notes/FUN_*.c; seven do not: FUN_00417780, FUN_00438220, FUN_00500db0, FUN_00558050, FUN_0055e9a0, FUN_00568ee0, FUN_005f6590 (thunks or functions the corpus lacks; not yet decompiled here)",
-        "Open: those seven, and other annotated-functions.md descriptions that may still name a range by its old label; that note says so"
+        "Ghidra headless (read-only project) settles the seven: four are thunks the corpus leaves out (FUN_00500db0, FUN_00558050, FUN_00568ee0, FUN_005f6590), two are code Ghidra never made a function (0x00417780, 0x0055e9a0), and 0x00438220 lies mid-instruction in FUN_00437f80 (production-destination.md now cites that); each has a ghidra/notes/FUN_*.c, so every cited address resolves",
+        "Open: other annotated-functions.md descriptions may still name a range by its old label; that note says so"
       ],
       "acceptance": "Each false claim is corrected at its source and every note citation resolves to a .c line in our build."
     },
