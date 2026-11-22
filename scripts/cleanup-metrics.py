@@ -31,7 +31,8 @@ WINDOW = 12  # lines per duplicate-detection window
 def rust_files():
     for base in CRATES:
         for dirpath, _, files in os.walk(os.path.join(ROOT, base)):
-            if "/target" in dirpath:
+            # Relative to the root, so a worktree under target/ still counts.
+            if "target" in os.path.relpath(dirpath, ROOT).split(os.sep):
                 continue
             for name in files:
                 if name.endswith(".rs"):
