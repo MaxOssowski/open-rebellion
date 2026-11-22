@@ -3767,6 +3767,10 @@ cross-runtime proof remain open
   FUN_00514a60, event 0x320), and FUN_005617b0 is
   CharacterMgr_SetSeatOfPower for the Emperor (0x34), not Death Star
   planet destruction (ground-combat.md, modders-taxonomy.md).
+- Re-traced (2026-11-22): FUN_005445d0 is the DarthPickup check (0x73 the
+  Pickup mission; FUN_00534640 is Role_SetMissionResignRequest) and
+  FUN_00544130 the LukePalace check (0x71 the Dagobah mission), not combat
+  result, special victory and shield phases (annotated-functions.md).
 - Open: other annotated-functions.md descriptions may still name a range
   by its old label; that note says so.
 - Acceptance: Each false claim is corrected at its source and every note

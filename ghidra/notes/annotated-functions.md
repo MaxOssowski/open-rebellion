@@ -21,9 +21,9 @@ so descriptions below that name a range by its old label are not re-traced):
 - `0x30-0x3b` — Characters (major `0x30..0x37`, minor `0x38..0x3b`)
 - `0x3c-0x3f` — Special forces
 - `0x40-0x7f` — Missions (MISSNSD): `0x71` Dagobah, `0x72` Vacation /
-  Sabbatical, `0x73` Pickup. The readings below that call `0x71` a fighter
-  type or `0x73`/`0x74` a "special entity" (FUN_005445d0, the shield path)
-  predate this and are unverified.
+  Sabbatical, `0x73` Pickup. `0x71` in FUN_00544130 and `0x73` in
+  FUN_005445d0 are these missions (re-traced 2026-11-22), not a fighter type
+  or a special entity.
 - `0x90-0x98` — Star Systems
 
 ---
@@ -1030,6 +1030,15 @@ bool weapon_fire_phase(void* battle_state, void* context) {
 
 ## FUN_00544130 — Shield Absorption Phase (Space Combat Phase 4)
 
+> **Re-traced 2026-11-22 (audit F-039): this is not shields.** Our typed
+> decompile names it `MissionMgr` code; it is the LukePalace check the port
+> follows in `crates/rebellion-core/src/jabba.rs` (with `FUN_005443f0`,
+> `FUN_005444e0`). Only while `Flags58 & HanCapturedAtPalace`: when Luke
+> passes `FUN_005439b0` and is off a mission (`+0x78` bit 7 clear),
+> `MissionMgr_SetLukePalace`; on a Dagobah mission (MISSNSD family `0x71`)
+> whose object has `+0x68 == 8`, that object's `vtable+0x1d8`. The reading
+> below ("phase 4", fighter type `0x71`) came from shifted labels.
+
 **File**: Likely `spacebattle.cpp`
 **Phase**: Phase 4 — Shield Absorption
 **Called by**: FUN_00549910
@@ -1107,6 +1116,16 @@ bool hull_damage_phase(void* battle_state, void* context) {
 ---
 
 ## FUN_005445d0 — Combat Result Determination
+
+> **Re-traced 2026-11-22 (audit F-039): this is not combat.** Our typed
+> decompile names it `MissionMgr` code; it is the DarthPickup check the port
+> follows in `crates/rebellion-core/src/jabba.rs`. When Luke, Leia and Han are
+> captive (`+0xac` bit 0) and Chewbacca is captive or `+0x50` bit 3 is set,
+> and Vader passes `FUN_005439b0`: off a mission, `MissionMgr_SetDarthPickup`;
+> on a mission that is not Pickup (MISSNSD family `0x73`) and may be resigned
+> (`Flags78 & CanResignFromMission`), `FUN_00534640`, which is
+> `Role_SetMissionResignRequest`. The reading below (stat types, fighters,
+> "special entity victory") came from shifted family labels.
 
 **File**: Likely `spacebattle.cpp`
 **Phase**: Phase 7 — Result
@@ -1295,6 +1314,11 @@ int resolve_weapon_fire(void* battle_state, int side, void* context) {
 ---
 
 ## FUN_00534640 — Special Entity Victory Handler
+
+> **Re-traced 2026-11-22 (audit F-039):** our typed decompile names it
+> `Role::Role_SetMissionResignRequest`; `FUN_005445d0` calls it to ask Vader
+> to leave a mission that is not Pickup (`0x73`). Flag `8` in `+0x78` is the
+> resign request, not a victory. The reading below is superseded.
 
 **File**: Likely `spacebattle.cpp` or `deathstar.cpp`
 **Called by**: FUN_005445d0 (combat result, family 0x73 path)
