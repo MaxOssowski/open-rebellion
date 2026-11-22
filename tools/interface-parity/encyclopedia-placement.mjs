@@ -409,28 +409,49 @@ async function run(browser, base, faction) {
         if (label === "troop-finder" && faction.name === "alliance") {
           // FUN_00609650 on each typed character: the first row whose name
           // the typed text prefixes is chosen, white (A0 finder-search/02,
-          // 03: "P" then "Pz" choose Pzob).
-          // The port's fixture lists Selonia, Storthus and Yavin, rows 25
-          // apart from y 191; "Y" chooses Yavin, the third. (Until the seed
-          // rolled every system's resources, 471b20e1, it listed Bpfassh,
-          // Ghorman, Ithor and Yavin, and "I" chose Ithor.)
-          await page.keyboard.type("Y", { delay: 80 });
-          await page.waitForTimeout(400);
-          await shot("troop-finder-typed");
-          const typed = PNG.sync.read(await fs.readFile(path.join(directory, "troop-finder-typed.png")));
-          const brightest = (row) => {
+          // 03: "P" then "Pz" choose Pzob); a letter no name begins
+          // chooses the first row (list_prefix.rs).
+          // A browser new game rolls its galaxy from the clock (22575375),
+          // so the listed systems differ from run to run. Each letter is
+          // typed into a freshly opened Finder (reopening forgets the
+          // choice, below): one row is white each time, and as the rows are
+          // sorted by name, the rows letters choose past the first rise
+          // with the alphabet, and some letter chooses a later row.
+          const rowBrightness = (png, row) => {
             let top = 0;
             for (let y = 196 + 25 * row; y < 196 + 25 * row + 12; y += 1) {
               for (let x = 102; x < 250; x += 1) {
-                const i = (y * typed.width + x) * 4;
-                top = Math.max(top, Math.min(typed.data[i], typed.data[i + 1], typed.data[i + 2]));
+                const i = (y * png.width + x) * 4;
+                top = Math.max(top, Math.min(png.data[i], png.data[i + 1], png.data[i + 2]));
               }
             }
             return top;
           };
-          finderText.typed = { rows: [0, 1, 2, 3].map(brightest) };
-          assert.ok(finderText.typed.rows[2] > 230 && finderText.typed.rows[0] < 200,
-            `"Y" chooses Yavin: ${JSON.stringify(finderText.typed)}`);
+          const sweep = [];
+          for (const letter of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+            if (sweep.length > 0) {
+              await page.keyboard.press("Escape");
+              await page.waitForTimeout(400);
+              await page.keyboard.down("F4");
+              await frames(page);
+              await page.keyboard.up("F4");
+              await page.waitForTimeout(800);
+            }
+            await page.keyboard.type(letter, { delay: 80 });
+            await page.waitForTimeout(400);
+            const png = PNG.sync.read(await page.screenshot());
+            const rows = [0, 1, 2, 3, 4, 5].map((row) => rowBrightness(png, row));
+            const white = rows.flatMap((value, row) => (value > 230 ? [row] : []));
+            sweep.push({ letter, rows, white });
+          }
+          await shot("troop-finder-typed");
+          finderText.typed = sweep;
+          const chosen = sweep.map(({ white }) => (white.length === 1 ? white[0] : -1));
+          assert.ok(chosen.every((row) => row >= 0),
+            `each letter chooses one row: ${JSON.stringify(sweep)}`);
+          const later = chosen.filter((row) => row > 0);
+          assert.ok(later.length > 0 && later.every((row, i) => i === 0 || row >= later[i - 1]),
+            `letters choose later rows in name order: ${JSON.stringify(chosen)}`);
           // Closed and opened again, the Finder forgets the choice and
           // chooses its first row (A0 f4-reopened-day171, FUN_00609650 on
           // the empty name).
