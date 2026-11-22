@@ -128,7 +128,8 @@ CRebObject (base)
 │   │   ├── CDeathStar
 │   │   │      Family byte: 0x34
 │   │   │      Inherits CCapitalShip layout; special-cased in combat result (FUN_005445d0)
-│   │   │      Family 0x73-0x74: "special combat entity" — triggers FUN_00534640 victory path
+│   │   │      (Corrected 2026-11-22: 0x73 is the Pickup mission; FUN_00534640 is
+│   │   │       Role_SetMissionResignRequest, no "special combat entity")
 │   │   │      Fire condition: !(alive_flag & 1) AND (status_flags & 1)
 │   │   │      faction_control field: bits 6-7 at +0x24 of faction object (0x80 = Empire)
 │   │   │      Tactical message: cmSHIP_POST_DS_STATUS, DEATHSTAR_UPDATE, DEATHSTAR_FIRE,

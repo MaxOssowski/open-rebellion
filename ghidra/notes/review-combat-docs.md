@@ -6,6 +6,16 @@ created: 2026-03-15
 updated: 2026-03-16
 ---
 
+> **Misread (noted 2026-11-22, audit F-039; see `ghidra/notes/battle-flow.md`).**
+> `FUN_005442f0`, `FUN_00544030`, `FUN_00544130`, `FUN_00544da0` and
+> `FUN_005445d0` are `MissionMgr` story checks, not combat phases
+> (`FUN_00544130` LukePalace, `FUN_005445d0` DarthPickup); `FUN_00534640`
+> is `Role_SetMissionResignRequest`, `FUN_00560d50` the container change of
+> a character or capital ship (event 0x320), `FUN_005617b0` the Emperor's
+> seat of power. Family `0x14-0x1b` is capital ships, `0x30-0x3b`
+> characters, `0x71`/`0x73` the Dagobah and Pickup missions
+> (`entity-system.md`). Claims below that rest on the old readings are wrong.
+
 # RE Accuracy Review: Combat Scholar Documents
 
 *Reviewer: Claude Sonnet 4.6 | Date: 2026-03-15*
