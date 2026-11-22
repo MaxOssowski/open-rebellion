@@ -1461,6 +1461,15 @@ bool ground_combat(void* battle, uint* attacker_id, uint* defender_id,
 
 ## FUN_0050d5a0 — Mission Dispatch (13-Case Switch)
 
+> **Re-traced 2026-11-22 (audit F-039):** our typed decompile names it
+> `Event319_Handle`: it pushes intelligence about a system into one side's
+> object copies at a level (`FUN_0050d5a0(level, side)`): Espionage 10,
+> Reconnaissance 8, an encounter or the Final Battle 6, a bombardment 11,
+> an informant incident. Its switch picks which objects the level reveals;
+> the case numbers below are levels, not mission types. The port follows it
+> in `object_views.rs` (`ObjectViews`), `informant.rs` and
+> `final_battle.rs`.
+
 **File**: Likely `mission.cpp`
 **Called by**: Mission execution system
 **Purpose**: Dispatches mission-type-specific setup with appropriate filter criteria
