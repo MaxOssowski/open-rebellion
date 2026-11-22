@@ -8,6 +8,12 @@ origin: docs/reports/2026-03-26-community-disassembly-cross-reference.md
 
 # Knesset Ereshkigal — Eval-Driven Parity Sprint + Open Souls Refactor
 
+> **Addresses (note added 2026-11-22, audit F-039):** the `FUN_` addresses
+> taken from the community disassembly here come from a different
+> `REBEXE.EXE` build and name other functions in ours. Map them through
+> [`ghidra/notes/community-address-remap.md`](../../ghidra/notes/community-address-remap.md) before citing them; for
+> example community `FUN_0050a480` (`adjust_for_kdy`) is our `FUN_0050b310`.
+
 ## Status
 
 | Phase | Status | Tests Added | Key Deliverable |

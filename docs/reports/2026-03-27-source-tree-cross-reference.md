@@ -1,5 +1,11 @@
 # Source Tree Cross-Reference Report (2026-03-27)
 
+> **Addresses (note added 2026-11-22, audit F-039):** the `FUN_` addresses
+> taken from the community disassembly here come from a different
+> `REBEXE.EXE` build and name other functions in ours. Map them through
+> [`ghidra/notes/community-address-remap.md`](../../ghidra/notes/community-address-remap.md) before citing them; for
+> example community `FUN_0050a480` (`adjust_for_kdy`) is our `FUN_0050b310`.
+
 ## Dataset
 
 Community RE source tree from `rebexe-disassembly-source-trees.zip` (14,884 files). A significant upgrade over the prior 13,036-function disassembly — this dataset adds semantic function names (1,000+), C++ class hierarchy, and typed event records.

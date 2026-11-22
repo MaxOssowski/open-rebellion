@@ -9,6 +9,12 @@ tags: [knesset, swarm, story, events, advisor, cutscene, parity, sprint]
 
 # Knesset Shamash-Bet — Story Events Sweep + Advisor/Cutscene Polish
 
+> **Addresses (note added 2026-11-22, audit F-039):** the `FUN_` addresses
+> taken from the community disassembly here come from a different
+> `REBEXE.EXE` build and name other functions in ours. Map them through
+> [`ghidra/notes/community-address-remap.md`](../../ghidra/notes/community-address-remap.md) before citing them; for
+> example community `FUN_0050a480` (`adjust_for_kdy`) is our `FUN_0050b310`.
+
 *Named for **Shamash** (שמש), the Akkadian/Ugaritic sun god who illuminates what the night hid (the missing event handlers), paired with **Bet** (the second house) — a sprint that completes both Knesset Shamash's lapsed Phase 3b notification work and the four Kothar wa Khasis closing gaps from Knesset Resheph.*
 
 ## Enhancement Summary

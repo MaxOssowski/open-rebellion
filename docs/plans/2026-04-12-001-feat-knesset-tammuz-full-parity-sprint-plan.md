@@ -8,6 +8,12 @@ origin: docs/plans/2026-04-08-001-feat-knesset-shamash-bet-story-events-cutscene
 
 # Knesset Tammuz: Full Parity Sprint
 
+> **Addresses (note added 2026-11-22, audit F-039):** the `FUN_` addresses
+> taken from the community disassembly here come from a different
+> `REBEXE.EXE` build and name other functions in ours. Map them through
+> [`ghidra/notes/community-address-remap.md`](../../ghidra/notes/community-address-remap.md) before citing them; for
+> example community `FUN_0050a480` (`adjust_for_kdy`) is our `FUN_0050b310`.
+
 *Named for **Tammuz** (תמוז), the dying-and-rising god of Mesopotamia — the final sprint that brings the game from ~98% to 100% feature parity with the original Star Wars Rebellion (1998), then ships it.*
 
 ## Overview

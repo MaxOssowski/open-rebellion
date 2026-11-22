@@ -3754,8 +3754,16 @@ cross-runtime proof remain open
   `agent_docs/architecture.md` no longer call FUN_004927c0 the master tick,
   0x1f0 a daily AI trigger, or FUN_00508250 a per-tick pass; each cites
   `ghidra/notes/timer-scheduler.md`.
-- Open: the community-address citations in reviews and notes, and the
-  entity-system.md:383 fleet type range.
+- Fix (2026-11-22): the DatId family table is read from the shipped DAT
+  files (FLEETSD 0x08, TROOPSD 0x10, CAPSHPSD 0x14, FIGHTSD 0x1c, the
+  facility files 0x22-0x2d, MJCHARSD 0x30, MNCHARSD 0x38, SPECFCSD 0x3c,
+  SYSTEMSD 0x90) and corrected in entity-system.md (with FUN_00502020's
+  three ranges), COMBAT-SUMMARY.md, annotated-functions.md,
+  cpp-class-hierarchy.md, ground-combat.md and modders-taxonomy.md. The
+  March and April plans and the 2026-03-27 source-tree report carry a note
+  that their addresses need community-address-remap.md.
+- Open: the ground-combat descriptions written on the old family labels
+  (FUN_00560d50, FUN_005617b0) are marked but not re-traced.
 - Acceptance: Each false claim is corrected at its source and every note
   citation resolves to a .c line in our build.
 
