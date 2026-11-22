@@ -3771,8 +3771,15 @@ cross-runtime proof remain open
   Pickup mission; FUN_00534640 is Role_SetMissionResignRequest) and
   FUN_00544130 the LukePalace check (0x71 the Dagobah mission), not combat
   result, special victory and shield phases (annotated-functions.md).
-- Open: other annotated-functions.md descriptions may still name a range
-  by its old label; that note says so.
+- Citation check (2026-11-22): of 4,336 REBEXE `FUN_` addresses cited in
+  `ghidra/notes/*.md` (vtable `PTR_FUN_` data and TACTICAL.DLL `6d...`
+  addresses aside), 4,329 resolve to our typed decompile corpus or a
+  `ghidra/notes/FUN_*.c`. Seven do not: `FUN_00417780`, `FUN_00438220`,
+  `FUN_00500db0`, `FUN_00558050`, `FUN_0055e9a0`, `FUN_00568ee0`,
+  `FUN_005f6590` (thunks or functions the corpus lacks; not yet decompiled
+  here).
+- Open: those seven, and other annotated-functions.md descriptions that may
+  still name a range by its old label; that note says so.
 - Acceptance: Each false claim is corrected at its source and every note
   citation resolves to a .c line in our build.
 
