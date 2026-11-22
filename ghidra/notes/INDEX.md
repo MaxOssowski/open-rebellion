@@ -20,7 +20,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | [modders-taxonomy.md](modders-taxonomy.md) | 805 | 10 game systems categorized for total conversion mods (Yuuzhan Vong, Thrawn, KOTOR). Function addresses, GNPRTB params, mod guidance per system |
 | [rust-implementation-guide.md](rust-implementation-guide.md) | 1,267 | Maps decompiled C to Open Rebellion's `advance()` pattern. `CombatSystem::resolve_space()`, `GnprtbParams`, `MstbTable`, 15 new CapitalShipClass fields |
 | [cpp-class-hierarchy.md](cpp-class-hierarchy.md) | 445 | CRebObject → CNotifyObject → CCombatUnit hierarchy. 19 vtable slots, 6 vtable pointer constants, complete field layout, setter-notify-event pattern |
-| [entity-system.md](entity-system.md) | 668 | Characters (8 enhanced skills, Force/Jedi 6-tier system, betrayal), game objects (5 destruction variants), fleets (4 events), factions (Alliance/Empire/Neutral bits) |
+| [entity-system.md](entity-system.md) | 668 | DatId family table from the DAT files (2026-11-22); characters (8 enhanced skills, Force/Jedi 6-tier system, betrayal), game objects (5 destruction variants), fleets (4 events), factions (Alliance/Empire/Neutral bits) |
 | [mission-event-cookbook.md](mission-event-cookbook.md) | 724 | 9+ mission types (FUN_0050d5a0 13-case switch), 4 story event chains (Dagobah, Vader, Palace, Bounty), event ID registry (0x12c-0x370), Thrawn Campaign example |
 | [economy-systems.md](economy-systems.md) | 478 | Resources (energy/material at +0x5c-0x68), 5 ControlKind states, uprising (UPRIS1TB/2TB), blockade manufacturing halt, repair (GNPRTB 0x305/0x386), 36 system notif handlers |
 
@@ -29,7 +29,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | File | Lines | Content |
 |------|-------|---------|
 | [combat-formulas.md](combat-formulas.md) | ~200 | **Master reference** — binary overview, 111 GNPRTB mappings, confirmed functions, scripted events, Ghidra scripts |
-| [COMBAT-SUMMARY.md](COMBAT-SUMMARY.md) | ~115 | Combat call chain diagram, confirmed formulas, entity type codes, implementation readiness |
+| [COMBAT-SUMMARY.md](COMBAT-SUMMARY.md) | ~115 | Misread chain (MissionMgr story checks shown as combat; banner 2026-11-22); combat call chain diagram, confirmed formulas, entity type codes, implementation readiness |
 
 ## Combat Subsystem Docs
 
@@ -57,7 +57,7 @@ Provenance: until 2026-09-26, 2,752 `FUN_<address>.c` files were empty placehold
 | [tactical-fighter-combat.md](tactical-fighter-combat.md) | Fighter construction, float hull and shields, family and torpedo events, maneuver defense, and strategic return | FUN_005b9c60, FUN_005b49e0, FUN_005b7780, FUN_005b5100 through FUN_005b5f50 |
 | [tactical-collision-formation.md](tactical-collision-formation.md) | Mesh collision envelope, strict overlap response, exact fighter-group assignment, and bounded formation facts | FUN_005ab0e0, FUN_005b2e60, FUN_005b2f30, FUN_005ae460, FUN_005c81d0 through FUN_005c83c0 |
 | [tactical-death-star-path.md](tactical-death-star-path.md) | Separate Death Star object, laser path, source RNG, timed trench-run producer, ordered chatter, casualties, and exact 201/202 routing | FUN_005ba420, FUN_005ba5e0, FUN_005ba7f0, FUN_005cfec0, FUN_005d04e0, FUN_005d03f0, FUN_005ad7e0, FUN_0061a310 |
-| [ground-combat.md](ground-combat.md) | Ground combat — troop iteration + per-unit resolution | FUN_00560d50, FUN_004ee350, FUN_005617b0 |
+| [ground-combat.md](ground-combat.md) | Misread as ground combat: FUN_00560d50 is the 0x320 container change of a character or capital ship, FUN_005617b0 the Emperor's seat of power (re-traced 2026-11-22) | FUN_00560d50, FUN_004ee350, FUN_005617b0 |
 | [bombardment.md](bombardment.md) | Orbital bombardment — Euclidean distance formula | FUN_00556430, FUN_0055d8c0, FUN_0055d860 |
 | [blockade-troop-withdrawal.md](blockade-troop-withdrawal.md) | Regiments lost running a blockade: withdraw percent, per-regiment copy, departure roll, event 0x340 | FUN_0050b310, FUN_0055a020, FUN_00504990, FUN_00504a00, FUN_00508660 |
 | [facility-ownership.md](facility-ownership.md) | Facility sides: seeded facilities take their system's side; a system's side change hands its completed facilities to the new side or removes those whose class cannot serve it; contested systems keep their holder; the HQ is not a yard; mine 0x2c, refinery 0x2d | FUN_00566de0, FUN_0056a6f0, FUN_00559850, FUN_00559a60, FUN_00510d70, FUN_004f6f40, FUN_00510820, FUN_004fae40, FUN_004f8680, FUN_004f27d0, FUN_0050e820, FUN_005267c0 |
