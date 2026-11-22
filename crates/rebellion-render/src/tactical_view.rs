@@ -13896,26 +13896,12 @@ mod tests {
             last_arrival,
             dat_id: DatId::new(0x9000_0001),
             name: "Deyer".into(),
-            sector: Default::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            fighters: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         })
     }
 
@@ -21955,31 +21941,16 @@ mod tests {
         use rebellion_core::world::{DefenseFacilityInstance, Fleet, System};
         let mut world = GameWorld::default();
         let system = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Endor".into(),
-            sector: Default::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            fighters: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
             control: rebellion_core::world::ControlKind::Controlled(
                 rebellion_core::dat::Faction::Empire,
             ),
+            ..Default::default()
         });
         let mut fleet = |is_alliance: bool, has_death_star: bool| {
             world.fleets.insert(Fleet {

@@ -1090,29 +1090,14 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "Coruscant".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.3,
             popularity_empire: 0.7,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
 
         let mut state = EventState::new();
@@ -1166,29 +1151,14 @@ mod tests {
 
         let make_sys = |world: &mut GameWorld, name: &str, faction: Option<Faction>| {
             world.systems.insert(crate::world::System {
-                last_arrival: None,
-                dat_id: crate::ids::DatId::new(0),
                 name: name.into(),
                 sector: sector_key,
-                x: 0,
-                y: 0,
                 exploration_status: ExplorationStatus::Explored,
                 popularity_alliance: 0.5,
                 popularity_empire: 0.5,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
                 control: faction.map_or(ControlKind::Uncontrolled, ControlKind::Controlled),
+                ..Default::default()
             })
         };
 
@@ -1248,29 +1218,14 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
 
         let luke = world
@@ -1322,32 +1277,16 @@ mod tests {
             systems: vec![],
         });
         let sys1 = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
         let sys2 = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: crate::ids::DatId::new(1),
             name: "Coruscant".into(),
             sector: sector_key,
@@ -1357,19 +1296,8 @@ mod tests {
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
 
         let luke = world
@@ -1493,29 +1421,14 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
 
         let luke = world
@@ -1578,29 +1491,14 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "Endor".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
 
         // Luke in a fleet, Emperor via current_system only (no fleet)
@@ -1657,29 +1555,14 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "Tatooine".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
+            ..Default::default()
         });
 
         // Parked fleet (no MovementState order) — character still counts
@@ -1727,29 +1610,10 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "S".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
-            popularity_alliance: 0.0,
-            popularity_empire: 0.0,
-            is_populated: false,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
         let fleet_key = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
@@ -1819,29 +1683,14 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
-            dat_id: crate::ids::DatId::new(0),
             name: "Destroyed".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
             is_destroyed: true,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
 
         let mut luke = make_character("Luke");

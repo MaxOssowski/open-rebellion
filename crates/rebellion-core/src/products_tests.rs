@@ -1,6 +1,6 @@
 use super::*;
 use crate::dat::{ExplorationStatus, Faction};
-use crate::ids::{DatId, SectorKey};
+use crate::ids::DatId;
 use crate::manufacturing::QueueItem;
 use crate::world::{CapitalShipClass, ControlKind, FighterClass, ShipInstance, System};
 
@@ -16,29 +16,17 @@ struct Setup {
 /// port: a test system at `x`.
 fn system(world: &mut GameWorld, x: u16) -> SystemKey {
     world.systems.insert(System {
-        last_arrival: None,
         dat_id: DatId::new(0x9000_0001 + u32::from(x)),
         name: "Corellia".into(),
-        sector: SectorKey::default(),
         x,
-        y: 0,
         exploration_status: ExplorationStatus::Explored,
         popularity_alliance: 0.5,
         popularity_empire: 0.5,
         is_populated: true,
         total_energy: 10,
         raw_materials: 5,
-        espionage_rating: 0.0,
-        fleets: Vec::new(),
-        ground_units: Vec::new(),
-        special_forces: Vec::new(),
-        defense_facilities: Vec::new(),
-        manufacturing_facilities: Vec::new(),
-        production_facilities: Vec::new(),
-        fighters: Vec::new(),
-        is_headquarters: false,
-        is_destroyed: false,
         control: ControlKind::Controlled(Faction::Empire),
+        ..Default::default()
     })
 }
 

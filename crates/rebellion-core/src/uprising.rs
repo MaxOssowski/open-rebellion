@@ -1353,29 +1353,17 @@ mod tests {
             (1.0 - support, support)
         };
         let system = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Naboo".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: alliance,
             popularity_empire: empire,
             is_populated: true,
             total_energy: 4,
             raw_materials: 4,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(side),
+            ..Default::default()
         });
         (world, system)
     }

@@ -2104,7 +2104,6 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
 mod tests {
     use super::*;
     use rebellion_core::dat::ExplorationStatus;
-    use rebellion_core::ids::SectorKey;
     use rebellion_core::manufacturing::{BuildableKind, QueueItem};
     use rebellion_core::missions::{MissionKind, MissionRequest};
     use rebellion_core::world::{
@@ -2193,29 +2192,14 @@ mod tests {
 
     fn system(world: &mut GameWorld, name: &str, control: ControlKind) -> SystemKey {
         world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: name.into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         })
     }
 

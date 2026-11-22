@@ -4852,29 +4852,14 @@ mod tests {
         pop_empire: f32,
     ) -> SystemKey {
         world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Test System".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: pop_alliance,
             popularity_empire: pop_empire,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         })
     }
 
@@ -4945,29 +4930,16 @@ mod tests {
         let yard = facility_of(&mut world, 0x2a00_0003);
         let training = facility_of(&mut world, 0x2900_0002);
         let sys_key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Home".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
             manufacturing_facilities: vec![yard, training],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(side),
+            ..Default::default()
         });
         world.troops.insert(crate::world::TroopUnit {
             class_dat_id: DatId(0x1000_0002),
@@ -6636,7 +6608,6 @@ mod tests {
                     is_shipyard: false,
                 });
         let _ = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Enemy Shipyard".into(),
             sector,
@@ -6646,19 +6617,8 @@ mod tests {
             popularity_alliance: 0.8,
             popularity_empire: 0.1,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
             manufacturing_facilities: vec![mfg_key],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
 
         // Empire spy with low espionage — below threshold.

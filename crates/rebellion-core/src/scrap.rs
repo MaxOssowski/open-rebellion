@@ -551,29 +551,16 @@ mod tests {
     fn fixture() -> Fixture {
         let mut world = GameWorld::default();
         let system = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "System".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 10,
             raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: crate::world::ControlKind::Controlled(Faction::Alliance),
+            ..Default::default()
         });
         Fixture { world, system }
     }

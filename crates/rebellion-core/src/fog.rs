@@ -176,7 +176,6 @@ mod tests {
     use super::*;
     use crate::ids::{FleetKey, SystemKey};
     use crate::movement::MovementState;
-    use crate::world::ControlKind;
     use crate::world::{Fleet, GameWorld};
 
     // Build a minimal GameWorld with N systems and M alliance fleets.
@@ -204,29 +203,15 @@ mod tests {
         let sys_keys: Vec<SystemKey> = (0..n_systems)
             .map(|i| {
                 world.systems.insert(crate::world::System {
-                    last_arrival: None,
                     dat_id: crate::ids::DatId(i as u32),
                     name: format!("System {i}"),
                     sector,
                     x: i as u16 * 10,
-                    y: 0,
                     exploration_status: crate::dat::ExplorationStatus::Explored,
                     popularity_alliance: 0.5,
                     popularity_empire: 0.5,
                     is_populated: true,
-                    total_energy: 0,
-                    raw_materials: 0,
-                    espionage_rating: 0.0,
-                    fleets: vec![],
-                    ground_units: vec![],
-                    special_forces: vec![],
-                    defense_facilities: vec![],
-                    manufacturing_facilities: vec![],
-                    production_facilities: vec![],
-                    fighters: Vec::new(),
-                    is_headquarters: false,
-                    is_destroyed: false,
-                    control: ControlKind::Uncontrolled,
+                    ..Default::default()
                 })
             })
             .collect();
@@ -406,79 +391,36 @@ mod tests {
         // Fleet at (0, 0), nearby system at (100, 0), far system at (1000, 0).
         // detection=10 → radius = 10 * 15.0 = 150 units → (100,0) within range, (1000,0) not.
         let sys0 = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Base".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
         let sys_near = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(1),
             name: "Near".into(),
             sector,
             x: 100,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
         let sys_far = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(2),
             name: "Far".into(),
             sector,
             x: 1000,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
 
         let ship_class = world.capital_ship_classes.insert(CapitalShipClass {

@@ -1690,7 +1690,6 @@ mod tests {
         EVT_BOMBARDMENT, EVT_CAPTURE, EVT_COMBAT_GROUND, EVT_CONTROL_CHANGED, EVT_FLEET_ARRIVED,
         EVT_TROOP_MOVED, EVT_VICTORY,
     };
-    use rebellion_core::ids::SectorKey;
     use rebellion_core::ids::{DatId, FleetKey, TroopKey};
     use rebellion_core::movement::begin_fleet_transit;
     use rebellion_core::world::{
@@ -1702,54 +1701,24 @@ mod tests {
         let mut world = GameWorld::default();
         // Need at least 2 systems for VictoryState
         let s1 = world.systems.insert(rebellion_core::world::System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(1),
             name: "System A".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
-            espionage_rating: 0.0,
+            ..Default::default()
         });
         let s2 = world.systems.insert(rebellion_core::world::System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(2),
             name: "System B".into(),
-            sector: SectorKey::default(),
             x: 100,
             y: 100,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
-            espionage_rating: 0.0,
+            ..Default::default()
         });
 
         let states = SimulationStates {
@@ -2769,29 +2738,14 @@ mod tests {
         let run = |control: ControlKind, destroyed: bool| {
             let mut world = GameWorld::default();
             let make = |dat_id, control| System {
-                last_arrival: None,
                 dat_id: DatId::new(dat_id),
                 name: "System".into(),
-                sector: SectorKey::default(),
-                x: 0,
-                y: 0,
                 exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
                 popularity_alliance: 0.9,
                 popularity_empire: 0.1,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
                 control,
-                espionage_rating: 0.0,
+                ..Default::default()
             };
             let target = world.systems.insert(make(1, control));
             let other = world
@@ -2888,29 +2842,15 @@ mod tests {
         // it. This test asserted the port's automatic surface battle.
         let mut world = GameWorld::default();
         let make_system = |dat_id, name: &str, control| System {
-            last_arrival: None,
             dat_id: DatId::new(dat_id),
             name: name.into(),
-            sector: SectorKey::default(),
             x: dat_id as u16 * 100,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control,
-            espionage_rating: 0.0,
+            ..Default::default()
         };
         let target = world.systems.insert(make_system(
             1,
@@ -3059,12 +2999,9 @@ mod tests {
         let mut world = GameWorld::default();
         world.gnprtb = control_threshold();
         let make_system = |dat_id, name: &str, control, is_headquarters| System {
-            last_arrival: None,
             dat_id: DatId::new(dat_id),
             name: name.into(),
-            sector: SectorKey::default(),
             x: dat_id as u16 * 100,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: if control == ControlKind::Controlled(Faction::Alliance) {
                 0.9
@@ -3077,19 +3014,9 @@ mod tests {
                 0.9
             },
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
             is_headquarters,
-            is_destroyed: false,
             control,
-            espionage_rating: 0.0,
+            ..Default::default()
         };
         let alliance_hq = world.systems.insert(make_system(
             1,
@@ -3212,12 +3139,9 @@ mod tests {
         world.gnprtb = control_threshold();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
-                last_arrival: None,
                 dat_id: DatId::new(dat_id),
                 name: name.into(),
-                sector: SectorKey::default(),
                 x: dat_id as u16 * 100,
-                y: 0,
                 exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
                 popularity_alliance: if control == ControlKind::Controlled(Faction::Alliance) {
                     0.9
@@ -3230,19 +3154,9 @@ mod tests {
                     0.9
                 },
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
                 is_headquarters,
-                is_destroyed: false,
                 control,
-                espionage_rating: 0.0,
+                ..Default::default()
             })
         };
         let alliance_hq = add_system(
@@ -3378,12 +3292,9 @@ mod tests {
         world.gnprtb = control_threshold();
         let add_system = |world: &mut GameWorld, dat_id, name: &str, control, is_headquarters| {
             world.systems.insert(System {
-                last_arrival: None,
                 dat_id: DatId::new(dat_id),
                 name: name.into(),
-                sector: SectorKey::default(),
                 x: dat_id as u16 * 100,
-                y: 0,
                 exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
                 popularity_alliance: if control == ControlKind::Controlled(Faction::Alliance) {
                     0.9
@@ -3396,19 +3307,9 @@ mod tests {
                     0.1
                 },
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
                 is_headquarters,
-                is_destroyed: false,
                 control,
-                espionage_rating: 0.0,
+                ..Default::default()
             })
         };
         let origin = add_system(

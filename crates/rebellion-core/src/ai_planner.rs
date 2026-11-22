@@ -1384,29 +1384,16 @@ pub(crate) mod tests {
         let sectors = [sector(0), sector(100)];
         let mut system = |sector, x| {
             world.systems.insert(System {
-                last_arrival: None,
                 dat_id: DatId::new(0x9000_0001),
                 name: "System".into(),
                 sector,
                 x,
-                y: 0,
                 exploration_status: crate::dat::ExplorationStatus::Explored,
                 popularity_alliance: 0.9,
                 popularity_empire: 0.1,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
                 control: ControlKind::Controlled(Faction::Alliance),
+                ..Default::default()
             })
         };
         let systems = [

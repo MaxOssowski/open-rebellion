@@ -201,29 +201,14 @@ mod tests {
         );
         let alliance = holder == ControlKind::Controlled(Faction::Alliance);
         let system = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Here".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: if alliance { support } else { 1.0 - support },
             popularity_empire: if alliance { 1.0 - support } else { support },
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
             control: holder,
+            ..Default::default()
         });
         (world, system)
     }

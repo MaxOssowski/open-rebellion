@@ -462,29 +462,14 @@ mod tests {
         use crate::world::{ControlKind, Fleet, SkillPair, System};
         let mut world = GameWorld::default();
         let system = world.systems.insert(System {
-            last_arrival: None,
             dat_id: crate::ids::DatId::new(0x9000_0000),
             name: "Yavin".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
         let fleet = world.fleets.insert(Fleet {
             location: system,

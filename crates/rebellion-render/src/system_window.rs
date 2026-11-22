@@ -2152,7 +2152,6 @@ mod tests {
         let mut systems = Vec::new();
         for index in 0..count {
             let system = world.systems.insert(System {
-                last_arrival: None,
                 dat_id: DatId::new(100 + index as u32),
                 name: format!("System {index}"),
                 sector,
@@ -2160,21 +2159,11 @@ mod tests {
                 y: 250,
                 exploration_status: ExplorationStatus::Explored,
                 popularity_alliance: 1.0,
-                popularity_empire: 0.0,
                 is_populated: true,
                 total_energy: 8,
                 raw_materials: 6,
-                espionage_rating: 0.0,
-                fleets: Vec::new(),
-                ground_units: Vec::new(),
-                special_forces: Vec::new(),
-                defense_facilities: Vec::new(),
-                manufacturing_facilities: Vec::new(),
-                production_facilities: Vec::new(),
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
                 control: ControlKind::Controlled(Faction::Alliance),
+                ..Default::default()
             });
             world.sectors[sector].systems.push(system);
             systems.push(system);

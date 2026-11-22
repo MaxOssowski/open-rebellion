@@ -292,6 +292,39 @@ pub struct System {
     pub last_arrival: Option<crate::dat::Faction>,
 }
 
+/// An empty system: DAT id 0, unnamed, unexplored, unpopulated, held by
+/// no one, with nothing on it or in orbit. For tests and builders that
+/// set only the fields they need.
+impl Default for System {
+    fn default() -> Self {
+        Self {
+            dat_id: DatId::new(0),
+            name: String::new(),
+            sector: SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Unexplored,
+            popularity_alliance: 0.0,
+            popularity_empire: 0.0,
+            is_populated: false,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: Vec::new(),
+            ground_units: Vec::new(),
+            fighters: Vec::new(),
+            special_forces: Vec::new(),
+            defense_facilities: Vec::new(),
+            manufacturing_facilities: Vec::new(),
+            production_facilities: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Uncontrolled,
+            last_arrival: None,
+        }
+    }
+}
+
 impl System {
     /// `FUN_00508660` (slot `+0xd0`) with a fleet or squadron of the side
     /// `is_alliance` joining: `FUN_0050a1b0` stores its side in `+0x78`
@@ -2440,29 +2473,16 @@ mod facility_ownership_tests {
 
     fn system(world: &mut GameWorld, control: ControlKind) -> SystemKey {
         world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Here".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 4,
             raw_materials: 2,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         })
     }
 
@@ -3259,29 +3279,14 @@ mod tests {
             systems: vec![],
         });
         let dummy_sys = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0),
             name: "Sys".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
         let dummy_fleet = world.fleets.insert(Fleet {
             location: dummy_sys,
@@ -3535,29 +3540,15 @@ mod ship_spare_tests {
 
     fn system(world: &mut GameWorld) -> SystemKey {
         world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Here".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 4,
             raw_materials: 2,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         })
     }
 

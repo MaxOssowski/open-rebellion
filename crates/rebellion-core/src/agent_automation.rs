@@ -1014,7 +1014,6 @@ mod tests {
     ) -> (GameWorld, SystemKey, EconomyState, ManufacturingState) {
         let mut world = GameWorld::default();
         let sys = System {
-            last_arrival: None,
             dat_id: crate::ids::DatId(0x9000_0001),
             name: "Coruscant".into(),
             sector: world.sectors.insert(crate::world::Sector {
@@ -1033,21 +1032,12 @@ mod tests {
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: if is_alliance {
                 ControlKind::Controlled(crate::dat::Faction::Alliance)
             } else {
                 ControlKind::Controlled(crate::dat::Faction::Empire)
             },
+            ..Default::default()
         };
         let sys_key = world.systems.insert(sys);
         let eco = EconomyState::default();
@@ -1579,7 +1569,6 @@ mod tests {
 
         // sys2: requirement=2, troops=0 → deficit=2
         let sys2 = world.systems.insert(System {
-            last_arrival: None,
             dat_id: crate::ids::DatId(0x9000_0002),
             name: "Hoth".into(),
             sector: world.sectors.keys().next().unwrap(),
@@ -1591,17 +1580,8 @@ mod tests {
             is_populated: true,
             total_energy: 5,
             raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
         eco.per_system.insert(
             sys2,

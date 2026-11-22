@@ -2595,29 +2595,13 @@ mod tests {
         // 12 and 13.
         let mut world = rebellion_core::world::GameWorld::default();
         let system = world.systems.insert(rebellion_core::world::System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Coruscant".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: rebellion_core::world::ControlKind::Uncontrolled,
+            ..Default::default()
         });
         let troop = world.troops.insert(rebellion_core::world::TroopUnit {
             class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
@@ -2670,31 +2654,16 @@ mod tests {
         use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, QueueItem};
         let mut world = rebellion_core::world::GameWorld::default();
         let system = world.systems.insert(rebellion_core::world::System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Corellia".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: rebellion_core::world::ControlKind::Controlled(
                 rebellion_core::dat::Faction::Empire,
             ),
+            ..Default::default()
         });
         let carrack = world
             .capital_ship_classes

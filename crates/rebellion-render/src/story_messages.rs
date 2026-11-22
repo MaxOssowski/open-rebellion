@@ -2854,29 +2854,13 @@ mod tests {
         // FUN_0048fa00: Han attacked (Alliance) and located (Empire), or
         // captured.
         let system = world.systems.insert(rebellion_core::world::System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Tatooine".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
-            control: rebellion_core::world::ControlKind::Uncontrolled,
+            ..Default::default()
         });
         let mut han = major(0x243, true, false);
         han.current_system = Some(system);
@@ -5586,29 +5570,13 @@ mod tests {
         let [luke, leia, vader, emperor, _] = encounter_cast(&mut world);
         let mut place = |name: &str| {
             world.systems.insert(rebellion_core::world::System {
-                last_arrival: None,
                 dat_id: DatId::new(0x9000_0001),
                 name: name.into(),
-                sector: rebellion_core::ids::SectorKey::default(),
-                x: 0,
-                y: 0,
                 exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
                 popularity_alliance: 0.5,
                 popularity_empire: 0.5,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: vec![],
-                is_headquarters: false,
-                is_destroyed: false,
-                control: rebellion_core::world::ControlKind::Uncontrolled,
+                ..Default::default()
             })
         };
         let (coruscant, elsewhere) = (place("Coruscant"), place("Yavin"));
@@ -6301,29 +6269,13 @@ mod tests {
         // Empire 0x716a/0x716b with Han's system on 0x41e.
         let mut world = GameWorld::default();
         let tatooine = world.systems.insert(rebellion_core::world::System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0001),
             name: "Tatooine".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
-            control: rebellion_core::world::ControlKind::Uncontrolled,
+            ..Default::default()
         });
         let han = world.characters.insert(rebellion_core::world::Character {
             dat_id: DatId::new(0x243),

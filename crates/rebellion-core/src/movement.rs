@@ -1148,7 +1148,6 @@ mod tests {
 
     fn make_system(sector: crate::ids::SectorKey, x: u16, y: u16) -> System {
         System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0000),
             name: format!("Sys@{x},{y}"),
             sector,
@@ -1158,19 +1157,7 @@ mod tests {
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         }
     }
 

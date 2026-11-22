@@ -2280,7 +2280,6 @@ mod tests {
             systems: Vec::new(),
         });
         let system_a = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(263),
             name: "Chandrila".into(),
             sector: sector_a,
@@ -2288,21 +2287,11 @@ mod tests {
             y: 260,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 1.0,
-            popularity_empire: 0.0,
             is_populated: true,
             total_energy: 8,
             raw_materials: 6,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
+            ..Default::default()
         });
         world.sectors[sector_a].systems.push(system_a);
 
@@ -2315,29 +2304,18 @@ mod tests {
             systems: Vec::new(),
         });
         let system_b = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(270),
             name: "Bothawui".into(),
             sector: sector_b,
             x: 560,
             y: 548,
             exploration_status: ExplorationStatus::Explored,
-            popularity_alliance: 0.0,
             popularity_empire: 1.0,
             is_populated: true,
             total_energy: 5,
             raw_materials: 9,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
         world.sectors[sector_b].systems.push(system_b);
         (world, system_a, system_b)

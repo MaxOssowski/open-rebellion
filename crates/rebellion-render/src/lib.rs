@@ -1652,7 +1652,6 @@ mod interaction_tests {
         });
         let mut add = |x, y| {
             let key = world.systems.insert(System {
-                last_arrival: None,
                 dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
                 name: "Vjun".into(),
                 sector,
@@ -1662,19 +1661,7 @@ mod interaction_tests {
                 popularity_alliance: 0.5,
                 popularity_empire: 0.5,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
-                control: ControlKind::Uncontrolled,
+                ..Default::default()
             });
             world.sectors[sector].systems.push(key);
         };
@@ -2190,12 +2177,8 @@ mod interaction_tests {
             }]);
         let mut place = |control, alliance_support: f32, explored| {
             world.systems.insert(System {
-                last_arrival: None,
                 dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
                 name: "Naboo".into(),
-                sector: Default::default(),
-                x: 0,
-                y: 0,
                 exploration_status: if explored {
                     ExplorationStatus::Explored
                 } else {
@@ -2204,19 +2187,8 @@ mod interaction_tests {
                 popularity_alliance: alliance_support,
                 popularity_empire: 1.0 - alliance_support,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
                 control,
+                ..Default::default()
             })
         };
         let loyal = place(ControlKind::Controlled(Faction::Alliance), 0.8, true);
@@ -2315,29 +2287,14 @@ mod interaction_tests {
         use rebellion_core::world::{DefenseFacilityInstance, TroopUnit};
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
-            sector: Default::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
         for is_alliance in [false, false, true] {
             let troop = world.troops.insert(TroopUnit {
@@ -2401,29 +2358,13 @@ mod interaction_tests {
         let mut world = GameWorld::default();
         let mut system = || {
             world.systems.insert(System {
-                last_arrival: None,
                 dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
                 name: "Naboo".into(),
-                sector: Default::default(),
-                x: 0,
-                y: 0,
                 exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
                 popularity_alliance: 0.5,
                 popularity_empire: 0.5,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
-                control: ControlKind::Uncontrolled,
+                ..Default::default()
             })
         };
         let here = system();
@@ -2518,29 +2459,13 @@ mod interaction_tests {
         let mut world = GameWorld::default();
         let mut system = |id| {
             world.systems.insert(System {
-                last_arrival: None,
                 dat_id: rebellion_core::ids::DatId::new(id),
                 name: "Naboo".into(),
-                sector: Default::default(),
-                x: 0,
-                y: 0,
                 exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
                 popularity_alliance: 0.5,
                 popularity_empire: 0.5,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
-                control: ControlKind::Uncontrolled,
+                ..Default::default()
             })
         };
         let unseen = system(0x9000_0001);
@@ -2634,29 +2559,12 @@ mod interaction_tests {
         // sector-windows/04-left shows Churba's unexplored planets bare.
         use rebellion_core::dat::ExplorationStatus;
         let mut system = System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Lelmra".into(),
-            sector: Default::default(),
-            x: 0,
-            y: 0,
-            exploration_status: ExplorationStatus::Unexplored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         };
         assert_eq!(
             gid_item_bitmap(GidMode::PopularSupport, &system, 10200),
@@ -2682,29 +2590,14 @@ mod interaction_tests {
         // gid/hq-burst-alliance-day390).
         use bmp_cache::resources::strategy as art;
         let mut system = System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Yavin".into(),
-            sector: Default::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
             is_headquarters: true,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         };
         assert_eq!(
             gid_headquarters_burst(&system, art::GID_ALLIANCE_LARGEST),
@@ -2732,29 +2625,15 @@ mod interaction_tests {
             systems: vec![],
         });
         let hq = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9200_0010),
             name: "Tokmia".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 1.0,
-            popularity_empire: 0.0,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
             is_headquarters: true,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Alliance),
+            ..Default::default()
         });
         rebellion_core::object_views::setup(&mut world);
         let shown = viewed_contents::apparent_system(&world, Faction::Empire, hq).unwrap();
@@ -2783,29 +2662,15 @@ mod interaction_tests {
         let mut world = GameWorld::default();
         let mut system = |control| {
             world.systems.insert(System {
-                last_arrival: None,
                 dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
                 name: "Naboo".into(),
-                sector: Default::default(),
-                x: 0,
-                y: 0,
-                exploration_status: ExplorationStatus::Unexplored,
                 popularity_alliance: 0.9,
                 popularity_empire: 0.1,
                 is_populated: true,
                 total_energy: 12,
                 raw_materials: 11,
-                espionage_rating: 0.0,
-                fleets: vec![],
-                ground_units: vec![],
-                special_forces: vec![],
-                defense_facilities: vec![],
-                manufacturing_facilities: vec![],
-                production_facilities: vec![],
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
                 control,
+                ..Default::default()
             })
         };
         let here = system(ControlKind::Controlled(
@@ -2935,29 +2800,14 @@ mod interaction_tests {
         use rebellion_core::world::{Character, Fleet};
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
-            sector: Default::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.2,
             popularity_empire: 0.8,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
         let movement = rebellion_core::movement::MovementState::new();
         let count = |world: &GameWorld, active| gid_personnel(world, key, true, active, &movement);
@@ -3168,29 +3018,15 @@ mod interaction_tests {
             systems: vec![],
         });
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.2,
             popularity_empire: 0.8,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(rebellion_core::dat::Faction::Empire),
+            ..Default::default()
         });
         let movement = rebellion_core::movement::MovementState::new();
         let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
@@ -3250,29 +3086,15 @@ mod interaction_tests {
         };
         let yards = vec![facility(0x28), facility(0x29)];
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.8,
             popularity_empire: 0.2,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
             manufacturing_facilities: yards,
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(rebellion_core::dat::Faction::Alliance),
+            ..Default::default()
         });
         let movement = rebellion_core::movement::MovementState::new();
         let mut manufacturing = ManufacturingState::new();
@@ -3321,29 +3143,14 @@ mod interaction_tests {
         };
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.2,
             popularity_empire: 0.8,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
         for is_alliance in [false, false, true] {
             let troop = world.troops.insert(TroopUnit {
@@ -3427,29 +3234,14 @@ mod interaction_tests {
         };
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.2,
             popularity_empire: 0.8,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
         let mine = |world: &mut GameWorld| {
             let facility = world
@@ -3560,29 +3352,14 @@ mod interaction_tests {
         use rebellion_core::world::{FighterClass, FighterEntry, TroopUnit};
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.2,
             popularity_empire: 0.8,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         });
         let system_id = world.systems[key].dat_id;
         let tie = world.fighter_classes.insert(FighterClass {
@@ -3702,29 +3479,14 @@ mod interaction_tests {
     fn the_squadron_display_counts_the_holder_s_squadrons_on_the_planet() {
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
-            last_arrival: None,
             dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
             name: "Naboo".into(),
-            sector: rebellion_core::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.8,
             popularity_empire: 0.2,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(rebellion_core::dat::Faction::Alliance),
+            ..Default::default()
         });
         for (alliance, count) in [(true, 2), (false, 5)] {
             let class = world

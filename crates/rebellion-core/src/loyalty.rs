@@ -343,34 +343,19 @@ pub fn settle_blockade(
 mod tests {
     use super::*;
     use crate::dat::ExplorationStatus;
-    use crate::ids::{DatId, SectorKey};
+    use crate::ids::DatId;
     use crate::world::{SkillPair, System};
 
     fn system(world: &mut GameWorld, index: u32, control: ControlKind) -> SystemKey {
         world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0000 | index),
             name: format!("{index:#x}"),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: vec![],
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         })
     }
 

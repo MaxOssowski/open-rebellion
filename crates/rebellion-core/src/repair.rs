@@ -460,7 +460,6 @@ mod tests {
             vec![]
         };
         world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(0x9000_0000),
             name: "Kuat".into(),
             sector,
@@ -472,17 +471,9 @@ mod tests {
             is_populated: true,
             total_energy: 10,
             raw_materials: 8,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
             manufacturing_facilities: yards,
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(Faction::Empire),
+            ..Default::default()
         })
     }
 

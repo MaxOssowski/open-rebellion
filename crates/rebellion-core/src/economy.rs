@@ -1084,7 +1084,6 @@ pub(crate) fn uprising_threshold(support: i32, gnprtb: &GnprtbParams, difficulty
 mod tests {
     use super::*;
     use crate::ids::DatId;
-    use crate::ids::SectorKey;
     use crate::world::GameWorld;
 
     /// Create a `GnprtbParams` with the stock economy values.
@@ -1782,29 +1781,17 @@ mod tests {
             ..Default::default()
         };
         let _sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Destroyed".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 5,
             raw_materials: 5,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
             is_destroyed: true, // Destroyed!
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
         let tick_events = vec![TickEvent { tick: 1 }];
         let events = EconomySystem::advance(&mut state, &world, &tick_events, 2);
@@ -1837,25 +1824,15 @@ mod tests {
         });
         // System with total_energy=2 but 5 production facilities
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Overcap".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 2,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            fighters: Vec::new(),
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
             production_facilities: vec![
                 world
                     .production_facilities
@@ -1893,9 +1870,8 @@ mod tests {
                         is_mine: false,
                     }),
             ],
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
 
         let mut state = EconomyState::default();
@@ -1934,25 +1910,15 @@ mod tests {
         });
         // System with total_energy=10 and only 3 production facilities
         world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Normal".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            fighters: Vec::new(),
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
             production_facilities: vec![
                 world
                     .production_facilities
@@ -1969,9 +1935,8 @@ mod tests {
                         is_mine: false,
                     }),
             ],
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
 
         let mut state = EconomyState::default();
@@ -2002,24 +1967,15 @@ mod tests {
         });
         // System with raw_materials=1 but 3 manufacturing facilities
         world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "MineCap".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 10,
             raw_materials: 1,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            fighters: Vec::new(),
-            special_forces: vec![],
-            defense_facilities: vec![],
             manufacturing_facilities: vec![
                 world.manufacturing_facilities.insert(
                     crate::world::ManufacturingFacilityInstance {
@@ -2066,9 +2022,8 @@ mod tests {
                         is_mine: true,
                     }),
             ],
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
 
         let mut state = EconomyState::default();
@@ -2099,29 +2054,17 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Yavin".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
         for (alliance, count) in [(true, 2), (false, 3)] {
             let class = world.fighter_classes.insert(crate::world::FighterClass {
@@ -2178,29 +2121,18 @@ mod tests {
             regiment_strength: 100,
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.3,
             popularity_empire: 0.7,
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
             ground_units: vec![troop1, troop2],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
 
         let mut state = EconomyState::default();
@@ -2242,29 +2174,18 @@ mod tests {
             })
             .to_vec();
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.3,
             popularity_empire: 0.7,
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
             ground_units,
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
         let surplus = |world: &GameWorld| {
             let mut state = EconomyState::default();
@@ -2362,29 +2283,18 @@ mod tests {
             special_forces: Vec::new(),
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Contested".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
             fleets: vec![fleet1, fleet2],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         });
 
         let mut state = EconomyState::default();
@@ -2405,29 +2315,16 @@ mod tests {
     /// `alliance` percent, held as `control`.
     fn held_system(alliance: f32, control: ControlKind) -> crate::world::System {
         crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: alliance / 100.0,
             popularity_empire: 1.0 - alliance / 100.0,
             is_populated: true,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         }
     }
 
@@ -2583,29 +2480,14 @@ mod tests {
             ..Default::default()
         };
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Unpopulated".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
-            is_populated: false,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: ControlKind::Uncontrolled,
+            ..Default::default()
         });
 
         let mut state = EconomyState::default();
@@ -2660,29 +2542,16 @@ mod tests {
         };
 
         let sys = crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
-            sector: SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
             total_energy: 60,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control: ControlKind::Controlled(crate::dat::Faction::Alliance),
+            ..Default::default()
         };
         let presence_1v1 = MilitaryPresence {
             alliance_fleets: 1,
@@ -2820,29 +2689,17 @@ mod tests {
             systems: vec![],
         });
         let sys_key = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: DatId(0),
             name: "Test".into(),
             sector: sector_key,
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: support_alliance,
             popularity_empire: support_empire,
             is_populated,
             total_energy: 10,
             raw_materials: 10,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         });
         (world, sys_key)
     }

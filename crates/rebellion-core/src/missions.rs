@@ -6605,29 +6605,14 @@ mod tests {
             on_mission: false,
         });
         let at = world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: crate::ids::DatId::new(0x9000_0001),
             name: "Base".into(),
-            sector: crate::ids::SectorKey::default(),
-            x: 0,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
             special_forces: vec![unit],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: crate::world::ControlKind::Uncontrolled,
+            ..Default::default()
         });
         (unit, at)
     }
@@ -7990,29 +7975,14 @@ mod tests {
     /// A system at `(x, 0)`, populated, held by no one.
     fn system_at(world: &mut GameWorld, x: u16) -> SystemKey {
         world.systems.insert(crate::world::System {
-            last_arrival: None,
             dat_id: crate::ids::DatId::new(0x9000_0001),
             name: "System".into(),
-            sector: crate::ids::SectorKey::default(),
             x,
-            y: 0,
             exploration_status: crate::dat::ExplorationStatus::Explored,
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: vec![],
-            ground_units: vec![],
-            special_forces: vec![],
-            defense_facilities: vec![],
-            manufacturing_facilities: vec![],
-            production_facilities: vec![],
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
-            control: crate::world::ControlKind::Uncontrolled,
+            ..Default::default()
         })
     }
 

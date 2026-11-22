@@ -739,7 +739,6 @@ mod tests {
             systems: Vec::new(),
         });
         let system = world.systems.insert(System {
-            last_arrival: None,
             dat_id: DatId::new(100),
             name: "Sluis Van".into(),
             sector,
@@ -749,19 +748,8 @@ mod tests {
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         });
         (world, system)
     }

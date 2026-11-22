@@ -318,36 +318,21 @@ mod tests {
         // FUN_00422620 reads the player's side object; FUN_0050bbb0 blocks
         // the facilities of a system in uprising (+0x88 bit 2).
         use rebellion_core::dat::ExplorationStatus;
-        use rebellion_core::ids::{DatId, SectorKey};
+        use rebellion_core::ids::DatId;
         use rebellion_core::uprising::ActiveUprising;
         use rebellion_core::world::{ControlKind, ProductionFacilityInstance, System};
 
         let mut world = GameWorld::default();
         let pair = |world: &mut GameWorld, side| {
             let system = world.systems.insert(System {
-                last_arrival: None,
                 dat_id: DatId::new(0x9000_0001),
                 name: "Here".into(),
-                sector: SectorKey::default(),
-                x: 0,
-                y: 0,
                 exploration_status: ExplorationStatus::Explored,
                 popularity_alliance: 0.5,
                 popularity_empire: 0.5,
                 is_populated: true,
-                total_energy: 0,
-                raw_materials: 0,
-                espionage_rating: 0.0,
-                fleets: Vec::new(),
-                ground_units: Vec::new(),
-                special_forces: Vec::new(),
-                defense_facilities: Vec::new(),
-                manufacturing_facilities: Vec::new(),
-                production_facilities: Vec::new(),
-                fighters: Vec::new(),
-                is_headquarters: false,
-                is_destroyed: false,
                 control: ControlKind::Controlled(side),
+                ..Default::default()
             });
             for (id, is_mine) in [(0x2c00_0001, true), (0x2d00_0002, false)] {
                 let key = world

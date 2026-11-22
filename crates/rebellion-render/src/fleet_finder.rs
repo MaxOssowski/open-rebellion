@@ -1088,7 +1088,6 @@ mod tests {
             systems: Vec::new(),
         });
         world.systems.insert(System {
-            last_arrival: None,
             // Each system its own id: the copies are keyed by it.
             dat_id: DatId::new(
                 0x9000_0100 + u32::try_from(world.systems.len()).unwrap_or(0),
@@ -1101,19 +1100,8 @@ mod tests {
             popularity_alliance: 0.5,
             popularity_empire: 0.5,
             is_populated: true,
-            total_energy: 0,
-            raw_materials: 0,
-            espionage_rating: 0.0,
-            fleets: Vec::new(),
-            ground_units: Vec::new(),
-            special_forces: Vec::new(),
-            defense_facilities: Vec::new(),
-            manufacturing_facilities: Vec::new(),
-            production_facilities: Vec::new(),
-            fighters: Vec::new(),
-            is_headquarters: false,
-            is_destroyed: false,
             control,
+            ..Default::default()
         })
     }
 
