@@ -13,7 +13,9 @@ Cross-referenced with: combat-formulas.md, space-combat.md, ground-combat.md, bo
 
 Entity family byte quick reference (from `id >> 0x18`; corrected 2026-11-22
 from the DAT files, see `entity-system.md` — the old list shifted the labels,
-so descriptions below that name a range by its old label are not re-traced):
+so descriptions below that name a range by its old label may be wrong;
+FUN_00544130, FUN_005445d0, FUN_00534640, FUN_00560d50 and FUN_005617b0
+are re-traced and say so at their headings):
 - `0x08-0x0f` — Fleets
 - `0x10-0x13` — Regiments
 - `0x14-0x1b` — Capital ships (`0x18` the Death Star)
@@ -752,6 +754,13 @@ void draw_battle_in_progress(void* strategy_view) {
 
 ## FUN_005617b0 — Death Star Planet Destruction Handler
 
+> **Re-traced 2026-11-22 (audit F-039):** our typed decompile names it
+> `CharacterMgr_SetSeatOfPower`. For the Emperor (family `0x34`, MJCHARSD
+> `0x34000280`) the seat of power is on when he is not captive (`+0xac`
+> bit 0 clear), `+0x50` bit 0 is set, and he is at `0x90000109` (Coruscant)
+> while the Empire holds it; otherwise off. Nothing here fires the Death
+> Star; the reading below is superseded (`ground-combat.md`).
+
 **File**: Likely `deathstar.cpp` or `system.cpp`
 **Called by**: FUN_00560d50 (ground/space combat) when family_id == 0x34
 **Calls**:
@@ -1344,6 +1353,14 @@ int resolve_weapon_fire(void* battle_state, int side, void* context) {
 
 ## FUN_00560d50 — Ground Combat Resolution
 
+> **Re-traced 2026-11-22 (audit F-039): this is not ground combat.** Called
+> only from `FUN_00514a60` (event 0x320, an object changing container), it
+> handles a capital ship (`0x14..0x1b`: its contents with `+0x96` set go
+> through `FUN_004ee350`) or a character (`0x30..0x3b`: the Emperor first
+> updates the seat of power; then `FUN_004ee350` unless it moved between
+> ships of one fleet). See `ground-combat.md`; the reading below used
+> shifted family labels.
+
 **File**: Likely `groundcombat.cpp`
 **Called by**: System battle orchestrator (FUN_00514a60)
 **Calls**:
@@ -1697,6 +1714,6 @@ The findings above were read with shifted family labels.
 4. Two distinct Jedi states: `+0x1e & 1` = is_jedi_but_not_discovered (triggers discovery event)
 
 **Object identity:**
-- `0x90000109` — a specific explored system DatId (the Death Star target)
+- `0x90000109` — Coruscant, the Emperor's seat of power (corrected 2026-11-22; was read as the Death Star target)
 - `0x98000481` — the space battle context DatId (used as battle type identifier)
 - `0x98` family prefix is consistent with system-related objects (0x90-0x98 range)
