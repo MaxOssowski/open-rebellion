@@ -1844,11 +1844,7 @@ mod tests {
         let imperial = world.insert_fleet(rebellion_core::world::Fleet {
             location: yaga,
             capital_ships: vec![ship],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let vader = world.characters.insert(Character {
             dat_id: DatId::new(0x3000_0010),
@@ -1862,12 +1858,8 @@ mod tests {
         world.fleets[imperial].characters.push(vader);
         let alliance = world.insert_fleet(rebellion_core::world::Fleet {
             location: yaga,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         Yaga {
             world,
@@ -2332,12 +2324,9 @@ mod tests {
         world.systems[yavin].special_forces.clear();
         let fleet = world.insert_fleet(rebellion_core::world::Fleet {
             location: yavin,
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
             special_forces: vec![unit],
+            ..Default::default()
         });
         world.systems[yavin].fleets.push(fleet);
         let fog = FogState::new(Faction::Alliance);
@@ -2705,11 +2694,7 @@ mod tests {
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
             location: yavin,
             capital_ships: vec![first, second],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut dodonna = default_character();
         dodonna.name = "Jan Dodonna".into();

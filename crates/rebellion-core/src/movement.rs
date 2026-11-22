@@ -1184,11 +1184,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: system,
             capital_ships: vec![ShipInstance::new(ship_key, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         fleet
@@ -1243,11 +1240,8 @@ mod tests {
             crate::world::Fleet {
                 location: origin,
                 capital_ships: vec![crate::world::ShipInstance::new(class, 100, true)],
-                fighters: Vec::new(),
-                characters: Vec::new(),
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             }
         };
         let first = ship(&mut world);
@@ -1727,11 +1721,8 @@ mod tests {
         Fleet {
             location,
             capital_ships,
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         }
     }
 

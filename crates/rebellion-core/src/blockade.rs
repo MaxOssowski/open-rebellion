@@ -826,12 +826,8 @@ mod tests {
     fn add_fleet(world: &mut GameWorld, system: SystemKey, is_alliance: bool) {
         let fk = world.fleets.insert(Fleet {
             location: system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems.get_mut(system).unwrap().fleets.push(fk);
     }
@@ -1370,10 +1366,7 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[origin].fleets.push(fleet);
         let troop = add_troop(&mut world, origin, false);

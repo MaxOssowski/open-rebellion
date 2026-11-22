@@ -867,11 +867,8 @@ mod tests {
             let key = world.insert_fleet(rebellion_core::world::Fleet {
                 location: system,
                 capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, true)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[system].fleets.push(key);
             world.number_ships();
@@ -920,11 +917,8 @@ mod tests {
         let fleet = world.insert_fleet(rebellion_core::world::Fleet {
             location: away,
             capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[away].fleets.push(fleet);
         let name = world.fleet_name(fleet).expect("a named fleet").to_owned();
@@ -974,11 +968,8 @@ mod tests {
         let fleet = world.insert_fleet(rebellion_core::world::Fleet {
             location: system,
             capital_ships: vec![ship],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         world.number_ships();

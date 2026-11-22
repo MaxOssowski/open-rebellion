@@ -545,10 +545,8 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.here].fleets.push(fleet);
         // Upkeep-free facilities are not candidates.
@@ -615,10 +613,7 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.here].fleets.push(enemy_fleet);
         let free_troop = f.world.troops.insert(TroopUnit {
@@ -740,17 +735,14 @@ mod tests {
         });
         let fleet = f.world.insert_fleet(Fleet {
             location: f.here,
-            capital_ships: vec![],
             fighters: vec![FighterEntry {
                 class: wing,
                 count: 1,
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.here].fleets.push(fleet);
         let scrap = Autoscrap {
@@ -785,11 +777,8 @@ mod tests {
                 ShipInstance::new(transport_class, 10, true),
                 ShipInstance::new(transport_class, 10, true),
             ],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.here].fleets.push(fleet);
         let troop = regiment(&mut f, true);

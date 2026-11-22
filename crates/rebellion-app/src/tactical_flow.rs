@@ -494,12 +494,8 @@ mod tests {
         });
         let make_fleet = |is_alliance| Fleet {
             location: system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         };
         let attacker = world.fleets.insert(make_fleet(true));
         let defender = world.fleets.insert(make_fleet(false));
@@ -551,11 +547,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: system,
             capital_ships: vec![ShipInstance::new(ship_class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         let attacker = world.troops.insert(TroopUnit {

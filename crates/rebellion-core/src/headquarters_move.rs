@@ -416,11 +416,7 @@ mod tests {
             capital_ships: (0..4)
                 .map(|_| ShipInstance::new(class, 100, false))
                 .collect(),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[home].fleets.push(fleet);
         let transport = TroopTransportState::default();

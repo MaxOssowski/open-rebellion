@@ -387,12 +387,8 @@ fn new_fleet(world: &mut GameWorld, like: FleetKey) -> FleetKey {
     let location = source.location;
     let fleet = world.insert_fleet(Fleet {
         location,
-        capital_ships: Vec::new(),
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: source.is_alliance,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     if let Some(system) = world.systems.get_mut(location) {
         system.fleets.push(fleet);
@@ -814,11 +810,8 @@ mod tests {
                 .iter()
                 .map(|&hull| ShipInstance::new(class, hull, is_alliance))
                 .collect(),
-            fighters: vec![],
-            characters: vec![],
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         setup.world.systems[system].fleets.push(key);
         setup.world.systems[system].fleets.sort_unstable();

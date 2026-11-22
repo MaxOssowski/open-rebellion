@@ -2499,12 +2499,8 @@ fn place_stale_second(
     // A fleet made there since: copied with its name only.
     let made = world.insert_fleet(rebellion_core::world::Fleet {
         location: second,
-        capital_ships: Vec::new(),
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: !player_is_alliance,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.systems[second].fleets.push(made);
     let serial = world.fleet_serial(made);
@@ -2775,11 +2771,7 @@ fn place_pickup_roster(world: &mut GameWorld) {
     let fleet = world.insert_fleet(rebellion_core::world::Fleet {
         location: coruscant,
         capital_ships: vec![rebellion_core::world::ShipInstance::new(class.0, class.1, false)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.systems[coruscant].fleets.push(fleet);
     world.number_ships();
@@ -3012,11 +3004,9 @@ fn place_copied_characters(
         capital_ships: vec![rebellion_core::world::ShipInstance::new(
             class.0, class.1, !alliance,
         )],
-        fighters: Vec::new(),
         characters: vec![aboard],
         is_alliance: !alliance,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.systems[at].fleets.push(fleet);
     world.characters[aboard].current_fleet = Some(fleet);
@@ -3319,11 +3309,9 @@ fn place_sabotage_targets(
     let fleet = world.insert_fleet(rebellion_core::world::Fleet {
         location: secondary,
         capital_ships: vec![ShipInstance::new(class, 100, true)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: enemy == Faction::Alliance,
         has_death_star: wants_death_star,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     if wants_death_star {
         world.systems[secondary].fleets.push(fleet);
@@ -3451,11 +3439,8 @@ fn place_kimanan(
     let fleet = |capital_ships| rebellion_core::world::Fleet {
         location: kimanan,
         capital_ships,
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     };
     let first = world.insert_fleet(fleet(vec![ship(world, corvette), ship(world, transport)]));
     let mut fourth = fleet(vec![ship(world, corvette)]);
@@ -3560,10 +3545,7 @@ fn place_coruscant(
         location: coruscant,
         capital_ships: vec![ship],
         fighters: squadrons,
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.rename_fleet(first, "Fleet 1");
     world.rename_ship(first, 0, "Imperial Star Destroyer 1");
@@ -3671,10 +3653,7 @@ fn place_probe_droid_aboard(
                 damage: None,
             })
             .collect(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.rename_fleet(first, "Fleet 1");
     world.rename_ship(first, 0, "Imperial Star Destroyer 1");
@@ -3919,11 +3898,8 @@ fn place_vjun(
     let fifth = world.insert_fleet(rebellion_core::world::Fleet {
         location: vjun,
         capital_ships: vec![ship],
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.rename_fleet(fifth, "Fleet 5");
     world.rename_ship(fifth, 0, "Corellian Corvette 2");
@@ -4000,11 +3976,8 @@ fn place_umgul(
     let fleet = |capital_ships| rebellion_core::world::Fleet {
         location: umgul,
         capital_ships,
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     };
     let mut hit = ship(world, transport, Some(317));
     hit.set_hits(rebellion_core::world::Subsystem::PrimaryHyperdrive, 1);
@@ -4130,11 +4103,7 @@ fn place_unfinished_ship(
     let fleet = world.insert_fleet(rebellion_core::world::Fleet {
         location: talus,
         capital_ships: ships,
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.systems[talus].fleets.push(fleet);
     rebellion_core::products::move_to_target(world, product.id, talus, Some(fleet), 0);
@@ -4262,10 +4231,8 @@ fn place_selonia(
         location: selonia,
         capital_ships,
         fighters,
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     };
     let squadron = |class| rebellion_core::world::FighterEntry {
         class,
@@ -4327,11 +4294,8 @@ fn place_yavin(
     let first = world.insert_fleet(rebellion_core::world::Fleet {
         location: yavin,
         capital_ships: vec![ship(world, corvette), ship(world, transport)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.rename_fleet(first, "Fleet 1");
     world.rename_ship(first, 0, "Corellian Corvette 1");
@@ -4404,11 +4368,7 @@ fn place_enemy_assault(
         capital_ships: (0..ships)
             .map(|_| ShipInstance::new(destroyer, hull, false))
             .collect(),
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.rename_fleet(fleet, "Fleet 13");
     world.number_ships();
@@ -4475,11 +4435,8 @@ fn place_own_assault(
     let fleet = world.insert_fleet(rebellion_core::world::Fleet {
         location: commenor,
         capital_ships: vec![ShipInstance::new(transport, hull, false)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.rename_fleet(fleet, "Fleet 1");
     world.number_ships();
@@ -4609,11 +4566,7 @@ fn place_ghorman_bombardment(
     let fleet = world.insert_fleet(rebellion_core::world::Fleet {
         location: ghorman,
         capital_ships: ships,
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.rename_fleet(fleet, "Fleet 1");
     world.number_ships();
@@ -5166,11 +5119,8 @@ fn place_boarding_fleet(
     let fleet = world.insert_fleet(rebellion_core::world::Fleet {
         location: secondary,
         capital_ships: vec![ShipInstance::new(class, 100, true)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: player_is_alliance,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.systems[secondary].fleets = vec![fleet];
     // CharacterAboard: the agent (the first who may be an admiral) is
@@ -6934,11 +6884,8 @@ fn place_gravity_well_fleet(
     world.insert_fleet(rebellion_core::world::Fleet {
         location: primary,
         capital_ships: vec![ShipInstance::new(class, hull, !player_is_alliance)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: !player_is_alliance,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.number_ships();
     reconcile_fleet_orbits(movement, world);
@@ -11418,11 +11365,8 @@ mod tests {
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
             location: here,
             capital_ships: vec![ShipInstance::new(class, hull as i32, true)],
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.rename_fleet(fleet, "Fleet 1");
         let missions = MissionState::default();
@@ -11494,11 +11438,8 @@ mod tests {
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
             location: here,
             capital_ships: vec![ship],
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.rename_fleet(fleet, "Fleet 1");
         let regiment_class = world
@@ -12678,12 +12619,7 @@ mod tests {
         for location in [here, here, others[0]] {
             world.fleets.insert(Fleet {
                 location,
-                capital_ships: Vec::new(),
-                fighters: Vec::new(),
-                characters: Vec::new(),
-                is_alliance: false,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
         }
         world
@@ -13020,11 +12956,7 @@ mod tests {
                 let fleet = world.insert_fleet(rebellion_core::world::Fleet {
                     location: far,
                     capital_ships: vec![ship],
-                    fighters: Vec::new(),
-                    characters: Vec::new(),
-                    is_alliance: false,
-                    has_death_star: false,
-                    special_forces: Vec::new(),
+                    ..Default::default()
                 });
                 world.systems[far].fleets.push(fleet);
             }
@@ -14033,12 +13965,8 @@ mod tests {
         assert_eq!(arrived_fleet(alliance, &world), None, "no Fleet 1 yet");
         let fleet = world.insert_fleet(rebellion_core::world::Fleet {
             location: sluis,
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         assert!(world.rename_fleet(fleet, "Fleet 1"));
         assert_eq!(arrived_fleet(alliance, &world), Some((fleet, sluis)));
@@ -16527,12 +16455,8 @@ mod tests {
             for (location, is_alliance) in [(fourth, false), (fourth, true)] {
                 world.fleets.insert(Fleet {
                     location,
-                    capital_ships: Vec::new(),
-                    fighters: Vec::new(),
-                    characters: Vec::new(),
                     is_alliance,
-                    has_death_star: false,
-                    special_forces: Vec::new(),
+                    ..Default::default()
                 });
             }
             for (name, location) in [("Bystander", fourth), ("Waiting", second)] {
@@ -16546,12 +16470,9 @@ mod tests {
             }
             world.fleets.insert(Fleet {
                 location: third,
-                capital_ships: Vec::new(),
-                fighters: Vec::new(),
                 characters: vec![carried],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             for (index, is_alliance) in [true, true, true, false, false, false]
                 .into_iter()

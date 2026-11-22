@@ -327,12 +327,8 @@ fn place(
     // runs in the next tick (number_new_spares).
     let fleet = world.insert_fleet_unnamed(Fleet {
         location: target,
-        capital_ships: Vec::new(),
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     world.set_ship_spare(target, is_alliance, fleet);
     Container::Fleet(fleet)

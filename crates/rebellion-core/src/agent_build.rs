@@ -454,12 +454,8 @@ mod tests {
         let add_fleet = |world: &mut GameWorld, location, is_alliance| {
             world.fleets.insert(Fleet {
                 location,
-                capital_ships: vec![],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: vec![],
+                ..Default::default()
             })
         };
         add_fleet(&mut world, enemy, false);

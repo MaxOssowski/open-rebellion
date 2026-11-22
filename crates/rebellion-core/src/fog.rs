@@ -221,12 +221,8 @@ mod tests {
             .map(|&idx| {
                 world.fleets.insert(Fleet {
                     location: sys_keys[idx],
-                    capital_ships: vec![],
-                    fighters: vec![],
-                    characters: vec![],
                     is_alliance,
-                    has_death_star: false,
-                    special_forces: Vec::new(),
+                    ..Default::default()
                 })
             })
             .collect();
@@ -440,11 +436,8 @@ mod tests {
         world.fleets.insert(Fleet {
             location: sys0,
             capital_ships: vec![ShipInstance::new(ship_class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
 
         let mut fog = FogState::new(Faction::Alliance);

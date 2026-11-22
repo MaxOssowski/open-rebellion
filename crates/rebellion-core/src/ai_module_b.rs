@@ -849,11 +849,8 @@ mod tests {
                 .iter()
                 .map(|&(class, hull)| ShipInstance::new(class, hull, true))
                 .collect(),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[at].fleets.push(fleet);
         fleet
@@ -1549,12 +1546,8 @@ mod tests {
         let cheap = fleet(&mut f, here, &[(h.gunship, 100), (h.trooper, 100)]);
         let wings = f.world.fleets.insert(Fleet {
             location: here,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[here].fleets.push(wings);
         let mut state = AIState::new(AiFaction::Alliance);

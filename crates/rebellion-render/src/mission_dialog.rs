@@ -1461,16 +1461,12 @@ mod tests {
             });
         assert!(world.capital_ship_classes[death_star].is_death_star());
         let fleet = world.insert_fleet(rebellion_core::world::Fleet {
-            location: SystemKey::default(),
             capital_ships: vec![
                 rebellion_core::world::ShipInstance::new(corvette, 100, true),
                 rebellion_core::world::ShipInstance::new(death_star, 100, true),
             ],
-            fighters: Vec::new(),
-            characters: Vec::new(),
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let object = |object| MissionTargetPick {
             system: SystemKey::default(),
@@ -1543,13 +1539,9 @@ mod tests {
                 ..Default::default()
             });
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
-            location: SystemKey::default(),
             capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, true)],
-            fighters: Vec::new(),
-            characters: Vec::new(),
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let name = |object| {
             object_target_name(

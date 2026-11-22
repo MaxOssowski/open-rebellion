@@ -6361,11 +6361,7 @@ mod tests {
         let blockader = world.fleets.insert(Fleet {
             location: blockaded_sys,
             capital_ships: ShipInstance::make(class_key, 100, false, 1),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[blockaded_sys].fleets.push(blockader);
 
@@ -6399,11 +6395,7 @@ mod tests {
         let fleet_key = world.fleets.insert(Fleet {
             location: home_sys,
             capital_ships: ShipInstance::make(class_key, 100, false, 1),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[home_sys].fleets.push(fleet_key);
 
@@ -6447,21 +6439,14 @@ mod tests {
         let death_star = world.fleets.insert(Fleet {
             location: home_sys,
             capital_ships: ShipInstance::make(class_key, 100, false, 1),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[home_sys].fleets.push(death_star);
         let escort = world.fleets.insert(Fleet {
             location: staging_sys,
             capital_ships: ShipInstance::make(class_key, 100, false, 1),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[staging_sys].fleets.push(escort);
 
@@ -7009,12 +6994,8 @@ mod tests {
         world.systems.remove(target);
         let fleet = world.fleets.insert(Fleet {
             location: here,
-            capital_ships: Vec::new(),
-            fighters: vec![],
             characters: vec![a],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[here].fleets.push(fleet);
         world.characters[a].current_fleet = Some(fleet);
@@ -8098,11 +8079,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: open,
             capital_ships: ShipInstance::make(class, 100, false, 1),
-            fighters: vec![],
             characters: vec![luke],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[open].fleets.push(fleet);
         world.characters[luke].current_system = None;
@@ -8145,11 +8123,9 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: target,
             capital_ships: ShipInstance::make(class, 100, true, 1),
-            fighters: vec![],
             characters: vec![leia],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[target].fleets.push(fleet);
         world.characters[leia].current_system = None;
@@ -8158,11 +8134,7 @@ mod tests {
         let own = world.fleets.insert(Fleet {
             location: target,
             capital_ships: ShipInstance::make(class, 100, false, 1),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[target].fleets.push(own);
         let state = AIState::new(AiFaction::Empire);
@@ -8661,11 +8633,9 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: aboard,
             capital_ships: ShipInstance::make(class, 100, true, 1),
-            fighters: vec![],
             characters: vec![leia],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[aboard].fleets.push(fleet);
         world.characters[leia].current_system = None;
@@ -8709,11 +8679,8 @@ mod tests {
         let own = world.fleets.insert(Fleet {
             location: aboard,
             capital_ships: ShipInstance::make(class, 100, false, 1),
-            fighters: vec![],
             characters: vec![minor],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[aboard].fleets.push(own);
         world.characters[minor].current_system = None;
@@ -8938,11 +8905,8 @@ mod tests {
             world.fleets.insert(Fleet {
                 location: system,
                 capital_ships: ShipInstance::make(class, 100, is_alliance, 1),
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         });
         world.systems[system].fleets.extend(fleets);
@@ -9224,12 +9188,7 @@ mod tests {
         // spy at the second.
         let fleet = world.fleets.insert(Fleet {
             location: first,
-            capital_ships: Vec::new(),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[first].fleets.push(fleet);
         let captain = add_character(&mut world, false, false, 0);
@@ -10732,11 +10691,8 @@ mod tests {
             let _ = world.fleets.insert(Fleet {
                 location: shipyard,
                 capital_ships: ShipInstance::make(class_key, 100, true, 1),
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
         }
         let ship = designer(&mut world, TechType::Ship, 50);
@@ -10783,24 +10739,15 @@ mod tests {
         world.systems[blockaded].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         let fleet = world.fleets.insert(Fleet {
             location: blockaded,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[blockaded].fleets.push(fleet);
         // An own system under an Empire fleet is blockaded too, but the
         // side's own (+0x30 & 6 clear).
         let enemy = world.fleets.insert(Fleet {
             location: own,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[own].fleets.push(enemy);
         let mut state = AIState::new(AiFaction::Alliance);
@@ -11234,12 +11181,7 @@ mod tests {
         uprisings.active_uprisings.clear();
         let raider = world.fleets.insert(crate::world::Fleet {
             location: site,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[site].fleets.push(raider);
         assert_eq!(capacity(&world, &uprisings), 0);
@@ -11597,11 +11539,8 @@ mod tests {
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: hq,
             capital_ships: crate::world::ShipInstance::make(class, 10, true, 2),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[hq].fleets.push(fleet);
         world.number_ships();
@@ -11704,12 +11643,8 @@ mod tests {
         let fleet = |world: &mut GameWorld, is_alliance| {
             world.fleets.insert(Fleet {
                 location: here,
-                capital_ships: vec![],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         };
         let own = fleet(&mut world, true);
@@ -11753,11 +11688,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: here,
             capital_ships: ShipInstance::make(class, 100, true, 2),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let far = add_system(&mut world, sector, 0.5, 0.5);
         world.systems[far].x = 40;
@@ -11818,11 +11750,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: here,
             capital_ships: ShipInstance::make(class, 100, true, 1),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[here].fleets.push(fleet);
         world.number_ships();
@@ -11884,11 +11813,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: here,
             capital_ships: ships,
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[here].fleets.push(fleet);
         world.number_ships();
@@ -11975,11 +11901,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: home,
             capital_ships: ShipInstance::make(class, 100, true, 1),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[home].fleets.push(fleet);
         let mut state = AIState::new(AiFaction::Alliance);
@@ -12029,11 +11952,8 @@ mod tests {
             let key = world.fleets.insert(Fleet {
                 location: system,
                 capital_ships: vec![ShipInstance::new(carrier, 100, is_alliance)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[system].fleets.push(key);
             key
@@ -12181,11 +12101,8 @@ mod tests {
             let key = world.fleets.insert(Fleet {
                 location: at,
                 capital_ships: vec![ShipInstance::new(class, 100, true)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[at].fleets.push(key);
             key
@@ -12715,12 +12632,8 @@ mod tests {
         world.systems[blockaded].control = ControlKind::Controlled(crate::dat::Faction::Empire);
         let fleet = world.fleets.insert(Fleet {
             location: blockaded,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[blockaded].fleets.push(fleet);
         let mut state = AIState::new(AiFaction::Alliance);

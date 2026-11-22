@@ -5051,11 +5051,8 @@ pub(crate) mod tests {
         let fleet = world.insert_fleet(Fleet {
             location: system,
             capital_ships: vec![ShipInstance::new(class, 100, true)],
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         fleet

@@ -3162,12 +3162,8 @@ mod tests {
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
         world.fleets.insert(rebellion_core::world::Fleet {
             location: system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         rebellion_core::object_views::advance(
             &mut world,

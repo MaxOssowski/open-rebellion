@@ -1810,11 +1810,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: system,
             capital_ships: vec![ShipInstance::new(class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {
@@ -1882,12 +1879,7 @@ mod tests {
         world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
         let fleet = world.fleets.insert(Fleet {
             location: system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         let mut integrator = PerceptionIntegrator::new(4, 0);
@@ -2165,11 +2157,7 @@ mod tests {
             let key = world.fleets.insert(Fleet {
                 location: system,
                 capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
-                fighters: vec![],
-                characters: vec![],
-                is_alliance: false,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[system].fleets.push(key);
             key
@@ -2255,11 +2243,8 @@ mod tests {
                     capital_ships: vec![rebellion_core::world::ShipInstance::new(
                         class, 100, false,
                     )],
-                    fighters: vec![],
-                    characters: vec![],
                     is_alliance,
-                    has_death_star: false,
-                    special_forces: Vec::new(),
+                    ..Default::default()
                 });
                 world.systems[system].fleets.push(key);
             }
@@ -2312,11 +2297,8 @@ mod tests {
             let key = world.fleets.insert(Fleet {
                 location: system,
                 capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, false)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[system].fleets.push(key);
             key
@@ -2760,11 +2742,8 @@ mod tests {
             let fleet = world.fleets.insert(Fleet {
                 location: target,
                 capital_ships: vec![ShipInstance::new(class, 100, true)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[target].fleets.push(fleet);
             world.systems[target].is_destroyed = destroyed;
@@ -2864,12 +2843,8 @@ mod tests {
         ));
         let fleet = world.fleets.insert(Fleet {
             location: target,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[target].fleets.push(fleet);
         let troop_class = DatId::new(20);
@@ -3051,20 +3026,13 @@ mod tests {
         let alliance_fleet = world.fleets.insert(Fleet {
             location: alliance_hq,
             capital_ships: vec![ShipInstance::new(alliance_class, 1, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let empire_fleet = world.fleets.insert(Fleet {
             location: alliance_hq,
             capital_ships: vec![ShipInstance::new(empire_class, 1_000, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[alliance_hq]
             .fleets
@@ -3193,11 +3161,7 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: origin,
             capital_ships: vec![ShipInstance::new(transport_class, 100, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[origin].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {
@@ -3338,11 +3302,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: origin,
             capital_ships: vec![ShipInstance::new(transport_class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[origin].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {

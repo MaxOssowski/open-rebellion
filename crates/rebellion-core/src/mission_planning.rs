@@ -1405,12 +1405,7 @@ mod tests {
         let free = system(&mut world);
         let fleet = world.fleets.insert(Fleet {
             location: blockaded,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[blockaded].fleets.push(fleet);
         let best = agent(&mut world, 1, |c| {

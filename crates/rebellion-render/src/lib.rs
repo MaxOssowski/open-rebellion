@@ -2331,12 +2331,9 @@ mod interaction_tests {
         for (is_alliance, class, count) in [(false, imperial_class, 2), (true, rebel_class, 5)] {
             let fleet = world.fleets.insert(rebellion_core::world::Fleet {
                 location: key,
-                capital_ships: vec![],
                 fighters: vec![rebellion_core::world::FighterEntry { class, count, carrier: None, damage: None }],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[key].fleets.push(fleet);
             world.systems[key]
@@ -2372,12 +2369,8 @@ mod interaction_tests {
         let fleet = |world: &mut GameWorld, is_alliance, location| {
             world.fleets.insert(Fleet {
                 location,
-                capital_ships: vec![],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         };
         let rebels = fleet(&mut world, true, here);
@@ -2474,12 +2467,8 @@ mod interaction_tests {
         let fleet = |world: &mut GameWorld, is_alliance, location| {
             world.fleets.insert(Fleet {
                 location,
-                capital_ships: vec![],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         };
         // An Imperial fleet orbits a system the Alliance does not see.
@@ -2681,12 +2670,8 @@ mod interaction_tests {
         // copy of the player's (ghidra/notes/gid-fleet-marks.md).
         let own = world.fleets.insert(Fleet {
             location: there,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut movement = rebellion_core::movement::MovementState::new();
         assert!(movement.order(own, there, here, 5));
@@ -2827,12 +2812,8 @@ mod interaction_tests {
         });
         let fleet = world.fleets.insert(Fleet {
             location: key,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![vader],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[key].fleets.push(fleet);
         world.characters[vader].current_fleet = Some(fleet);
@@ -2896,12 +2877,9 @@ mod interaction_tests {
         });
         let rebels = world.fleets.insert(Fleet {
             location: key,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![mon],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[key].fleets.push(rebels);
         world.characters[mon].current_fleet = Some(rebels);
@@ -3501,17 +3479,14 @@ mod interaction_tests {
             // which the display does not count.
             let fleet = world.fleets.insert(rebellion_core::world::Fleet {
                 location: key,
-                capital_ships: vec![],
                 fighters: vec![rebellion_core::world::FighterEntry {
                     class,
                     count: 3,
                     carrier: None,
                     damage: None,
                 }],
-                characters: vec![],
                 is_alliance: alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[key].fleets.push(fleet);
         }

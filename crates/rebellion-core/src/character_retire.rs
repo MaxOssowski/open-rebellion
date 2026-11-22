@@ -182,13 +182,9 @@ mod tests {
         let mut world = GameWorld::default();
         let key = world.characters.insert(rebel());
         let fleet = world.fleets.insert(crate::world::Fleet {
-            location: crate::ids::SystemKey::default(),
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
             characters: vec![key],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[key].current_fleet = Some(fleet);
         assert_eq!(

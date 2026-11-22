@@ -293,12 +293,9 @@ mod tests {
             move |w: &mut GameWorld, c: CharacterKey, enemy: SystemKey| {
                 let key = w.fleets.insert(Fleet {
                     location: enemy,
-                    capital_ships: vec![],
-                    fighters: vec![],
                     characters: vec![c],
                     is_alliance: alliance,
-                    has_death_star: false,
-                    special_forces: Vec::new(),
+                    ..Default::default()
                 });
                 w.characters[c].current_fleet = Some(key);
                 w.characters[c].current_system = Some(enemy);

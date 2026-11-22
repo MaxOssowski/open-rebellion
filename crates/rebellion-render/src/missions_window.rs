@@ -2113,13 +2113,9 @@ mod tests {
         let death_star = class(136, "Death Star");
         let ship = rebellion_core::world::ShipInstance::new;
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
-            location: SystemKey::default(),
             capital_ships: vec![ship(destroyer, 10, false), ship(death_star, 10, false)],
-            fighters: Vec::new(),
-            characters: Vec::new(),
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         assert_eq!(
             target_view(&world, Target::Object(MissionTarget::DeathStar(fleet))),

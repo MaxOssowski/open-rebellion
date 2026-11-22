@@ -444,12 +444,8 @@ mod tests {
         rebellion_core::object_views::setup(&mut world);
         world.fleets.insert(rebellion_core::world::Fleet {
             location: at,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         rebellion_core::object_views::advance(
             &mut world,

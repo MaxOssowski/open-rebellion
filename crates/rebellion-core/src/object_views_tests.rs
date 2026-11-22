@@ -66,12 +66,8 @@ fn setup() -> Setup {
 fn fleet(world: &mut GameWorld, at: SystemKey, is_alliance: bool) -> crate::ids::FleetKey {
     world.fleets.insert(Fleet {
         location: at,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
         is_alliance,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     })
 }
 
@@ -637,21 +633,12 @@ fn a_seen_systems_fleets_are_copied_and_stay_when_the_side_looks_away() {
     let missions = crate::missions::MissionState::new();
     let imperial = setup.world.insert_fleet(Fleet {
         location: chandrila,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     let watcher = setup.world.insert_fleet(Fleet {
         location: chandrila,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     day(&mut setup, &missions);
     let extras = alliance_extras(&setup, chandrila).unwrap();
@@ -1042,12 +1029,7 @@ fn a_fleet_in_hyperspace_is_not_in_its_systems_copy() {
     let missions = crate::missions::MissionState::new();
     let moving = setup.world.insert_fleet(Fleet {
         location: chandrila,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     assert!(setup.movement.order(moving, chandrila, coruscant, 10));
     fleet(&mut setup.world, chandrila, true);
@@ -1171,12 +1153,7 @@ fn a_push_copies_the_systems_fleets_and_missions_frozen() {
     let missions = crate::missions::MissionState::new();
     setup.world.insert_fleet(Fleet {
         location: chandrila,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     setup
         .world
@@ -1243,9 +1220,7 @@ fn a_frozen_copy_keeps_a_fleet_as_seen_after_it_has_moved_and_died() {
             damage: None,
         }],
         characters: vec![vader],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     let regiment = setup.regiment;
     setup.world.systems[chandrila].ground_units.clear();
@@ -1324,11 +1299,7 @@ fn a_characters_copy_keeps_its_ship_until_its_system_copy_goes_live_without_it()
     let imperial = setup.world.insert_fleet(Fleet {
         location: chandrila,
         capital_ships: vec![first, ship],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     let vader_id = DatId::new(0x3000_0001);
     let vader = setup.world.characters.insert(crate::world::Character {
@@ -1578,12 +1549,7 @@ fn a_fleet_made_in_a_frozen_system_shows_there_with_nothing_in_it() {
     // One that predates the copy, elsewhere, stays out of it.
     setup.world.insert_fleet(Fleet {
         location: coruscant,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     let class = setup
         .world
@@ -1595,21 +1561,12 @@ fn a_fleet_made_in_a_frozen_system_shows_there_with_nothing_in_it() {
     let made = setup.world.insert_fleet(Fleet {
         location: chandrila,
         capital_ships: vec![crate::world::ShipInstance::new(class, 10, true)],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     // A new one that has already left is in hyperspace: not copied.
     let gone = setup.world.insert_fleet(Fleet {
         location: chandrila,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     assert!(setup.movement.order(gone, chandrila, coruscant, 10));
     day(&mut setup, &missions);
@@ -1642,12 +1599,7 @@ fn a_fleet_in_hyperspace_is_not_in_its_systems_full_copy() {
     let (chandrila, coruscant) = (setup.chandrila, setup.coruscant);
     let moving = setup.world.insert_fleet(Fleet {
         location: chandrila,
-        capital_ships: vec![],
-        fighters: vec![],
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     assert!(setup.movement.order(moving, chandrila, coruscant, 10));
     let missions = crate::missions::MissionState::new();

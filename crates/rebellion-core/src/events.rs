@@ -1241,12 +1241,8 @@ mod tests {
         // Put all three in a fleet at the same system
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![luke, vader, emperor],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[sys_key].fleets.push(fleet);
 
@@ -1310,23 +1306,16 @@ mod tests {
         // Luke at sys1, Vader at sys2
         let fleet1 = world.fleets.insert(crate::world::Fleet {
             location: sys1,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![luke],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[sys1].fleets.push(fleet1);
 
         let fleet2 = world.fleets.insert(crate::world::Fleet {
             location: sys2,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![vader],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[sys2].fleets.push(fleet2);
 
@@ -1441,21 +1430,14 @@ mod tests {
         // Luke in Alliance fleet, Vader in Empire fleet — both at same system
         let fleet1 = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![luke],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let fleet2 = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![vader],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[sys_key].fleets.push(fleet1);
         world.systems[sys_key].fleets.push(fleet2);
@@ -1511,12 +1493,9 @@ mod tests {
 
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![luke],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[sys_key].fleets.push(fleet);
 
@@ -1575,12 +1554,9 @@ mod tests {
         };
         let fleet_key = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![han_key],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters.get_mut(han_key).unwrap().current_fleet = Some(fleet_key);
 
@@ -1617,12 +1593,7 @@ mod tests {
         });
         let fleet_key = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         han.current_fleet = Some(fleet_key);
         let han_key = world.characters.insert(han);

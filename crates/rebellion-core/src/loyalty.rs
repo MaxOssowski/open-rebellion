@@ -422,11 +422,8 @@ mod tests {
             let key = world.fleets.insert(Fleet {
                 location: here,
                 capital_ships: ShipInstance::make(class, 100, alliance, n),
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[here].fleets.push(key);
             key

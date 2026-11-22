@@ -664,12 +664,8 @@ mod tests {
         let fleet = |f: &mut Fixture, is_alliance| {
             let key = f.world.insert_fleet(crate::world::Fleet {
                 location: f.system,
-                capital_ships: vec![],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             f.world.systems[f.system].fleets.push(key);
             key
@@ -732,11 +728,8 @@ mod tests {
         let fleet = f.world.insert_fleet(crate::world::Fleet {
             location: f.system,
             capital_ships: ships,
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let ship = |index| target_name(&f.world, ScrapTarget::Ship { fleet, index });
         assert_eq!(ship(0).as_deref(), Some("Corellian Corvette"));
@@ -780,10 +773,8 @@ mod tests {
                 location: f.system,
                 capital_ships: crate::world::ShipInstance::make(class, 10, true, ships as u32),
                 fighters,
-                characters: vec![],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             f.world.systems[f.system].fleets.push(key);
             key
@@ -886,10 +877,8 @@ mod tests {
                 crate::world::FighterEntry { class: fighter, count: 1, carrier: Some(8), damage: None },
                 crate::world::FighterEntry { class: fighter, count: 1, carrier: None, damage: None },
             ],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.system].fleets.push(key);
         destroy_ship(&mut f.world, key, 0);
@@ -936,11 +925,9 @@ mod tests {
         let key = f.world.insert_fleet(crate::world::Fleet {
             location: f.system,
             capital_ships: ships,
-            fighters: vec![],
             characters: vec![aboard, on_mission, other],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.system].fleets.push(key);
         for c in [aboard, on_mission, other] {
@@ -1021,8 +1008,8 @@ mod tests {
             }],
             characters: vec![captain, agent],
             is_alliance: true,
-            has_death_star: false,
             special_forces: vec![unit],
+            ..Default::default()
         });
         f.world.systems[f.system].fleets.push(fleet);
         f.world.characters[captain].current_fleet = Some(fleet);
@@ -1092,11 +1079,8 @@ mod tests {
         let fleet = f.world.insert_fleet(crate::world::Fleet {
             location: f.system,
             capital_ships: crate::world::ShipInstance::make(class, 10, true, 1),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.system].fleets.push(fleet);
         let mut movement = crate::movement::MovementState::new();
@@ -1154,12 +1138,8 @@ mod tests {
         });
         let fleet = f.world.insert_fleet(crate::world::Fleet {
             location: f.system,
-            capital_ships: Vec::new(),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         f.world.systems[f.system].fleets.push(fleet);
         crate::squadrons::add(&mut f.world.fleets[fleet].fighters, x_wing, 2);
@@ -1199,7 +1179,6 @@ mod tests {
         });
         let other = f.world.insert_fleet(crate::world::Fleet {
             location: f.system,
-            capital_ships: Vec::new(),
             fighters: vec![
                 crate::world::FighterEntry {
                     class: x_wing,
@@ -1214,10 +1193,8 @@ mod tests {
                     damage: None,
                 },
             ],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         assert_eq!(
             check(

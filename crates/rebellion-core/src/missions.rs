@@ -5806,12 +5806,8 @@ mod tests {
     fn add_fleet(world: &mut GameWorld, system: SystemKey, is_alliance: bool) {
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
     }
@@ -7531,12 +7527,9 @@ mod tests {
         let victim = agent_at(&mut world, here, true);
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: here,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![victim],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[victim].current_fleet = Some(fleet);
         world.characters[victim].current_abode = Some(crate::ids::AbodeKey::default());
@@ -8730,12 +8723,8 @@ mod tests {
             crate::world::ControlKind::Controlled(crate::dat::Faction::Empire);
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: to,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let traveller = agent_at(&mut world, from, true);
         let mut state = MissionState::new();
@@ -8955,12 +8944,9 @@ mod tests {
         let (mut world, _, traveller, fleet, to) = move_to_fleet();
         let old = world.fleets.insert(crate::world::Fleet {
             location: to,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![traveller],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[traveller].current_fleet = Some(old);
 
@@ -9561,11 +9547,8 @@ mod tests {
                 crate::world::ShipInstance::new(destroyer, 100, false),
                 crate::world::ShipInstance::new(death_star, 100, false),
             ],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         fleet
@@ -10187,12 +10170,9 @@ mod tests {
         let pilot = agent_at(&mut world, from, true);
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: from,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![pilot],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[pilot].current_fleet = Some(fleet);
         world.characters[pilot].command = crate::character_command::CommandKind::Admiral;
@@ -10825,12 +10805,9 @@ mod tests {
         let spy = agent_at(&mut world, elsewhere, true);
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: elsewhere,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![spy],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[spy].current_fleet = Some(fleet);
         let unit = |world: &mut GameWorld| {
@@ -11373,11 +11350,7 @@ mod tests {
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: base,
             capital_ships: vec![ship(1), ship(2)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let vader = agent_at(&mut world, base, false);
         world.characters[vader].dat_id = crate::ids::DatId::new(0x281);
@@ -11429,11 +11402,7 @@ mod tests {
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: at,
             capital_ships: vec![ship(1, true), ship(2, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let c = agent_at(&mut world, at, false);
         board_fleet(&mut world, MissionMember::Character(c), fleet);
@@ -11940,12 +11909,9 @@ mod tests {
         let other = agent_at(&mut world, home, true);
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: home,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![luke, other],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[luke].current_fleet = Some(fleet);
         enter_abode(&mut world, MissionMember::Character(luke), dagobah);
@@ -12488,10 +12454,7 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[here].fleets.push(fleet);
         let ship = MissionTarget::CapitalShip {
@@ -12565,10 +12528,7 @@ mod tests {
                     damage: None,
                 },
             ],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let ship = MissionTarget::CapitalShip {
             fleet,

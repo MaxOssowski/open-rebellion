@@ -3518,12 +3518,8 @@ mod tests {
     fn add_fleet(world: &mut GameWorld, system: SystemKey) {
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
             location: system,
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
     }

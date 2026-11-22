@@ -360,19 +360,13 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: Vec::new(),
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.fleets.insert(Fleet {
             location: here,
             capital_ships: vec![ShipInstance::new(destroyer, 100, true)],
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         for is_alliance in [false, false, true] {
             world.troops.insert(TroopUnit {

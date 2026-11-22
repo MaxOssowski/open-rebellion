@@ -881,12 +881,9 @@ mod tests {
 
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
             location: yavin,
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
             characters: vec![key],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[key].current_fleet = Some(fleet);
         world.characters[key].command = CommandKind::Admiral;

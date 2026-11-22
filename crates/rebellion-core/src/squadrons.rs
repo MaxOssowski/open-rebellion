@@ -939,12 +939,9 @@ pub fn scramble(world: &mut GameWorld, system: SystemKey) -> Vec<Sortie> {
         } else {
             let fleet = world.fleets.insert(crate::world::Fleet {
                 location: system,
-                capital_ships: Vec::new(),
                 fighters: launched.clone(),
-                characters: Vec::new(),
                 is_alliance: alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[system].fleets.push(fleet);
             (fleet, true)
@@ -1053,11 +1050,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: here,
             capital_ships: vec![ShipInstance::new(carrier, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[here].fleets.push(fleet);
         let x_wing = world.fighter_classes.insert(FighterClass {
@@ -1449,12 +1443,7 @@ mod tests {
         );
         let blockader = s.world.fleets.insert(Fleet {
             location: s.there,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         s.world.systems[s.there].fleets.push(blockader);
         assert_eq!(

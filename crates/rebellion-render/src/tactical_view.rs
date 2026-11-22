@@ -13946,8 +13946,7 @@ mod tests {
             fighters,
             characters,
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         };
         let rebels = world.fleets.insert(fleet(
             true,
@@ -14103,10 +14102,8 @@ mod tests {
                 entry(awing, 1, None),
                 entry(awing, 1, Some(99)),
             ],
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets = vec![rebels];
         let rows = battle_alert_rows(
@@ -14330,13 +14327,9 @@ mod tests {
         };
         let (well, hurt) = (person(0), person(5));
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
-            location: SystemKey::default(),
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
             characters: vec![well, hurt],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut session = test_session(Vec::new(), Vec::new(), true);
         session.attacker_fleet = fleet;
@@ -18879,13 +18872,9 @@ mod tests {
                 ..rebellion_core::world::FighterClass::default()
             });
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
-            location: SystemKey::default(),
-            capital_ships: Vec::new(),
             fighters: vec![rebellion_core::world::FighterEntry { class, count: 2, carrier: None, damage: None }],
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut ships = Vec::new();
         let mut fighters = Vec::new();
@@ -21955,12 +21944,9 @@ mod tests {
         let mut fleet = |is_alliance: bool, has_death_star: bool| {
             world.fleets.insert(Fleet {
                 location: system,
-                capital_ships: vec![],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
                 has_death_star,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         };
         let rebels = fleet(true, false);

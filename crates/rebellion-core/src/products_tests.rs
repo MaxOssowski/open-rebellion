@@ -132,11 +132,7 @@ fn a_ship_order_joins_a_listed_spare() {
     let fleet = s.world.insert_fleet(Fleet {
         location: s.yard,
         capital_ships: vec![ShipInstance::new(s.carrack, 50, false)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     s.world.systems[s.yard].fleets.push(fleet);
     s.world.set_ship_spare(s.yard, false, fleet);
@@ -804,11 +800,7 @@ fn a_moved_unfinished_ship_goes_to_the_targets_spare_or_fleet() {
     let listed = s.world.insert_fleet(Fleet {
         location: s.yard,
         capital_ships: vec![ShipInstance::new(s.carrack, 50, false)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     s.world.systems[s.yard].fleets.push(listed);
     assert!(move_to_target(&mut s.world, id, s.yard, Some(listed), 0));
@@ -828,12 +820,7 @@ fn a_moved_unfinished_squadron_lands_on_the_system_and_refuses_a_fleet() {
     let id = s.world.products.all()[0].id;
     let fleet = s.world.insert_fleet(Fleet {
         location: s.there,
-        capital_ships: Vec::new(),
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     assert!(!move_to_target(&mut s.world, id, s.there, Some(fleet), 0));
     assert!(move_to_target(&mut s.world, id, s.there, None, 0));
@@ -854,12 +841,8 @@ fn a_moved_unfinished_ship_skips_a_fleet_of_the_other_side_and_keeps_its_place_i
     let ids: Vec<u64> = s.world.products.all().iter().map(|p| p.id).collect();
     let rebels = s.world.insert_fleet(Fleet {
         location: s.there,
-        capital_ships: Vec::new(),
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     s.world.systems[s.there].fleets.push(rebels);
     assert!(move_to_target(
@@ -1010,11 +993,8 @@ fn an_unfinished_units_move_asks_only_out_of_its_sides_blockaded_system() {
     let enemy = s.world.insert_fleet(Fleet {
         location: s.yard,
         capital_ships: vec![ShipInstance::new(s.carrack, 50, true)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     s.world.systems[s.yard].fleets.push(enemy);
     assert!(move_asks(&s.world, &[squadron]));
@@ -1057,11 +1037,7 @@ fn carrier(s: &mut Setup, fighters: u32, troops: u32) -> FleetKey {
     let fleet = s.world.insert_fleet(Fleet {
         location: s.yard,
         capital_ships: vec![ShipInstance::new(class, 50, false)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     s.world.systems[s.yard].fleets.push(fleet);
     s.world.number_ships();
@@ -1366,11 +1342,7 @@ fn the_band_names_the_container_its_current_product_was_dropped_in() {
     let other = s.world.insert_fleet(Fleet {
         location: s.yard,
         capital_ships: vec![ShipInstance::new(s.carrack, 50, false)],
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     s.world.systems[s.yard].fleets.push(other);
     assert!(move_to_target(&mut s.world, id, s.yard, Some(other), 0));
@@ -1944,11 +1916,7 @@ fn star_destroyers(s: &mut Setup) -> (FleetKey, u64, u64) {
             ShipInstance::new(isd, 50, false),
             ShipInstance::new(vd, 50, false),
         ],
-        fighters: Vec::new(),
-        characters: Vec::new(),
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     s.world.systems[s.yard].fleets.push(fleet);
     s.world.number_ships();

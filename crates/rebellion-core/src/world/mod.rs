@@ -1044,7 +1044,10 @@ pub struct SkillPair {
 /// Capital ships are stored as individual `ShipInstance` records (per-hull
 /// state with `hull_current` and `alive`). Fighter squadrons remain as
 /// aggregate `(class_key, count)` pairs.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// The default is an empty Empire fleet at the null system key, for tests
+/// and builders that set only the fields they need.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Fleet {
     /// Last orbiting system. An active movement order is authoritative in transit.
     pub location: SystemKey,
@@ -2643,13 +2646,8 @@ mod tests {
 
     fn fleet(is_alliance: bool) -> Fleet {
         Fleet {
-            location: SystemKey::default(),
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -3290,12 +3288,7 @@ mod tests {
         });
         let dummy_fleet = world.fleets.insert(Fleet {
             location: dummy_sys,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
 
         let mut c = default_character();
@@ -3336,13 +3329,10 @@ mod tests {
         let seated = world.characters.insert(Character::default());
         let loose = world.characters.insert(Character::default());
         let fleet = world.fleets.insert(Fleet {
-            location: SystemKey::default(),
             capital_ships: ships,
-            fighters: vec![],
             characters: vec![seated, loose],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.number_ships();
         let ids: Vec<u64> = world.fleets[fleet].capital_ships.iter().map(|s| s.id).collect();
@@ -3376,13 +3366,9 @@ mod tests {
         named.name = Some("Punisher".into());
         let mut fleet = |ships: Vec<ShipInstance>, is_alliance| {
             world.fleets.insert(Fleet {
-                location: SystemKey::default(),
                 capital_ships: ships,
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         };
         let first = fleet(
@@ -3445,13 +3431,9 @@ mod tests {
         let class = CapitalShipKey::default();
         let mut fleet = |ships: Vec<ShipInstance>| {
             world.fleets.insert(Fleet {
-                location: SystemKey::default(),
                 capital_ships: ships,
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         };
         let a = fleet(ShipInstance::make(class, 10, true, 2));
@@ -3498,13 +3480,8 @@ mod tests {
     #[test]
     fn death_star_only_fleet_is_not_empty() {
         let fleet = Fleet {
-            location: SystemKey::default(),
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
-            characters: Vec::new(),
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         };
         assert!(!fleet.is_empty());
     }
@@ -3555,12 +3532,8 @@ mod ship_spare_tests {
     fn fleet(world: &mut GameWorld, at: SystemKey, is_alliance: bool) -> FleetKey {
         let key = world.insert_fleet(Fleet {
             location: at,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[at].fleets.push(key);
         key

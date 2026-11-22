@@ -1057,11 +1057,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: origin,
             capital_ships: vec![ShipInstance::new(ship_class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[origin].fleets.push(fleet);
 
@@ -1148,12 +1145,8 @@ mod tests {
         let (mut world, origin, _, first, troops) = fixture(3);
         let second = world.fleets.insert(Fleet {
             location: origin,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut state = TroopTransportState::new();
         state.embark(&mut world, first, &troops[..2]).unwrap();
@@ -1233,11 +1226,8 @@ mod tests {
         let second = world.fleets.insert(Fleet {
             location: origin,
             capital_ships: vec![ShipInstance::new(ship_class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut state = TroopTransportState::new();
         state.embark(&mut world, second, &troops[..1]).unwrap();
@@ -1320,12 +1310,8 @@ mod tests {
         let (mut world, origin, _, first, troops) = fixture(3);
         let second = world.fleets.insert(Fleet {
             location: origin,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut state = TroopTransportState::new();
         state.embark(&mut world, first, &troops[..1]).unwrap();
@@ -1369,11 +1355,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: system,
             capital_ships: vec![ShipInstance::new(class, 100, true)],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         fleet

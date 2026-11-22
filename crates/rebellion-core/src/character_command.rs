@@ -473,12 +473,8 @@ mod tests {
         });
         let fleet = world.fleets.insert(Fleet {
             location: system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let place = |world: &mut GameWorld, alliance, fleet, kind, leadership| {
             let c = officer(world, alliance);

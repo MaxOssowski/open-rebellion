@@ -414,12 +414,9 @@ mod tests {
         let (mut world, trainer, here, _) = setup(80);
         let fleet: FleetKey = world.fleets.insert(Fleet {
             location: here,
-            capital_ships: vec![],
-            fighters: vec![],
             characters: vec![trainer],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.characters[trainer].current_fleet = Some(fleet);
         let aboard = latent(&mut world, here);

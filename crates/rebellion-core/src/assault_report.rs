@@ -592,10 +592,7 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets.push(fleet);
         let stormtroopers = named(&mut world, 0x1000_0006, "Stormtroopers");

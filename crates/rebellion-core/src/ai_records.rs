@@ -2718,10 +2718,8 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[here].fleets.push(fleet);
         let mut transport = crate::troop_transport::TroopTransportState::new();
@@ -2777,13 +2775,8 @@ mod tests {
         });
         let classes = ClassRecords::build(&world);
         let fleet = crate::world::Fleet {
-            location: crate::ids::SystemKey::default(),
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         };
         let record = |ship: &crate::world::ShipInstance| {
             ship_record(&world, &classes, ship, &fleet, false, None).1
@@ -2841,11 +2834,8 @@ mod tests {
             let key = world.fleets.insert(crate::world::Fleet {
                 location: here,
                 capital_ships: vec![crate::world::ShipInstance::new(gunship, hull, true)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[here].fleets.push(key);
             key
@@ -3386,11 +3376,8 @@ mod tests {
                 dead,
                 crate::world::ShipInstance::new(hull, 1, true),
             ],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.number_ships();
         let classes = ClassRecords::build(&world);
@@ -3484,11 +3471,8 @@ mod tests {
             let f = world.fleets.insert(crate::world::Fleet {
                 location: at,
                 capital_ships: vec![crate::world::ShipInstance::new(hull, 1, is_alliance)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[at].fleets.push(f);
             f
@@ -3559,11 +3543,7 @@ mod tests {
         let fleet = world.fleets.insert(crate::world::Fleet {
             location: here,
             capital_ships: vec![crate::world::ShipInstance::new(carrier, 500, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let classes = ClassRecords::build(&world);
         let mut movement = crate::movement::MovementState::new();
@@ -3635,21 +3615,12 @@ mod tests {
         let mut fixture = system_fixture();
         let fleet = fixture.world.fleets.insert(crate::world::Fleet {
             location: fixture.system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let own = fixture.world.fleets.insert(crate::world::Fleet {
             location: fixture.system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         fixture.world.systems[fixture.system].fleets = vec![fleet, own];
         let mut values = [0; 30];
@@ -4299,11 +4270,7 @@ mod tests {
         let raider = fixture.world.fleets.insert(crate::world::Fleet {
             location: other,
             capital_ships: vec![crate::world::ShipInstance::new(hull, 1, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         fixture.world.systems[other].fleets.push(raider);
         let classes = ClassRecords::build(&fixture.world);
@@ -4409,12 +4376,8 @@ mod tests {
         });
         let fleet = crate::world::Fleet {
             location: here,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         };
         let classes = ClassRecords::build(&world);
         let record = |class| {
@@ -4465,8 +4428,7 @@ mod tests {
             }],
             characters: vec![officer],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let classes = ClassRecords::build(&world);
 
@@ -4514,10 +4476,8 @@ mod tests {
                     repair: None,
                 }),
             }],
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let classes = ClassRecords::build(&world);
 
@@ -4577,12 +4537,7 @@ mod tests {
         let mut fixture = system_fixture();
         let fleet = fixture.world.fleets.insert(crate::world::Fleet {
             location: fixture.system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         fixture.world.systems[fixture.system].fleets.push(fleet);
 
@@ -4761,12 +4716,8 @@ mod tests {
             let mut fixture = system_fixture();
             let key = fixture.world.fleets.insert(crate::world::Fleet {
                 location: fixture.system,
-                capital_ships: vec![],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance: !is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             fixture.world.systems[fixture.system].fleets.push(key);
             let fleets = HashMap::from([(
@@ -4835,12 +4786,8 @@ mod tests {
         let mut fixture = system_fixture();
         let fleet = fixture.world.fleets.insert(crate::world::Fleet {
             location: fixture.system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         for (is_killed, current_fleet) in [(true, None), (false, Some(fleet))] {
             fixture.world.characters.insert(crate::world::Character {
@@ -5650,12 +5597,7 @@ mod tests {
         });
         let fleet = fixture.world.fleets.insert(crate::world::Fleet {
             location: fixture.system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         fixture.world.systems[fixture.system].fleets.push(fleet);
         let r = system_record(&fixture, true, 0x20_0000);

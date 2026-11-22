@@ -1394,11 +1394,8 @@ mod tests {
         let fleet = world.fleets.insert(Fleet {
             location: station,
             capital_ships: vec![ShipInstance::new(class, 100, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[station].fleets.push(fleet);
         assert_eq!(nearby(&world), [true, true, false]);
@@ -1486,10 +1483,9 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
             is_alliance: true,
             has_death_star: death_star,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let troop = world.troops.insert(crate::world::TroopUnit {
             class_dat_id: DatId(0),
@@ -2250,7 +2246,6 @@ mod tests {
             systems: vec![],
         });
         let fleet1 = world.fleets.insert(crate::world::Fleet {
-            location: crate::ids::SystemKey::default(),
             capital_ships: crate::world::ShipInstance::make(
                 crate::ids::CapitalShipKey::default(),
                 100,
@@ -2263,24 +2258,17 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let fleet2 = world.fleets.insert(crate::world::Fleet {
-            location: crate::ids::SystemKey::default(),
             capital_ships: crate::world::ShipInstance::make(
                 crate::ids::CapitalShipKey::default(),
                 100,
                 false,
                 3,
             ),
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let sys_key = world.systems.insert(crate::world::System {
             dat_id: DatId(0),

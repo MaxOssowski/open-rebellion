@@ -759,11 +759,8 @@ mod tests {
                 .iter()
                 .map(|&c| ShipInstance::new(c, 10, true))
                 .collect(),
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         fx.world.systems[at].fleets.push(fleet);
         fx.world.number_ships();

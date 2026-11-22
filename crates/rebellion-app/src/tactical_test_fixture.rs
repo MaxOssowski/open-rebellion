@@ -728,10 +728,9 @@ pub(crate) fn apply(
                         .collect()
                 })
                 .unwrap_or_default(),
-            characters: vec![],
             is_alliance,
             has_death_star: request.death_star_presentation && !is_alliance,
-            special_forces: Vec::new(),
+            ..Default::default()
         }
     };
     let (attacker, defender) = if request.coruscant_chase {
@@ -1396,10 +1395,8 @@ fn coruscant_chase_fleets(
             true,
         )],
         fighters,
-        characters: vec![],
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     Ok((attacker, defender))
 }
@@ -1457,20 +1454,14 @@ fn yavin_multi_ship_fleets(
     let attacker = world.fleets.insert(Fleet {
         location: system,
         capital_ships: vec![swift],
-        fighters: Vec::new(),
-        characters: vec![],
         is_alliance: true,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     let defender = world.fleets.insert(Fleet {
         location: system,
         capital_ships: vec![first, second],
         fighters,
-        characters: vec![],
-        is_alliance: false,
-        has_death_star: false,
-        special_forces: Vec::new(),
+        ..Default::default()
     });
     Ok((attacker, defender))
 }

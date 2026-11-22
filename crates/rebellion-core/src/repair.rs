@@ -493,11 +493,7 @@ mod tests {
         let key = world.fleets.insert(Fleet {
             location: sys,
             capital_ships: vec![ship],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[sys].fleets.push(key);
         key

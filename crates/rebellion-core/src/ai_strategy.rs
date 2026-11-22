@@ -797,11 +797,7 @@ mod tests {
             let fleet = world.fleets.insert(Fleet {
                 location: system,
                 capital_ships: vec![ShipInstance::new(class, 100, false)],
-                fighters: vec![],
-                characters: vec![],
-                is_alliance: false,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[system].fleets.push(fleet);
             (world, system, fleet)

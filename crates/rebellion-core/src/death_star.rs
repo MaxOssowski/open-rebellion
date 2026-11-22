@@ -185,12 +185,8 @@ mod tests {
     fn add_ds_fleet(world: &mut GameWorld, sys: SystemKey) -> FleetKey {
         let fk = world.fleets.insert(Fleet {
             location: sys,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
             has_death_star: true,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems.get_mut(sys).unwrap().fleets.push(fk);
         fk

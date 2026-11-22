@@ -1883,11 +1883,7 @@ pub(crate) mod tests {
         let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
             location: system,
             capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 75, false)],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         state.world.systems[system].fleets.push(fleet);
         // The drivers number new ships before each day (GameWorld::number_ships);
@@ -2610,12 +2606,7 @@ pub(crate) mod tests {
         // would copy it.
         state.world.insert_fleet(rebellion_core::world::Fleet {
             location: system,
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
-            characters: Vec::new(),
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         write_v119(&saves_dir, &state);
 
@@ -3094,11 +3085,7 @@ pub(crate) mod tests {
         let fleet = state.world.insert_fleet(Fleet {
             location: yard,
             capital_ships: vec![ShipInstance::new(class, 10, false)],
-            fighters: Vec::new(),
-            characters: Vec::new(),
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         state.world.systems[yard].fleets.push(fleet);
         assert!(state.manufacturing.set_fleet_destination(
@@ -3987,12 +3974,9 @@ pub(crate) mod tests {
             });
         let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
             location: system,
-            capital_ships: vec![],
-            fighters: vec![],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
             special_forces: vec![unit],
+            ..Default::default()
         });
         state.world.systems[system].fleets.push(fleet);
         save_slot(&saves_dir, 0, "Aboard", &state, &[]).unwrap();
@@ -4011,17 +3995,14 @@ pub(crate) mod tests {
         let system = state.world.systems.keys().next().unwrap();
         let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
             location: system,
-            capital_ships: vec![],
             fighters: vec![rebellion_core::world::FighterEntry {
                 class: rebellion_core::ids::FighterKey::default(),
                 count: 2,
                 carrier: Some(7),
                 damage: None,
             }],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: vec![],
+            ..Default::default()
         });
         state.world.systems[system].fleets.push(fleet);
         save_slot(&saves_dir, 0, "Carried", &state, &[]).unwrap();

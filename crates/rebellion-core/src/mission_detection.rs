@@ -1887,11 +1887,8 @@ mod tests {
                 name: None,
                 id: 0,
             }],
-            fighters: vec![],
-            characters: vec![],
             is_alliance,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         })
     }
 

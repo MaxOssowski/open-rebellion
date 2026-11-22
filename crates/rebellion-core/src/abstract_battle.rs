@@ -2982,10 +2982,8 @@ mod tests {
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let ships = world.fleets.insert(Fleet {
             location: system,
@@ -2994,25 +2992,17 @@ mod tests {
                 ShipInstance::new(weak, 40, false),
                 ShipInstance::new(weak, 40, false),
             ],
-            fighters: vec![],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let squadrons = world.fleets.insert(Fleet {
             location: system,
-            capital_ships: vec![],
             fighters: vec![FighterEntry {
                 class: craft,
                 count: 2,
                 carrier: None,
                 damage: None,
             }],
-            characters: vec![],
-            is_alliance: false,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         world.systems[system].fleets = vec![alliance, ships, squadrons];
         (world, system, alliance, ships, squadrons)
@@ -4076,11 +4066,8 @@ mod tests {
             let key = world.fleets.insert(Fleet {
                 location: battle,
                 capital_ships: vec![ShipInstance::new(class, 10, false)],
-                fighters: vec![],
-                characters: vec![],
                 is_alliance,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             });
             world.systems[battle].fleets.push(key);
             key

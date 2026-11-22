@@ -763,13 +763,8 @@ mod tests {
         // still joins it (ghidra/notes/fleet-join-split.md).
         let mut world = rebellion_core::world::GameWorld::default();
         let target = world.fleets.insert(rebellion_core::world::Fleet {
-            location: SystemKey::default(),
-            capital_ships: Vec::new(),
-            fighters: Vec::new(),
-            characters: Vec::new(),
             is_alliance: true,
-            has_death_star: false,
-            special_forces: Vec::new(),
+            ..Default::default()
         });
         let mut state = MoveConfirmationState::default();
         state.open(MoveConfirmation {
@@ -886,13 +881,8 @@ mod tests {
         let mut world = rebellion_core::world::GameWorld::default();
         let mut fleet = || {
             world.fleets.insert(rebellion_core::world::Fleet {
-                location: SystemKey::default(),
-                capital_ships: Vec::new(),
-                fighters: Vec::new(),
-                characters: Vec::new(),
                 is_alliance: true,
-                has_death_star: false,
-                special_forces: Vec::new(),
+                ..Default::default()
             })
         };
         let team = vec![fleet(), fleet()];
