@@ -893,6 +893,22 @@ void get_combat_stat(void* entity, uint4* out_stat) {
 
 ---
 
+> **Re-traced 2026-11-22 (audit F-039): the "space combat" sections from
+> here to FUN_00534640 are story checks, not combat.** Our typed decompile
+> makes FUN_005442f0, FUN_00544030, FUN_00544130, FUN_005443f0,
+> FUN_005444e0, FUN_005445d0, FUN_00544a20 and FUN_00544da0 `MissionMgr`
+> methods, and the port follows them: FUN_005442f0 sets HanCapturedAtPalace
+> (`MissionMgr_SetHanCapturedAtPalace`), FUN_00544030 is the Dagobah check
+> (`dagobah.rs`), FUN_00544130 / FUN_005443f0 / FUN_005444e0 send Luke,
+> Leia and Chewbacca to Jabba's palace (`jabba.rs`), FUN_005445d0 is
+> DarthPickup, FUN_00544da0 FinalBattleReady and FUN_00544a20 sends Vader to
+> Luke (`final_battle.rs`, `final-battle.md`). FUN_00543b60 is
+> `MissionMgr_SetLukeDagobah` and FUN_00543d90 `MissionMgr_SetDarthPickup`
+> (not a weapon-fire resolver or victory determinator). FUN_005457f0 is
+> called beside FUN_00560d50 from FUN_00514a60 (event 0x320, an object
+> changing container); its role is not re-traced here. A battle is resolved
+> by the tactical module (`battle-flow.md`).
+
 ## FUN_005457f0 — Space Combat Entry Point
 
 **File**: Likely `fleet.cpp` or `spacebattle.cpp`
@@ -1552,6 +1568,13 @@ Note: The original `_victory.c` filename is misleading — this function fires a
 ---
 
 ## FUN_005434b0 — Weapon/Firepower Stat Getter
+
+> **Re-traced 2026-11-22 (audit F-039):** FUN_005434b0, FUN_00543550,
+> FUN_005435f0, FUN_00543690 and FUN_00543760 find Luke (`0x32000242`),
+> Leia (`0x31000241`), Han (`0x33000243`), Chewbacca (`0x38000343`) and
+> Vader (`0x35000281`) and their locations, as the port reads them
+> (`dagobah.rs`, `jabba.rs`, `final_battle.rs`); they are not combat stat
+> getters.
 
 **File**: Likely `spacebattle.cpp`
 **Called by**: Weapon fire phase (FUN_00544030), shield absorb, fleet eval, post-combat
