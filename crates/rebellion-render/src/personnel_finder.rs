@@ -2098,7 +2098,7 @@ mod tests {
         let id = world.systems[kuat].dat_id;
         let view = SystemView::of(&world, &world.systems[kuat], false);
         world.object_views.alliance_systems.insert(id, view);
-        let mut add = |world: &mut GameWorld, raw: u32, name: &str, at: Option<DatId>| {
+        let add = |world: &mut GameWorld, raw: u32, name: &str, at: Option<DatId>| {
             world.characters.insert(Character {
                 dat_id: DatId::new(raw),
                 name: name.into(),

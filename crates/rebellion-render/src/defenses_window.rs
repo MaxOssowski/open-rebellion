@@ -12,7 +12,7 @@
 //! slot 22 (`FUN_004a7a20`) gives the list's selected items.
 
 use egui_macroquad::egui;
-use rebellion_core::dat::{ExplorationStatus, Faction};
+use rebellion_core::dat::Faction;
 use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::EconomyState;
 use rebellion_core::fog::FogState;
@@ -2196,6 +2196,7 @@ fn draw_defenses_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rebellion_core::dat::ExplorationStatus;
 
     #[test]
     fn each_tab_has_its_tooltip_string() {

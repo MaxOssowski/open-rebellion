@@ -27,11 +27,10 @@ use crate::ai::AIAction;
 use crate::ai_module1::{Step, ANY};
 use crate::ai_planner::{random_system, PlannerIo};
 use crate::ai_records::{
-    picks, ranked, sector_at, ClassRecords, Galaxy, Mask, Order, ShipRecord, FLEET_EN_ROUTE,
+    picks, ranked, sector_at, Galaxy, Mask, Order, ShipRecord, FLEET_EN_ROUTE,
     FLEET_FREE, FLEET_OWN, SHIP_FREE, SHIP_OWN,
 };
 use crate::ids::{FleetKey, SectorKey, SystemKey};
-use crate::world::GameWorld;
 
 /// Ship record `+0x24` bit `0x10000000`: a module 9 planner holds the ship
 /// (`FUN_00475e70` sets it, `FUN_00475f60` clears it).
@@ -732,6 +731,8 @@ fn random_sectors(io: &mut PlannerIo<'_>, mask: Mask) -> Vec<SectorKey> {
 mod tests {
     use super::*;
     use crate::ai_planner::tests::{fixture, rebuild, with, Fx};
+    use crate::ai_records::ClassRecords;
+    use crate::world::GameWorld;
     use crate::ids::{CapitalShipKey, CharacterKey, TroopKey};
     use crate::world::{CapitalShipClass, Character, Fleet, ShipInstance, TroopUnit};
 

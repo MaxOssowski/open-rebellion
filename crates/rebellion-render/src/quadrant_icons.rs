@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rebellion_core::dat::{ExplorationStatus, Faction};
+use rebellion_core::dat::Faction;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::SystemKey;
 use rebellion_core::missions::{MissionMember, MissionState};
@@ -698,6 +698,7 @@ fn mission_side(contents: &SystemContents<'_>, missions: &MissionState) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rebellion_core::dat::ExplorationStatus;
 
     #[test]
     fn a_defenses_team_with_any_one_kind_of_member_is_not_empty() {

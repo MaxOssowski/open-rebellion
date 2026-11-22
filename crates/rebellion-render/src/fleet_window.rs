@@ -10,7 +10,7 @@
 //! to where it is dropped (`0x201`, `ghidra/notes/regiment-unload.md`).
 
 use egui_macroquad::egui;
-use rebellion_core::dat::{ExplorationStatus, Faction};
+use rebellion_core::dat::Faction;
 use rebellion_core::fleet_join;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{CharacterKey, DatId, FleetKey, SpecialForceKey, SystemKey, TroopKey};
@@ -2088,15 +2088,14 @@ fn visible_fleets(
     let opposing_visible = opposing_contents_visible(world, fog, player, system);
     let player_is_alliance = player == Faction::Alliance;
     // In listed_fleets' creation order (A0 fleet3/07: Fleet 7 after Fleet 6).
-    let mut fleets: Vec<FleetKey> = rebellion_core::movement::listed_fleets(movement, world, system)
+    rebellion_core::movement::listed_fleets(movement, world, system)
         .into_iter()
         .filter(|&fleet| {
             world.fleets.get(fleet).is_some_and(|value| {
                 opposing_visible || value.is_alliance == player_is_alliance
             })
         })
-        .collect();
-    fleets
+        .collect()
 }
 
 fn left_entries(
@@ -4968,6 +4967,7 @@ fn paint_line(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use rebellion_core::dat::ExplorationStatus;
 
     #[test]
     fn each_tab_has_its_tooltip_string() {

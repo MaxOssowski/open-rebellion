@@ -1117,11 +1117,6 @@ fn type_into_topic_box(
     }
 }
 
-/// The Encyclopedia object a menu object opens at (`FUN_0045d400` resolves
-/// its initial object, else the index): its class's or its own DAT id,
-/// the catalog's compound id. A production manager has none.
-/// port: a system icon opens its system.
-#[must_use]
 /// The catalog keys capital ship classes under CAPSHPSD's family `0x14`
 /// and fighter classes under FIGHTSD's `0x1c` (`0x14000043` Nebulon-B
 /// Frigate, `0x1c000007` TIE Bomber); the port's classes keep the bare
@@ -1140,6 +1135,11 @@ pub fn class_entry(class: rebellion_core::ids::DatId, family: u32) -> u32 {
     }
 }
 
+/// The Encyclopedia object a menu object opens at (`FUN_0045d400` resolves
+/// its initial object, else the index): its class's or its own DAT id,
+/// the catalog's compound id. A production manager has none.
+/// port: a system icon opens its system.
+#[must_use]
 pub fn original_encyclopedia_object(
     world: &GameWorld,
     object: crate::object_menu::MenuObject,

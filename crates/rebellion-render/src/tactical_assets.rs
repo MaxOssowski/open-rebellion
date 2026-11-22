@@ -306,6 +306,7 @@ impl OriginalTacticalCamera {
     }
 
     /// The point the camera looks at.
+    #[cfg(test)]
     #[must_use]
     pub(crate) const fn target_point(&self) -> Vec3 {
         self.target
@@ -3871,6 +3872,7 @@ fn key_black_transparent(rgba: &mut [u8]) {
 /// becomes `(c × 5 + 128) >> 8`, and the cell `r × 36 + g × 6 + b` picks a
 /// palette entry. Through DDrawCompat the game's Ramp request
 /// (`FUN_005d6e10`, `DAT_0066e458`) becomes this RGB device.
+#[cfg(test)]
 pub(crate) fn original_rgb_cube_cell(rgb: [u8; 3]) -> usize {
     let level = |channel: u8| (usize::from(channel) * 5 + 128) >> 8;
     level(rgb[0]) * 36 + level(rgb[1]) * 6 + level(rgb[2])

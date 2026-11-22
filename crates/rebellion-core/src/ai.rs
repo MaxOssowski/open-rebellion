@@ -6219,7 +6219,7 @@ mod tests {
             ]
             .map(|kind| only(state, kind).len())
         };
-        let mut call = |state: &mut AIState| {
+        let call = |state: &mut AIState| {
             AISystem::mission_strategy(
                 state,
                 &planner_for(&world, AiFaction::Empire),

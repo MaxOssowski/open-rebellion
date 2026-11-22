@@ -980,7 +980,7 @@ fn a_characters_copy_keeps_the_command_word_it_held_when_it_froze() {
     day(&mut setup, &missions);
     assert_eq!(command(&setup), CommandKind::Admiral);
     // Seen again with none, the copy has none.
-    let watcher = fleet(&mut setup.world, chandrila, true);
+    let _watcher = fleet(&mut setup.world, chandrila, true);
     day(&mut setup, &missions);
     assert_eq!(command(&setup), CommandKind::None);
     // A traveller seen leaving takes its word with it, en route.

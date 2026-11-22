@@ -15062,7 +15062,7 @@ mod tests {
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let alliance = faction == CockpitFaction::Alliance;
             let request = request(Scenario::SupportFlip, faction);
-            let mut applied = apply_to_loading_world_with(request, |_| {});
+            let applied = apply_to_loading_world_with(request, |_| {});
             let primary = applied.world.systems.keys().next().unwrap();
             let target = loading_target(&applied.world, primary).unwrap();
             let target_name = applied.world.systems[target].name.clone();

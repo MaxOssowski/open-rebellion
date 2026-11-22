@@ -2276,7 +2276,7 @@ pub(crate) mod tests {
             bombardment: 500,
             ..Default::default()
         };
-        let mut want = |fx: &mut Fx, kind: u32| {
+        let want = |fx: &mut Fx, kind: u32| {
             let mut p = SectorPlanner {
                 kind,
                 ..planner(fx)

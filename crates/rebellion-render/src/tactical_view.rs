@@ -8574,8 +8574,6 @@ fn battle_result_list_length(
         .unwrap_or(0)
 }
 
-/// The rows the forces page's list shows: 166 high, of 70-high rows, or
-/// 50-high for Personnel.
 /// A live hull, or a destroyed one whose fireball has not yet reached
 /// `FUN_005d41a0`'s call at 11, which deletes the hull's mesh.
 fn hull_in_scene(session: &BattleSession, index: usize) -> bool {
@@ -8585,15 +8583,6 @@ fn hull_in_scene(session: &BattleSession, index: usize) -> bool {
                 && effect.sequence == OriginalTacticalEffectSequence::Destroyed
                 && effect.hull_shown()
         })
-}
-
-fn result_list_rows(category: BattleResultCategory) -> usize {
-    let height = if category == BattleResultCategory::Personnel {
-        50.0
-    } else {
-        70.0
-    };
-    (BATTLE_RESULT_LIST_HEIGHT / height) as usize
 }
 
 /// The forces list's first pixel after the wheel turns `wheel` with the
@@ -17843,7 +17832,6 @@ mod tests {
         let resolved = resolve_test_shots(firing.ships, &shots);
         let ships = &resolved.ships;
         let projectiles = &resolved.weapon_effects;
-        let impacts = &resolved.impact_effects;
         let audio_cues = &resolved.pending_audio_cues;
 
         assert_eq!(

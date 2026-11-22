@@ -88,8 +88,6 @@ const KIND_TEXT: egui::Color32 = egui::Color32::WHITE;
 /// The drop-down's other kinds keep the item's own `+0x60`, gray (A0
 /// kinds/31: "Espionage" under the shown "Diplomacy").
 const LIST_KIND_TEXT: egui::Color32 = egui::Color32::from_rgb(0x80, 0x80, 0x80);
-const LIST_BACKGROUND: u32 = crate::selection_list::BACKGROUND;
-const LIST_STEP: f32 = crate::selection_list::STEP;
 /// The title, "Target" and the target's name: `FUN_0046a9c0` sets font 5
 /// (`FUN_00601c60(5)`), bold Arial at 13 ppem, before each. A0
 /// menus2/11 draws the title 91 pixels wide, its capitals 10 tall.
@@ -1223,6 +1221,9 @@ fn draw_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const LIST_BACKGROUND: u32 = crate::selection_list::BACKGROUND;
+    const LIST_STEP: f32 = crate::selection_list::STEP;
 
     #[test]
     fn a_list_items_name_breaks_into_lines_within_its_text_width() {
