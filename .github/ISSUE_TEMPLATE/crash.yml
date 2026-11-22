@@ -1,0 +1,57 @@
+name: Crash
+description: The game crashed, froze, or showed a black or blank screen.
+labels: ["crash"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you were doing
+      description: The last thing you did before it stopped, and what you saw (frozen picture, black screen, the page reloaded).
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      description: |
+        Browser: open the developer console (F12), copy the red lines, paste them here.
+        Native: paste what the terminal printed.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where you play
+      options:
+        - Browser (Chrome, Chromium or Edge)
+        - Browser (Firefox)
+        - Browser (Safari)
+        - Browser (other)
+        - Native build (Linux)
+        - Native build (Windows)
+        - Native build (macOS)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The date you loaded the page, or for a build of your own the commit (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+  - type: dropdown
+    id: repeat
+    attributes:
+      label: Does it happen again?
+      options:
+        - Every time
+        - Sometimes
+        - Only once so far
+    validations:
+      required: true
+  - type: textarea
+    id: save
+    attributes:
+      label: Save game
+      description: Native builds keep saves in `saves/` next to the executable (`<slot>.reb`); zip the one from before the crash and drag it here.

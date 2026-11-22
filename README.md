@@ -64,6 +64,28 @@ Major implemented areas (each remains subject to the linked acceptance audit):
 - **Side Resources** — Maintenance capacity (50 per mine and refinery pair) and upkeep, raw and refined material stockpiles, and the mine and refinery cycle recovered from REBEXE.EXE; each yard cycle takes one refined material and adds one build point to its production manager, a unit costs its class refined cost in points, and a manager runs no more yards than it has points left to make; the cockpit's three resource monitors read these values. The refund on destruction and the over-limit penalty are not ported
 - **Ghidra RE corpus** — [5,127 functions decompiled](https://tdimino.github.io/open-rebellion/) from REBEXE.EXE, 111 GNPRTB parameters mapped, C++ class hierarchy reconstructed
 
+### Known issues
+
+The audit of every system is not finished, so expect differences from the
+original. Known gaps as of November 2026:
+
+- Browser saves live in the browser's storage (IndexedDB) and cannot be
+  exported to a file yet; clearing site data deletes them.
+- The game does not show its version. When reporting, give the date you loaded
+  the page or your build's commit.
+- Tested on Linux in Chromium and Firefox. Windows, macOS and Safari are
+  untested.
+- Multiplayer and chat stay visible but disabled; single-player is the goal.
+- Mods load only in the native build. Optional HD graphics exist only as a
+  native profile; the browser always uses the original art.
+- The colours of one new-game movie may differ from the original game.
+- Player orders and tactical battles are not recorded in replays, so a replay
+  check covers only the simulation.
+
+Report problems through the
+[issue forms](https://github.com/MaxOssowski/open-rebellion/issues/new/choose);
+a save from just before the problem helps most.
+
 ## You Will Need
 
 - **Rust** (stable toolchain)

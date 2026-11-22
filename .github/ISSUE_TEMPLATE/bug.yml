@@ -1,0 +1,64 @@
+name: Bug
+description: Something in Open Rebellion is broken, stuck, or plainly wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. One problem per issue, please.
+        If the game does something the 1998 original does differently, use the
+        "Differs from the original" form instead. If the game crashed or froze,
+        use "Crash".
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: From the main menu or from a save. Side (Alliance or Empire), galaxy size and difficulty help.
+      placeholder: |
+        1. New game, Alliance, small galaxy, easy
+        2. Open the Fleet window of ...
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where you play
+      options:
+        - Browser (Chrome, Chromium or Edge)
+        - Browser (Firefox)
+        - Browser (Safari)
+        - Browser (other)
+        - Native build (Linux)
+        - Native build (Windows)
+        - Native build (macOS)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The date you loaded the page, or for a build of your own the commit (`git rev-parse --short HEAD`).
+      placeholder: 2026-11-22, or 81fa67c3
+    validations:
+      required: true
+  - type: textarea
+    id: save
+    attributes:
+      label: Save game
+      description: |
+        A save from just before the problem makes it much easier to fix.
+        Native builds keep saves in `saves/` next to the executable (`<slot>.reb`); zip the file and drag it here.
+        The browser build cannot export saves yet; say which day and slot it happened in.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or console output
+      description: Screenshots, and in the browser any red lines from the developer console (F12).

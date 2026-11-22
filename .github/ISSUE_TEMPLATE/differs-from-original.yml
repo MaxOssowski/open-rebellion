@@ -1,0 +1,56 @@
+name: Differs from the original
+description: The game works, but the 1998 original looks, sounds, or plays differently.
+labels: ["parity"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Open Rebellion aims to play exactly like Star Wars Rebellion (1998).
+        A difference is a bug even when our version seems nicer. Evidence from
+        the original (a screenshot, a video, a manual page) settles it fastest.
+  - type: textarea
+    id: original
+    attributes:
+      label: What the original does
+      description: How the 1998 game behaves, and how you know (played it, screenshot, manual or strategy guide page).
+    validations:
+      required: true
+  - type: textarea
+    id: ours
+    attributes:
+      label: What Open Rebellion does
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to see it
+      description: Steps or a save that shows the difference.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where you play
+      options:
+        - Browser (Chrome, Chromium or Edge)
+        - Browser (Firefox)
+        - Browser (Safari)
+        - Browser (other)
+        - Native build (Linux)
+        - Native build (Windows)
+        - Native build (macOS)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The date you loaded the page, or for a build of your own the commit (`git rev-parse --short HEAD`).
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots of both games
+      description: Side by side if you can. Never attach the original game's files.

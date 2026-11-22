@@ -4,6 +4,17 @@ Open Rebellion is restoring both the behavior and the original bitmap-driven
 interface of *Star Wars: Rebellion* (1998). Contributions should close one
 bounded, auditable unit at a time.
 
+## Reporting problems
+
+Play-testing reports are welcome. Open an issue with one of the
+[forms](https://github.com/MaxOssowski/open-rebellion/issues/new/choose):
+**Bug**, **Differs from the original**, or **Crash**. A save from just before
+the problem and the version (the date you loaded the page, or your build's
+commit) make a fix much faster. A report that the original behaves
+differently is checked against the original game; when the original does the
+same, the issue closes as same-as-original. Security problems go through
+[SECURITY.md](SECURITY.md), not a public issue.
+
 ## Choose a task
 
 | Work | Start here |
