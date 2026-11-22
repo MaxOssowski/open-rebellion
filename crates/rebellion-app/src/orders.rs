@@ -1075,7 +1075,7 @@ pub(super) fn confirm_ship_move(
         0
     } else {
         rebellion_core::movement::fleet_transit_ticks(value, world, value.location, destination)
-            .map_or(0, |ticks| u32::try_from(ticks).unwrap_or(u32::MAX))
+            .unwrap_or(0)
     };
     let lines = team
         .ships

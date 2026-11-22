@@ -968,7 +968,6 @@ pub fn death_star_sabotaged_movie(
 /// `FUN_0040f340`); its background is `0x3ec` (STRATEGY 1004, A0
 /// alliance-game2/smuggling-benefits shows it under "Smuggling
 /// Benefits"). Its `+0x30` is `0x44f` as smuggling begins.
-
 #[must_use]
 pub fn smuggling_message(
     system: &str,
@@ -2642,7 +2641,6 @@ pub fn story_text(
 /// the reader's advisor gets. `None` when the texts are missing.
 ///
 /// Its `+0x30` is `0x461` / `0x462`, which `FUN_00469de0` plays.
-
 #[must_use]
 pub fn agent_advice_message(
     number: u16,

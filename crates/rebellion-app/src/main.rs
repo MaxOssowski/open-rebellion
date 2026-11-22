@@ -2473,7 +2473,9 @@ async fn main() {
                         #[cfg(not(target_arch = "wasm32"))]
                         {
                             let key = (directory.to_owned(), wave);
-                            if !advisor_voice_seconds.contains_key(&key) {
+                            if let std::collections::hash_map::Entry::Vacant(entry) =
+                                advisor_voice_seconds.entry(key)
+                            {
                                 let path = gdata_path
                                     .join("ui")
                                     .join(directory)
@@ -2481,10 +2483,7 @@ async fn main() {
                                     .join(format!("{wave}.wav"));
                                 if let Ok(bytes) = std::fs::read(path) {
                                     audio_engine.load_advisor_voice_bytes(directory, wave, &bytes);
-                                    advisor_voice_seconds.insert(
-                                        key,
-                                        rebellion_render::advisor_clip::wave_seconds(&bytes),
-                                    );
+                                    entry.insert(rebellion_render::advisor_clip::wave_seconds(&bytes));
                                 }
                             }
                         }
@@ -8294,11 +8293,7 @@ async fn main() {
 
                 // Auto-resolve already completed bombardment and
                 // ground resolution before presenting its result.
-                if strategic_results_applied {
-                    game_mode = GameMode::Galaxy;
-                } else {
-                    game_mode = GameMode::Galaxy;
-                }
+                game_mode = GameMode::Galaxy;
             } else {
                 game_mode = GameMode::Galaxy;
             }

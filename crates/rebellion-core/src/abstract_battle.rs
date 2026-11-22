@@ -5532,7 +5532,7 @@ mod tests {
         assert_eq!(flies(false, 0.0, false), (false, Recovery::Returning));
         assert!(flies(true, 8.0, false).0);
         assert!(flies(true, 8.5, false).0);
-        assert_eq!(flies(true, 0.0, true).0, false);
+        assert!(!flies(true, 0.0, true).0);
     }
 
     // 0x5cb050 for a recovering member with no carrier: its place round the

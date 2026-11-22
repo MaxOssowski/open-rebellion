@@ -219,14 +219,13 @@ pub(super) fn abort_missions(
     else {
         return Vec::new();
     };
-    let ids = rebellion_render::quadrant_icons::own_visible_missions(
+    rebellion_render::quadrant_icons::own_visible_missions(
         world,
         fog,
         missions,
         Faction::from(faction),
         system,
-    );
-    ids
+    )
 }
 
 /// Carry out an Agent menu command or its accelerator: Manage Garrisons and

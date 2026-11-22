@@ -3789,10 +3789,8 @@ impl MissionSystem {
                 }
             }
             // FUN_00522a10: timer 0x38b fired.
-            PHASE_TIMER => {
-                if mission.timer_due.is_some_and(|due| due <= now) {
-                    mission.ready = true;
-                }
+            PHASE_TIMER if mission.timer_due.is_some_and(|due| due <= now) => {
+                mission.ready = true;
             }
             _ => {}
         }
@@ -4802,7 +4800,7 @@ impl MissionSystem {
             target_system: target,
             target_character: mission.target_character,
             target_object: mission.target_object,
-            returning_to: returning_to(&mission, world),
+            returning_to: returning_to(mission, world),
             outcome: if result == 3 {
                 MissionOutcome::Success
             } else {

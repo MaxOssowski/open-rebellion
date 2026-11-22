@@ -187,7 +187,7 @@ pub fn seat_squadrons(world: &mut GameWorld, fleet: FleetKey) {
             .carrier
             .is_some_and(|carrier| ships.iter().any(|(id, _)| *id == carrier))
     };
-    if value.fighters.iter().all(|entry| seated(entry)) {
+    if value.fighters.iter().all(&seated) {
         return;
     }
     let entries = std::mem::take(&mut world.fleets[fleet].fighters);

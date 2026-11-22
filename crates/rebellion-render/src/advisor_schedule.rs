@@ -370,7 +370,7 @@ impl AdvisorSchedule {
                 2
             } else if decoys_without_target && status == (0x40, 0x91) {
                 decoy
-            } else if self.next_roll() % 2 == 0 {
+            } else if self.next_roll().is_multiple_of(2) {
                 generic.0
             } else {
                 generic.1

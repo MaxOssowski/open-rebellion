@@ -97,7 +97,7 @@ pub enum GidLegendItem {
 /// Returns an error for a record shorter than its header or an item, or an
 /// item kind other than 1..3.
 pub fn decode(bytes: &[u8]) -> anyhow::Result<GidLegendRecord> {
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         bail!("odd legend record length {}", bytes.len());
     }
     let words: Vec<u16> = bytes

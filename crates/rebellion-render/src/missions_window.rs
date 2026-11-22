@@ -1380,7 +1380,7 @@ fn draw_missions_window(
                     ),
                     scale,
                     10,
-                    &row.label,
+                    row.label,
                     white,
                     GdiAlign::Left,
                 );

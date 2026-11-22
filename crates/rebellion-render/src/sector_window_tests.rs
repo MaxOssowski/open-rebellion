@@ -2913,11 +2913,10 @@ fn the_palette_names_each_systems_windows_and_menus_once_ignoring_case() {
     let named = |label: &str| {
         palette
             .command_named(label)
-            .map(|item| match item.action {
+            .and_then(|item| match item.action {
                 crate::PaletteAction::Interface(command) => Some(command),
                 crate::PaletteAction::Panel(_) => None,
             })
-            .flatten()
     };
     assert_eq!(
         named("  open fleet WINDOW: chandrila "),

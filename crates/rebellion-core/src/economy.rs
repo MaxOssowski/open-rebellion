@@ -802,7 +802,7 @@ pub fn support_side(
     if !sys.is_populated {
         return None;
     }
-    let threshold = gnprtb.value(GNPRTB_SUPPORT_CONTROL_THRESHOLD, difficulty) as i32;
+    let threshold = gnprtb.value(GNPRTB_SUPPORT_CONTROL_THRESHOLD, difficulty);
     let alliance = crate::uprising::support_points(sys, Faction::Alliance);
     if alliance >= threshold {
         Some(Faction::Alliance)

@@ -85,6 +85,6 @@ fn the_app_s_day_with_its_presentation_matches_the_headless_runner() {
         },
     )
     .unwrap();
-    assert!(log.len() > 0, "the app's presentation posted its messages");
+    assert!(!log.is_empty(), "the app's presentation posted its messages");
     assert_eq!(app, runner);
 }

@@ -112,7 +112,6 @@ pub struct TacticalDeathStarResource {
 }
 
 /// The Death Star's CAPSHPSD.DAT identity; `FUN_005ab650` selects it outside the capital table.
-
 pub const DEATH_STAR_DAT_ID: DatId = DatId(136);
 /// `FUN_00597610` registry ordinal 37 and `FUN_005ab650`'s type-301 bases 5010/5020.
 pub const DEATH_STAR_TACTICAL_RESOURCE: TacticalDeathStarResource = TacticalDeathStarResource {

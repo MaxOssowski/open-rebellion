@@ -3944,7 +3944,6 @@ fn load_tactical_material(palette: &[[u8; 4]; 256]) -> Result<(Material, Texture
                 UniformDesc::new("ObjectAxisZ", UniformType::Float4),
             ],
             textures: vec!["CubeLut".to_string()],
-            ..Default::default()
         },
     )
     .map_err(|error| format!("compile tactical material: {error}"))?;

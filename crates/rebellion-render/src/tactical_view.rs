@@ -10486,11 +10486,10 @@ fn draw_tactical_frame(
         .session
         .as_ref()
         .is_some_and(|session| session.phase == BattlePhase::Results)
+        && battle_frame_draws_summary(results_at_start)
     {
-        if battle_frame_draws_summary(results_at_start) {
-            // A caller that keeps a finished battle in the tactical view.
-            return draw_original_battle_results(state, bmp_cache, world, troop_transport, true);
-        }
+        // A caller that keeps a finished battle in the tactical view.
+        return draw_original_battle_results(state, bmp_cache, world, troop_transport, true);
     }
 
     // 1. Paint the unscaled-source tactical shell first, then put the battle

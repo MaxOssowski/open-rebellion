@@ -1177,7 +1177,7 @@ fn draw_reference_rail(
     layout: CockpitLayout,
     cache: &mut BmpCache,
 ) -> Option<SystemWindowAction> {
-    let entries = state.rail.clone();
+    let entries = state.rail;
     let mut restored = None;
     let mut slots = Vec::new();
     for (index, entry) in entries

@@ -1100,7 +1100,6 @@ impl TacticalShip {
     }
 
     /// `FUN_005b1970` (vtable `+0xa0`) increments one hit counter up to its limit.
-
     pub fn add_subsystem_hit(&mut self, kind: TacticalSubsystemKind) -> bool {
         match kind {
             TacticalSubsystemKind::Shields => {
@@ -1135,7 +1134,6 @@ impl TacticalShip {
     }
 
     /// port: queue every battery for recharge when weapons reach four hits (`FUN_005b1970`); index 3 bounds the four batteries of `FUN_005b0e50`.
-
     pub fn disable_weapon_arcs(&mut self) {
         for (index, arc) in self.weapon_arcs.iter_mut().enumerate() {
             if arc.energy_capacity <= 0.0 {
@@ -1159,7 +1157,6 @@ impl TacticalShip {
     }
 
     /// `FUN_005b1770` hull scaling less 25% per weapons hit (`FUN_005b1680`).
-
     pub fn effective_weapon_recharge(&self) -> f32 {
         (self.hull_ratio() * self.weapon_recharge_rate
             - self.weapon_recharge_rate * 0.25 * f32::from(self.subsystem_damage.weapons))
@@ -1167,7 +1164,6 @@ impl TacticalShip {
     }
 
     /// `FUN_005b1770` hull scaling less 25% per shield hit (`FUN_005b1710`).
-
     pub fn effective_shield_recharge(&self) -> f32 {
         (self.hull_ratio() * self.shield_recharge_rate
             - self.shield_recharge_rate * 0.25 * f32::from(self.subsystem_damage.shields))
@@ -1240,7 +1236,6 @@ impl TacticalShip {
 }
 
 /// `FUN_005e77c0` quantizes a condition percentage to resource offsets 0–4.
-
 pub fn original_tactical_condition_band(percent: u8) -> u8 {
     match percent {
         0 => 0,
@@ -2794,7 +2789,6 @@ impl TacticalVoiceCue {
     }
 
     /// `FUN_005d0340` group events 0x139, 0x12d, 0x131, 0x135.
-
     pub const fn trench_run_source_event(group: u8) -> u16 {
         match group {
             0 => 0x139,
@@ -2960,7 +2954,6 @@ pub struct OriginalProjectileProfile {
 }
 
 /// `FUN_005ee590` scales, variants, and colours; thresholds from `FUN_005b1ea0`, `FUN_005b1f60`, `FUN_005b2080`, `FUN_005b2c70`.
-
 pub fn original_projectile_profile(
     weapon: WeaponKind,
     event_strength: f32,
@@ -3030,7 +3023,6 @@ pub fn original_tactical_effect_sequence(
 }
 
 /// `FUN_005d3e90` state bits: `0x04`/`0x08` and `0x10`/`0x20`/`0x40` are exclusive groups.
-
 pub fn queue_original_tactical_impact(
     effects: &mut Vec<TacticalImpactEffect>,
     target: usize,
@@ -3140,7 +3132,6 @@ pub fn queue_original_fighter_projectile(
 }
 
 /// port: the 2D fallback target is the arena centre; the source position comes from `FUN_005d3de0`.
-
 pub fn queue_original_fighter_to_death_star_projectile(
     effects: &mut Vec<WeaponEffect>,
     fighters: &[TacticalFighter],
@@ -3178,7 +3169,6 @@ pub fn queue_original_fighter_to_death_star_projectile(
 }
 
 /// `FUN_005d3ac0` shared field slot; `FUN_005b24d0` four gravity targets, one tractor target.
-
 pub fn set_original_tactical_field(
     effects: &mut Vec<TacticalFieldEffect>,
     source: usize,
@@ -3266,7 +3256,6 @@ pub fn remove_tractor_source(effects: &mut Vec<TacticalFieldEffect>, source: usi
 }
 
 /// `FUN_005b1770` hull scaling less 25% per tractor hit (`FUN_005b1740`).
-
 pub fn original_effective_tractor_power(ship: &TacticalShip) -> f32 {
     if !ship.alive || !ship.subsystem_capacity.tractor || ship.tractor_beam_power <= 0.0 {
         return 0.0;
@@ -3965,7 +3954,6 @@ pub fn turn_original_tactical_ship(ship: &mut TacticalShip, delta_milliseconds: 
 }
 
 /// `FUN_005b17f0` engine power less 25% per engine hit; `FUN_005b16b0` ratio as a percentage.
-
 pub fn original_tactical_mobility(
     ships: &[TacticalShip],
     field_effects: &[TacticalFieldEffect],
@@ -4049,7 +4037,6 @@ pub fn original_subsystem_repair_kind(
 }
 
 /// `FUN_005b1490` draws 1–100 against the damage-control chance.
-
 pub fn attempt_original_subsystem_repair(
     ship: &mut TacticalShip,
     ship_index: usize,
@@ -4099,7 +4086,6 @@ impl OriginalTacticalRng {
     }
 
     /// `FUN_0061a310` MSVC rand: state * 0x343fd + 0x269ec3, bits 16–30.
-
     pub fn next_u15(&mut self) -> u16 {
         self.state = self.state.wrapping_mul(0x343f_d).wrapping_add(0x269e_c3);
         ((self.state >> 16) & 0x7fff) as u16
@@ -4113,7 +4099,6 @@ impl OriginalTacticalRng {
 }
 
 /// `FUN_005b54d0` draws 0–100 for the shield and the hull subsystem.
-
 pub fn original_tactical_damage_rolls(
     ships: &[TacticalShip],
     target: usize,
@@ -4140,7 +4125,6 @@ pub fn original_tactical_damage_rolls(
 }
 
 /// `FUN_005b54d0` score bands (`ghidra/notes/tactical-subsystem-damage-path.md`).
-
 pub fn original_hull_subsystem_kind(score: f32) -> Option<TacticalSubsystemKind> {
     if score <= 50.0 {
         None
@@ -6557,7 +6541,6 @@ impl BattleSession {
     // -------------------------------------------------------------------
 
     /// `FUN_005d3cc0` advances the field effect through eight frames.
-
     pub fn advance_presentational_effects(&mut self, elapsed: f32) {
         if !elapsed.is_finite() || elapsed <= 0.0 {
             return;
@@ -6648,7 +6631,7 @@ impl BattleSession {
     /// is one less.
     pub(crate) fn step_event_stamp(&self) -> u32 {
         let stamp = self.command_event_stamp();
-        if self.combat_tick % ORIGINAL_TACTICAL_TURN_STEPS == 0 {
+        if self.combat_tick.is_multiple_of(ORIGINAL_TACTICAL_TURN_STEPS) {
             stamp - 1
         } else {
             stamp
@@ -6667,7 +6650,7 @@ impl BattleSession {
     /// reached `+0x8ac`, the events stamped `+0x878 - 1` run in order,
     /// older ones are dropped and newer ones kept.
     fn run_turn_events(&mut self) {
-        if self.combat_tick % ORIGINAL_TACTICAL_TURN_STEPS != 0
+        if !self.combat_tick.is_multiple_of(ORIGINAL_TACTICAL_TURN_STEPS)
             || self.event_turn() < ORIGINAL_TACTICAL_EVENT_LEAD_TURNS
         {
             return;
@@ -10402,7 +10385,7 @@ impl BattleSession {
             }
             self.observer_review_countdown -= 1;
         }
-        if (self.event_turn() - 1) % ORIGINAL_COMMANDER_REVIEW_TURNS != 0 {
+        if !(self.event_turn() - 1).is_multiple_of(ORIGINAL_COMMANDER_REVIEW_TURNS) {
             return;
         }
         let alliance = self.attacker_is_alliance != self.player_is_attacker;

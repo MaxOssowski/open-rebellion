@@ -1794,7 +1794,7 @@ fn draw_original_index_content(
     text(
         (40.0, 119.0, 340.0, 16.0),
         5,
-        &content.category_label,
+        content.category_label,
         GdiAlign::Left,
     );
 
