@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 160;
+const SCENARIO_COUNT: u8 = 161;
 
 
 extern "C" {
@@ -4539,6 +4539,24 @@ fn place_headquarters_at_yavin(
         );
         world.systems[yavin].manufacturing_facilities.push(hq);
     }
+    // A0 v-17 and v-20 show a facility icon at Yavin besides the HQ, which
+    // the takeover hands to the Empire (v-20). Since the seed rolls every
+    // system's resources (471b20e1) its Yavin holds none, so one mine
+    // stands in for it.
+    let other_facility = world.systems[yavin].production_facilities.len()
+        + world.systems[yavin]
+            .manufacturing_facilities
+            .iter()
+            .filter(|&&key| world.manufacturing_facilities.get(key).is_some_and(|f| f.class_dat_id != class))
+            .count();
+    if other_facility == 0 {
+        let mine = world.production_facilities.insert(rebellion_core::world::ProductionFacilityInstance {
+            class_dat_id: rebellion_core::ids::DatId::new(0x2C00_0001),
+            side: Faction::Alliance,
+            is_mine: true,
+        });
+        world.systems[yavin].production_facilities.push(mine);
+    }
     sectors.open_for_system(world, yavin, request.faction);
 }
 
@@ -4639,6 +4657,10 @@ fn embark_ghorman_regiment(world: &mut GameWorld, troop_transport: &mut TroopTra
     world.systems[ghorman].ground_units = vec![regiment];
     let _ = troop_transport.embark(world, fleet, &[regiment]);
     world.systems[ghorman].ground_units.clear();
+    // A0 i-07: the Empire takes Ghorman undefended. Since the seed rolls
+    // every system's resources (471b20e1) its Ghorman holds defense
+    // facilities, which A0's did not show.
+    world.systems[ghorman].defense_facilities.clear();
 }
 
 /// The `GhormanBombardment` strike: the Empire's fleets at Ghorman carry
@@ -11195,13 +11217,16 @@ mod tests {
     // same. FUN_004a25c0 -> FUN_004f3220 reads the viewer's copy, which the
     // setup push (FUN_0051b990) gives facilities but no units; FUN_004a90d0
     // writes TEXTSTRA 6471 only when the copy's side is the viewer's.
+    // The browser seed's Corsin (Sesswenna) stands for Corfai: since the
+    // seed rolls every system's resources (471b20e1) its Corfai holds no
+    // units.
     #[test]
     #[ignore = "requires original data/base DAT files"]
     fn the_new_game_fixture_s_enemy_core_defenses_windows_list_no_units_or_garrison() {
         for (faction, holder, name) in [
             (CockpitFaction::Alliance, 2, "Coruscant"),
             (CockpitFaction::Alliance, 2, "Commenor"),
-            (CockpitFaction::Empire, 1, "Corfai"),
+            (CockpitFaction::Empire, 1, "Corsin"),
         ] {
             let world = new_game(Scenario::NewGame, faction);
             let live = &world.systems[named_system(&world, name)];
@@ -11263,9 +11288,11 @@ mod tests {
     // e-15), shows no defenses icon; Bortras, which holds a GenCore Level I
     // (a-28), shows the Empire's. FUN_0045ce80 counts the viewer's copy
     // (FUN_004f3220), and the setup push (FUN_0051b990) gives a core copy
-    // its facilities (0x20..0x2f) but no units. The browser seed's Commenor
-    // and Drall hold regiments and no defense facility, its Coruscant a
-    // GenCore Level I (fog-a0.mjs compares their icons with a-23).
+    // its facilities (0x20..0x2f) but no units. The browser seed's Vagran
+    // holds regiments and no defense facility, its Commenor and Coruscant
+    // defense facilities (fog-a0.mjs compares their icons with a-23). Until
+    // the seed rolled every system's resources (471b20e1) Commenor and
+    // Drall were the first case and Coruscant held one facility.
     #[test]
     #[ignore = "requires original data/base DAT files"]
     fn the_new_game_fixture_lights_an_enemy_core_defenses_icon_by_its_facilities_alone() {
@@ -11285,43 +11312,36 @@ mod tests {
                 rebellion_render::quadrant_icons::Quadrant::Defenses,
             )
         };
-        for name in ["Commenor", "Drall"] {
+        let vagran = &world.systems[named_system(&world, "Vagran")];
+        assert!(vagran.control.is_controlled_by(Faction::Empire));
+        assert!(!vagran.ground_units.is_empty() && vagran.defense_facilities.is_empty());
+        assert_eq!(side("Vagran"), None);
+        for (name, facilities) in [("Commenor", 2), ("Coruscant", 2)] {
             let live = &world.systems[named_system(&world, name)];
             assert!(live.control.is_controlled_by(Faction::Empire), "{name}");
-            assert!(
-                !live.ground_units.is_empty() && live.defense_facilities.is_empty(),
-                "{name}"
-            );
-            assert_eq!(side(name), None, "{name}");
+            assert_eq!(live.defense_facilities.len(), facilities, "{name}");
+            assert_eq!(side(name), Some(2), "{name}");
         }
-        let coruscant = &world.systems[named_system(&world, "Coruscant")];
-        assert_eq!(coruscant.defense_facilities.len(), 1);
-        assert_eq!(side("Coruscant"), Some(2));
     }
 
     // A0 2026-11-21-gid-units-17: the Empire's Drall holds no squadron on
     // its planet (e-31, a05fee9087eb) and one TIE Fighter aboard Fleet 2
     // (e-26, acd453b96a53), and takes the smallest Fighter Squadrons mark
     // (e-02): FUN_00503550 walks the copy's direct children, and a fleet's
-    // are its ships. The browser seed's Drall is the same case (gid-a0.mjs
-    // compares its mark with e-02's).
+    // are its ships. The browser seed's Drall holds no squadron on its
+    // planet either (gid-a0.mjs compares its mark with e-02's); since the
+    // seed rolls every system's resources (471b20e1) it holds none aboard
+    // a fleet, and the fleet case is the_squadron_display_counts_the_
+    // holder_s_squadrons_on_the_planet's (rebellion-render).
     #[test]
     #[ignore = "requires original data/base DAT files"]
-    fn the_new_game_fixture_carries_drall_s_one_squadron_aboard_its_fleet() {
+    fn the_new_game_fixture_s_drall_holds_no_squadron_on_its_planet() {
         let world = new_game(Scenario::NewGame, CockpitFaction::Empire);
         let drall = named_system(&world, "Drall");
         assert!(world.systems[drall]
             .control
             .is_controlled_by(Faction::Empire));
         assert!(world.systems[drall].fighters.is_empty());
-        let aboard: u32 = world
-            .fleets
-            .values()
-            .filter(|fleet| fleet.location == drall && !fleet.is_alliance)
-            .flat_map(|fleet| &fleet.fighters)
-            .map(|entry| entry.count)
-            .sum();
-        assert_eq!(aboard, 1);
     }
 
     // A0 2026-11-19-fog-14 e-05 (ed937647a151): Triton bare while the
@@ -18390,6 +18410,7 @@ mod tests {
                 Scenario::CharacterEvacuation,
                 Scenario::SquadronBlockaded,
                 Scenario::EndingAssaultCoruscant,
+                Scenario::CaptiveTransport,
             ]
         );
     }

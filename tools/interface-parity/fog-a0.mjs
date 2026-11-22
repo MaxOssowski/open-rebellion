@@ -431,11 +431,13 @@ try {
   // core system's facilities (0x20..0x2f) but none of its units:
   // - A0's Coruscant holds regiments, squadrons and the Emperor but no
   //   defense facility (e-11..e-15): no defenses icon, only the Empire's
-  //   facility icon (kind 4, 10779). The browser seed's Commenor and Drall
-  //   (Corellian) hold regiments and no defense facility: no defenses icon.
+  //   facility icon (kind 4, 10779). The browser seed's Vagran (Corellian)
+  //   holds regiments and no defense facility: no defenses icon.
   // - A0's Bortras holds a GenCore Level I (a-28): the Empire's defenses
-  //   icon (10781). The browser seed's Coruscant holds one (and its units):
-  //   the same icon.
+  //   icon (10781). The browser seed's Commenor (Corellian) and Coruscant
+  //   hold defense facilities (Coruscant its units too): the same icon.
+  //   Until the seed rolled every system's resources (471b20e1) Commenor
+  //   and Drall were the first case.
   // The premises are asserted by the_new_game_fixture_lights_an_enemy_
   // core_defenses_icon_by_its_facilities_alone. Quadrants from the planet's
   // corner + 18 (cx, cy): kind 4 at (cx - 28, cy - 19), kind 8 at (cx - 28,
@@ -488,13 +490,13 @@ try {
       a0: { sha256: a23Sha, Coruscant: a0Coruscant, Bortras: a0Bortras },
       corellian: { origin: corellian.origin, sha256: corellian.shown.sha256,
         Commenor: await quadrants(corellian.shown.png, corellian.origin, "Commenor"),
-        Drall: await quadrants(corellian.shown.png, corellian.origin, "Drall") },
+        Vagran: await quadrants(corellian.shown.png, corellian.origin, "Vagran") },
       sesswenna: { origin: sesswenna.origin, sha256: sesswenna.shown.sha256,
         Coruscant: await quadrants(sesswenna.shown.png, sesswenna.origin, "Coruscant") },
     };
     const icons = result.alliance_defenses_icons;
-    assert.deepEqual(icons.corellian.Commenor.defenses, a0Coruscant.defenses, JSON.stringify(icons));
-    assert.deepEqual(icons.corellian.Drall.defenses, a0Coruscant.defenses, JSON.stringify(icons));
+    assert.deepEqual(icons.corellian.Vagran.defenses, a0Coruscant.defenses, JSON.stringify(icons));
+    assert.deepEqual(icons.corellian.Commenor.defenses, a0Bortras.defenses, JSON.stringify(icons));
     assert.deepEqual(icons.sesswenna.Coruscant.defenses, a0Bortras.defenses, JSON.stringify(icons));
     assert.deepEqual(icons.sesswenna.Coruscant.facility, a0Coruscant.facility, JSON.stringify(icons));
   }

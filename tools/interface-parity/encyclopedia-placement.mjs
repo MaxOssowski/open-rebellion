@@ -410,9 +410,11 @@ async function run(browser, base, faction) {
           // FUN_00609650 on each typed character: the first row whose name
           // the typed text prefixes is chosen, white (A0 finder-search/02,
           // 03: "P" then "Pz" choose Pzob).
-          // The port's fixture lists Bpfassh, Ghorman, Ithor and Yavin, rows
-          // 25 apart from y 191; "I" chooses Ithor, the third.
-          await page.keyboard.type("I", { delay: 80 });
+          // The port's fixture lists Selonia, Storthus and Yavin, rows 25
+          // apart from y 191; "Y" chooses Yavin, the third. (Until the seed
+          // rolled every system's resources, 471b20e1, it listed Bpfassh,
+          // Ghorman, Ithor and Yavin, and "I" chose Ithor.)
+          await page.keyboard.type("Y", { delay: 80 });
           await page.waitForTimeout(400);
           await shot("troop-finder-typed");
           const typed = PNG.sync.read(await fs.readFile(path.join(directory, "troop-finder-typed.png")));
@@ -428,7 +430,7 @@ async function run(browser, base, faction) {
           };
           finderText.typed = { rows: [0, 1, 2, 3].map(brightest) };
           assert.ok(finderText.typed.rows[2] > 230 && finderText.typed.rows[0] < 200,
-            `"I" chooses Ithor: ${JSON.stringify(finderText.typed)}`);
+            `"Y" chooses Yavin: ${JSON.stringify(finderText.typed)}`);
           // Closed and opened again, the Finder forgets the choice and
           // chooses its first row (A0 f4-reopened-day171, FUN_00609650 on
           // the empty name).

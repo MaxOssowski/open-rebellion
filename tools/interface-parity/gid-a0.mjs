@@ -451,8 +451,9 @@ try {
   //   FUN_00513090). Coruscant's largest Empire mark to the Empire and its
   //   smallest to the Alliance (a frozen core copy holds no units, setup
   //   push FUN_0051b990); Yavin's medium Alliance mark to both sides (the
-  //   Empire's level-10 push); Drall, whose one TIE squadron is aboard its
-  //   fleet in both games (A0 e-26, e-31), the smallest Empire Fighter
+  //   Empire's level-10 push); Drall, with no squadron on its planet (A0
+  //   e-31; A0's one TIE squadron is aboard its fleet, e-26, the port's
+  //   Drall holds none since 471b20e1), the smallest Empire Fighter
   //   Squadrons mark. Every core system each game gives the other side
   //   shows that side's smallest mark in both displays.
   {
