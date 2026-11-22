@@ -912,6 +912,59 @@ var rebellionSaveStore = (function () {
     };
 }());
 
+// Save files for bug reports, typed in the developer console (F12):
+// `openRebellion.exportSaves()` downloads every saved game as one JSON
+// file, and `openRebellion.importSaves(text)` writes such a file's saves
+// back (a reload shows them in Load). No game window offers this: the
+// original has no such command.
+var openRebellion = (function () {
+    "use strict";
+
+    var FORMAT = "open-rebellion-saves";
+    var SAVE_KEY = /^rebellion_(save|meta)_v\d+_\d+$/;
+
+    function exportSaves() {
+        var file = {
+            format: FORMAT,
+            version: 1,
+            exported: new Date().toISOString(),
+            entries: rebellionSaveStore.entries(),
+        };
+        var blob = new Blob([JSON.stringify(file)], { type: "application/json" });
+        var link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "open-rebellion-saves-" + file.exported.slice(0, 10) + ".json";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+        console.info("Open Rebellion exported " + Object.keys(file.entries).length + " save entries to " + link.download);
+        return file;
+    }
+
+    // Resolves to the number of entries written; rejects a file that is
+    // not an export or holds no save entry.
+    function importSaves(text) {
+        var file = typeof text === "string" ? JSON.parse(text) : text;
+        if (!file || file.format !== FORMAT || file.version !== 1 || typeof file.entries !== "object") {
+            return Promise.reject(new Error("not an Open Rebellion saves file"));
+        }
+        var values = {};
+        Object.keys(file.entries).forEach(function (key) {
+            if (SAVE_KEY.test(key) && typeof file.entries[key] === "string") values[key] = file.entries[key];
+        });
+        var count = Object.keys(values).length;
+        if (count === 0) return Promise.reject(new Error("the file holds no saves"));
+        return rebellionSaveStore.write(values).then(function (status) {
+            if (status !== 1) throw new Error("the saves could not be written (status " + status + ")");
+            console.info("Open Rebellion imported " + count + " save entries; reload the page to load them");
+            return count;
+        });
+    }
+
+    return { exportSaves: exportSaves, importSaves: importSaves };
+}());
+
 var importObject = {
     env: {
         console_debug: function (ptr) {

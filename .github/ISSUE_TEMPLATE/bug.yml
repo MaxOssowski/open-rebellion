@@ -45,7 +45,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: The date you loaded the page, or for a build of your own the commit (`git rev-parse --short HEAD`).
+      description: In the browser, the developer console's (F12) line "Open Rebellion build ..."; else the date you loaded the page. For a build of your own, the commit (`git rev-parse --short HEAD`).
       placeholder: 2026-11-22, or 81fa67c3
     validations:
       required: true
@@ -56,7 +56,7 @@ body:
       description: |
         A save from just before the problem makes it much easier to fix.
         Native builds keep saves in `saves/` next to the executable (`<slot>.reb`); zip the file and drag it here.
-        The browser build cannot export saves yet; say which day and slot it happened in.
+        In the browser, open the developer console (F12), type `openRebellion.exportSaves()` and attach the downloaded file.
   - type: textarea
     id: extra
     attributes:

@@ -46,7 +46,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: The date you loaded the page, or for a build of your own the commit (`git rev-parse --short HEAD`).
+      description: In the browser, the developer console's (F12) line "Open Rebellion build ..."; else the date you loaded the page. For a build of your own, the commit (`git rev-parse --short HEAD`).
     validations:
       required: true
   - type: textarea

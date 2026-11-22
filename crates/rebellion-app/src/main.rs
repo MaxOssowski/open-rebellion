@@ -1223,6 +1223,11 @@ async fn main() {
         clippy::too_many_lines,
         reason = "Keep the existing main loop together; extracting phases is a separate refactor."
     )]
+    // The build's commit, for bug reports: scripts/build-wasm.sh sets it.
+    macroquad::logging::info!(
+        "Open Rebellion build {}",
+        option_env!("OPEN_REBELLION_COMMIT").unwrap_or("unknown")
+    );
     // Accept an optional GData path as the first CLI argument.
     // On WASM there is no CLI, so always use the hardcoded default.
     #[cfg(not(target_arch = "wasm32"))]

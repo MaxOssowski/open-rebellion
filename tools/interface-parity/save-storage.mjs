@@ -2,7 +2,9 @@
 // acceptance): a save lands in IndexedDB as compressed raw bytes, survives
 // a page reload and loads back with its fingerprint; a save an older build
 // left in localStorage (a base64 bincode body) moves into IndexedDB on the
-// next load and loads; a save over a full browser quota shows "Selected
+// next load and loads; the page logs its build, and the console's
+// openRebellion.exportSaves() downloads every save as one file whose
+// importSaves() puts them back; a save over a full browser quota shows "Selected
 // Game Failed To Save" (FUN_00408240, REBDLOG 0x1219) alone, logs its
 // cause, and leaves the stored slot as it was.
 //
@@ -171,6 +173,31 @@ try {
   await page.waitForTimeout(1500);
   await screenshot('03-loaded');
   check('after a reload the save loads with its fingerprint');
+  assert.ok(consoleLog.some(line => /^Open Rebellion build \S+/.test(line)), 'the page logs its build');
+  check('the page logs its build');
+
+  // 2b. The console export downloads every save as one file; importing that
+  // file after the slot is gone puts the same entries back.
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.evaluate(() => { openRebellion.exportSaves(); }),
+  ]);
+  const exportPath = path.join(output, download.suggestedFilename());
+  await download.saveAs(exportPath);
+  const exported = JSON.parse(await fs.readFile(exportPath, 'utf8'));
+  assert.equal(exported.format, 'open-rebellion-saves');
+  assert.match(download.suggestedFilename(), /^open-rebellion-saves-\d{4}-\d{2}-\d{2}\.json$/);
+  assert.deepEqual(exported.entries, await indexedDb(), 'the file holds every stored entry');
+  assert.equal(exported.entries[k('save', 0)], stored[k('save', 0)], 'the file holds the saved body');
+  assert.equal(await page.evaluate(keys => rebellionSaveStore.write(Object.fromEntries(keys.map(key => [key, null]))),
+    [k('save', 0), k('meta', 0)]), 1);
+  assert.equal((await indexedDb())[k('save', 0)], undefined, 'the slot is gone before the import');
+  assert.equal(await page.evaluate(text => openRebellion.importSaves(text), JSON.stringify(exported)),
+    Object.keys(exported.entries).length);
+  assert.deepEqual(await indexedDb(), exported.entries, 'the import puts the entries back');
+  assert.equal(await page.evaluate(() => openRebellion.importSaves('{"format":"other"}').then(() => 'ok', e => e.message)),
+    'not an Open Rebellion saves file');
+  check('the console export downloads every save and its import restores them');
 
   // 3. A save an older build left in localStorage (slot 3: a base64
   // bincode body) moves into IndexedDB on the next load and loads. So does

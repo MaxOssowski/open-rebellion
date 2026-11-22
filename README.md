@@ -69,10 +69,12 @@ Major implemented areas (each remains subject to the linked acceptance audit):
 The audit of every system is not finished, so expect differences from the
 original. Known gaps as of November 2026:
 
-- Browser saves live in the browser's storage (IndexedDB) and cannot be
-  exported to a file yet; clearing site data deletes them.
-- The game does not show its version. When reporting, give the date you loaded
-  the page or your build's commit.
+- Browser saves live in the browser's storage (IndexedDB); clearing site data
+  deletes them. No game window exports them, but the developer console (F12)
+  does: `openRebellion.exportSaves()` downloads them all as one file, and
+  `openRebellion.importSaves(text)` writes such a file back.
+- The game shows no version on screen; the console's line
+  `Open Rebellion build <commit>` names it.
 - Tested on Linux in Chromium and Firefox. Windows, macOS and Safari are
   untested.
 - Multiplayer and chat stay visible but disabled; single-player is the goal.

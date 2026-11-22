@@ -37,6 +37,8 @@ music_source() {
 python3 "$ROOT/scripts/build-runtime-pack.py" --ui "$GDATA/ui" --validate-ui-only
 
 echo "Building rebellion-app for wasm32…"
+# The commit the build starts from, logged at startup for bug reports.
+OPEN_REBELLION_COMMIT="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)" \
 PATH="/usr/bin:$PATH" cargo build --manifest-path "$ROOT/Cargo.toml" \
     --target wasm32-unknown-unknown \
     -p rebellion-app \

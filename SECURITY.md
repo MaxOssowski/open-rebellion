@@ -20,8 +20,9 @@ someone else, is an ordinary bug: open a public
 
 Use **Report a vulnerability** on the repository's
 [Security tab](https://github.com/MaxOssowski/open-rebellion/security). Please
-include the steps, the version (the date you loaded the page, or the commit of
-your build) and, if you can, the file that triggers it.
+include the steps, the version (the browser console's line
+`Open Rebellion build <commit>`, or the commit of your build) and, if you
+can, the file that triggers it.
 
 Expect a first answer within a week. A confirmed problem is fixed on `main`
 and the report is credited unless you would rather stay anonymous.
