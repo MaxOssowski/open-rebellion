@@ -415,3 +415,25 @@ Two points against the port, both open:
    port now films only the bits a change turns on (e3f4ee61). A run where
    the Emperor escaped before Vader was taken went on to day 388: both
    leaders must be held at once.
+
+## The headquarters destroyed by bombardment in A0 (2026-11-23, part 13c)
+
+Same run directory as above. An Empire "Headquarters Victory" game
+(EHQ2-d2), Fleet 1's two ships retyped to Super Star Destroyers, no Death
+Star; the battle at the Alliance HQ Tokmia won on day 39 (Destroy System
+grey without a Death Star).
+
+- Nine Planetary Bombardments on day 44 with Tokmia's GenCore Level I
+  shield up did nothing ("No Casualties" each time). As the port reads
+  `FUN_0058df60`: the shots are the bombardment less the shields, and two
+  SSDs (`bombardment_modifier` 15 each) do not pass GenCore I's 40.
+- With the shield retyped to a KDY-150, bombardment 1 destroyed the
+  shipyard and a mine, bombardment 2 the KDY-150; then, with no input and
+  the clock held at 44, the HQ caption film ("The Empire has destroyed the
+  Alliance Headquarters.", MDATA.102 inferred), black, MDATA.108, the
+  crawl and the main menu. No destroy film, no strategy frame between 102
+  and 108 (the Death Star route of part 9/13 shows ~17 s of it). Tokmia
+  was neither destroyed nor taken: the bombardment alone ends the game, as
+  the port has it (bit `0x1`, no assault).
+- Coruscant destroyed (bit `0x200`) was not reached: an edited Imperial
+  Death Star never took a Move to an Alliance-held Coruscant.
