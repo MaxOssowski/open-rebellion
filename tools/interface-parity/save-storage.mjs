@@ -4,7 +4,9 @@
 // left in localStorage (a base64 bincode body) moves into IndexedDB on the
 // next load and loads; the page logs its build, and the console's
 // openRebellion.exportSaves() downloads every save as one file whose
-// importSaves() puts them back; a save over a full browser quota shows "Selected
+// importSaves() puts them back; the page's Report a problem link sits in
+// the letterbox bar only, downloads the saves and opens the issue form; a
+// save over a full browser quota shows "Selected
 // Game Failed To Save" (FUN_00408240, REBDLOG 0x1219) alone, logs its
 // cause, and leaves the stored slot as it was.
 //
@@ -198,6 +200,45 @@ try {
   assert.equal(await page.evaluate(() => openRebellion.importSaves('{"format":"other"}').then(() => 'ok', e => e.message)),
     'not an Open Rebellion saves file');
   check('the console export downloads every save and its import restores them');
+
+  // 2c. The page's "Report a problem" link: in the letterbox bar of a wide
+  // window, never over the 4:3 picture, hidden without a bar; a click
+  // downloads the saves and opens the GitHub issue form (served locally
+  // here, no network).
+  const link = page.locator('#report-problem');
+  assert.equal(await link.boundingBox(), null, 'no link in a 4:3 window');
+  await context.route('https://github.com/**', route => route.fulfill({ status: 200, body: 'issue form' }));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.waitForTimeout(500);
+  const box = await link.boundingBox();
+  assert.ok(box, 'the link shows in a 16:9 window');
+  const pictureRight = (1280 + 720 * 4 / 3) / 2;
+  assert.ok(box.x >= pictureRight && box.x + box.width <= 1280 && box.y + box.height <= 720,
+    `the link stays in the right bar (${JSON.stringify(box)}, picture ends at ${pictureRight})`);
+  await screenshot('02c-report-link-16x9');
+  const [linkDownload, popup] = await Promise.all([
+    page.waitForEvent('download'),
+    context.waitForEvent('page'),
+    link.click(),
+  ]);
+  // Firefox numbers a second file of the same name: "...(1).json".
+  assert.match(linkDownload.suggestedFilename(), /^open-rebellion-saves-\d{4}-\d{2}-\d{2}(\(\d+\))?\.json$/);
+  const linked = JSON.parse(await fs.readFile(await linkDownload.path(), 'utf8'));
+  assert.deepEqual(linked.entries, await indexedDb(), 'the link downloads every stored entry');
+  await popup.waitForLoadState();
+  assert.equal(popup.url(), 'https://github.com/MaxOssowski/open-rebellion/issues/new/choose');
+  await popup.close();
+  await page.waitForTimeout(200);
+  assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'glcanvas',
+    'the game keeps the keyboard');
+  await page.setViewportSize({ width: 960, height: 1280 });
+  await page.waitForTimeout(500);
+  const tall = await link.boundingBox();
+  assert.ok(tall && tall.y >= (1280 + 960 * 3 / 4) / 2, `in a tall window the link sits in the bar below (${JSON.stringify(tall)})`);
+  await page.setViewportSize({ width: 1280, height: 960 });
+  await page.waitForTimeout(500);
+  assert.equal(await link.boundingBox(), null, 'back in 4:3 the link hides');
+  check('the Report a problem link sits in the letterbox bar, downloads the saves and opens the issue form');
 
   // 3. A save an older build left in localStorage (slot 3: a base64
   // bincode body) moves into IndexedDB on the next load and loads. So does

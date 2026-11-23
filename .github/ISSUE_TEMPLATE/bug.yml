@@ -56,7 +56,7 @@ body:
       description: |
         A save from just before the problem makes it much easier to fix.
         Native builds keep saves in `saves/` next to the executable (`<slot>.reb`); zip the file and drag it here.
-        In the browser, open the developer console (F12), type `openRebellion.exportSaves()` and attach the downloaded file.
+        In the browser, the page's "Report a problem" link (bottom right, in a wide window) downloads your saves as one file; or type `openRebellion.exportSaves()` in the developer console (F12). Attach the file here.
   - type: textarea
     id: extra
     attributes:

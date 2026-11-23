@@ -10,8 +10,9 @@ Play-testing reports are welcome. Open an issue with one of the
 [forms](https://github.com/MaxOssowski/open-rebellion/issues/new/choose):
 **Bug**, **Differs from the original**, or **Crash**. A save from just before
 the problem and the version make a fix much faster; in the browser the
-developer console (F12) gives both: the line `Open Rebellion build <commit>`
-and `openRebellion.exportSaves()`, which downloads every save as one file. A report that the original behaves
+**Report a problem** link at the bottom right of the page (in a wide window)
+downloads every save as one file and opens the forms; the developer console
+(F12) shows the line `Open Rebellion build <commit>`. A report that the original behaves
 differently is checked against the original game; when the original does the
 same, the issue closes as same-as-original. Security problems go through
 [SECURITY.md](SECURITY.md), not a public issue.

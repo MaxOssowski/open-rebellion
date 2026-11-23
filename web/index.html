@@ -24,10 +24,24 @@
             border: 0;
             pointer-events: none;
         }
+        /* Not part of the original: a page link in the letterbox bar, never
+           over the 4:3 game picture, hidden when the window has no bar. */
+        #report-problem {
+            position: fixed;
+            display: none;
+            font: 12px sans-serif;
+            color: #8890a0;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        #report-problem:hover, #report-problem:focus-visible { color: #e8ecf4; text-decoration: underline; }
     </style>
 </head>
 <body>
     <canvas id="glcanvas" tabindex="1"></canvas>
+    <a id="report-problem" href="https://github.com/MaxOssowski/open-rebellion/issues/new/choose"
+       target="_blank" rel="noopener"
+       title="Downloads your saved games as one file and opens the issue form; attach the file there">Report a problem</a>
     <nav id="main-menu-semantics" aria-label="Open Rebellion main menu" hidden>
         <button type="button" data-menu-index="0">Easy difficulty, X-wing</button>
         <button type="button" data-menu-index="1">Intermediate difficulty, Star Destroyer</button>
@@ -311,6 +325,44 @@
                 version: 1,
                 name: "open_rebellion_video",
             });
+        }());
+    </script>
+    <script>
+        // "Report a problem": a page link, not part of the original game.
+        // It sits in the letterbox bar beside or below the 4:3 picture and
+        // hides when the window leaves no bar wide enough. A click
+        // downloads the saved games (openRebellion.exportSaves, gl.js)
+        // when there are any, and the link opens the GitHub issue form.
+        (function () {
+            "use strict";
+            var link = document.getElementById("report-problem");
+            var MARGIN = 8;
+            function place() {
+                var vw = window.innerWidth, vh = window.innerHeight;
+                var side = (vw - Math.min(vw, vh * 4 / 3)) / 2;
+                var below = (vh - Math.min(vh, vw * 3 / 4)) / 2;
+                link.style.display = "block";
+                var w = link.offsetWidth, h = link.offsetHeight;
+                link.style.right = MARGIN + "px";
+                if (side >= w + 2 * MARGIN) {
+                    link.style.bottom = MARGIN + "px";
+                } else if (below >= h + 2 * MARGIN) {
+                    link.style.bottom = Math.round((below - h) / 2) + "px";
+                } else {
+                    link.style.display = "none";
+                }
+            }
+            link.addEventListener("click", function () {
+                try {
+                    if (Object.keys(rebellionSaveStore.entries()).length > 0) openRebellion.exportSaves();
+                } catch (error) {
+                    console.error("Open Rebellion could not export the saves:", error);
+                }
+                // The game keeps the keyboard.
+                setTimeout(function () { document.getElementById("glcanvas").focus(); }, 0);
+            });
+            window.addEventListener("resize", place);
+            place();
         }());
     </script>
     <script>load("open-rebellion.wasm");</script>

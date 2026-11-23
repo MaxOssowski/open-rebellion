@@ -56,4 +56,4 @@ body:
       label: Save game
       description: |
         Native builds keep saves in `saves/` next to the executable (`<slot>.reb`); zip the one from before the crash and drag it here.
-        In the browser, type `openRebellion.exportSaves()` in the developer console (F12) and attach the downloaded file.
+        In the browser, the page's "Report a problem" link (bottom right, in a wide window) downloads your saves as one file; or type `openRebellion.exportSaves()` in the developer console (F12). Attach the file here.

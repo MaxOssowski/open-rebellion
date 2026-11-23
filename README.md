@@ -70,8 +70,10 @@ The audit of every system is not finished, so expect differences from the
 original. Known gaps as of November 2026:
 
 - Browser saves live in the browser's storage (IndexedDB); clearing site data
-  deletes them. No game window exports them, but the developer console (F12)
-  does: `openRebellion.exportSaves()` downloads them all as one file, and
+  deletes them. The page's **Report a problem** link (bottom right, beside
+  the picture in a wide window) downloads them all as one file and opens
+  the issue form; in the developer console (F12),
+  `openRebellion.exportSaves()` does the same download and
   `openRebellion.importSaves(text)` writes such a file back.
 - The game shows no version on screen; the console's line
   `Open Rebellion build <commit>` names it.
