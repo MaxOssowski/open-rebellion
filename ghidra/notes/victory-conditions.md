@@ -366,3 +366,48 @@ The same command on 60d2e20a and on the Destroyed-hook branch does not
 reach the state: seed 5 ends at Empire 27 and 17 systems, seed 4 at 38
 systems (60d2e20a) or an Empire win on day 1780 (hook branch). Seeds 0
 to 3 and 6 to 9 never drop the Empire below 6 systems.
+
+## Standard games in A0 (2026-11-23, edited saves part 13)
+
+Captures: `.artifacts/a0-vm/2026-11-23-edited-saves-13/` (outside Git;
+README, SHA256SUMS, host saves in `~/VMs/rebellion-win10/saves-edit-1123/`).
+New Standard games started from the original's main menu, then
+host-edited. **Every captive leader there is a partial edit**
+(`scripts/captive.py`: master `+0x98` 0 and `+0xac` bit 0 only; a real
+capture also flips the side, moves the character to the captor and gives
+the other side's view a different record), so these runs show the
+presentation, not the full capture rules.
+
+- **Empire wins (b-*, reached):** a Death Star at the Alliance HQ
+  (Toprawa), Mon Mothma and Luke captive. Destroy System (day 82) plays the
+  destroy film ("The Death Star has destroyed the Alliance system
+  Toprawa.", MDATA.101 inferred), the HQ caption film ("The Empire has
+  destroyed the Alliance Headquarters.", MDATA.102), one black frame, the
+  strategy screen for about 17 s with the clock held at 82 and the Imperial
+  advisor speaking, MDATA.108, the crawl, then the main menu. Same order as
+  the Headquarters game of part 9 (END-01-C011).
+- **Alliance, leaders free (a-25..a-33):** an assault takes Coruscant
+  (day 75); the caption film "The Alliance has seized the Imperial capital
+  system of Coruscant." plays and the game goes on (days 76, 77). As the
+  port: bit `0x100` alone does not end a Standard game.
+- **Alliance wins (a-51..a-59, a-62..a-67, reached):** Coruscant the
+  Alliance's since day 75, the Emperor and Vader captive (partial edit).
+  The game ended only on the day a later event re-ran the check (Leia, and
+  in another run Han, captured): the clock held at that day, C-3PO spoke on
+  the strategy screen for about 13 s, then MDATA.105, the crawl and the main
+  menu. **No caption film MDATA.103 played.**
+
+Two points against the port, both open:
+
+1. The check runs from events (a capture, Coruscant's side or existence),
+   as "The check" above says; the port re-reads the word every day step and
+   between days. In play without edits a leader's capture or Coruscant's
+   change is itself such an event, so the two agree; with edited saves they
+   do not.
+2. The port posts MDATA.103 on every change of the word while bit `0x100`
+   is set, as `FUN_0048f790` reads (0x128, Coruscant `+0x24 & 0xc0 ==
+   0x40`, no once flag; `Side_SetVictoryConditions` = `FUN_0052f600` posts
+   0x128 on every change). A0 above showed no 103 when the leaders' bits
+   ended the game with Coruscant long held. Either the partial edit is the
+   cause, or the delivery path drops the film; not traced. Settle with a
+   real capture of the Emperor and Vader before changing the port.
