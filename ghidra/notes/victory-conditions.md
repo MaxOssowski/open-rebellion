@@ -64,9 +64,8 @@ The function stores the word in galaxy `+0x74` and marks it changed
   Coruscant's side is the Alliance's. Both sides read `0x7170` / `0x7171`
   "The Alliance has seized the Imperial capital system of Coruscant.". It
   sets the speaker from the side and `+0x5c` = `0x74`.
-- Neither builder has a once flag. Each change of the word posts the
-  message again while its condition holds (hyp: the message log does
-  not drop repeats).
+- Neither builder has a once flag, yet A0 2026-11-23 shows no repeat of
+  103 ("Standard games in A0" below); the port films only newly set bits.
 
 ## Against the port
 
@@ -406,8 +405,13 @@ Two points against the port, both open:
    do not.
 2. The port posts MDATA.103 on every change of the word while bit `0x100`
    is set, as `FUN_0048f790` reads (0x128, Coruscant `+0x24 & 0xc0 ==
-   0x40`, no once flag; `Side_SetVictoryConditions` = `FUN_0052f600` posts
    0x128 on every change). A0 above showed no 103 when the leaders' bits
-   ended the game with Coruscant long held. Either the partial edit is the
-   cause, or the delivery path drops the film; not traced. Settle with a
-   real capture of the Emperor and Vader before changing the port.
+   ended the game with Coruscant long held. **Settled with real captures
+   (part 13b, c-05..c-21):** the take-over on day 75 captured the Emperor
+   (aboard a transport there) and played 103; Han's Abduction captured
+   Vader on day 181, the clock held, C-3PO spoke ~8 s, then MDATA.105, the
+   crawl and the menu, with no 103. Where the original drops the repeat is
+   not traced (the builder and `Side_SetVictoryConditions` do not). The
+   port now films only the bits a change turns on (e3f4ee61). A run where
+   the Emperor escaped before Vader was taken went on to day 388: both
+   leaders must be held at once.
