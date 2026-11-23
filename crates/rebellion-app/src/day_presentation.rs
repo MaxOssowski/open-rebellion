@@ -1626,8 +1626,8 @@ impl rebellion_data::simulation::DayPresentation for AppDayPresentation<'_> {
         );
     }
 
-    fn victory_word(&mut self, _world: &GameWorld, new: u32, day: u64) {
-        victory_word_movies(self.log, new, self.message_texts, day);
+    fn victory_word(&mut self, _world: &GameWorld, old: u32, new: u32, day: u64) {
+        victory_word_movies(self.log, old, new, self.message_texts, day);
     }
 
     fn game_decided(

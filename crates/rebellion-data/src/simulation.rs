@@ -216,7 +216,7 @@ fn settle_after_pass(
         rebellion_core::victory::advance_conditions_word(&mut states.victory, world, conditions)
     {
         integrator.record_victory_conditions(old, new, tick);
-        presentation.victory_word(world, new, tick);
+        presentation.victory_word(world, old, new, tick);
     }
     // The word's game-over bit decides the game as the event is handled.
     match VictorySystem::outcome(&states.victory, world, conditions) {
@@ -1403,8 +1403,8 @@ pub trait DayPresentation {
     fn blockade(&mut self, _world: &GameWorld, _events: &[rebellion_core::blockade::BlockadeEvent]) {
     }
 
-    /// The victory conditions word changed to `new` (`0x128`).
-    fn victory_word(&mut self, _world: &GameWorld, _new: u32, _day: u64) {}
+    /// The victory conditions word changed from `old` to `new` (`0x128`).
+    fn victory_word(&mut self, _world: &GameWorld, _old: u32, _new: u32, _day: u64) {}
 
     /// The game was decided (`victory` already holds it).
     fn game_decided(
@@ -1620,7 +1620,7 @@ pub fn close_simulation_day(
         states.campaign_config.victory_conditions,
     ) {
         integrator.record_victory_conditions(old, new, current_tick);
-        presentation.victory_word(world, new, current_tick);
+        presentation.victory_word(world, old, new, current_tick);
     }
     integrator.emit_victory_check(&states.victory);
     if let Some(outcome) = VictorySystem::check(

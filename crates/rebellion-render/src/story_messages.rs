@@ -855,10 +855,18 @@ pub fn rescue_attempt_message(
 /// - Coruscant Captured (`FUN_0048f790`) while Coruscant is the
 ///   Alliance's (bit `0x100`): MDATA.103 (`0x74`) under `0x7171`.
 ///
-/// Neither has a once flag. Both are story movies, not messages
-/// ([`StoryMovie`]); their titles `0x7188` / `0x7170` show nowhere.
+/// Neither builder has a once flag, yet the original shows each film only
+/// as its bit turns on: A0 2026-11-23 (edited saves part 13, c-05, c-16
+/// .. c-19) took Coruscant on day 75 with MDATA.103, then captured Vader
+/// for real on day 181, a change that ended the game with bit `0x100`
+/// still set, and went from the capture straight to MDATA.105 with no
+/// 103. Where the repeat is dropped is not traced. hyp: the HQ film
+/// follows the same rule (its bit never turns off in play). Both are
+/// story movies, not messages ([`StoryMovie`]); their titles `0x7188` /
+/// `0x7170` show nowhere.
 #[must_use]
-pub fn victory_conditions_movies(word: u32, texts: &HashMap<u16, String>) -> Vec<StoryMovie> {
+pub fn victory_conditions_movies(old: u32, new: u32, texts: &HashMap<u16, String>) -> Vec<StoryMovie> {
+    let word = new & !old;
     let movie = |movie: u32, body: u16| {
         Some(StoryMovie {
             movie,
@@ -5949,7 +5957,7 @@ mod tests {
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
         let movies = |word| {
-            victory_conditions_movies(word, &texts)
+            victory_conditions_movies(0, word, &texts)
                 .into_iter()
                 .map(|m| (m.movie, m.caption))
                 .collect::<Vec<_>>()
@@ -5973,7 +5981,33 @@ mod tests {
             movies(0x101).iter().map(|m| m.0).collect::<Vec<_>>(),
             [102, 103]
         );
-        assert!(victory_conditions_movies(0x101, &HashMap::new()).is_empty());
+        assert!(victory_conditions_movies(0, 0x101, &HashMap::new()).is_empty());
+    }
+
+    #[test]
+    fn a_word_change_with_coruscant_already_held_queues_no_movie() {
+        // A0 2026-11-23 edited saves part 13 (c-05, c-16..c-19): Coruscant
+        // the Alliance's since day 75 (MDATA.103 then); Vader's capture on
+        // day 181 ended the game (Emperor and Vader captive) and the
+        // original went straight to MDATA.105, with no 103.
+        let texts: HashMap<u16, String> = [
+            (0x7171, "The Alliance has seized the Imperial capital system of Coruscant."),
+            (0x7189, "The Empire has destroyed the Alliance Headquarters."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let held = 0x100 | 0x2000;
+        let won = held | 0x1000 | 0x0100_0000 | 0x1000_0000;
+        assert!(victory_conditions_movies(held, won, &texts).is_empty());
+        assert!(victory_conditions_movies(0x1, 0x31, &texts).is_empty());
+        assert_eq!(
+            victory_conditions_movies(0x1, 0x101, &texts)
+                .iter()
+                .map(|m| m.movie)
+                .collect::<Vec<_>>(),
+            [103]
+        );
     }
 
     #[test]

@@ -33,10 +33,10 @@ pub(super) fn settle_victory_word(
     player_is_alliance: bool,
     tick: u64,
 ) {
-    if let Some((_, new)) =
+    if let Some((old, new)) =
         rebellion_core::victory::advance_conditions_word(victory_state, world, victory_conditions)
     {
-        victory_word_movies(msg_log, new, message_texts, tick);
+        victory_word_movies(msg_log, old, new, message_texts, tick);
     }
     let Some(outcome) = VictorySystem::outcome(victory_state, world, victory_conditions) else {
         return;
@@ -54,16 +54,18 @@ pub(super) fn settle_victory_word(
     );
 }
 
-/// The victory conditions word's change to `new` (`0x128`): its story
-/// movies, Alliance Headquarters Destroyed and Coruscant Captured.
+/// The victory conditions word's change from `old` to `new` (`0x128`):
+/// its story movies, Alliance Headquarters Destroyed and Coruscant
+/// Captured, for the bits it turns on.
 pub(super) fn victory_word_movies(
     msg_log: &mut MessageLog,
+    old: u32,
     new: u32,
     message_texts: &std::collections::HashMap<u16, String>,
     tick: u64,
 ) {
     macroquad::logging::info!("[victory] word={:#x} day={}", new, tick);
-    for movie in rebellion_render::story_messages::victory_conditions_movies(new, message_texts) {
+    for movie in rebellion_render::story_messages::victory_conditions_movies(old, new, message_texts) {
         msg_log.queue_story_movie(movie);
     }
 }

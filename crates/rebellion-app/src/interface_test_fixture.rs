@@ -7726,7 +7726,7 @@ pub fn post_story_messages(
         // The victory conditions word's Coruscant bit (0x100, FUN_0048f790):
         // MDATA.103 under "The Alliance has seized the Imperial capital
         // system of Coruscant.", as A0 empire-clean/61 shows it.
-        for movie in rebellion_render::story_messages::victory_conditions_movies(0x100, texts) {
+        for movie in rebellion_render::story_messages::victory_conditions_movies(0, 0x100, texts) {
             log.queue_story_movie(movie);
         }
         return;
