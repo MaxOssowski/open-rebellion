@@ -437,3 +437,14 @@ grey without a Death Star).
   the port has it (bit `0x1`, no assault).
 - Coruscant destroyed (bit `0x200`) was not reached: an edited Imperial
   Death Star never took a Move to an Alliance-held Coruscant.
+
+## The Final Battle and an HQ loss that did not end the game (part 13d)
+
+- The Final Battle was not reached in four edited runs (~1,200 days):
+  Luke was captured on a mission, and FinalBattleReady wants him off one
+  (`+0x78 & 0xc0` clear), as the port's `final_battle::ready` also does.
+- Seen on the way (Alliance player, Standard game): the HQ caption film
+  MDATA.102 on day 1144, the clock ran on to day 1166, held there ~25 s,
+  then the Alliance defeat film (MDATA.107 inferred), the crawl and the
+  main menu, with no second 102. The port's films-on-a-new-bit rule
+  (e3f4ee61) gives the same.

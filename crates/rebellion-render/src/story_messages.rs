@@ -860,8 +860,10 @@ pub fn rescue_attempt_message(
 /// .. c-19) took Coruscant on day 75 with MDATA.103, then captured Vader
 /// for real on day 181, a change that ended the game with bit `0x100`
 /// still set, and went from the capture straight to MDATA.105 with no
-/// 103. Where the repeat is dropped is not traced. hyp: the HQ film
-/// follows the same rule (its bit never turns off in play). Both are
+/// 103. The HQ film too: part 13d (f-11..f-17) played MDATA.102 when the
+/// Empire destroyed the HQ on day 1144, the game ran on, and the change
+/// that ended it on day 1166 went to MDATA.107 with no second 102. Where
+/// the repeat is dropped is not traced. Both are
 /// story movies, not messages ([`StoryMovie`]); their titles `0x7188` /
 /// `0x7170` show nowhere.
 #[must_use]
