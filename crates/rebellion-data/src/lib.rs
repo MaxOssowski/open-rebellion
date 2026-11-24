@@ -39,6 +39,7 @@ use rebellion_core::world::{
 pub mod browser_saves;
 pub mod encyclopedia_catalog;
 pub mod encyclopedia_topics;
+pub mod install;
 pub mod integrator;
 pub mod mods;
 pub mod player_command;
