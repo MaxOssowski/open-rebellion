@@ -53,6 +53,12 @@ added (a file with a player command fails closed on an older reader).
   command and Retire orders. Each order's app arm calls the same
   function the replay applies, and a seed-42 test per family compares the
   app path's fingerprint with the replay's.
+- Stage 2: `session::SessionLog` and the app's logging (each order with
+  its day and moment, speed changes) and the palette's "Check Session
+  Replay"; `CampaignDayRunner::run_day_with_orders` puts an order between
+  a day's AI passes, as the app's frame step does.
+- Every order's aftermath (`after_order`: an order's units placed in
+  their containers) runs in the app and in the replay.
 - Left in stage 3: Planetary Bombardment and Assault. Their app arms use
   app-only parts (`BombardEnv`, `destroy_planet`, `occupy_system`, the
   assault reports) and the day's draws, so they move with those parts.
