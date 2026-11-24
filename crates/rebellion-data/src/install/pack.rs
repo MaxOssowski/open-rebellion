@@ -372,6 +372,8 @@ pub fn build_entries(install: &InstallFiles) -> Result<Vec<Entry>, BuildError> {
         wave_entries(install, file, ids, &mut out)?;
     }
     super::strings::text_tables(install, &mut out)?;
+    super::encyclopedia::encyclopedia_tables(install, &mut out)?;
+    super::cursor::cursor_entries(install, &mut out)?;
     for &(file, key) in MUSIC {
         if let Some(data) = install.get(file) {
             out.push(Entry { kind: KIND_AUDIO, key: key.to_owned(), data: data.to_vec() });
@@ -479,16 +481,9 @@ mod tests {
             .filter(|(kind, key)| !built.iter().any(|e| e.kind == *kind && &e.key == key))
             .collect();
         eprintln!("built and equal per kind: {per_kind:?}; offline entries not built yet: {}", missing.len());
-        // Every entry built so far equals the offline pack's (checked
-        // above); what this stage does not build yet: the JSON tables, the
-        // two REBEXE cursors, and the tactical meshes and textures.
-        let not_yet = |kind: u8, key: &str| match kind {
-            KIND_GAME_DATA => key.starts_with("encyclopedia-source"),
-            KIND_BITMAP => key.starts_with("rebexe-exe/"),
-            4 | 5 => true,
-            _ => false,
-        };
-        assert!(missing.iter().all(|(kind, key)| not_yet(*kind, key)), "{missing:?}");
-        assert_eq!(missing.len(), 2 + 2 + 484);
+        // Every entry built equals the offline pack's (checked above); not
+        // built yet are only the tactical meshes and textures (kinds 4, 5).
+        assert!(missing.iter().all(|(kind, _)| matches!(kind, 4 | 5)), "{missing:?}");
+        assert_eq!(missing.len(), 87 + 397);
     }
 }
