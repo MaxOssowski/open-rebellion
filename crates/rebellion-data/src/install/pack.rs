@@ -61,16 +61,6 @@ impl InstallFiles {
             .filter(move |(name, (folder, _))| keep(folder, name))
             .map(|(name, (_, bytes))| (name.as_str(), bytes.as_slice()))
     }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.files.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.files.is_empty()
-    }
 }
 
 /// Why a pack could not be built.
@@ -445,6 +435,46 @@ mod tests {
             at += dlen;
         }
         out
+    }
+
+    #[test]
+    fn a_file_in_gdata_wins_over_one_of_the_same_name_elsewhere() {
+        // The GOG release has an uninstaller's UNINS000.DAT beside the game.
+        for order in [["Game/GData/X.DAT", "Game/X.DAT"], ["Game/X.DAT", "Game/GData/X.DAT"]] {
+            let mut files = InstallFiles::default();
+            for path in order {
+                files.insert(path, path.as_bytes().to_vec());
+            }
+            assert_eq!(files.get("x.dat"), Some(&b"Game/GData/X.DAT"[..]), "{order:?}");
+        }
+        let mut files = InstallFiles::default();
+        files.insert("Game/A.DAT", b"one".to_vec());
+        files.insert("Other/a.dat", b"two".to_vec());
+        assert_eq!(files.get("A.DAT"), Some(&b"two"[..]), "elsewhere, the later file wins");
+        let in_gdata: Vec<_> = files.matching(|folder, _| folder == "GDATA").collect();
+        assert!(in_gdata.is_empty());
+    }
+
+    #[test]
+    fn a_wave_resource_that_is_not_riff_audio_is_refused() {
+        let riff = b"RIFF\x04\0\0\0WAVE";
+        for (data, ok) in [(&riff[..], true), (&b"RIFF\x04\0\0\0AVI "[..], false), (&b"RIFX\x04\0\0\0WAVE"[..], false)] {
+            let mut files = InstallFiles::default();
+            files.insert("COMMON.DLL", super::super::pe::fixture::tiny_pe(&[(None, 8000, 1033, data)], false));
+            let mut out = Vec::new();
+            let result = wave_entries(&files, "COMMON.DLL", [(8000, "sfx/a.wav".to_owned())], &mut out);
+            assert_eq!(result.is_ok(), ok, "{data:?}");
+            assert_eq!(out.len(), usize::from(ok));
+        }
+    }
+
+    #[test]
+    fn build_errors_name_the_file_and_the_cause() {
+        assert_eq!(BuildError::Missing("COMMON.DLL".into()).to_string(), "COMMON.DLL is missing from the game folder");
+        assert_eq!(
+            BuildError::Count { file: "X.DLL".into(), what: "bitmaps", found: 1, expected: 2 }.to_string(),
+            "X.DLL: found 1 bitmaps, expected 2"
+        );
     }
 
     #[test]
