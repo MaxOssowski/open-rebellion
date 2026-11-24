@@ -1566,6 +1566,10 @@ async fn main() {
     // category saved (FUN_00487ff0 +0x58).
     let mut message_index: Option<MessageIndexState> = None;
     let mut advice_saved_speed: Option<GameSpeed> = None;
+    // A new game's galaxy is held (game `+0x14`) at the rate
+    // Class_0065ad70_vt10 sets, Slow (FUN_00487eb0(2)), until the briefing's
+    // action 0xb releases it (FUN_0041dbe0 -> FUN_0041e320).
+    let mut new_game_held = false;
     let mut enc_state = EncyclopediaState::new();
     let mut mod_manager_state = rebellion_render::ModManagerState::default();
     #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
@@ -2716,6 +2720,18 @@ async fn main() {
                     // index opens on Advice (FUN_0041d770(1, 0x82)).
                     // hyp: destroying the window runs its close
                     // (FUN_0046a6a0).
+                    // FUN_004c30c0 / FUN_004c0fc0 case 0xb: FUN_0041dbe0 ->
+                    // FUN_0041e320 clears the galaxy's hold, and a new game
+                    // runs at the Slow its setup chose (User check on the
+                    // original, 2026-11-24: Expert, no advice, day 1 at Slow).
+                    if advisor_actions::release_new_game_hold(
+                        u32::from(action.kind),
+                        u32::from(action.code),
+                        &mut new_game_held,
+                        &mut clock,
+                    ) {
+                        macroquad::logging::info!("[clock] new_game_released speed=Slow");
+                    }
                     if action.kind == 2 && action.code == 0xd {
                         if let Some(index) = message_index.take() {
                             apply_message_index_actions(
@@ -3868,6 +3884,7 @@ async fn main() {
                                         rng_seed.wrapping_add(u64::from(campaign_generation)),
                                     );
                                     clock = GameClock::new();
+                                    new_game_held = true;
                                     ai_day = AiDay::default();
                                     day_rolls.clear();
                                     game_speed_ui = GameSpeedUiState::default();
@@ -8668,6 +8685,7 @@ async fn main() {
                             system_finder_state = rebellion_render::system_finder::SystemFinderState::default();
                             message_index = None;
                             advice_saved_speed = None;
+                            new_game_held = false;
                             enc_state = EncyclopediaState::new();
                             enc_state.set_edata_path(configured_edata_path(&gdata_path));
                             enc_state.set_asset_profile(asset_render_profile);

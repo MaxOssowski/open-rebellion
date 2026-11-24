@@ -252,6 +252,41 @@ pub(super) enum FinderTarget {
     MissionsWindow,
 }
 
+/// A briefing action's effect on a new game's held galaxy: action 0xb
+/// (kind 2) runs `FUN_0041dbe0` -> `FUN_0041e320`, which clears the game's
+/// hold (`+0x14`); a new game then runs at the rate its setup chose, Slow
+/// (`Class_0065ad70_vt10`: `FUN_00487eb0(2)`). Other actions, and a 0xb
+/// with no new game held, leave the clock alone. True when it released.
+pub(super) fn release_new_game_hold(kind: u32, code: u32, held: &mut bool, clock: &mut GameClock) -> bool {
+    if kind != 2 || code != 0xb || !std::mem::take(held) {
+        return false;
+    }
+    rebellion_render::game_speed::choose_game_speed(clock, GameSpeed::Slow);
+    true
+}
+
+#[cfg(test)]
+mod new_game_hold_tests {
+    use super::*;
+
+    #[test]
+    fn the_briefings_action_0xb_runs_a_held_new_game_at_slow_once() {
+        // User check on the original (Windows VM, 2026-11-24): at Expert,
+        // with no advice window, day 1 starts at Slow after the briefing.
+        let mut clock = GameClock::new();
+        let mut held = true;
+        assert!(!release_new_game_hold(2, 0xd, &mut held, &mut clock));
+        assert!(!release_new_game_hold(1, 0xb, &mut held, &mut clock));
+        assert_eq!(clock.speed, GameSpeed::Paused);
+        assert!(release_new_game_hold(2, 0xb, &mut held, &mut clock));
+        assert_eq!(clock.speed, GameSpeed::Slow);
+        assert!(!held);
+        clock.set_speed(GameSpeed::Fast);
+        assert!(!release_new_game_hold(2, 0xb, &mut held, &mut clock), "a later 0xb keeps the player's speed");
+        assert_eq!(clock.speed, GameSpeed::Fast);
+    }
+}
+
 /// Carry out what the Message Index asks: the Advice speed hold
 /// (`FUN_00487ff0`), marking read (`FUN_0048a530`, `FUN_00469de0`) and
 /// deleting (`FUN_005f54a0`).

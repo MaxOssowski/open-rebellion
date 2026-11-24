@@ -134,9 +134,19 @@ traced. This stays open.
   traced.
 - port: the confirmation answers main.rs applies itself (Scrap, Abort
   mission) bypass `PanelAction` and are not held.
-- port: the new game's clock at `GameSpeed::Paused` (no alert, the first
-  menu choice runs the game) is not a hold; orders act at once there. The
-  original's starting speed is open (`2026-09-24-game-speed-recovery.md`).
+- port: the new game's clock at `GameSpeed::Paused` (no alert) is not a
+  hold; orders act at once there.
+- The starting speed (2026-11-24): a new game's setup
+  (`Class_0065ad70_vt10`, after the agent's `FUN_00439950`) sets the rate
+  to 2, Slow (`FUN_00487eb0(2)`), while the game's `+0x14` holds the
+  galaxy through the briefing; the briefing's action 0xb
+  (`FUN_004c30c0`/`FUN_004c0fc0` case 0xb -> `FUN_0041dbe0` ->
+  `FUN_0041e320`) clears the hold, so day 1 runs at Slow. With advice on,
+  action 0xd then opens the index on Advice, whose hold drops to Very Slow
+  until it closes (`FUN_00487ff0`). The user confirmed it on the original
+  (Windows VM): at Expert, with no advice window, the game runs at once at
+  Slow. Port: `advisor_actions::release_new_game_hold` sets Slow at a new
+  game's first briefing 0xb.
 - The map reads the HQ position every frame, so the HQ mark moves in the
   frame its order is applied, as `FUN_0051df30` flushes the notice in the
   frame it executes the order.
