@@ -163,6 +163,69 @@ const MUSIC: &[(&str, &str)] = &[
     ("MDATA.315", "music/315.wav"),
 ];
 
+/// The menu's sound effects in COMMON.DLL (`dat-dumper --extract-menu-sfx`).
+const MENU_SFX: &[(u32, &str)] = &[
+    (8000, "menu_galaxy_size"),
+    (8001, "menu_load_options"),
+    (8002, "menu_quit"),
+    (8004, "menu_select"),
+];
+
+/// The tactical events' sounds in TACTICAL.DLL, `tactical_event_{event}_{n}`
+/// (`dat-dumper --extract-tactical-sfx`).
+const TACTICAL_SFX: &[(u32, &str)] = &[
+    (13_000, "00_0"), (13_001, "00_1"), (13_002, "00_2"), (13_003, "00_3"),
+    (13_004, "01_0"), (13_005, "01_1"), (13_006, "01_2"), (13_007, "01_3"),
+    (13_008, "02_0"), (13_009, "02_1"), (13_010, "02_2"), (13_011, "02_3"),
+    (13_012, "03_0"), (13_013, "03_1"), (13_014, "04_0"), (13_015, "04_1"),
+    (13_016, "05_0"), (13_017, "05_1"),
+    (13_030, "0c_0"), (13_031, "0c_1"), (13_032, "0c_2"),
+    (13_033, "0d_0"), (13_034, "0d_1"), (13_035, "0d_2"),
+    (13_036, "0e_0"), (13_037, "0e_1"), (13_038, "0e_2"),
+    (13_045, "11_0"), (13_046, "11_1"), (13_047, "11_2"),
+    (13_048, "12_0"), (13_049, "12_1"), (13_050, "12_2"),
+    (13_051, "13_0"), (13_052, "13_1"), (13_053, "13_2"),
+    (13_054, "14_0"), (13_055, "15_0"), (13_056, "16_0"), (13_057, "17_0"),
+    (13_058, "18_0"), (13_059, "19_0"), (13_061, "1b_0"), (13_062, "1c_0"),
+    (13_063, "1d_0"), (13_064, "1e_0"), (13_065, "1f_0"),
+];
+
+/// The tactical voice banks: file, side folder, suffix, WAVE id ranges
+/// (`dat-dumper --extract-tactical-voice`).
+const VOICE_BANKS: &[(&str, &str, &str, &[(u32, u32)])] = &[
+    ("VOICEFXA.DLL", "alliance", "voicefxa", &[(14_001, 14_122), (15_133, 15_163)]),
+    ("VOICEFXE.DLL", "empire", "voicefxe", &[(15_001, 15_132)]),
+];
+
+/// A DLL's WAVE resources by number; each must be RIFF/WAVE audio.
+fn waves<'a>(install: &'a InstallFiles, file: &str) -> Result<BTreeMap<u32, &'a [u8]>, BuildError> {
+    let bytes = install.get(file).ok_or_else(|| BuildError::Missing(file.to_owned()))?;
+    let resources = pe::resources(bytes).map_err(|error| BuildError::Pe { file: file.to_owned(), error })?;
+    Ok(resources
+        .into_iter()
+        .filter(|r| r.kind == ResId::Name("WAVE".into()))
+        .filter_map(|r| Some((r.name.id()?, r.data)))
+        .collect())
+}
+
+/// The named WAVE ids of `file` as `prefix{name}.wav` entries.
+fn wave_entries(
+    install: &InstallFiles,
+    file: &str,
+    ids: impl IntoIterator<Item = (u32, String)>,
+    out: &mut Vec<Entry>,
+) -> Result<(), BuildError> {
+    let waves = waves(install, file)?;
+    for (id, key) in ids {
+        let data = waves.get(&id).ok_or_else(|| BuildError::Missing(format!("{file} WAVE {id}")))?;
+        if !data.starts_with(b"RIFF") || data.get(8..12) != Some(b"WAVE") {
+            return Err(BuildError::BadBitmap(format!("{file} WAVE {id} is not RIFF/WAVE audio")));
+        }
+        out.push(Entry { kind: KIND_AUDIO, key, data: data.to_vec() });
+    }
+    Ok(())
+}
+
 /// A pack entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
@@ -287,6 +350,25 @@ pub fn build_entries(install: &InstallFiles) -> Result<Vec<Entry>, BuildError> {
             None => return Err(BuildError::Missing(target.file.to_owned())),
         }
     }
+    wave_entries(
+        install,
+        "COMMON.DLL",
+        MENU_SFX.iter().map(|&(id, name)| (id, format!("sfx/{name}.wav"))),
+        &mut out,
+    )?;
+    wave_entries(
+        install,
+        "TACTICAL.DLL",
+        TACTICAL_SFX.iter().map(|&(id, event)| (id, format!("sfx/tactical_event_{event}.wav"))),
+        &mut out,
+    )?;
+    for &(file, side, suffix, ranges) in VOICE_BANKS {
+        let ids = ranges
+            .iter()
+            .flat_map(|&(first, last)| first..=last)
+            .map(|id| (id, format!("voice/{side}/{id}-{suffix}.wav")));
+        wave_entries(install, file, ids, &mut out)?;
+    }
     for &(file, key) in MUSIC {
         if let Some(data) = install.get(file) {
             out.push(Entry { kind: KIND_AUDIO, key: key.to_owned(), data: data.to_vec() });
@@ -396,16 +478,14 @@ mod tests {
         eprintln!("built and equal per kind: {per_kind:?}; offline entries not built yet: {}", missing.len());
         // Every entry built so far equals the offline pack's (checked
         // above); what this stage does not build yet: the JSON tables, the
-        // two REBEXE cursors, the sound effects and voices, and the
-        // tactical meshes and textures.
+        // two REBEXE cursors, and the tactical meshes and textures.
         let not_yet = |kind: u8, key: &str| match kind {
             KIND_GAME_DATA => key.ends_with(".json"),
             KIND_BITMAP => key.starts_with("rebexe-exe/"),
-            KIND_AUDIO => key.starts_with("sfx/") || key.starts_with("voice/"),
             4 | 5 => true,
             _ => false,
         };
         assert!(missing.iter().all(|(kind, key)| not_yet(*kind, key)), "{missing:?}");
-        assert_eq!(missing.len(), 9 + 2 + 336 + 484);
+        assert_eq!(missing.len(), 9 + 2 + 484);
     }
 }
