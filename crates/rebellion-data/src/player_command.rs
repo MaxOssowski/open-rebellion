@@ -11,7 +11,15 @@
 //! port: the whole module is the port's own command boundary; the rules it
 //! runs are the ones the called core functions cite.
 
-use rebellion_core::ids::{DatId, FleetKey, SystemKey, TroopKey};
+use std::collections::HashSet;
+
+use rebellion_core::blockade::BlockadeState;
+use rebellion_core::fleet_join::{join_fleet, FleetMover, FleetOrderError, FleetOrderOutcome};
+use rebellion_core::headquarters_move::{move_headquarters, HeadquartersMove, HeadquartersMoveError};
+use rebellion_core::ids::{DatId, FighterKey, FleetKey, SystemKey, TroopKey};
+use rebellion_core::squadrons::{SquadronMove, SquadronMoveError, SquadronPlace};
+use rebellion_core::troop_transport::{RegimentMove, RegimentTarget};
+use rebellion_core::victory::VictoryState;
 use rebellion_core::movement::{
     begin_faction_fleet_transit, validate_fleet_dispatch, AppliedDeparture, FleetDispatchError,
     MovementState,
@@ -34,6 +42,43 @@ pub enum PlayerCommand {
         destination: DatId,
         troops: Vec<DatId>,
     },
+    /// A regiment's move to a planet or a fleet (`PanelAction::MoveRegiment`).
+    MoveRegiment { troop: DatId, target: PlaceId },
+    /// One squadron of a class moved between a planet and a fleet
+    /// (`PanelAction::MoveSquadron`).
+    MoveSquadron {
+        class: DatId,
+        from: PlaceId,
+        to: PlaceId,
+    },
+    /// A fleet, or ships of one, joining another fleet
+    /// (`PanelAction::JoinFleet`).
+    JoinFleet { mover: MoverId, target: u64 },
+    /// The Alliance headquarters moved to a system
+    /// (`PanelAction::MoveHeadquarters`).
+    MoveHeadquarters { destination: DatId },
+}
+
+/// A planet (its system's `DatId`) or a fleet (its creation serial).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum PlaceId {
+    System(DatId),
+    Fleet(u64),
+}
+
+/// A whole fleet, or ships of it by their place in its list (the order is
+/// the same in a fresh run from the same seed) with the roster stamp the
+/// selection was made on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum MoverId {
+    Fleet(u64),
+    Ships {
+        fleet: u64,
+        ships: Vec<usize>,
+        roster: u64,
+    },
 }
 
 /// Why a command could not name its objects in this world.
@@ -42,6 +87,7 @@ pub enum CommandIdError {
     Fleet(u64),
     System(DatId),
     Regiment(DatId),
+    FighterClass(DatId),
     Unnamed,
 }
 
@@ -51,6 +97,7 @@ impl std::fmt::Display for CommandIdError {
             Self::Fleet(serial) => write!(f, "no fleet with creation serial {serial}"),
             Self::System(id) => write!(f, "no system {:#010x}", id.0),
             Self::Regiment(id) => write!(f, "no regiment {:#010x}", id.0),
+            Self::FighterClass(id) => write!(f, "no fighter class {:#010x}", id.0),
             Self::Unnamed => write!(f, "an object has no stable id"),
         }
     }
@@ -130,6 +177,189 @@ fn troop_key(world: &GameWorld, id: DatId) -> Result<TroopKey, CommandIdError> {
         .ok_or(CommandIdError::Regiment(id))
 }
 
+/// A regiment's move for the side `expected_is_alliance` (the app's
+/// `PanelAction::MoveRegiment`): only the side's own regiment moves.
+///
+/// # Errors
+/// The transport's refusal, or `WrongFaction` for the other side's
+/// regiment.
+#[allow(clippy::too_many_arguments)]
+pub fn move_regiment(
+    world: &mut GameWorld,
+    troop_transport: &mut TroopTransportState,
+    movement: &MovementState,
+    blockaded: &HashSet<SystemKey>,
+    troop: TroopKey,
+    target: RegimentTarget,
+    tick: u64,
+    expected_is_alliance: bool,
+) -> Result<RegimentMove, TroopTransportError> {
+    if !world
+        .troops
+        .get(troop)
+        .is_some_and(|value| value.is_alliance == expected_is_alliance)
+    {
+        return Err(TroopTransportError::WrongFaction);
+    }
+    troop_transport.move_regiment(world, movement, blockaded, troop, target, tick)
+}
+
+/// One squadron of `class` moved for the side (the app's
+/// `PanelAction::MoveSquadron`).
+///
+/// # Errors
+/// The squadrons' refusal.
+pub fn move_squadron(
+    world: &mut GameWorld,
+    troop_transport: &mut TroopTransportState,
+    is_alliance: bool,
+    class: FighterKey,
+    from: SquadronPlace,
+    to: SquadronPlace,
+    tick: u64,
+) -> Result<SquadronMove, SquadronMoveError> {
+    troop_transport
+        .squadrons
+        .move_squadrons(world, is_alliance, class, 1, from, to, tick)
+}
+
+fn place_id(world: &GameWorld, place: SquadronPlace) -> Result<PlaceId, CommandIdError> {
+    match place {
+        SquadronPlace::Planet(system) => Ok(PlaceId::System(
+            world.systems.get(system).ok_or(CommandIdError::Unnamed)?.dat_id,
+        )),
+        SquadronPlace::Fleet(fleet) => fleet_id(world, fleet).map(PlaceId::Fleet),
+    }
+}
+
+fn fleet_id(world: &GameWorld, fleet: FleetKey) -> Result<u64, CommandIdError> {
+    match world.fleet_serial(fleet) {
+        0 => Err(CommandIdError::Unnamed),
+        serial => Ok(serial),
+    }
+}
+
+fn place_key(world: &GameWorld, place: PlaceId) -> Result<SquadronPlace, CommandIdError> {
+    Ok(match place {
+        PlaceId::System(id) => SquadronPlace::Planet(system_key(world, id)?),
+        PlaceId::Fleet(serial) => SquadronPlace::Fleet(fleet_key(world, serial)?),
+    })
+}
+
+fn mover_id(world: &GameWorld, mover: &FleetMover) -> Result<MoverId, CommandIdError> {
+    Ok(match mover {
+        FleetMover::Fleet(fleet) => MoverId::Fleet(fleet_id(world, *fleet)?),
+        FleetMover::Ships {
+            fleet,
+            ships,
+            roster,
+        } => MoverId::Ships {
+            fleet: fleet_id(world, *fleet)?,
+            ships: ships.clone(),
+            roster: *roster,
+        },
+    })
+}
+
+fn mover_key(world: &GameWorld, mover: &MoverId) -> Result<FleetMover, CommandIdError> {
+    Ok(match mover {
+        MoverId::Fleet(serial) => FleetMover::Fleet(fleet_key(world, *serial)?),
+        MoverId::Ships {
+            fleet,
+            ships,
+            roster,
+        } => FleetMover::Ships {
+            fleet: fleet_key(world, *fleet)?,
+            ships: ships.clone(),
+            roster: *roster,
+        },
+    })
+}
+
+fn fighter_class_key(world: &GameWorld, id: DatId) -> Result<FighterKey, CommandIdError> {
+    world
+        .fighter_classes
+        .iter()
+        .find(|(_, class)| class.dat_id == id)
+        .map(|(key, _)| key)
+        .ok_or(CommandIdError::FighterClass(id))
+}
+
+fn system_id(world: &GameWorld, system: SystemKey) -> Result<DatId, CommandIdError> {
+    world
+        .systems
+        .get(system)
+        .map(|value| value.dat_id)
+        .ok_or(CommandIdError::Unnamed)
+}
+
+/// The replay form of a regiment's move.
+///
+/// # Errors
+/// An object without a stable id.
+pub fn move_regiment_command(
+    world: &GameWorld,
+    troop: TroopKey,
+    target: RegimentTarget,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::MoveRegiment {
+        troop: world.object_views.regiment_id(troop).ok_or(CommandIdError::Unnamed)?,
+        target: match target {
+            RegimentTarget::System(system) => PlaceId::System(system_id(world, system)?),
+            RegimentTarget::Fleet(fleet) => PlaceId::Fleet(fleet_id(world, fleet)?),
+        },
+    })
+}
+
+/// The replay form of a squadron's move.
+///
+/// # Errors
+/// An object without a stable id.
+pub fn move_squadron_command(
+    world: &GameWorld,
+    class: FighterKey,
+    from: SquadronPlace,
+    to: SquadronPlace,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::MoveSquadron {
+        class: world
+            .fighter_classes
+            .get(class)
+            .map(|value| value.dat_id)
+            .ok_or(CommandIdError::Unnamed)?,
+        from: place_id(world, from)?,
+        to: place_id(world, to)?,
+    })
+}
+
+/// The replay form of a fleet join.
+///
+/// # Errors
+/// An object without a stable id.
+pub fn join_fleet_command(
+    world: &GameWorld,
+    mover: &FleetMover,
+    target: FleetKey,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::JoinFleet {
+        mover: mover_id(world, mover)?,
+        target: fleet_id(world, target)?,
+    })
+}
+
+/// The replay form of the headquarters' move.
+///
+/// # Errors
+/// A missing system.
+pub fn move_headquarters_command(
+    world: &GameWorld,
+    destination: SystemKey,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::MoveHeadquarters {
+        destination: system_id(world, destination)?,
+    })
+}
+
 /// The replay form of the app's fleet move, from its keys.
 ///
 /// # Errors
@@ -185,10 +415,18 @@ impl From<CommandIdError> for CommandError {
     }
 }
 
-/// The states a player command may change.
+/// The states a player command may read or change, and the tick it is
+/// given on.
 pub struct CommandStates<'a> {
     pub movement: &'a mut MovementState,
     pub troop_transport: &'a mut TroopTransportState,
+    pub blockade: &'a BlockadeState,
+    pub victory: &'a mut VictoryState,
+    pub tick: u64,
+}
+
+fn refused(refusal: impl std::fmt::Debug) -> CommandError {
+    CommandError::Refused(format!("{refusal:?}"))
 }
 
 /// Apply a replayed player command for the side `is_alliance`, as the app
@@ -225,7 +463,61 @@ pub fn apply(
                 is_alliance,
             )
             .map(|_| ())
-            .map_err(|refusal| CommandError::Refused(format!("{refusal:?}")))
+            .map_err(refused)
+        }
+        PlayerCommand::MoveRegiment { troop, target } => {
+            let troop = troop_key(world, *troop)?;
+            let target = match *target {
+                PlaceId::System(id) => RegimentTarget::System(system_key(world, id)?),
+                PlaceId::Fleet(serial) => RegimentTarget::Fleet(fleet_key(world, serial)?),
+            };
+            move_regiment(
+                world,
+                states.troop_transport,
+                states.movement,
+                states.blockade.blockaded_systems(),
+                troop,
+                target,
+                states.tick,
+                is_alliance,
+            )
+            .map(|_| ())
+            .map_err(refused)
+        }
+        PlayerCommand::MoveSquadron { class, from, to } => {
+            let class = fighter_class_key(world, *class)?;
+            let from = place_key(world, *from)?;
+            let to = place_key(world, *to)?;
+            move_squadron(world, states.troop_transport, is_alliance, class, from, to, states.tick)
+                .map(|_| ())
+                .map_err(refused)
+        }
+        PlayerCommand::JoinFleet { mover, target } => {
+            let mover = mover_key(world, mover)?;
+            let target = fleet_key(world, *target)?;
+            join_fleet(
+                world,
+                states.movement,
+                states.troop_transport,
+                &mover,
+                target,
+                is_alliance,
+            )
+            .map(|_: FleetOrderOutcome| ())
+            .map_err(|error: FleetOrderError| refused(error))
+        }
+        PlayerCommand::MoveHeadquarters { destination } => {
+            let destination = system_key(world, *destination)?;
+            move_headquarters(
+                world,
+                states.troop_transport,
+                states.victory,
+                is_alliance,
+                destination,
+                states.tick,
+            )
+            .map(|_: HeadquartersMove| ())
+            .map_err(|error: HeadquartersMoveError| refused(error))
         }
     }
 }
@@ -389,11 +681,227 @@ mod tests {
         assert_eq!(app.world().fleets.len(), replay.world().fleets.len());
     }
 
+    /// The order applied the app's way (`app`) and replayed (`command`,
+    /// Alliance actor) give one state, then the same state ten days on, and
+    /// it differs from the run without the order.
+    fn same_as_app(initial: &SaveState, app: impl FnOnce(&mut SaveState), command: PlayerCommand) {
+        same_as_app_for(ReplayActor::Alliance, initial, app, command);
+    }
+
+    fn same_as_app_for(
+        actor: ReplayActor,
+        initial: &SaveState,
+        app: impl FnOnce(&mut SaveState),
+        command: PlayerCommand,
+    ) {
+        let mut applied = initial.clone();
+        app(&mut applied);
+        let mut applied = CampaignDayRunner::new(applied);
+        let mut replay = CampaignDayRunner::new(initial.clone());
+        replay
+            .apply_as(actor, &ReplayCommand::Player { command })
+            .unwrap();
+        let idle = CampaignDayRunner::new(initial.clone());
+        assert_eq!(replay.fingerprint().unwrap(), applied.fingerprint().unwrap());
+        assert_ne!(idle.fingerprint().unwrap(), applied.fingerprint().unwrap(), "the order did something");
+        advance(&mut replay);
+        advance(&mut applied);
+        assert_eq!(replay.fingerprint().unwrap(), applied.fingerprint().unwrap());
+    }
+
+    fn sorted_systems(world: &GameWorld) -> Vec<SystemKey> {
+        let mut systems: Vec<(DatId, SystemKey)> =
+            world.systems.iter().map(|(key, system)| (system.dat_id, key)).collect();
+        systems.sort_by_key(|(id, _)| id.0);
+        systems.into_iter().map(|(_, key)| key).collect()
+    }
+
+    fn sorted_alliance_fleets(world: &GameWorld) -> Vec<FleetKey> {
+        sorted_fleets(world, true)
+    }
+
+    fn sorted_fleets(world: &GameWorld, is_alliance: bool) -> Vec<FleetKey> {
+        let mut fleets: Vec<FleetKey> = world
+            .fleets
+            .iter()
+            .filter(|(_, fleet)| fleet.is_alliance == is_alliance)
+            .map(|(key, _)| key)
+            .collect();
+        fleets.sort_by_key(|&fleet| world.fleet_serial(fleet));
+        fleets
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_regiment_move_matches_the_app_s() {
+        let initial = seed42();
+        let world = &initial.world;
+        let found = sorted_alliance_fleets(world).into_iter().find_map(|fleet| {
+            let at = world.fleets[fleet].location;
+            world.systems[at].ground_units.iter().copied().find_map(|troop| {
+                let mut probe = initial.clone();
+                move_regiment(
+                    &mut probe.world,
+                    &mut probe.troop_transport,
+                    &probe.movement,
+                    probe.blockade.blockaded_systems(),
+                    troop,
+                    RegimentTarget::Fleet(fleet),
+                    probe.clock.tick,
+                    true,
+                )
+                .ok()?;
+                world.object_views.regiment_id(troop)?;
+                Some((troop, fleet))
+            })
+        });
+        let (troop, fleet) = found.expect("an Alliance regiment that can board a fleet");
+        let command = move_regiment_command(world, troop, RegimentTarget::Fleet(fleet)).unwrap();
+        same_as_app(
+            &initial,
+            |state| {
+                move_regiment(
+                    &mut state.world,
+                    &mut state.troop_transport,
+                    &state.movement,
+                    state.blockade.blockaded_systems(),
+                    troop,
+                    RegimentTarget::Fleet(fleet),
+                    state.clock.tick,
+                    true,
+                )
+                .unwrap();
+            },
+            command,
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_squadron_move_matches_the_app_s() {
+        // The Empire: at the start only its ships carry squadrons.
+        let initial = seed42();
+        let world = &initial.world;
+        let mut classes: Vec<(DatId, FighterKey)> = world
+            .fighter_classes
+            .iter()
+            .map(|(key, class)| (class.dat_id, key))
+            .collect();
+        classes.sort_by_key(|(id, _)| id.0);
+        let found = sorted_fleets(world, false).into_iter().find_map(|fleet| {
+            let at = world.fleets[fleet].location;
+            let ways = [
+                (SquadronPlace::Planet(at), SquadronPlace::Fleet(fleet)),
+                (SquadronPlace::Fleet(fleet), SquadronPlace::Planet(at)),
+            ];
+            ways.into_iter().find_map(|(from, to)| {
+                classes.iter().find_map(|&(_, class)| {
+                    let mut probe = initial.clone();
+                    move_squadron(&mut probe.world, &mut probe.troop_transport, false, class, from, to, 0)
+                        .ok()?;
+                    Some((class, from, to))
+                })
+            })
+        });
+        let (class, from, to) = found.expect("an Imperial squadron that can move");
+        let command = move_squadron_command(world, class, from, to).unwrap();
+        same_as_app_for(
+            ReplayActor::Empire,
+            &initial,
+            |state| {
+                let tick = state.clock.tick;
+                move_squadron(&mut state.world, &mut state.troop_transport, false, class, from, to, tick)
+                    .unwrap();
+            },
+            command,
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_fleet_join_matches_the_app_s() {
+        let initial = seed42();
+        let world = &initial.world;
+        let fleets = sorted_alliance_fleets(world);
+        let found = fleets.iter().find_map(|&mover| {
+            fleets.iter().copied().filter(|&target| target != mover).find_map(|target| {
+                let mut probe = initial.clone();
+                join_fleet(
+                    &mut probe.world,
+                    &mut probe.movement,
+                    &mut probe.troop_transport,
+                    &FleetMover::Fleet(mover),
+                    target,
+                    true,
+                )
+                .ok()?;
+                Some((mover, target))
+            })
+        });
+        let (mover, target) = found.expect("two Alliance fleets that can join");
+        let command = join_fleet_command(world, &FleetMover::Fleet(mover), target).unwrap();
+        same_as_app(
+            &initial,
+            |state| {
+                join_fleet(
+                    &mut state.world,
+                    &mut state.movement,
+                    &mut state.troop_transport,
+                    &FleetMover::Fleet(mover),
+                    target,
+                    true,
+                )
+                .unwrap();
+            },
+            command,
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_headquarters_move_matches_the_app_s() {
+        let initial = seed42();
+        let world = &initial.world;
+        let found = sorted_systems(world).into_iter().find(|&to| {
+            let mut probe = initial.clone();
+            matches!(
+                move_headquarters(
+                    &mut probe.world,
+                    &mut probe.troop_transport,
+                    &mut probe.victory,
+                    true,
+                    to,
+                    probe.clock.tick,
+                ),
+                Ok(HeadquartersMove::Departed(_))
+            )
+        });
+        let to = found.expect("a system the Alliance headquarters can move to");
+        let command = move_headquarters_command(world, to).unwrap();
+        same_as_app(
+            &initial,
+            |state| {
+                let tick = state.clock.tick;
+                move_headquarters(
+                    &mut state.world,
+                    &mut state.troop_transport,
+                    &mut state.victory,
+                    true,
+                    to,
+                    tick,
+                )
+                .unwrap();
+            },
+            command,
+        );
+    }
+
     #[test]
     fn a_command_error_says_what_it_missed() {
         assert_eq!(CommandIdError::Fleet(7).to_string(), "no fleet with creation serial 7");
         assert_eq!(CommandIdError::System(DatId(0x9000_0109)).to_string(), "no system 0x90000109");
         assert_eq!(CommandIdError::Regiment(DatId(0x1000_0002)).to_string(), "no regiment 0x10000002");
+        assert_eq!(CommandIdError::FighterClass(DatId(0x1c00_0001)).to_string(), "no fighter class 0x1c000001");
         assert_eq!(CommandIdError::Unnamed.to_string(), "an object has no stable id");
         assert_eq!(CommandError::from(CommandIdError::Unnamed).to_string(), "an object has no stable id");
         assert_eq!(CommandError::Refused("x".into()).to_string(), "the order was refused: x");

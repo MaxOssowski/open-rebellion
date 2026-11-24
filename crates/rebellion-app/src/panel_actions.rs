@@ -97,23 +97,17 @@ pub(super) fn apply_panel_action(
     match action {
         // FUN_00578f30 → FUN_00556390 (ghidra/notes/regiment-unload.md).
         PanelAction::MoveRegiment { troop, target } => {
-            let expected_is_alliance = *player_faction == MissionFaction::Alliance;
-            let result = if world
-                .troops
-                .get(troop)
-                .is_some_and(|value| value.is_alliance == expected_is_alliance)
-            {
-                troop_transport_state.move_regiment(
-                    world,
-                    movement_state,
-                    blockade_state.blockaded_systems(),
-                    troop,
-                    target,
-                    clock.tick,
-                )
-            } else {
-                Err(rebellion_core::troop_transport::TroopTransportError::WrongFaction)
-            };
+            // The shared order (rebellion_data::player_command).
+            let result = rebellion_data::player_command::move_regiment(
+                world,
+                troop_transport_state,
+                movement_state,
+                blockade_state.blockaded_systems(),
+                troop,
+                target,
+                clock.tick,
+                *player_faction == MissionFaction::Alliance,
+            );
             // port: FUN_00487c90's advisor reaction; this line stands in.
             if let Err(error) = result {
                 msg_log.refuse(
@@ -158,10 +152,15 @@ pub(super) fn apply_panel_action(
         PanelAction::MoveSquadron { class, from, to } => {
             let alliance = *player_faction == MissionFaction::Alliance;
             // port: FUN_00487c90's advisor reaction; this line stands in.
-            if let Err(error) = troop_transport_state
-                .squadrons
-                .move_squadrons(world, alliance, class, 1, from, to, clock.tick)
-            {
+            if let Err(error) = rebellion_data::player_command::move_squadron(
+                world,
+                troop_transport_state,
+                alliance,
+                class,
+                from,
+                to,
+                clock.tick,
+            ) {
                 msg_log.refuse(
                     GameMessage::new(
                         clock.tick,

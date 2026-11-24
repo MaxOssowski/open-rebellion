@@ -1042,6 +1042,9 @@ impl ReplayRuntime {
                     crate::player_command::CommandStates {
                         movement: &mut self.states.movement,
                         troop_transport: &mut self.states.troop_transport,
+                        blockade: &self.states.blockade,
+                        victory: &mut self.states.victory,
+                        tick: self.states.clock.tick,
                     },
                     actor == ReplayActor::Alliance,
                     command,
