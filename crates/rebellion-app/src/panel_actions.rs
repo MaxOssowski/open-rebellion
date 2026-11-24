@@ -593,33 +593,15 @@ pub(super) fn apply_panel_action(
             system,
             fleet,
         } => {
-            let result = if rebellion_core::missions::move_place_allowed(
+            let result = move_members_result(
                 world,
+                mission_state,
                 *player_faction,
+                vec![MissionMember::Character(character)],
                 system,
                 fleet,
-            ) {
-                mission_state
-                    .dispatch_guarded(
-                        rebellion_core::missions::MissionRequest::single(
-                            MissionKind::Move,
-                            *player_faction,
-                            character,
-                            system,
-                            None,
-                            clock.tick,
-                        ),
-                        world,
-                    )
-                    .inspect(|&id| {
-                        if let Some(fleet) = fleet {
-                            mission_state.set_target_fleet(id, fleet);
-                        }
-                    })
-                    .map_err(|refusal| format!("{refusal:?}"))
-            } else {
-                Err("1/0x28".to_string())
-            };
+                clock.tick,
+            );
             macroquad::logging::info!(
                 "[interface] character_move character={:?} to={:?} fleet={:?} result={:?}",
                 world.characters.get(character).map(|c| c.name.as_str()),
@@ -649,50 +631,30 @@ pub(super) fn apply_panel_action(
             system,
             fleet,
         } => {
-            for product in products {
-                let moved =
-                    rebellion_core::products::move_to_target(
-                        world,
-                        product,
-                        system,
-                        fleet,
-                        fleet.map_or(0, |fleet| troop_transport_state.carried_count(fleet)),
-                    );
+            // The shared order (rebellion_data::player_command).
+            let moved = rebellion_data::player_command::move_products(
+                world,
+                troop_transport_state,
+                &products,
+                system,
+                fleet,
+            );
+            for (product, moved) in products.iter().zip(moved) {
                 macroquad::logging::info!(
                     "[interface] command=0x201 product={product} moved={moved}"
                 );
             }
         }
         PanelAction::MoveSpecialForce { unit, system, fleet } => {
-            let result = if rebellion_core::missions::move_place_allowed(
+            let result = move_members_result(
                 world,
+                mission_state,
                 *player_faction,
+                vec![MissionMember::SpecialForce(unit)],
                 system,
                 fleet,
-            ) {
-                mission_state
-                    .dispatch_guarded(
-                        rebellion_core::missions::MissionRequest {
-                            kind: MissionKind::Move,
-                            faction: *player_faction,
-                            team: vec![MissionMember::SpecialForce(unit)],
-                            decoys: Vec::new(),
-                            target_system: system,
-                            target_character: None,
-                            target_object: None,
-                            tick: clock.tick,
-                        },
-                        world,
-                    )
-                    .inspect(|&id| {
-                        if let Some(fleet) = fleet {
-                            mission_state.set_target_fleet(id, fleet);
-                        }
-                    })
-                    .map_err(|refusal| format!("{refusal:?}"))
-            } else {
-                Err("1/0x28".to_string())
-            };
+                clock.tick,
+            );
             macroquad::logging::info!(
                 "[interface] special_force_move unit={unit:?} to={:?} fleet={:?} result={result:?}",
                 world.systems.get(system).map(|s| s.name.as_str()),
@@ -720,35 +682,15 @@ pub(super) fn apply_panel_action(
             system,
             fleet,
         } => {
-            let result = if rebellion_core::missions::move_place_allowed(
+            let result = move_members_result(
                 world,
+                mission_state,
                 *player_faction,
+                members.clone(),
                 system,
                 fleet,
-            ) {
-                mission_state
-                    .dispatch_guarded(
-                        rebellion_core::missions::MissionRequest {
-                            kind: MissionKind::Move,
-                            faction: *player_faction,
-                            team: members.clone(),
-                            decoys: Vec::new(),
-                            target_system: system,
-                            target_character: None,
-                            target_object: None,
-                            tick: clock.tick,
-                        },
-                        world,
-                    )
-                    .inspect(|&id| {
-                        if let Some(fleet) = fleet {
-                            mission_state.set_target_fleet(id, fleet);
-                        }
-                    })
-                    .map_err(|refusal| format!("{refusal:?}"))
-            } else {
-                Err("1/0x28".to_string())
-            };
+                clock.tick,
+            );
             macroquad::logging::info!(
                 "[interface] members_move members={} to={:?} fleet={:?} result={result:?}",
                 members.len(),
@@ -775,19 +717,16 @@ pub(super) fn apply_panel_action(
         // reports the refusal.
         PanelAction::OrderCommand { character, order } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
-            let Some(kind) = rebellion_core::character_command::CommandKind::of_order(order)
-            else {
+            // The shared order (rebellion_data::player_command).
+            let Some(result) = rebellion_data::player_command::order_command(
+                world,
+                mission_state,
+                character,
+                order,
+                is_alliance,
+            ) else {
                 return;
             };
-            let en_route = mission_state
-                .is_en_route(rebellion_core::missions::MissionMember::Character(character));
-            let result = rebellion_core::character_command::give(
-                world,
-                character,
-                kind,
-                is_alliance,
-                en_route,
-            );
             macroquad::logging::info!(
                 "[interface] command={order:#x} character={:?} result={:?} now={:?}",
                 world.characters.get(character).map(|c| c.name.as_str()),
@@ -810,20 +749,9 @@ pub(super) fn apply_panel_action(
         // FUN_00534c00), or FUN_00487c90 reports the refusal.
         PanelAction::Retire(member) => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
-            let en_route = mission_state.is_en_route(member);
-            let result = match member {
-                MissionMember::Character(key) => {
-                    rebellion_core::character_retire::retire(world, key, is_alliance, en_route)
-                }
-                MissionMember::SpecialForce(key) => {
-                    rebellion_core::character_retire::retire_special_force(
-                        world,
-                        key,
-                        is_alliance,
-                        en_route,
-                    )
-                }
-            };
+            // The shared order (rebellion_data::player_command).
+            let result =
+                rebellion_data::player_command::retire(world, mission_state, member, is_alliance);
             macroquad::logging::info!(
                 "[interface] command=0x242 destination=retire member={:?} result={:?}",
                 member,
@@ -1075,4 +1003,31 @@ pub(super) fn apply_panel_action(
         }
 
     }
+}
+
+/// A Move of members through the shared order
+/// (`rebellion_data::player_command::move_members`), its refusal as the
+/// app logs it: "1/0x28" for a place of the other side.
+fn move_members_result(
+    world: &mut GameWorld,
+    mission_state: &mut MissionState,
+    faction: MissionFaction,
+    members: Vec<MissionMember>,
+    system: SystemKey,
+    fleet: Option<FleetKey>,
+    tick: u64,
+) -> Result<u64, String> {
+    rebellion_data::player_command::move_members(
+        world,
+        mission_state,
+        faction,
+        members,
+        system,
+        fleet,
+        tick,
+    )
+    .map_err(|refusal| match refusal {
+        rebellion_data::player_command::MoveRefusal::OtherSide => "1/0x28".to_string(),
+        rebellion_data::player_command::MoveRefusal::Mission(refusal) => format!("{refusal:?}"),
+    })
 }

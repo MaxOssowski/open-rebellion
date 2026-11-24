@@ -42,3 +42,24 @@ never by slotmap keys:
 Not in scope: a played tactical battle's own command stream (its own
 stage later), and the format version stays 2 while commands are only
 added (a file with a player command fails closed on an older reader).
+
+## Progress (2026-11-24 night)
+
+- Stage 1: fleet dispatch (99801c59).
+- Stage 3a-3e: regiment, squadron, fleet-join and headquarters moves;
+  production (Reserved, Stop, Build, Destinations to a system or a
+  fleet); missions; renames, Create Fleet, ships into the spare fleet;
+  Move of characters, special forces and groups; products' moves;
+  command and Retire orders. Each order's app arm calls the same
+  function the replay applies, and a seed-42 test per family compares the
+  app path's fingerprint with the replay's.
+- Left in stage 3: Planetary Bombardment and Assault. Their app arms use
+  app-only parts (`BombardEnv`, `destroy_planet`, `occupy_system`, the
+  assault reports) and the day's draws, so they move with those parts.
+- Seen on the way: the save-state fingerprint encodes slotmap key
+  versions. A product's move stages and drops a fleet; a live world
+  reuses the slot with a new version while a state loaded afresh hands
+  out a first-version slot, so the same game state can fingerprint
+  differently before and after a save and load. Replays run in one live
+  runtime, so they are unaffected; a fingerprint across a save and load
+  is not a game comparison until keys are normalised.

@@ -120,6 +120,25 @@ pub enum PlayerCommand {
         roster: u64,
         system: DatId,
     },
+    /// Members sent by a Move mission to a system, or to a fleet there
+    /// (`PanelAction::MoveCharacter`, `MoveSpecialForce`, `MoveMembers`).
+    MoveMembers {
+        members: Vec<MemberId>,
+        system: DatId,
+        fleet: Option<u64>,
+    },
+    /// Queued or finished products moved to a system or a fleet there, by
+    /// product id (`PanelAction::MoveProducts`).
+    MoveProducts {
+        products: Vec<u64>,
+        system: DatId,
+        fleet: Option<u64>,
+    },
+    /// A character's command order `0x260..0x263`
+    /// (`PanelAction::OrderCommand`).
+    OrderCommand { character: DatId, order_id: u16 },
+    /// A member retired (`PanelAction::Retire`).
+    Retire { member: MemberId },
     /// A mission sent (`PanelAction::DispatchMission`).
     DispatchMission {
         kind: MissionKind,
@@ -942,6 +961,178 @@ pub fn move_ships_command(
     })
 }
 
+/// Why a Move order was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveRefusal {
+    /// The place is the other side's (`FUN_004f4b60`, `1`/`0x28`).
+    OtherSide,
+    /// The mission's own refusal.
+    Mission(MissionRefusal),
+}
+
+/// Members sent by a Move mission to `system`, or to `fleet` there (the
+/// app's `MoveCharacter`, `MoveSpecialForce` and `MoveMembers`): the place
+/// must be open to the side (`missions::move_place_allowed`), then the
+/// Move mission goes, aimed at the fleet when one is named. Returns the
+/// mission's id.
+///
+/// # Errors
+/// The place's or the mission's refusal.
+pub fn move_members(
+    world: &mut GameWorld,
+    missions: &mut MissionState,
+    faction: MissionFaction,
+    members: Vec<MissionMember>,
+    system: SystemKey,
+    fleet: Option<FleetKey>,
+    tick: u64,
+) -> Result<u64, MoveRefusal> {
+    if !rebellion_core::missions::move_place_allowed(world, faction, system, fleet) {
+        return Err(MoveRefusal::OtherSide);
+    }
+    let id = missions
+        .dispatch_guarded(
+            MissionRequest {
+                kind: MissionKind::Move,
+                faction,
+                team: members,
+                decoys: Vec::new(),
+                target_system: system,
+                target_character: None,
+                target_object: None,
+                tick,
+            },
+            world,
+        )
+        .map_err(MoveRefusal::Mission)?;
+    if let Some(fleet) = fleet {
+        missions.set_target_fleet(id, fleet);
+    }
+    Ok(id)
+}
+
+/// Products moved to a system or a fleet there, each on its own (the
+/// app's `MoveProducts`); the result of each move.
+pub fn move_products(
+    world: &mut GameWorld,
+    troop_transport: &TroopTransportState,
+    products: &[u64],
+    system: SystemKey,
+    fleet: Option<FleetKey>,
+) -> Vec<bool> {
+    products
+        .iter()
+        .map(|&product| {
+            rebellion_core::products::move_to_target(
+                world,
+                product,
+                system,
+                fleet,
+                fleet.map_or(0, |fleet| troop_transport.carried_count(fleet)),
+            )
+        })
+        .collect()
+}
+
+/// A character's command order (the app's `OrderCommand`); `None` for an
+/// order that names no command.
+pub fn order_command(
+    world: &mut GameWorld,
+    missions: &MissionState,
+    character: CharacterKey,
+    order: u16,
+    is_alliance: bool,
+) -> Option<Result<Vec<CharacterKey>, rebellion_core::character_command::Refusal>> {
+    let kind = rebellion_core::character_command::CommandKind::of_order(order)?;
+    let en_route = missions.is_en_route(MissionMember::Character(character));
+    Some(rebellion_core::character_command::give(
+        world, character, kind, is_alliance, en_route,
+    ))
+}
+
+/// A member retired (the app's `Retire`).
+///
+/// # Errors
+/// The retirement's refusal.
+pub fn retire(
+    world: &mut GameWorld,
+    missions: &MissionState,
+    member: MissionMember,
+    is_alliance: bool,
+) -> Result<(), rebellion_core::character_retire::Refusal> {
+    let en_route = missions.is_en_route(member);
+    match member {
+        MissionMember::Character(key) => {
+            rebellion_core::character_retire::retire(world, key, is_alliance, en_route)
+        }
+        MissionMember::SpecialForce(key) => {
+            rebellion_core::character_retire::retire_special_force(world, key, is_alliance, en_route)
+        }
+    }
+}
+
+/// The replay form of a Move of members.
+///
+/// # Errors
+/// An object without a stable id.
+pub fn move_members_command(
+    world: &GameWorld,
+    members: &[MissionMember],
+    system: SystemKey,
+    fleet: Option<FleetKey>,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::MoveMembers {
+        members: members
+            .iter()
+            .map(|&member| member_id(world, member))
+            .collect::<Result<_, _>>()?,
+        system: system_id(world, system)?,
+        fleet: fleet.map(|fleet| fleet_id(world, fleet)).transpose()?,
+    })
+}
+
+/// The replay form of products' moves.
+///
+/// # Errors
+/// A missing system or an unnamed fleet.
+pub fn move_products_command(
+    world: &GameWorld,
+    products: &[u64],
+    system: SystemKey,
+    fleet: Option<FleetKey>,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::MoveProducts {
+        products: products.to_vec(),
+        system: system_id(world, system)?,
+        fleet: fleet.map(|fleet| fleet_id(world, fleet)).transpose()?,
+    })
+}
+
+/// The replay form of a command order.
+///
+/// # Errors
+/// A missing character.
+pub fn order_command_command(
+    world: &GameWorld,
+    character: CharacterKey,
+    order: u16,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::OrderCommand {
+        character: character_id(world, character)?,
+        order_id: order,
+    })
+}
+
+/// The replay form of a Retire order.
+///
+/// # Errors
+/// An object without a stable id.
+pub fn retire_command(world: &GameWorld, member: MissionMember) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::Retire {
+        member: member_id(world, member)?,
+    })
+}
+
 /// The replay form of the headquarters' move.
 ///
 /// # Errors
@@ -1020,6 +1211,14 @@ pub struct CommandStates<'a> {
     pub manufacturing: &'a mut ManufacturingState,
     pub missions: &'a mut MissionState,
     pub tick: u64,
+}
+
+fn faction(is_alliance: bool) -> MissionFaction {
+    if is_alliance {
+        MissionFaction::Alliance
+    } else {
+        MissionFaction::Empire
+    }
 }
 
 fn refused(refusal: impl std::fmt::Debug) -> CommandError {
@@ -1228,6 +1427,53 @@ pub fn apply(
             .map(|_| ())
             .map_err(refused)
         }
+        PlayerCommand::MoveMembers {
+            members,
+            system,
+            fleet,
+        } => {
+            let members = members
+                .iter()
+                .map(|&member| member_key(world, member))
+                .collect::<Result<Vec<_>, _>>()?;
+            let system = system_key(world, *system)?;
+            let fleet = fleet.map(|serial| fleet_key(world, serial)).transpose()?;
+            move_members(
+                world,
+                states.missions,
+                faction(is_alliance),
+                members,
+                system,
+                fleet,
+                states.tick,
+            )
+            .map(|_| ())
+            .map_err(refused)
+        }
+        PlayerCommand::MoveProducts {
+            products,
+            system,
+            fleet,
+        } => {
+            let system = system_key(world, *system)?;
+            let fleet = fleet.map(|serial| fleet_key(world, serial)).transpose()?;
+            // The app moves each product on its own and reports nothing.
+            move_products(world, states.troop_transport, products, system, fleet);
+            Ok(())
+        }
+        PlayerCommand::OrderCommand { character, order_id } => {
+            let character = character_key(world, *character)?;
+            let order = *order_id;
+            match order_command(world, states.missions, character, order, is_alliance) {
+                Some(Ok(_)) => Ok(()),
+                Some(Err(refusal)) => Err(refused(refusal)),
+                None => Err(CommandError::Refused(format!("order {order:#x} names no command"))),
+            }
+        }
+        PlayerCommand::Retire { member } => {
+            let member = member_key(world, *member)?;
+            retire(world, states.missions, member, is_alliance).map_err(refused)
+        }
         PlayerCommand::DispatchMission {
             kind,
             team,
@@ -1243,11 +1489,7 @@ pub fn apply(
             };
             let request = MissionRequest {
                 kind: *kind,
-                faction: if is_alliance {
-                    MissionFaction::Alliance
-                } else {
-                    MissionFaction::Empire
-                },
+                faction: faction(is_alliance),
                 team: members(team)?,
                 decoys: members(decoys)?,
                 target_system: system_key(world, *target)?,
@@ -2053,6 +2295,178 @@ mod tests {
             },
             move_ships_command(world, fleet, &[0], roster, to).unwrap(),
         );
+    }
+
+    fn sorted_alliance_characters(world: &GameWorld) -> Vec<CharacterKey> {
+        let mut characters: Vec<(DatId, CharacterKey)> = world
+            .characters
+            .iter()
+            .filter(|(_, c)| c.is_alliance)
+            .map(|(key, c)| (c.dat_id, key))
+            .collect();
+        characters.sort_by_key(|(id, _)| id.0);
+        characters.into_iter().map(|(_, key)| key).collect()
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_move_of_members_matches_the_app_s() {
+        let initial = seed42();
+        let world = &initial.world;
+        let systems = sorted_systems(world);
+        let found = sorted_alliance_characters(world).into_iter().find_map(|character| {
+            systems.iter().find_map(|&to| {
+                let mut probe = initial.clone();
+                move_members(
+                    &mut probe.world,
+                    &mut probe.missions,
+                    MissionFaction::Alliance,
+                    vec![MissionMember::Character(character)],
+                    to,
+                    None,
+                    probe.clock.tick,
+                )
+                .ok()?;
+                Some((character, to))
+            })
+        });
+        let (character, to) = found.expect("an Alliance character that can move");
+        let members = [MissionMember::Character(character)];
+        same_as_app(
+            &initial,
+            |state| {
+                let tick = state.clock.tick;
+                move_members(
+                    &mut state.world,
+                    &mut state.missions,
+                    MissionFaction::Alliance,
+                    members.to_vec(),
+                    to,
+                    None,
+                    tick,
+                )
+                .unwrap();
+            },
+            move_members_command(world, &members, to, None).unwrap(),
+        );
+        // A place of the other side is refused before any mission.
+        let imperial = systems
+            .iter()
+            .copied()
+            .find(|&to| {
+                !rebellion_core::missions::move_place_allowed(world, MissionFaction::Alliance, to, None)
+            })
+            .expect("a system closed to the Alliance");
+        let mut probe = initial.clone();
+        assert_eq!(
+            move_members(
+                &mut probe.world,
+                &mut probe.missions,
+                MissionFaction::Alliance,
+                members.to_vec(),
+                imperial,
+                None,
+                0,
+            ),
+            Err(MoveRefusal::OtherSide)
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn replayed_command_and_retire_orders_match_the_app_s() {
+        let initial = seed42();
+        let world = &initial.world;
+        let characters = sorted_alliance_characters(world);
+        // FUN_0053ebb0: orders 0x260..0x263 name the commands.
+        let found = characters.iter().find_map(|&character| {
+            (0x261..=0x263).find_map(|order| {
+                let mut probe = initial.clone();
+                order_command(&mut probe.world, &probe.missions, character, order, true)?.ok()?;
+                Some((character, order))
+            })
+        });
+        let (character, order) = found.expect("an Alliance character who takes a command");
+        same_as_app(
+            &initial,
+            |state| {
+                order_command(&mut state.world, &state.missions, character, order, true)
+                    .unwrap()
+                    .unwrap();
+            },
+            order_command_command(world, character, order).unwrap(),
+        );
+        let mut probe = initial.clone();
+        assert!(order_command(&mut probe.world, &probe.missions, character, 0x100, true).is_none());
+        let found = characters.iter().copied().find(|&character| {
+            let mut probe = initial.clone();
+            retire(&mut probe.world, &probe.missions, MissionMember::Character(character), true).is_ok()
+        });
+        let retiring = found.expect("an Alliance character who may retire");
+        same_as_app(
+            &initial,
+            |state| {
+                retire(&mut state.world, &state.missions, MissionMember::Character(retiring), true)
+                    .unwrap();
+            },
+            retire_command(world, MissionMember::Character(retiring)).unwrap(),
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_product_move_takes_the_app_s_function() {
+        // A product appears once production runs: the replay orders a ship,
+        // runs a day and moves the product to another of its side's
+        // systems, as products::move_to_target does for the app.
+        let initial = seed42();
+        let world = &initial.world;
+        let (system, area, kind) = alliance_ship_build(&initial);
+        let mut runner = CampaignDayRunner::new(initial.clone());
+        runner
+            .apply_as(
+                ReplayActor::Alliance,
+                &ReplayCommand::Player {
+                    command: build_production_command(world, system, area, kind, 1).unwrap(),
+                },
+            )
+            .unwrap();
+        runner.apply(&ReplayCommand::AdvanceTicks { count: 1 }).unwrap();
+        let state = runner.state();
+        // The side's own product: the order made it (the AI orders too).
+        let product = state
+            .world
+            .products
+            .all()
+            .iter()
+            .filter(|p| p.is_alliance)
+            .map(|p| p.id)
+            .max()
+            .expect("the Alliance's product");
+        let found = sorted_systems(&state.world).into_iter().find(|&to| {
+            let mut probe = state.clone();
+            move_products(&mut probe.world, &probe.troop_transport, &[product], to, None)[0]
+        });
+        let to = found.expect("a system the product may go to");
+        let command = move_products_command(&state.world, &[product], to, None).unwrap();
+        // Both paths in one live runner: the move stages and drops a fleet,
+        // and a slot a live world reuses differs in version from the slot a
+        // state loaded afresh gives (a key, not the game).
+        let mut app = CampaignDayRunner::new(state.clone());
+        assert_eq!(
+            move_products(app.world_mut(), &TroopTransportState::default(), &[product], to, None),
+            [true]
+        );
+        let mut replay = CampaignDayRunner::new(state.clone());
+        replay
+            .apply_as(ReplayActor::Alliance, &ReplayCommand::Player { command })
+            .unwrap();
+        let idle = CampaignDayRunner::new(state);
+        assert_eq!(replay.fingerprint().unwrap(), app.fingerprint().unwrap());
+        assert_ne!(idle.fingerprint().unwrap(), app.fingerprint().unwrap());
+        advance(&mut replay);
+        advance(&mut app);
+        assert_eq!(replay.fingerprint().unwrap(), app.fingerprint().unwrap());
     }
 
     #[test]
