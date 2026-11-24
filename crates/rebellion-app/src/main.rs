@@ -3209,6 +3209,10 @@ async fn main() {
             run_ai_day!(u32::MAX, true);
 
             let current_tick = tick_events.last().map_or(0, |event| event.tick);
+            // Days this frame begins together, for the session's replay.
+            if let Some(first) = tick_events.first() {
+                session_log.record_days_together(first.tick, tick_events.len() as u64);
+            }
             // ── The day's systems ahead of its AI: economy, yards,
             // deliveries, movement, battles (the player's own as a tactical
             // battle, AppDayPresentation::take_battle), occupation, fog,

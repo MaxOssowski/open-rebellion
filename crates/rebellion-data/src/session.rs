@@ -43,6 +43,10 @@ pub struct SessionLog {
     start: Option<SaveState>,
     entries: Vec<SessionEntry>,
     unrecorded: u32,
+    /// Days the app began together (a frame whose clock completed more
+    /// than one, such as a background tab's long frame): the first and how
+    /// many.
+    together: Vec<(u64, u64)>,
 }
 
 impl SessionLog {
@@ -51,6 +55,14 @@ impl SessionLog {
         self.start = Some(start);
         self.entries.clear();
         self.unrecorded = 0;
+        self.together.clear();
+    }
+
+    /// Note that the app began `count` days from `first` together.
+    pub fn record_days_together(&mut self, first: u64, count: u64) {
+        if self.start.is_some() && count > 1 {
+            self.together.push((first, count));
+        }
     }
 
     /// Forget the session until the next [`Self::restart`]: orders given
@@ -59,6 +71,7 @@ impl SessionLog {
         self.start = None;
         self.entries.clear();
         self.unrecorded = 0;
+        self.together.clear();
     }
 
     /// Count an order the log cannot keep (one the replay has no command
@@ -150,11 +163,19 @@ impl SessionLog {
         };
         let first = runner.tick();
         between(&mut runner, first)?;
-        for day in first + 1..=end_tick {
+        let mut day = first + 1;
+        while day <= end_tick {
+            // A group the app began together, or one day.
+            let count = self
+                .together
+                .iter()
+                .find(|&&(start, _)| start == day)
+                .map_or(1, |&(_, count)| count);
+            let last = day + count - 1;
             let orders: Vec<(u32, ReplayActor, ReplayCommand)> = self
                 .entries
                 .iter()
-                .filter(|e| e.tick == day)
+                .filter(|e| e.tick == last)
                 .filter_map(|e| match e.moment {
                     OrderMoment::InDay { passes_done } => {
                         Some((passes_done, e.actor, e.command.clone()))
@@ -163,13 +184,14 @@ impl SessionLog {
                 })
                 .collect();
             let stop = match end_moment {
-                OrderMoment::InDay { passes_done } if day == end_tick => Some(passes_done),
+                OrderMoment::InDay { passes_done } if last == end_tick => Some(passes_done),
                 _ => None,
             };
-            runner.run_day_with_orders(&orders, stop)?;
+            runner.run_days_with_orders(count, &orders, stop)?;
             if stop.is_none() {
-                between(&mut runner, day)?;
+                between(&mut runner, last)?;
             }
+            day = last + 1;
         }
         Ok(runner)
     }
@@ -300,6 +322,40 @@ mod tests {
         )
         .unwrap();
         (fingerprint.value, log)
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn days_the_app_began_together_replay_together() {
+        // A frame whose clock completed two days begins them at once with
+        // one set of rolls (the app's frame step); the log keeps that, and
+        // its replay is not two days apart.
+        let initial = seed42();
+        let mut log = SessionLog::default();
+        log.restart(initial.clone());
+        log.record_speed(0, OrderMoment::BetweenDays, true, GameSpeed::Medium);
+        log.record_days_together(3, 2);
+        log.record_days_together(7, 1);
+        let together = log.replay(6, OrderMoment::BetweenDays).unwrap();
+        assert_eq!(together.tick(), 6);
+
+        let mut by_hand = CampaignDayRunner::new(initial.clone());
+        by_hand
+            .apply_as(ReplayActor::Alliance, &ReplayCommand::SetSpeed { speed: GameSpeed::Medium })
+            .unwrap();
+        by_hand.run_day_with_orders(&[], None).unwrap();
+        by_hand.run_day_with_orders(&[], None).unwrap();
+        by_hand.run_days_with_orders(2, &[], None).unwrap();
+        assert_eq!(by_hand.tick(), 4);
+        by_hand.run_day_with_orders(&[], None).unwrap();
+        by_hand.run_day_with_orders(&[], None).unwrap();
+        assert_eq!(together.fingerprint().unwrap(), by_hand.fingerprint().unwrap());
+
+        let mut apart = SessionLog::default();
+        apart.restart(initial);
+        apart.record_speed(0, OrderMoment::BetweenDays, true, GameSpeed::Medium);
+        let apart = apart.replay(6, OrderMoment::BetweenDays).unwrap();
+        assert_ne!(together.fingerprint().unwrap(), apart.fingerprint().unwrap());
     }
 
     #[test]

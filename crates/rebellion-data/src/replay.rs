@@ -819,8 +819,26 @@ impl CampaignDayRunner {
         orders: &[(u32, ReplayActor, ReplayCommand)],
         stop_after: Option<u32>,
     ) -> anyhow::Result<()> {
-        let (tick, rolls) = self.runtime.next_day();
-        let tick_events = [TickEvent { tick }];
+        self.run_days_with_orders(1, orders, stop_after)
+    }
+
+    /// [`Self::run_day_with_orders`] for `count` days begun together, as
+    /// the app begins the days one frame's clock completed: the clock moves
+    /// `count` days, the frame draws one set of rolls, and one day's
+    /// passes follow (`AiDay::days` closes them all).
+    ///
+    /// # Errors
+    /// The first command that does not apply.
+    pub fn run_days_with_orders(
+        &mut self,
+        count: u64,
+        orders: &[(u32, ReplayActor, ReplayCommand)],
+        stop_after: Option<u32>,
+    ) -> anyhow::Result<()> {
+        let (first, rolls) = self.runtime.next_day();
+        let tick = first + count.max(1) - 1;
+        self.runtime.states.clock.tick = tick;
+        let tick_events: Vec<TickEvent> = (first..=tick).map(|tick| TickEvent { tick }).collect();
         let mut integrator = crate::integrator::PerceptionIntegrator::new(tick, tick);
         crate::simulation::begin_simulation_day(
             &mut self.runtime.world,
