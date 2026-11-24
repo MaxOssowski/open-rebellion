@@ -133,6 +133,12 @@ pub fn all_commands() -> Vec<CommandDef> {
             description: "Write message log to file",
             category: "Control",
         },
+        CommandDef {
+            id: "check_session_replay",
+            label: "Check Session Replay",
+            description: "Replay this session's orders and compare with the game",
+            category: "Control",
+        },
     ]
 }
 

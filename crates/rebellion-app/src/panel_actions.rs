@@ -90,13 +90,25 @@ pub(super) fn apply_panel_action(
     message_texts: &std::collections::HashMap<u16, String>,
     assault_summaries: &mut rebellion_render::assault_summary::AssaultSummaryState,
     refusal: &mut Option<RefusedOrder>,
+    session: &mut rebellion_data::session::SessionLog,
+    moment: rebellion_data::session::OrderMoment,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
     #[cfg(not(target_arch = "wasm32"))] _sounds_dir: &Path,
 ) {
+    use rebellion_data::player_command as order;
+    let side_is_alliance = *player_faction == MissionFaction::Alliance;
+    // Keep an order the shared code carried out in the session log, as
+    // its replay command, built before the order changed the galaxy.
+    macro_rules! keep {
+        ($command:expr) => {
+            session.record_order(clock.tick, moment, side_is_alliance, $command)
+        };
+    }
     match action {
         // FUN_00578f30 → FUN_00556390 (ghidra/notes/regiment-unload.md).
         PanelAction::MoveRegiment { troop, target } => {
+            let command = order::move_regiment_command(world, troop, target);
             // The shared order (rebellion_data::player_command).
             let result = rebellion_data::player_command::move_regiment(
                 world,
@@ -109,6 +121,9 @@ pub(super) fn apply_panel_action(
                 *player_faction == MissionFaction::Alliance,
             );
             // port: FUN_00487c90's advisor reaction; this line stands in.
+            if result.is_ok() {
+                keep!(command);
+            }
             if let Err(error) = result {
                 msg_log.refuse(
                     GameMessage::new(
@@ -123,6 +138,7 @@ pub(super) fn apply_panel_action(
         // FUN_00578f30 → FUN_00556390 for the headquarters
         // (rebellion_core::headquarters_move).
         PanelAction::MoveHeadquarters { destination } => {
+            let command = order::move_headquarters_command(world, destination);
             let result = rebellion_core::headquarters_move::move_headquarters(
                 world,
                 troop_transport_state,
@@ -137,6 +153,9 @@ pub(super) fn apply_panel_action(
                 result
             );
             // port: FUN_00487c90's advisor reaction; this line stands in.
+            if result.is_ok() {
+                keep!(command);
+            }
             if let Err(error) = result {
                 msg_log.refuse(
                     GameMessage::new(
@@ -151,8 +170,9 @@ pub(super) fn apply_panel_action(
         // FUN_00557ce0's 0x201 for a squadron (rebellion_core::squadrons).
         PanelAction::MoveSquadron { class, from, to } => {
             let alliance = *player_faction == MissionFaction::Alliance;
+            let command = order::move_squadron_command(world, class, from, to);
             // port: FUN_00487c90's advisor reaction; this line stands in.
-            if let Err(error) = rebellion_data::player_command::move_squadron(
+            let result = rebellion_data::player_command::move_squadron(
                 world,
                 troop_transport_state,
                 alliance,
@@ -160,7 +180,11 @@ pub(super) fn apply_panel_action(
                 from,
                 to,
                 clock.tick,
-            ) {
+            );
+            if result.is_ok() {
+                keep!(command);
+            }
+            if let Err(error) = result {
                 msg_log.refuse(
                     GameMessage::new(
                         clock.tick,
@@ -178,6 +202,7 @@ pub(super) fn apply_panel_action(
         }
         // ghidra/notes/fleet-join-split.md.
         PanelAction::JoinFleet { mover, target } => {
+            let command = order::join_fleet_command(world, &mover, target);
             let result = rebellion_core::fleet_join::join_fleet(
                 world,
                 movement_state,
@@ -186,6 +211,9 @@ pub(super) fn apply_panel_action(
                 target,
                 *player_faction == MissionFaction::Alliance,
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if let Err(error) = result {
                 msg_log.refuse(
                     GameMessage::new(
@@ -202,6 +230,7 @@ pub(super) fn apply_panel_action(
             area,
             destination,
         } => {
+            keep!(order::set_destination_command(world, system, area, destination));
             // The shared order (rebellion_data::player_command).
             let areas =
                 rebellion_data::player_command::set_destination(mfg_state, system, area, destination);
@@ -221,9 +250,13 @@ pub(super) fn apply_panel_action(
             at,
             ship,
         } => {
+            let command = order::set_fleet_destination_command(world, system, area, fleet, at, ship);
             let set = rebellion_data::player_command::set_fleet_destination(
                 mfg_state, system, area, fleet, at, ship,
             );
+            if set {
+                keep!(command);
+            }
             let named =
                 ship.and_then(|ship| rebellion_core::products::ship_name(world, fleet, ship));
             macroquad::logging::info!(
@@ -234,13 +267,24 @@ pub(super) fn apply_panel_action(
             );
         }
         PanelAction::RenameProduct { product, name } => {
+            let command = Ok(order::PlayerCommand::RenameProduct {
+                product,
+                name: name.clone(),
+            });
             let renamed = rebellion_core::products::rename(world, mfg_state, product, name);
+            if renamed {
+                keep!(command);
+            }
             macroquad::logging::info!(
                 "[interface] command=0x203 product={product} renamed={renamed}"
             );
         }
         PanelAction::Rename { fleet, ship, name } => {
+            let command = order::rename_command(world, fleet, ship, &name);
             let renamed = rebellion_data::player_command::rename(world, fleet, ship, &name);
+            if renamed {
+                keep!(command);
+            }
             macroquad::logging::info!(
                 "[interface] command=0x203 destination=rename status={} object={} name={name}",
                 if renamed { "applied" } else { "refused" },
@@ -252,6 +296,7 @@ pub(super) fn apply_panel_action(
             ships,
             roster,
         } => {
+            let command = order::create_fleet_command(world, fleet, &ships, roster);
             let result = rebellion_core::fleet_join::create_fleet(
                 world,
                 movement_state,
@@ -261,6 +306,9 @@ pub(super) fn apply_panel_action(
                 roster,
                 *player_faction == MissionFaction::Alliance,
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if let Err(error) = result {
                 msg_log.refuse(
                     GameMessage::new(
@@ -280,6 +328,7 @@ pub(super) fn apply_panel_action(
         } => {
             // The ships' own Move: into the side's bit-1 spare at the
             // system (FUN_00552300 -> FUN_005097d0), on arrival elsewhere.
+            let command = order::move_ships_command(world, fleet, &ships, roster, system);
             let result = rebellion_core::fleet_join::move_ships_into_spare(
                 world,
                 movement_state,
@@ -290,6 +339,9 @@ pub(super) fn apply_panel_action(
                 system,
                 *player_faction == MissionFaction::Alliance,
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if let Err(error) = result {
                 msg_log.refuse(
                     GameMessage::new(
@@ -307,6 +359,7 @@ pub(super) fn apply_panel_action(
             troops,
         } => {
             let expected_is_alliance = *player_faction == MissionFaction::Alliance;
+            let command = order::dispatch_fleet_command(world, fleet, destination, &troops);
             // The shared order (rebellion_data::player_command), as a
             // replay applies it.
             match rebellion_data::player_command::dispatch_fleet(
@@ -319,6 +372,7 @@ pub(super) fn apply_panel_action(
                 expected_is_alliance,
             ) {
                 Ok(departure) => {
+                    keep!(command);
                     let origin_name = world
                         .systems
                         .get(departure.origin)
@@ -358,6 +412,7 @@ pub(super) fn apply_panel_action(
             }
         }
         PanelAction::ToggleReserved { system, area } => {
+            keep!(order::toggle_reserved_command(world, system, area));
             // The shared order (rebellion_data::player_command).
             let reserved = rebellion_data::player_command::toggle_reserved(mfg_state, system, area);
             macroquad::logging::info!(
@@ -366,6 +421,7 @@ pub(super) fn apply_panel_action(
             );
         }
         PanelAction::StopProduction { system, area } => {
+            keep!(order::stop_production_command(world, system, area));
             mfg_state.stop(system, area);
             macroquad::logging::info!(
                 "[interface] command=0x213 destination=production_stop status=stopped area={area:?} system={}",
@@ -382,6 +438,7 @@ pub(super) fn apply_panel_action(
             count,
         } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
+            let command = order::build_production_command(world, system, area, kind, count);
             if rebellion_core::build_selection::confirm_order(
                 world,
                 mfg_state,
@@ -391,6 +448,7 @@ pub(super) fn apply_panel_action(
                 count,
                 is_alliance,
             ) {
+                keep!(command);
                 macroquad::logging::info!(
                     "[interface] command=0x21x destination=production_build status=queued area={area:?} count={count} system={}",
                     world.systems.get(system).map_or("", |value| value.name.as_str())
@@ -423,6 +481,7 @@ pub(super) fn apply_panel_action(
                 target_object,
                 tick,
             };
+            let command = order::dispatch_mission_command(world, &request);
             let has_target = request.target_character.is_some() || request.target_object.is_some();
             let has_decoys = !request.decoys.is_empty();
             // The shared order (rebellion_data::player_command).
@@ -455,6 +514,7 @@ pub(super) fn apply_panel_action(
                 });
                 return;
             }
+            keep!(command);
             let sys_name = world
                 .systems
                 .get(target)
@@ -497,6 +557,7 @@ pub(super) fn apply_panel_action(
         PanelAction::SelectFaction(_)
         | PanelAction::SaveGame { .. }
         | PanelAction::LoadGame { .. }
+        | PanelAction::CheckSessionReplay
         | PanelAction::OpenModManager => {
             // Handled by UI state toggle (not a world mutation)
         }
@@ -529,6 +590,8 @@ pub(super) fn apply_panel_action(
             kind,
         } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
+            // No replay command yet (docs/plans/2026-11-24-player-orders-in-replay.md).
+            session.mark_unrecorded();
             if rebellion_core::bombardment::order_enabled(
                 world,
                 movement_state,
@@ -593,6 +656,7 @@ pub(super) fn apply_panel_action(
             system,
             fleet,
         } => {
+            let command = order::move_members_command(world, &vec![MissionMember::Character(character)], system, fleet);
             let result = move_members_result(
                 world,
                 mission_state,
@@ -609,6 +673,9 @@ pub(super) fn apply_panel_action(
                 fleet.and_then(|key| fleet_label(world, key)),
                 result,
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if result.is_err() {
                 msg_log.refuse(
                     GameMessage::new(
@@ -631,6 +698,7 @@ pub(super) fn apply_panel_action(
             system,
             fleet,
         } => {
+            keep!(order::move_products_command(world, &products, system, fleet));
             // The shared order (rebellion_data::player_command).
             let moved = rebellion_data::player_command::move_products(
                 world,
@@ -646,6 +714,7 @@ pub(super) fn apply_panel_action(
             }
         }
         PanelAction::MoveSpecialForce { unit, system, fleet } => {
+            let command = order::move_members_command(world, &vec![MissionMember::SpecialForce(unit)], system, fleet);
             let result = move_members_result(
                 world,
                 mission_state,
@@ -660,6 +729,9 @@ pub(super) fn apply_panel_action(
                 world.systems.get(system).map(|s| s.name.as_str()),
                 fleet.and_then(|key| fleet_label(world, key)),
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if result.is_err() {
                 msg_log.refuse(
                     GameMessage::new(
@@ -682,6 +754,7 @@ pub(super) fn apply_panel_action(
             system,
             fleet,
         } => {
+            let command = order::move_members_command(world, &members.clone(), system, fleet);
             let result = move_members_result(
                 world,
                 mission_state,
@@ -697,6 +770,9 @@ pub(super) fn apply_panel_action(
                 world.systems.get(system).map(|s| s.name.as_str()),
                 fleet.and_then(|key| fleet_label(world, key)),
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if result.is_err() {
                 msg_log.refuse(
                     GameMessage::new(
@@ -717,6 +793,7 @@ pub(super) fn apply_panel_action(
         // reports the refusal.
         PanelAction::OrderCommand { character, order } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
+            let command = order::order_command_command(world, character, order);
             // The shared order (rebellion_data::player_command).
             let Some(result) = rebellion_data::player_command::order_command(
                 world,
@@ -733,6 +810,9 @@ pub(super) fn apply_panel_action(
                 result.as_ref().map(Vec::len),
                 world.characters.get(character).map(|c| c.command),
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if result.is_err() {
                 msg_log.refuse(
                     GameMessage::new(
@@ -749,6 +829,7 @@ pub(super) fn apply_panel_action(
         // FUN_00534c00), or FUN_00487c90 reports the refusal.
         PanelAction::Retire(member) => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
+            let command = order::retire_command(world, member);
             // The shared order (rebellion_data::player_command).
             let result =
                 rebellion_data::player_command::retire(world, mission_state, member, is_alliance);
@@ -757,6 +838,9 @@ pub(super) fn apply_panel_action(
                 member,
                 result
             );
+            if result.is_ok() {
+                keep!(command);
+            }
             if result.is_err() {
                 msg_log.refuse(
                     GameMessage::new(
@@ -773,6 +857,8 @@ pub(super) fn apply_panel_action(
         // reports the refusal. port: the draws come from the day.
         PanelAction::OrderAssault { fleets, system } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
+            // No replay command yet (docs/plans/2026-11-24-player-orders-in-replay.md).
+            session.mark_unrecorded();
             if rebellion_core::assault::order_enabled(
                 world,
                 movement_state,

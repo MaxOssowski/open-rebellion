@@ -1582,6 +1582,12 @@ async fn main() {
     // The player's orders given while a pause holds the clock; they act
     // once it runs (`rebellion_render::panels::admit_orders`).
     let mut held_orders: Vec<PanelAction> = Vec::new();
+    // The session since the last new game or load, as a replay
+    // (rebellion_data::session; started once the galaxy runs between days)
+    // and the speed it last logged.
+    let mut session_log = rebellion_data::session::SessionLog::default();
+    let mut session_needs_start = false;
+    let mut session_speed: Option<GameSpeed> = None;
     let mut sector_window_state = SectorWindowState::default();
     let mut system_window_state = SystemWindowState::default();
     let mut fleet_window_state = FleetWindowState::default();
@@ -3185,6 +3191,18 @@ async fn main() {
         // (FUN_004c4ce0's +0x38 from FUN_004fcee0).
         msg_log.set_now(clock.sub_tick());
 
+        // The session log keeps each speed change before the day it sets
+        // the passes of (rebellion_data::session).
+        if session_log.has_start() && session_speed != Some(clock.speed) {
+            session_log.record_speed(
+                clock.tick,
+                order_moment(&ai_day),
+                player_faction == MissionFaction::Alliance,
+                clock.speed,
+            );
+            session_speed = Some(clock.speed);
+        }
+
         if !tick_events.is_empty() {
             // The previous day's passes not yet run, then its end, come
             // before the new day (FUN_0051dea0 raises the day after the
@@ -3832,6 +3850,8 @@ async fn main() {
                                     day_rolls.clear();
                                     game_speed_ui = GameSpeedUiState::default();
                                     held_orders.clear();
+                                    session_log.clear();
+                                    session_needs_start = true;
                                     mfg_state = ManufacturingState::new();
                                     mission_state = MissionState::new();
                                     event_state = EventState::new();
@@ -8356,6 +8376,52 @@ async fn main() {
             }
         }
 
+        // The session log starts once a new or loaded game runs in the
+        // galaxy between days (rebellion_data::session).
+        if session_needs_start && game_mode == GameMode::Galaxy && ai_day.loyalty_before.is_none() {
+            let start = LiveCampaign {
+                world: &mut world,
+                clock: &mut clock,
+                manufacturing: &mut mfg_state,
+                missions: &mut mission_state,
+                events: &mut event_state,
+                ai: &mut ai_state,
+                movement: &mut movement_state,
+                fog_alliance: &mut fog_alliance_state,
+                fog_empire: &mut fog_empire_state,
+                player_faction: &mut player_faction,
+                blockade: &mut blockade_state,
+                uprising: &mut uprising_state,
+                research: &mut research_state,
+                victory: &mut victory_state,
+                economy: &mut economy_state,
+                sim_rng: &mut sim_rng,
+                ai2: &mut secondary_ai_state,
+                repair: &mut repair_state,
+                production: &mut production_state,
+                autoscrap: &mut autoscrap_state,
+                informant: &mut informant_state,
+                healing: &mut healing_state,
+                force_discovery: &mut force_discovery_state,
+                dagobah: &mut dagobah_state,
+                final_battle: &mut final_battle_state,
+                jabba: &mut jabba_state,
+                seat_of_power: &mut seat_of_power_state,
+                troop_transport: &mut troop_transport_state,
+                deliveries: &mut delivery_state,
+                player_agent: &mut player_agent,
+                combat_cooldowns: &mut combat_cooldowns,
+                campaign_config: &mut campaign_config,
+                ai_day: &mut ai_day,
+                day_rolls: &mut day_rolls,
+            }
+            .snapshot();
+            session_log.restart(start);
+            session_needs_start = false;
+            session_speed = Some(clock.speed);
+        }
+        let session_moment = order_moment(&ai_day);
+
         // 5. Apply panel actions. A held pause keeps the player's orders
         // until the game runs (FUN_0041e300 stops the frame step before
         // FUN_0051df30 executes them).
@@ -8366,6 +8432,48 @@ async fn main() {
         );
         for action in panel_actions {
             match action {
+                PanelAction::CheckSessionReplay => {
+                    let live = LiveCampaign {
+                        world: &mut world,
+                        clock: &mut clock,
+                        manufacturing: &mut mfg_state,
+                        missions: &mut mission_state,
+                        events: &mut event_state,
+                        ai: &mut ai_state,
+                        movement: &mut movement_state,
+                        fog_alliance: &mut fog_alliance_state,
+                        fog_empire: &mut fog_empire_state,
+                        player_faction: &mut player_faction,
+                        blockade: &mut blockade_state,
+                        uprising: &mut uprising_state,
+                        research: &mut research_state,
+                        victory: &mut victory_state,
+                        economy: &mut economy_state,
+                        sim_rng: &mut sim_rng,
+                        ai2: &mut secondary_ai_state,
+                        repair: &mut repair_state,
+                        production: &mut production_state,
+                        autoscrap: &mut autoscrap_state,
+                        informant: &mut informant_state,
+                        healing: &mut healing_state,
+                        force_discovery: &mut force_discovery_state,
+                        dagobah: &mut dagobah_state,
+                        final_battle: &mut final_battle_state,
+                        jabba: &mut jabba_state,
+                        seat_of_power: &mut seat_of_power_state,
+                        troop_transport: &mut troop_transport_state,
+                        deliveries: &mut delivery_state,
+                        player_agent: &mut player_agent,
+                        combat_cooldowns: &mut combat_cooldowns,
+                        campaign_config: &mut campaign_config,
+                        ai_day: &mut ai_day,
+                        day_rolls: &mut day_rolls,
+                    }
+                    .snapshot();
+                    let text = session_check(&session_log, &live, order_moment(&ai_day));
+                    macroquad::logging::info!("[session] {text}");
+                    msg_log.push(GameMessage::new(clock.tick, text, MessageCategory::Event));
+                }
                 PanelAction::SaveGame { slot, name } => {
                     let state = LiveCampaign {
                         world: &mut world,
@@ -8444,6 +8552,8 @@ async fn main() {
                     match rebellion_data::save::load_slot(&saves_dir, slot) {
                         Ok((meta, state)) => {
                             held_orders.clear();
+                            session_log.clear();
+                            session_needs_start = true;
                             drop_left_ending(&mut pending_ending);
                             advisor_schedule = None;
                             advisor_state.clips.clear();
@@ -8629,6 +8739,8 @@ async fn main() {
                         &message_texts,
                         &mut assault_summary_state,
                         &mut refusal,
+                        &mut session_log,
+                        session_moment,
                         #[cfg(not(target_arch = "wasm32"))]
                         &mut audio_engine,
                         #[cfg(not(target_arch = "wasm32"))]
@@ -9595,6 +9707,47 @@ fn advisor_runs(mode: &GameMode) -> bool {
                 kind: CutsceneKind::Story(_)
             }
     )
+}
+
+/// The session check's line: the log's replay against the game's state
+/// `live` at `moment` (rebellion_data::session).
+fn session_check(
+    log: &rebellion_data::session::SessionLog,
+    live: &rebellion_data::save::SaveState,
+    moment: rebellion_data::session::OrderMoment,
+) -> String {
+    if !log.has_start() {
+        return "Session replay: no session start yet".to_string();
+    }
+    let orders = log.entries().len();
+    let unrecorded = log.unrecorded();
+    let replayed = log
+        .replay(live.clock.tick, moment)
+        .and_then(|runner| runner.fingerprint());
+    let game = rebellion_data::save::compute_state_fingerprint(live);
+    match (replayed, game) {
+        (Ok(replayed), Ok(game)) if replayed == game => format!(
+            "Session replay matches the game: {orders} commands, day {}, {} unrecorded",
+            live.clock.tick, unrecorded
+        ),
+        (Ok(replayed), Ok(game)) => format!(
+            "Session replay differs: {orders} commands, day {}, {} unrecorded, replay {} game {}",
+            live.clock.tick, unrecorded, replayed.value, game.value
+        ),
+        (Err(error), _) | (_, Err(error)) => format!("Session replay failed: {error}"),
+    }
+}
+
+/// Where in the game's time an order given now falls: in the open day after
+/// its passes so far, or between days (rebellion_data::session).
+fn order_moment(ai_day: &AiDay) -> rebellion_data::session::OrderMoment {
+    if ai_day.loyalty_before.is_some() {
+        rebellion_data::session::OrderMoment::InDay {
+            passes_done: ai_day.done,
+        }
+    } else {
+        rebellion_data::session::OrderMoment::BetweenDays
+    }
 }
 
 fn galaxy_clock_runs(mode: &GameMode, summary_open: bool, conditions_word: u32) -> bool {

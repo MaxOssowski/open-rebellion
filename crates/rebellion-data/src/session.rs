@@ -53,6 +53,22 @@ impl SessionLog {
         self.unrecorded = 0;
     }
 
+    /// Forget the session until the next [`Self::restart`]: orders given
+    /// meanwhile are not kept.
+    pub fn clear(&mut self) {
+        self.start = None;
+        self.entries.clear();
+        self.unrecorded = 0;
+    }
+
+    /// Count an order the log cannot keep (one the replay has no command
+    /// for yet, such as a bombardment or an assault).
+    pub fn mark_unrecorded(&mut self) {
+        if self.start.is_some() {
+            self.unrecorded += 1;
+        }
+    }
+
     /// Record a player's order, or count it as unrecorded when one of its
     /// objects had no stable id.
     pub fn record_order(
@@ -62,6 +78,9 @@ impl SessionLog {
         is_alliance: bool,
         command: Result<PlayerCommand, CommandIdError>,
     ) {
+        if self.start.is_none() {
+            return;
+        }
         match command {
             Ok(command) => self.entries.push(SessionEntry {
                 tick,
@@ -81,6 +100,9 @@ impl SessionLog {
         is_alliance: bool,
         speed: rebellion_core::tick::GameSpeed,
     ) {
+        if self.start.is_none() {
+            return;
+        }
         self.entries.push(SessionEntry {
             tick,
             moment,

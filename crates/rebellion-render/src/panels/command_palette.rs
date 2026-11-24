@@ -167,6 +167,7 @@ fn command_id_to_action(id: &str) -> Option<super::PanelAction> {
         "reveal_all_systems" => Some(super::PanelAction::RevealAllFog),
         "see_everything" => Some(super::PanelAction::ToggleSeeEverything),
         "export_game_log" => Some(super::PanelAction::ExportGameLog),
+        "check_session_replay" => Some(super::PanelAction::CheckSessionReplay),
         _ => None,
     }
 }

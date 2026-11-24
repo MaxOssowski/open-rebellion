@@ -244,6 +244,10 @@ pub enum PanelAction {
     ToggleSeeEverything,
     /// Export message log to file.
     ExportGameLog,
+    /// port: play-testing: replay the session's logged orders from its
+    /// start and compare the state with the game's
+    /// (`rebellion_data::session`).
+    CheckSessionReplay,
     /// Display current game statistics overlay.
     ShowGameStats,
     /// List all currently active missions.

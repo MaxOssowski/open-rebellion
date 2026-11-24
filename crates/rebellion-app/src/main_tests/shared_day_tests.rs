@@ -137,7 +137,7 @@ fn a_session_replay_puts_each_order_back_where_the_app_gave_it() {
     let mut other_fog = FogState::new(Faction::Empire);
     let mut assault_summary = rebellion_render::assault_summary::AssaultSummaryState::default();
     // A fleet move: the first fleet and system the move takes.
-    let mut order = |world: &mut GameWorld,
+    let order = |world: &mut GameWorld,
                      sim: &mut rebellion_data::simulation::SimulationStates,
                      log: &mut SessionLog,
                      moment: OrderMoment,
@@ -215,4 +215,144 @@ fn a_session_replay_puts_each_order_back_where_the_app_gave_it() {
     assert_eq!(log.unrecorded(), 0);
     let replayed = log.replay(days, OrderMoment::BetweenDays).unwrap();
     assert_eq!(replayed.fingerprint().unwrap(), app);
+}
+
+#[test]
+#[ignore = "requires original data/base DAT files and an audio device"]
+fn the_app_s_orders_land_in_the_session_log_and_replay_to_the_same_state() {
+    // Stage 2b: apply_panel_action keeps each order it carries out as its
+    // replay command; the log's replay then reaches the app's state.
+    use rebellion_data::session::{OrderMoment, SessionLog};
+    let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+    let world = rebellion_data::load_game_data_with_options(
+        &data,
+        &rebellion_data::replay_fixture::seed42_seed_options(),
+    )
+    .expect("load original campaign data");
+    let initial = rebellion_data::replay_fixture::seed42_initial_state(world).unwrap();
+    let mut state = initial.clone();
+    let mut session = SessionLog::default();
+    session.restart(initial.clone());
+
+    // The orders: the first Alliance fleet's move, a ship order, a mission.
+    let mut fleets: Vec<FleetKey> = state
+        .world
+        .fleets
+        .iter()
+        .filter(|(_, f)| f.is_alliance && f.ship_count() > 0)
+        .map(|(k, _)| k)
+        .collect();
+    fleets.sort_by_key(|&f| state.world.fleet_serial(f));
+    let mut systems: Vec<(u32, SystemKey)> =
+        state.world.systems.iter().map(|(k, s)| (s.dat_id.0, k)).collect();
+    systems.sort_unstable();
+    let (fleet, to) = fleets
+        .iter()
+        .flat_map(|&f| systems.iter().map(move |&(_, s)| (f, s)))
+        .find(|&(f, s)| {
+            rebellion_core::movement::validate_fleet_dispatch(&state.movement, &state.world, f, s, true)
+                .is_ok()
+        })
+        .unwrap();
+    let mut characters: Vec<(u32, CharacterKey)> = state
+        .world
+        .characters
+        .iter()
+        .filter(|(_, c)| c.is_alliance)
+        .map(|(k, c)| (c.dat_id.0, k))
+        .collect();
+    characters.sort_unstable();
+    let mission = characters
+        .iter()
+        .flat_map(|&(_, c)| systems.iter().map(move |&(_, s)| (c, s)))
+        .find(|&(c, s)| {
+            let mut probe = state.clone();
+            probe
+                .missions
+                .dispatch_guarded(
+                    rebellion_core::missions::MissionRequest::single(
+                        MissionKind::Diplomacy,
+                        MissionFaction::Alliance,
+                        c,
+                        s,
+                        None,
+                        probe.clock.tick,
+                    ),
+                    &mut probe.world,
+                )
+                .is_ok()
+        })
+        .unwrap();
+    let actions = vec![
+        PanelAction::DispatchFleet {
+            fleet,
+            destination: to,
+            troops: Vec::new(),
+        },
+        PanelAction::DispatchMission {
+            kind: MissionKind::Diplomacy,
+            faction: MissionFaction::Alliance,
+            team: vec![MissionMember::Character(mission.0)],
+            decoys: Vec::new(),
+            target: mission.1,
+            target_character: None,
+            target_object: None,
+            tick: state.clock.tick,
+        },
+    ];
+
+    let mut map_state = GalaxyMapState::default();
+    let mut fog = state.fog_alliance.clone();
+    let mut msg_log = MessageLog::default();
+    let mut player_faction = MissionFaction::Alliance;
+    let mut dual_ai_mode = false;
+    let mut mod_runtime =
+        rebellion_data::mods::ModRuntime::discover(&std::env::temp_dir().join("or-no-mods"));
+    let message_texts = std::collections::HashMap::new();
+    let mut assault_summaries = rebellion_render::assault_summary::AssaultSummaryState::default();
+    let mut audio_engine = audio::AudioEngine::new();
+    let audio_vol = AudioVolumeState::default();
+    for action in actions {
+        let mut refusal = None;
+        apply_panel_action(
+            action,
+            &mut state.world,
+            &mut map_state,
+            &mut state.manufacturing,
+            &mut state.missions,
+            &mut state.movement,
+            &mut state.troop_transport,
+            &mut fog,
+            &mut state.ai,
+            &mut msg_log,
+            &mut player_faction,
+            &mut state.clock,
+            &mut dual_ai_mode,
+            &mut state.ai2,
+            &mut state.victory,
+            state.campaign_config,
+            &mut state.blockade,
+            &state.events,
+            &mut mod_runtime,
+            &message_texts,
+            &mut assault_summaries,
+            &mut refusal,
+            &mut session,
+            OrderMoment::BetweenDays,
+            &mut audio_engine,
+            &audio_vol,
+            std::path::Path::new("."),
+        );
+        assert!(refusal.is_none(), "the order went");
+        rebellion_data::player_command::after_order(
+            &mut state.world,
+            &state.manufacturing,
+            &state.troop_transport,
+        );
+    }
+    assert_eq!(session.entries().len(), 2, "both orders were logged");
+    assert_eq!(session.unrecorded(), 0);
+    let replayed = session.replay(state.clock.tick, OrderMoment::BetweenDays).unwrap();
+    let app = rebellion_data::replay::CampaignDayRunner::new(state);
+    assert_eq!(replayed.fingerprint().unwrap(), app.fingerprint().unwrap());
 }
