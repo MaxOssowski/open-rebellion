@@ -494,11 +494,7 @@ impl Smacker {
     /// positive, in 10-microsecond units when negative, 10 fps when 0.
     #[must_use]
     pub fn frame_duration_us(&self) -> u64 {
-        match self.pts_inc {
-            0 => 100_000,
-            v if v > 0 => u64::from(v.unsigned_abs()) * 1000,
-            v => u64::from(v.unsigned_abs()) * 10,
-        }
+        frame_duration(self.pts_inc)
     }
 
     /// The audio tracks the header declares, by track number.
@@ -739,6 +735,17 @@ impl Smacker {
     }
 }
 
+/// The header's frame rate as a frame's length in microseconds:
+/// milliseconds when positive, 10-microsecond units when negative, 10 fps
+/// when 0.
+fn frame_duration(pts_inc: i32) -> u64 {
+    match pts_inc {
+        0 => 100_000,
+        v if v > 0 => u64::from(v.unsigned_abs()) * 1000,
+        v => u64::from(v.unsigned_abs()) * 10,
+    }
+}
+
 /// An unsigned 8-bit sample as 16 bits, as FFmpeg converts it.
 fn widen(sample: u8) -> i16 {
     ((i16::from(sample) - 128) << 8) as i16
@@ -841,6 +848,38 @@ fn unpack_audio(chunk: &[u8], stereo: bool, sixteen: bool, out: &mut Vec<i16>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_frame_rate_reads_as_milliseconds_ten_microseconds_or_ten_fps() {
+        // The game's movies say -6666: 66,660 microseconds, 15 fps.
+        assert_eq!(frame_duration(-6666), 66_660);
+        assert_eq!(frame_duration(100), 100_000);
+        assert_eq!(frame_duration(1), 1000);
+        assert_eq!(frame_duration(0), 100_000);
+    }
+
+    #[test]
+    fn eight_bit_samples_widen_around_their_midpoint() {
+        assert_eq!(widen(128), 0);
+        assert_eq!(widen(0), -32768);
+        assert_eq!(widen(255), 127 << 8);
+        assert_eq!(widen(129), 256);
+    }
+
+    #[test]
+    fn decoded_sound_becomes_a_16_bit_pcm_wave() {
+        let wav = Pcm { sample_rate: 11_025, channels: 2, samples: vec![1, -2, 3, -4] }.to_wav();
+        let u32_at = |at: usize| u32::from_le_bytes(wav[at..at + 4].try_into().unwrap());
+        let u16_at = |at: usize| u16::from_le_bytes(wav[at..at + 2].try_into().unwrap());
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(u32_at(4), 36 + 8);
+        assert_eq!(&wav[8..16], b"WAVEfmt ");
+        assert_eq!((u32_at(16), u16_at(20), u16_at(22)), (16, 1, 2));
+        assert_eq!((u32_at(24), u32_at(28), u16_at(32), u16_at(34)), (11_025, 44_100, 4, 16));
+        assert_eq!(&wav[36..40], b"data");
+        assert_eq!(u32_at(40), 8);
+        assert_eq!(&wav[44..], &[1, 0, 0xfe, 0xff, 3, 0, 0xfc, 0xff]);
+    }
 
     /// Bits written lowest first into bytes.
     fn pack(bits: &[u32]) -> Vec<u8> {
