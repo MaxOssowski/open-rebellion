@@ -319,6 +319,10 @@ mod tests {
         let open = log.replay(days, OrderMoment::InDay { passes_done: 2 }).unwrap();
         let closed = log.replay(days, OrderMoment::BetweenDays).unwrap();
         assert_eq!(open.tick(), days);
+        // Only the last day stops: the days before close as in the full run.
+        let mut by_hand = log.replay(days - 1, OrderMoment::BetweenDays).unwrap();
+        by_hand.run_day_with_orders(&[], Some(2)).unwrap();
+        assert_eq!(open.fingerprint().unwrap(), by_hand.fingerprint().unwrap());
         assert_ne!(open.fingerprint().unwrap(), closed.fingerprint().unwrap(), "the day stays open");
     }
 }

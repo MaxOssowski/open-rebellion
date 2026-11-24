@@ -3052,7 +3052,30 @@ mod tests {
                 (world.systems[s].control == ControlKind::Controlled(Faction::Empire)).then_some((s, key))
             })
             .expect("an Imperial character in an Imperial system");
+        // An Alliance character there, a killed Imperial one there, and an
+        // Imperial one elsewhere: none is taken.
+        let mut others = world
+            .characters
+            .iter()
+            .filter(|&(key, _)| key != character)
+            .map(|(key, _)| key);
+        let (friend, dead, away) = (others.next().unwrap(), others.next().unwrap(), others.next().unwrap());
+        for (key, alliance, at, killed) in [
+            (friend, true, Some(system), false),
+            (dead, false, Some(system), true),
+            (away, false, None, false),
+        ] {
+            let c = &mut world.characters[key];
+            c.is_alliance = alliance;
+            c.is_empire = !alliance;
+            c.current_system = at;
+            c.is_killed = killed;
+            c.is_captive = false;
+        }
         assert!(occupy(&mut world, system, Faction::Alliance, 9), "the holder changed");
+        for key in [friend, dead, away] {
+            assert!(!world.characters[key].is_captive, "only the enemies there are taken");
+        }
         assert_eq!(world.systems[system].control, ControlKind::Controlled(Faction::Alliance));
         let c = &world.characters[character];
         assert!(c.is_captive);
