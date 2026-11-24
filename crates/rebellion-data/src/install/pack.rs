@@ -486,5 +486,8 @@ mod tests {
         // every offline entry is built.
         assert!(missing.is_empty(), "{missing:?}");
         assert_eq!(built.len(), offline.len());
+        // And the written pack is the offline file, byte for byte.
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../web/data/runtime.orpk");
+        assert!(write_pack(&built) == std::fs::read(path).unwrap(), "the written pack differs from the offline file");
     }
 }
