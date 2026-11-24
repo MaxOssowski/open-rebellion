@@ -51,6 +51,20 @@ builds the same pack from it, locally; the server holds only the engine.
   the offline pack's. Firefox's own folder dialog is not driven
   (Playwright's BiDi driver has no folder upload); there the gate gives
   the same files to the input's change handler.
-- Open: movies (stage 5: a Smacker decoder, the WASM player, the movies
-  kept in IndexedDB); a release packaging without the pack, to be
+- Stage 5 (bd3f38d1, 8e2805dc): `install::smacker` decodes the MDATA
+  movies (every frame and sample equal to ffmpeg's on MDATA.000 and .103;
+  about 1,300 frames/s native); in the own-data mode the page keeps the
+  15 movies in IndexedDB and the video player plays them from there.
+- Fix 1dc0aa86: the game fetches `data/runtime.orpk` first and asks for
+  the player's files only without it (b292's 14 interface gates had
+  failed on the page's extra HEAD request); `?data=own` forces the mode
+  without asking the server, `?data=server` turns it off.
+- Mutants of the install module (1,298, the two long movie comparisons
+  skipped): 936 caught, 310 missed, 46 unviable, 6 timeouts, before the
+  test commits b290573f (PE 15 -> 1 missed) and dc3a5293. Left mostly in
+  `smacker.rs` (191: block types and audio formats MDATA.000 does not
+  use, header checks) and `tactical.rs` (76: the X-file reader's
+  refusals, materials); list kept in
+  `target/claude-tmp/install-mutants-missed-2026-11-24.txt`.
+- Open: those mutants; a release packaging without the pack, to be
   decided with the deployment (password, hosting).
