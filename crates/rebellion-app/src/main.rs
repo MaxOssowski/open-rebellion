@@ -1509,7 +1509,8 @@ async fn main() {
     let mut final_battle_state = rebellion_core::final_battle::FinalBattleState::default();
     let mut jabba_state = rebellion_core::jabba::JabbaState::default();
     let mut seat_of_power_state = rebellion_core::seat_of_power::SeatOfPowerState::default();
-    let mut troop_transport_state = TroopTransportState::default();
+    // A new game's regiments seeded aboard their ships (FUN_0051bf30).
+    let mut troop_transport_state = TroopTransportState::take_seeded_cargo(&mut world);
     let mut delivery_state = DeliveryState::new();
     let mut economy_state = EconomyState::default();
     // The player's agent: Manage Garrisons and Manage Production, both off
@@ -3899,7 +3900,9 @@ async fn main() {
                                         rebellion_core::final_battle::FinalBattleState::default();
                                     jabba_state = rebellion_core::jabba::JabbaState::default();
                                     seat_of_power_state = rebellion_core::seat_of_power::SeatOfPowerState::default();
-                                    troop_transport_state = TroopTransportState::default();
+                                    // The regiments seeded aboard (FUN_0051bf30).
+                                    troop_transport_state =
+                                        TroopTransportState::take_seeded_cargo(&mut world);
                                     delivery_state = DeliveryState::new();
                                     economy_state = EconomyState::default();
                                     player_agent =

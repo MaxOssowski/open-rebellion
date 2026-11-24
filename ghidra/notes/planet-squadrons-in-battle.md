@@ -152,7 +152,48 @@ port:
   attacker's fleets before the defender's.
 - A planet squadron that docks on a carrier during the battle stays in
   its sortie fleet. `recover` lands it again by class count.
-- The army seeds (CMUNEMTB, CMUNALTB, `apply_army_seed`) also drop their
-  fighter and capital-ship items. The original distributes them through
-  `FUN_0051b1b0`/`FUN_0051b1d0` -> `FUN_0051b1f0` (the last two calls
-  of `FUN_0051aa50`), which is not traced here.
+- The army seeds are traced below (2026-11-24) and ported.
+
+## The army seeds (2026-11-24)
+
+`FUN_0051aa50` ends with `FUN_0051b1b0` (side 1, the Alliance) and
+`FUN_0051b1d0` (side 2), both `FUN_0051b1f0(side, ...)`:
+
+- **Budget.** `FUN_0055d670` (Alliance) / `FUN_0055d6d0` (Empire) take
+  the side's `SideMaintState - MaintCapacityAllocated` (side `+0x58` less
+  `+0x5c`, the unallocated maintenance capacity) and the galaxy size
+  (`+0x5c`, 1..3), and return it times SDPRTB 5168/5169/5170 over 100
+  (`FUN_0053e190` -> `FUN_0053e170` -> `FUN_0053e150`, divisor
+  `DAT_00661a88`).
+- **Group.** `FUN_0055d730` / `FUN_0055d780` roll `FUN_0053e2c0(1, 100)`
+  and look it up in seed table 3 / 4 (`FUN_0055bed0` -> `FUN_0058b7e0` ->
+  `FUN_00595090`): the walk stops at the first group whose threshold
+  (`+0x20`, the DAT group's third field) exceeds the roll and returns the
+  group before it; past every threshold, the last. CMUNALTB: 1-8 ship
+  0x41, 9-12 ship 0x44 with an X-wing and a Y-wing, 13-26 ship 0x45, 27-35
+  ship 0x46 with two regiments, 36-39 an X-wing, 40-53 a Y-wing, 54-57 and
+  58-88 regiments, 89-100 special forces.
+- **Cost.** `FUN_0051be20`: the group's count (`+0x24`, 1) times the sum
+  of its items' class slot `+0x24` (hyp: maintenance). The cost comes off
+  the budget first; the first group that takes it below zero ends the
+  loop, uncreated.
+- **Place.** A system of the side picked uniformly (`FUN_0053e290` over
+  the count of family `0x90..0x98` objects with the side's bits).
+- **Container.** If the group's first item is a capital ship (families
+  `0x14..0x1b`), `FUN_004ffef0(system, 4, side)` walks the side's fleets
+  there and takes the first, or `FUN_004f7d50` makes a fleet `0x08000004`;
+  `FUN_0051bf30` then creates the ship in it and every later item
+  (squadrons, regiments, special forces) inside the ship. Any other group
+  goes to `FUN_0051bf30` with the system: a lone squadron is the planet's.
+- So no seed makes a fleet of squadrons alone, and A0's eleventh TIE
+  squadron on Coruscant on day 2 fits a CMUNEMTB group 6 landing there.
+
+Port (`seeds::seed_maintenance_budget_units`, `create_group`): as above.
+The port's Yavin/HQ placement of the whole army tables (`apply_army_seed`,
+from the community `seed.js`) is gone from the main paths. The seeded
+regiments aboard wait in `GameWorld::seeded_cargo` until the campaign's
+`TroopTransportState::take_seeded_cargo`. The fixed fleets (CMUNEFTB,
+CMUNAFTB) now carry their regiments aboard as well; they were dropped.
+port: the facilities' sides are set before the budget is read
+(`assign_facility_sides`), as the original creates them with their
+system's side.

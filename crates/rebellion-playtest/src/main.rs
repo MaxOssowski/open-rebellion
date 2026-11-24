@@ -349,7 +349,7 @@ fn main() -> anyhow::Result<()> {
         final_battle: rebellion_core::final_battle::FinalBattleState::default(),
         jabba: rebellion_core::jabba::JabbaState::default(),
         seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
-        troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
+        troop_transport: rebellion_core::troop_transport::TroopTransportState::take_seeded_cargo(&mut world),
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         combat_cooldowns: HashMap::new(),
         campaign_config: rebellion_core::world::CampaignConfig::default(),

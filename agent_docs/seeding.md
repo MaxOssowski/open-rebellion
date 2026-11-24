@@ -69,6 +69,14 @@ class cannot serve that side (`GameWorld::hand_over_facilities`). Source:
 ExecPlan: `docs/plans/2026-03-24-003-game-seeding-parity-execplan.md`
 Audit: `.subdaimon-output/seeding-parity-audit.md`
 
+**Army seeds (2026-11-24).** M7 follows `FUN_0051b1f0`
+(`ghidra/notes/planet-squadrons-in-battle.md`, "The army seeds"): budget =
+unallocated maintenance capacity × SDPRTB 5168..5170 / 100; groups drawn by
+a 1..100 roll against each group's threshold; a ship-led group joins the
+side's first fleet at a random own system (or a new fleet) and carries its
+squadrons and regiments aboard; other groups land on the planet. No seed
+makes a fleet without a capital ship.
+
 ## 9 Seed Tables
 
 | Table | Content | Target System |
@@ -78,7 +86,7 @@ Audit: `.subdaimon-output/seeding-parity-audit.md`
 | CMUNAFTB | Alliance troops (2 groups) | Yavin + Rebel HQ |
 | FACLHQTB | HQ facilities | Coruscant + Rebel HQ |
 | YAVNGRTB | Yavin garrison | Yavin |
-| CMUNEMTB | Empire army distribution | Budget-based (M7) |
-| CMUNALTB | Alliance army distribution | Budget-based (M7) |
+| CMUNEMTB | Empire army distribution | Budget-based (M7, `FUN_0051b1f0`) |
+| CMUNALTB | Alliance army distribution | Budget-based (M7, `FUN_0051b1f0`) |
 | SYFCCRTB | Core facility generation | Per-system (M6) |
 | SYFCRMTB | Rim facility generation | Per-system (M6) |

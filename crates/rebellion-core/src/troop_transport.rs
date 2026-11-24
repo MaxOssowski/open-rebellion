@@ -257,6 +257,18 @@ impl TroopTransportState {
         self.transit.push(transit);
     }
 
+    /// A new game's state: the regiments the seeding created aboard
+    /// ([`GameWorld::seeded_cargo`]) go into their fleets' cargo, and the
+    /// world's list empties.
+    #[must_use]
+    pub fn take_seeded_cargo(world: &mut GameWorld) -> Self {
+        let mut state = Self::default();
+        for (fleet, troop) in std::mem::take(&mut world.seeded_cargo) {
+            state.push_cargo(fleet, troop);
+        }
+        state
+    }
+
     /// Puts a regiment already off its planet into `fleet`'s cargo (tests
     /// and fixtures).
     #[doc(hidden)]
@@ -1075,6 +1087,20 @@ mod tests {
             .ground_units
             .extend(troops.iter().copied());
         (world, origin, destination, fleet, troops)
+    }
+
+    #[test]
+    fn a_new_games_state_takes_the_regiments_seeded_aboard() {
+        // FUN_0051bf30 creates a seeded group's regiments in its capital
+        // ship; the world holds them until the campaign's cargo does.
+        let (mut world, origin, _, fleet, troops) = fixture(2);
+        world.systems[origin].ground_units.retain(|troop| *troop != troops[0]);
+        world.seeded_cargo.push((fleet, troops[0]));
+        let state = TroopTransportState::take_seeded_cargo(&mut world);
+        assert_eq!(state.cargo(fleet), &[troops[0]]);
+        assert_eq!(state.carrier(troops[0]), Some(fleet));
+        assert!(world.seeded_cargo.is_empty());
+        assert!(TroopTransportState::take_seeded_cargo(&mut world).is_empty());
     }
 
     #[test]

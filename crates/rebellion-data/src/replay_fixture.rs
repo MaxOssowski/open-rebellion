@@ -32,23 +32,23 @@ pub const SEED42_FIXTURE_ID: &str = "seed42-v1";
 pub const SEED42_ARTIFACT_BYTES: &[u8] = include_bytes!("../tests/fixtures/replay_seed42_v1.json");
 pub const SEED42_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const SEED42_SEED: u64 = 42;
-pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:dbfecb29892301a6";
-pub const SEED42_FINAL_FINGERPRINT: &str = "v1:70f3c10b66d616dd";
+pub const SEED42_INITIAL_FINGERPRINT: &str = "v1:6a1e6875dc484385";
+pub const SEED42_FINAL_FINGERPRINT: &str = "v1:e82179a0e7415dc0";
 pub const SEED42_FINAL_TICK: u64 = 25;
 pub const SEED42_DATA_INPUTS: usize = 51;
 pub const SEED42_DATA_BYTES: u64 = 50_597;
 pub const SEED42_DATA_FINGERPRINT: &str = "5facb1c7ba0e81ad";
 
 pub const SEED42_CHECKPOINTS: &[(u64, u64, &str)] = &[
-    (1, 0, "v1:94d2f8b6c2b17a22"),
-    (2, 0, "v1:a8ba8fb75e72cd44"),
-    (3, 5, "v1:e8347e801192cb35"),
-    (4, 10, "v1:72955d326aa7d5a1"),
-    (5, 15, "v1:567d5c6548800b57"),
-    (6, 20, "v1:e44bd848c0a231d7"),
-    (7, 25, "v1:a74b741134d72725"),
-    (8, 25, "v1:70f3c10b66d616dd"),
-    (9, 25, "v1:70f3c10b66d616dd"),
+    (1, 0, "v1:c273816969d968b1"),
+    (2, 0, "v1:798cae0b174d6669"),
+    (3, 5, "v1:bd548de90a1cd229"),
+    (4, 10, "v1:116b694ac6f3c7cd"),
+    (5, 15, "v1:a7e3465b071c38ee"),
+    (6, 20, "v1:6a0d532c182b11f7"),
+    (7, 25, "v1:e625e22d2f792db8"),
+    (8, 25, "v1:e82179a0e7415dc0"),
+    (9, 25, "v1:e82179a0e7415dc0"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,11 +187,13 @@ pub fn campaign_initial_state(world: GameWorld, seed: u64) -> anyhow::Result<Sav
     // Each side's first views (FUN_0051b990), as a new game takes them
     // (ghidra/notes/fog-of-war.md).
     let mut world = world;
+    // The regiments the seeding put aboard (FUN_0051bf30).
+    let troop_transport = rebellion_core::troop_transport::TroopTransportState::take_seeded_cargo(&mut world);
     rebellion_core::object_views::start(
         &mut world,
         &MovementState::new(),
         &MissionState::new(),
-        &rebellion_core::troop_transport::TroopTransportState::default(),
+        &troop_transport,
         &UprisingState::new(),
     );
     let mut events = EventState::new();
@@ -241,7 +243,7 @@ pub fn campaign_initial_state(world: GameWorld, seed: u64) -> anyhow::Result<Sav
         seat_of_power: rebellion_core::seat_of_power::SeatOfPowerState::default(),
         combat_cooldowns: std::collections::HashMap::new(),
         campaign_config: CampaignConfig::from_seed_options(options, VictoryConditions::Standard),
-        troop_transport: rebellion_core::troop_transport::TroopTransportState::default(),
+        troop_transport,
         deliveries: rebellion_core::delivery::DeliveryState::default(),
         player_agent: rebellion_core::agent_automation::PlayerAgent::default(),
         object_views,

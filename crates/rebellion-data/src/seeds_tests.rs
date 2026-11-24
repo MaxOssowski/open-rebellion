@@ -306,8 +306,19 @@ fn a_new_game_lands_the_garrison_tables_fighter_squadrons_on_their_planets() {
         names.sort_unstable();
         names
     };
-    assert_eq!(planet(CORUSCANT_SEQ_ID), [("TIE Fighter", 10)]);
-    assert_eq!(planet(YAVIN_SEQ_ID), [("X-wing", 1), ("Y-wing", 1)]);
+    // The army seeds (FUN_0051b1f0) also land single squadrons on a
+    // side's planets (CMUNALTB groups 5 and 6, CMUNEMTB group 6), so a
+    // planet holds at least its garrison table's squadrons. A0's eleventh
+    // TIE squadron on Coruscant on day 2 fits such a squadron.
+    let at_least = |seq: u32, garrison: &[(&str, u32)]| {
+        let held = planet(seq);
+        for &(class, count) in garrison {
+            let found = held.iter().find(|(name, _)| *name == class).map_or(0, |&(_, n)| n);
+            assert!(found >= count, "{class}: {found} < {count} at {seq:#x}");
+        }
+    };
+    at_least(CORUSCANT_SEQ_ID, &[("TIE Fighter", 10)]);
+    at_least(YAVIN_SEQ_ID, &[("X-wing", 1), ("Y-wing", 1)]);
     let hq = world
         .systems
         .values()
@@ -315,7 +326,7 @@ fn a_new_game_lands_the_garrison_tables_fighter_squadrons_on_their_planets() {
         .expect("Alliance HQ")
         .dat_id
         .raw();
-    assert_eq!(planet(hq), [("X-wing", 4), ("Y-wing", 2)]);
+    at_least(hq, &[("X-wing", 4), ("Y-wing", 2)]);
 }
 
 #[test]
@@ -422,44 +433,34 @@ fn special_systems_match_original_roles() {
 
 #[test]
 #[ignore = "requires original data/base DAT files"]
-fn fixed_fleet_tables_only_target_special_systems() {
-    let path = gdata_path();
+fn the_fixed_fleet_tables_seed_only_the_special_systems() {
+    // FUN_0051af00 and FUN_0051b080 create the fixed fleets first, at
+    // Yavin and Coruscant (and the port's Rebel HQ split of CMUNAFTB);
+    // the army seeds (FUN_0051b1f0) then add fleets at any of a side's
+    // systems, so only the first three fleets are the fixed tables'.
     let seed_options = SeedOptions {
         rng_seed: Some(42),
         ..SeedOptions::default()
     };
-    let world = crate::load_game_data_with_options(&path, &seed_options)
+    let world = crate::load_game_data_with_options(&gdata_path(), &seed_options)
         .expect("load_game_data_with_options failed");
-
-    // Collect all systems that have fleets
-    let systems_with_fleets: Vec<_> = world
+    let hq = world
         .systems
+        .values()
+        .find(|system| system.is_headquarters && system.dat_id.raw() != CORUSCANT_SEQ_ID)
+        .expect("Alliance HQ")
+        .dat_id
+        .raw();
+    let mut fixed: Vec<(u64, u32, bool)> = world
+        .fleets
         .iter()
-        .filter(|(_, s)| !s.fleets.is_empty())
-        .map(|(_, s)| s.dat_id.raw())
+        .map(|(key, fleet)| (world.fleet_serial(key), world.systems[fleet.location].dat_id.raw(), fleet.is_alliance))
+        .filter(|&(serial, ..)| serial <= 3)
         .collect();
-
-    // With fixed seed tables only, fleets should appear at special systems only
-    // (Coruscant, Yavin, or Rebel HQ). The Rebel HQ seq_id varies by RNG seed,
-    // but Coruscant and Yavin should always be present.
-    assert!(
-        systems_with_fleets.contains(&CORUSCANT_SEQ_ID),
-        "Coruscant should have fleet(s)"
-    );
-
-    // Empire fleets should NOT be at more than ~3 systems (was 10 in old proximity model)
-    let empire_fleet_system_count = world
-        .systems
-        .iter()
-        .filter(|(_, s)| {
-            s.fleets
-                .iter()
-                .any(|&fk| world.fleets.get(fk).is_some_and(|f| !f.is_alliance))
-        })
-        .count();
-    assert!(
-        empire_fleet_system_count <= 3,
-        "Empire fleets should be at <= 3 systems (3-system model), found {empire_fleet_system_count}"
+    fixed.sort_unstable();
+    assert_eq!(
+        fixed,
+        vec![(1, CORUSCANT_SEQ_ID, false), (2, YAVIN_SEQ_ID, true), (3, hq, true)]
     );
 }
 
@@ -1358,4 +1359,223 @@ fn each_galaxy_size_reads_its_own_sdprtb_budget_row() {
     assert_eq!(maintenance_budget_param(GalaxySize::Standard), 5168);
     assert_eq!(maintenance_budget_param(GalaxySize::Large), 5169);
     assert_eq!(maintenance_budget_param(GalaxySize::Huge), 5170);
+}
+
+/// CMUNALTB's groups (GData, SeedFamilyTableEntry): each group's third
+/// field is the lowest 1..=100 roll that draws it.
+fn cmunaltb_thresholds() -> SeedTableFile {
+    use dat_dumper::types::seed_table::{SeedGroup, SeedItem};
+    let thresholds = [1, 9, 13, 27, 36, 40, 54, 58, 89, 90, 93, 97];
+    SeedTableFile {
+        field1: 1,
+        info: "SeedFamilyTableEntry".into(),
+        groups: thresholds
+            .iter()
+            .enumerate()
+            .map(|(index, &threshold)| SeedGroup {
+                entry: index as u32 + 1,
+                field2: 1,
+                entry_bis: threshold,
+                field4: 1,
+                field5: 1,
+                items: vec![SeedItem { field1: 1, field2: 0, item_id: index as u32 + 1 }],
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn a_seed_roll_draws_the_group_whose_threshold_it_reached_last() {
+    // FUN_00595090: the walk stops at the first group whose threshold
+    // exceeds the roll and returns the one before it; past every
+    // threshold, the last group.
+    let table = cmunaltb_thresholds();
+    let drawn = |roll| rolled_group(&table, roll).unwrap().entry;
+    assert_eq!([drawn(1), drawn(8), drawn(9), drawn(12), drawn(13)], [1, 1, 2, 2, 3]);
+    assert_eq!([drawn(57), drawn(58), drawn(88), drawn(89)], [7, 8, 8, 9]);
+    assert_eq!([drawn(96), drawn(97), drawn(100)], [11, 12, 12]);
+    assert_eq!(drawn(0), 1, "below every threshold, the first group");
+}
+
+/// A world with one Alliance system, a capital ship class (sequence 0x44,
+/// upkeep 7), a fighter class (sequence 3, upkeep 2) and the regiment class
+/// 0x10000002 (upkeep 1), and a seed group of the given items.
+fn group_world(items: &[u32]) -> (GameWorld, SystemKey, dat_dumper::types::seed_table::SeedGroup) {
+    use dat_dumper::types::seed_table::{SeedGroup, SeedItem};
+    let mut world = GameWorld::default();
+    let system = bare_system(&mut world, ControlKind::Controlled(Faction::Alliance));
+    world.capital_ship_classes.insert(rebellion_core::world::CapitalShipClass {
+        dat_id: DatId::new(0x44),
+        maintenance_cost: 7,
+        hull: 50,
+        ..Default::default()
+    });
+    world.fighter_classes.insert(rebellion_core::world::FighterClass {
+        dat_id: DatId::new(3),
+        maintenance_cost: 2,
+        ..Default::default()
+    });
+    world.buildable_classes.insert(
+        DatId::new(0x1000_0002),
+        rebellion_core::world::BuildableClass { maintenance_cost: 1, ..Default::default() },
+    );
+    let group = SeedGroup {
+        entry: 1,
+        field2: 1,
+        entry_bis: 1,
+        field4: 1,
+        field5: 1,
+        items: items.iter().map(|&item_id| SeedItem { field1: 1, field2: 0, item_id }).collect(),
+    };
+    (world, system, group)
+}
+
+#[test]
+fn a_groups_cost_sums_its_items_classes_upkeep() {
+    // FUN_0051be20: count times the summed class maintenance; a null item
+    // costs nothing.
+    let (world, _, group) = group_world(&[0x1400_0044, 0x1C00_0003, 0x1C00_0003, 0x1000_0002, 0]);
+    assert_eq!(group_cost(&group, &world), 7 + 2 + 2 + 1);
+    let (world, _, unknown) = group_world(&[0x1400_0099, 0x1C00_0099]);
+    assert_eq!(group_cost(&unknown, &world), 0);
+}
+
+#[test]
+fn a_ship_led_group_carries_its_squadrons_and_regiments_aboard() {
+    // FUN_0051bf30: the first item in the container, every later item
+    // inside it (FUN_004f7cf0).
+    let (mut world, system, group) =
+        group_world(&[0x1400_0044, 0x1C00_0003, 0x1C00_0003, 0x1000_0002, 0x3C00_0001]);
+    world.last_ship_id = 10;
+    let fleet = new_seed_fleet(system, true, &mut world);
+    create_group(&group, SeedContainer::Fleet(fleet), true, &mut world);
+    let value = &world.fleets[fleet];
+    assert_eq!(value.capital_ships.len(), 1);
+    assert_eq!(value.capital_ships[0].id, 11);
+    assert_eq!(world.last_ship_id, 11);
+    assert_eq!(value.capital_ships[0].hull_current, 50);
+    assert_eq!(value.fighters.len(), 1);
+    assert_eq!((value.fighters[0].count, value.fighters[0].carrier), (2, Some(11)));
+    assert_eq!(world.seeded_cargo.len(), 1);
+    assert_eq!(world.seeded_cargo[0].0, fleet);
+    assert!(world.systems[system].ground_units.is_empty());
+    assert!(world.systems[system].fighters.is_empty());
+    assert_eq!(world.systems[system].fleets, vec![fleet]);
+    assert_eq!(value.special_forces.len(), 1);
+    assert!(world.systems[system].special_forces.is_empty());
+    // A second group joining the fleet seats its squadron on its own ship.
+    create_group(&group, SeedContainer::Fleet(fleet), true, &mut world);
+    let carriers: Vec<_> = world.fleets[fleet].fighters.iter().map(|entry| (entry.carrier, entry.count)).collect();
+    assert_eq!(carriers, vec![(Some(11), 2), (Some(12), 2)]);
+}
+
+#[test]
+fn a_ship_led_army_group_joins_its_sides_first_fleet_there_or_a_new_one() {
+    // FUN_004ffef0(system, 4, side): only the group's own side's fleets.
+    let (mut world, system, _) = group_world(&[]);
+    let empire = new_seed_fleet(system, false, &mut world);
+    let alliance = fleet_for_group(system, true, &mut world);
+    assert_ne!(alliance, empire);
+    assert!(world.fleets[alliance].is_alliance);
+    assert_eq!(fleet_for_group(system, true, &mut world), alliance);
+    assert_eq!(fleet_for_group(system, false, &mut world), empire);
+}
+
+#[test]
+fn the_army_budget_is_a_percentage_and_ends_at_the_first_overdraw() {
+    // FUN_0055d670 -> FUN_0053e190: unallocated * pct / 100; FUN_0051b1f0
+    // creates a group while the budget stays at or above zero.
+    assert_eq!(army_budget(733, 25), 183);
+    assert_eq!(army_budget(-10, 25), -2);
+    let mut budget = 10;
+    assert!(pay(&mut budget, 4));
+    assert_eq!(budget, 6);
+    assert!(pay(&mut budget, 6), "spending to exactly zero still creates");
+    assert!(!pay(&mut budget, 1));
+    assert_eq!(budget, -1);
+}
+
+#[test]
+fn a_group_not_led_by_a_ship_stands_on_the_planet() {
+    // FUN_0051b1f0 passes the system for any other group: a squadron is
+    // the planet's own, never a fleet's without a ship.
+    let (mut world, system, group) = group_world(&[0x1C00_0003, 0x1000_0002, 0x3C00_0001]);
+    create_group(&group, SeedContainer::System(system), true, &mut world);
+    assert!(world.fleets.is_empty());
+    assert_eq!(world.systems[system].special_forces.len(), 1);
+    assert_eq!(world.systems[system].fighters.len(), 1);
+    assert_eq!(world.systems[system].fighters[0].count, 1);
+    assert_eq!(world.systems[system].ground_units.len(), 1);
+    assert!(world.seeded_cargo.is_empty());
+    // A ship that is not a group's first item has nothing to stand in.
+    let (mut world, system, late_ship) = group_world(&[0x1000_0002, 0x1400_0044]);
+    create_group(&late_ship, SeedContainer::System(system), true, &mut world);
+    assert!(world.fleets.is_empty() && world.last_ship_id == 0);
+}
+
+#[test]
+fn only_families_0x14_to_0x1b_are_capital_ships() {
+    assert!(!is_capital_ship_family(0x13));
+    assert!(is_capital_ship_family(0x14) && is_capital_ship_family(0x1b));
+    assert!(!is_capital_ship_family(0x1c));
+}
+
+/// The fleets and planet squadrons of new games at several seeds.
+fn seeded_worlds() -> Vec<GameWorld> {
+    [1u64, 2, 3, 42]
+        .into_iter()
+        .map(|seed| {
+            let options = SeedOptions { rng_seed: Some(seed), ..SeedOptions::default() };
+            crate::load_game_data_with_options(&gdata_path(), &options).expect("load")
+        })
+        .collect()
+}
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn a_new_game_has_no_fleet_without_a_ship_and_every_fleet_squadron_rides_one_of_its_ships() {
+    // FUN_0051bf30 creates a group's later items in its first object, so a
+    // squadron seeded into a fleet is aboard that group's capital ship;
+    // a group not led by a ship is created on the planet (FUN_0051b1f0
+    // passes the system), so no seed makes a fleet of squadrons alone.
+    for world in seeded_worlds() {
+        for fleet in world.fleets.values() {
+            assert!(!fleet.capital_ships.is_empty(), "a fleet without a capital ship");
+            for entry in &fleet.fighters {
+                let carrier = entry.carrier.expect("a squadron with no carrier");
+                assert!(fleet.capital_ships.iter().any(|ship| ship.id == carrier), "carrier not in its fleet");
+            }
+        }
+        for &(fleet, troop) in &world.seeded_cargo {
+            assert!(world.fleets.contains_key(fleet) && world.troops.contains_key(troop));
+            assert!(
+                world.systems.values().all(|system| !system.ground_units.contains(&troop)),
+                "a regiment aboard also stands on a planet"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn the_army_seeds_spend_each_sides_budget_on_ships_across_its_own_systems() {
+    // FUN_0051b1f0: each side's budget is its unallocated maintenance
+    // capacity times SDPRTB 5168 (standard galaxy), spent on CMUNALTB /
+    // CMUNEMTB groups at its own systems. Beyond the fixed fleets (2
+    // Alliance ships in CMUNAFTB, 1 Star Destroyer in CMUNEFTB), every
+    // seed gives each side further ships, all in systems it controls.
+    for world in seeded_worlds() {
+        for (alliance, fixed) in [(true, 2), (false, 1)] {
+            let side = if alliance { Faction::Alliance } else { Faction::Empire };
+            let fleets: Vec<_> = world.fleets.values().filter(|fleet| fleet.is_alliance == alliance).collect();
+            let ships: usize = fleets.iter().map(|fleet| fleet.capital_ships.len()).sum();
+            assert!(ships > fixed, "{side:?} has only {ships} ships");
+            for fleet in fleets {
+                assert!(world.systems[fleet.location].control.is_controlled_by(side), "{side:?} fleet off its systems");
+            }
+        }
+        // CMUNAFTB's second group carries two regiments aboard its ship.
+        let aboard = world.seeded_cargo.iter().filter(|(fleet, _)| world.fleets[*fleet].is_alliance).count();
+        assert!(aboard >= 2, "{aboard} Alliance regiments aboard");
+    }
 }

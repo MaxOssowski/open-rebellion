@@ -170,6 +170,7 @@ pub fn load_game_data_with_options(
         abodes: slotmap::SlotMap::with_key(),
         object_views: rebellion_core::object_views::ObjectViews::default(),
         products: rebellion_core::products::Products::default(),
+        seeded_cargo: Vec::new(),
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────

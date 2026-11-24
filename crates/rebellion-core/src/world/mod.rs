@@ -1901,6 +1901,14 @@ pub struct GameWorld {
     /// v124), so the world's own encoding skips them.
     #[serde(skip)]
     pub products: crate::products::Products,
+    /// Regiments a new game's seeding creates aboard a fleet's capital
+    /// ship (`FUN_0051bf30` creates a group's later items in its first
+    /// object, `FUN_004f7cf0`). The world keeps no cargo, so they wait here
+    /// until the campaign's [`crate::troop_transport::TroopTransportState`]
+    /// takes them ([`crate::troop_transport::TroopTransportState::take_seeded_cargo`]);
+    /// never saved.
+    #[serde(skip)]
+    pub seeded_cargo: Vec<(crate::ids::FleetKey, crate::ids::TroopKey)>,
 }
 
 /// An abode (ABODESD, family `0x98`, class vtable `0x00669260` built by

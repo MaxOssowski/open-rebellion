@@ -1817,6 +1817,18 @@ mod tests {
         crate::replay_fixture::seed42_initial_state(world).unwrap()
     }
 
+    /// [`seed42`] with every seeded hold landed on its fleet's planet: the
+    /// seeding fills the Alliance's troop-carrying ships (FUN_0051bf30), and
+    /// these tests need room aboard for a regiment.
+    fn seed42_with_holds_landed() -> SaveState {
+        let mut state = seed42();
+        for fleet in state.troop_transport.fleet_keys() {
+            let at = state.world.fleets[fleet].location;
+            state.troop_transport.disembark_all(&mut state.world, fleet, at).unwrap();
+        }
+        state
+    }
+
     /// The first Alliance fleet and a system it may move to.
     fn alliance_move(state: &SaveState) -> (FleetKey, SystemKey) {
         let world = &state.world;
@@ -1921,7 +1933,7 @@ mod tests {
     #[test]
     #[ignore = "requires original data/base DAT files"]
     fn a_replayed_move_takes_the_same_regiment_aboard() {
-        let initial = seed42();
+        let initial = seed42_with_holds_landed();
         let (fleet, to, troop) =
             move_with_troop(&initial, true).expect("an Alliance fleet with a regiment to carry");
         let command = dispatch_fleet_command(&initial.world, fleet, to, &[troop]).unwrap();
@@ -2046,7 +2058,7 @@ mod tests {
     #[test]
     #[ignore = "requires original data/base DAT files"]
     fn a_replayed_regiment_move_matches_the_app_s() {
-        let initial = seed42();
+        let initial = seed42_with_holds_landed();
         let world = &initial.world;
         let found = sorted_alliance_fleets(world).into_iter().find_map(|fleet| {
             let at = world.fleets[fleet].location;
@@ -2869,7 +2881,7 @@ mod tests {
         // An Alliance fleet takes a regiment aboard and flies to a neutral
         // system (replayed orders that match the app's, above), then
         // assaults it.
-        let start = seed42();
+        let start = seed42_with_holds_landed();
         let world = &start.world;
         let side = true;
         let systems = sorted_systems(world);
