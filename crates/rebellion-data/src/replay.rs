@@ -1044,6 +1044,7 @@ impl ReplayRuntime {
                         troop_transport: &mut self.states.troop_transport,
                         blockade: &self.states.blockade,
                         victory: &mut self.states.victory,
+                        manufacturing: &mut self.states.manufacturing,
                         tick: self.states.clock.tick,
                     },
                     actor == ReplayActor::Alliance,

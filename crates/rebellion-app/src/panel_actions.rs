@@ -366,14 +366,8 @@ pub(super) fn apply_panel_action(
             }
         }
         PanelAction::ToggleReserved { system, area } => {
-            let reserved = match area {
-                Some(area) => {
-                    let reserved = !mfg_state.is_reserved(system, area);
-                    mfg_state.set_reserved(system, area, reserved);
-                    reserved
-                }
-                None => mfg_state.toggle_system_reserved(system),
-            };
+            // The shared order (rebellion_data::player_command).
+            let reserved = rebellion_data::player_command::toggle_reserved(mfg_state, system, area);
             macroquad::logging::info!(
                 "[interface] command=0x216 destination=production_reserved status=set reserved={reserved} area={area:?} system={}",
                 world.systems.get(system).map_or("", |value| value.name.as_str())

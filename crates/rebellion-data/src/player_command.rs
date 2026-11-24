@@ -16,7 +16,8 @@ use std::collections::HashSet;
 use rebellion_core::blockade::BlockadeState;
 use rebellion_core::fleet_join::{join_fleet, FleetMover, FleetOrderError, FleetOrderOutcome};
 use rebellion_core::headquarters_move::{move_headquarters, HeadquartersMove, HeadquartersMoveError};
-use rebellion_core::ids::{DatId, FighterKey, FleetKey, SystemKey, TroopKey};
+use rebellion_core::ids::{CapitalShipKey, DatId, FighterKey, FleetKey, SystemKey, TroopKey};
+use rebellion_core::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, ProductionArea};
 use rebellion_core::squadrons::{SquadronMove, SquadronMoveError, SquadronPlace};
 use rebellion_core::troop_transport::{RegimentMove, RegimentTarget};
 use rebellion_core::victory::VictoryState;
@@ -57,6 +58,35 @@ pub enum PlayerCommand {
     /// The Alliance headquarters moved to a system
     /// (`PanelAction::MoveHeadquarters`).
     MoveHeadquarters { destination: DatId },
+    /// A production area's Reserved flag, or the whole system's when no
+    /// area is named (`PanelAction::ToggleReserved`).
+    ToggleReserved {
+        system: DatId,
+        area: Option<ProductionArea>,
+    },
+    /// A production area stopped (`PanelAction::StopProduction`).
+    StopProduction { system: DatId, area: ProductionArea },
+    /// Units ordered from a production area
+    /// (`PanelAction::BuildProduction`).
+    BuildProduction {
+        system: DatId,
+        area: ProductionArea,
+        kind: BuildId,
+        count: u32,
+    },
+}
+
+/// What a production order builds: a class by its `DatId`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum BuildId {
+    CapitalShip(DatId),
+    Fighter(DatId),
+    Troop(DatId),
+    SpecialForce(DatId),
+    DefenseFacility { class: DatId, is_alliance: bool },
+    ManufacturingFacility { class: DatId, is_alliance: bool },
+    ProductionFacility { class: DatId, is_alliance: bool },
 }
 
 /// A planet (its system's `DatId`) or a fleet (its creation serial).
@@ -88,6 +118,7 @@ pub enum CommandIdError {
     System(DatId),
     Regiment(DatId),
     FighterClass(DatId),
+    ShipClass(DatId),
     Unnamed,
 }
 
@@ -98,6 +129,7 @@ impl std::fmt::Display for CommandIdError {
             Self::System(id) => write!(f, "no system {:#010x}", id.0),
             Self::Regiment(id) => write!(f, "no regiment {:#010x}", id.0),
             Self::FighterClass(id) => write!(f, "no fighter class {:#010x}", id.0),
+            Self::ShipClass(id) => write!(f, "no capital ship class {:#010x}", id.0),
             Self::Unnamed => write!(f, "an object has no stable id"),
         }
     }
@@ -347,6 +379,120 @@ pub fn join_fleet_command(
     })
 }
 
+/// A production area's Reserved flag flipped, or the system's when `area`
+/// is `None` (the app's `PanelAction::ToggleReserved`). Returns the new
+/// flag.
+pub fn toggle_reserved(
+    manufacturing: &mut ManufacturingState,
+    system: SystemKey,
+    area: Option<ProductionArea>,
+) -> bool {
+    match area {
+        Some(area) => {
+            let reserved = !manufacturing.is_reserved(system, area);
+            manufacturing.set_reserved(system, area, reserved);
+            reserved
+        }
+        None => manufacturing.toggle_system_reserved(system),
+    }
+}
+
+fn build_id(world: &GameWorld, kind: BuildableKind) -> Result<BuildId, CommandIdError> {
+    Ok(match kind {
+        BuildableKind::CapitalShip(class) => BuildId::CapitalShip(
+            world.capital_ship_classes.get(class).ok_or(CommandIdError::Unnamed)?.dat_id,
+        ),
+        BuildableKind::Fighter(class) => BuildId::Fighter(
+            world.fighter_classes.get(class).ok_or(CommandIdError::Unnamed)?.dat_id,
+        ),
+        BuildableKind::Troop(id) => BuildId::Troop(id),
+        BuildableKind::SpecialForce(id) => BuildId::SpecialForce(id),
+        BuildableKind::DefenseFacility(FacilityBuild { class, is_alliance }) => {
+            BuildId::DefenseFacility { class, is_alliance }
+        }
+        BuildableKind::ManufacturingFacility(FacilityBuild { class, is_alliance }) => {
+            BuildId::ManufacturingFacility { class, is_alliance }
+        }
+        BuildableKind::ProductionFacility(FacilityBuild { class, is_alliance }) => {
+            BuildId::ProductionFacility { class, is_alliance }
+        }
+    })
+}
+
+fn build_kind(world: &GameWorld, kind: BuildId) -> Result<BuildableKind, CommandIdError> {
+    Ok(match kind {
+        BuildId::CapitalShip(id) => BuildableKind::CapitalShip(
+            world
+                .capital_ship_classes
+                .iter()
+                .find(|(_, class)| class.dat_id == id)
+                .map(|(key, _): (CapitalShipKey, _)| key)
+                .ok_or(CommandIdError::ShipClass(id))?,
+        ),
+        BuildId::Fighter(id) => BuildableKind::Fighter(fighter_class_key(world, id)?),
+        BuildId::Troop(id) => BuildableKind::Troop(id),
+        BuildId::SpecialForce(id) => BuildableKind::SpecialForce(id),
+        BuildId::DefenseFacility { class, is_alliance } => {
+            BuildableKind::DefenseFacility(FacilityBuild { class, is_alliance })
+        }
+        BuildId::ManufacturingFacility { class, is_alliance } => {
+            BuildableKind::ManufacturingFacility(FacilityBuild { class, is_alliance })
+        }
+        BuildId::ProductionFacility { class, is_alliance } => {
+            BuildableKind::ProductionFacility(FacilityBuild { class, is_alliance })
+        }
+    })
+}
+
+/// The replay form of a Reserved toggle.
+///
+/// # Errors
+/// A missing system.
+pub fn toggle_reserved_command(
+    world: &GameWorld,
+    system: SystemKey,
+    area: Option<ProductionArea>,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::ToggleReserved {
+        system: system_id(world, system)?,
+        area,
+    })
+}
+
+/// The replay form of a Stop order.
+///
+/// # Errors
+/// A missing system.
+pub fn stop_production_command(
+    world: &GameWorld,
+    system: SystemKey,
+    area: ProductionArea,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::StopProduction {
+        system: system_id(world, system)?,
+        area,
+    })
+}
+
+/// The replay form of a production order.
+///
+/// # Errors
+/// A missing system or class.
+pub fn build_production_command(
+    world: &GameWorld,
+    system: SystemKey,
+    area: ProductionArea,
+    kind: BuildableKind,
+    count: u32,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::BuildProduction {
+        system: system_id(world, system)?,
+        area,
+        kind: build_id(world, kind)?,
+        count,
+    })
+}
+
 /// The replay form of the headquarters' move.
 ///
 /// # Errors
@@ -422,6 +568,7 @@ pub struct CommandStates<'a> {
     pub troop_transport: &'a mut TroopTransportState,
     pub blockade: &'a BlockadeState,
     pub victory: &'a mut VictoryState,
+    pub manufacturing: &'a mut ManufacturingState,
     pub tick: u64,
 }
 
@@ -518,6 +665,38 @@ pub fn apply(
             )
             .map(|_: HeadquartersMove| ())
             .map_err(|error: HeadquartersMoveError| refused(error))
+        }
+        PlayerCommand::ToggleReserved { system, area } => {
+            let system = system_key(world, *system)?;
+            toggle_reserved(states.manufacturing, system, *area);
+            Ok(())
+        }
+        PlayerCommand::StopProduction { system, area } => {
+            let system = system_key(world, *system)?;
+            states.manufacturing.stop(system, *area);
+            Ok(())
+        }
+        PlayerCommand::BuildProduction {
+            system,
+            area,
+            kind,
+            count,
+        } => {
+            let system = system_key(world, *system)?;
+            let kind = build_kind(world, *kind)?;
+            if rebellion_core::build_selection::confirm_order(
+                world,
+                states.manufacturing,
+                system,
+                *area,
+                kind,
+                *count,
+                is_alliance,
+            ) {
+                Ok(())
+            } else {
+                Err(CommandError::Refused("the production order".into()))
+            }
         }
     }
 }
@@ -896,12 +1075,106 @@ mod tests {
         );
     }
 
+    /// An Alliance production order that queues: system, area, kind.
+    fn alliance_build(initial: &SaveState) -> (SystemKey, ProductionArea, BuildableKind) {
+        let world = &initial.world;
+        let mut kinds: Vec<(u32, BuildableKind)> = world
+            .capital_ship_classes
+            .iter()
+            .map(|(key, class)| (class.dat_id.0, BuildableKind::CapitalShip(key)))
+            .chain(
+                world
+                    .fighter_classes
+                    .iter()
+                    .map(|(key, class)| (class.dat_id.0, BuildableKind::Fighter(key))),
+            )
+            .collect();
+        kinds.sort_by_key(|(id, _)| *id);
+        let areas = [
+            ProductionArea::Shipyard,
+            ProductionArea::TrainingFacility,
+            ProductionArea::ConstructionYard,
+        ];
+        sorted_systems(world)
+            .into_iter()
+            .find_map(|system| {
+                areas.iter().find_map(|&area| {
+                    kinds.iter().find_map(|&(_, kind)| {
+                        let mut probe = initial.clone();
+                        rebellion_core::build_selection::confirm_order(
+                            &mut probe.world,
+                            &mut probe.manufacturing,
+                            system,
+                            area,
+                            kind,
+                            1,
+                            true,
+                        )
+                        .then_some((system, area, kind))
+                    })
+                })
+            })
+            .expect("an Alliance production order that queues")
+    }
+
+    fn build(state: &mut SaveState, (system, area, kind): (SystemKey, ProductionArea, BuildableKind)) {
+        assert!(rebellion_core::build_selection::confirm_order(
+            &mut state.world,
+            &mut state.manufacturing,
+            system,
+            area,
+            kind,
+            1,
+            true,
+        ));
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_production_order_matches_the_app_s() {
+        let initial = seed42();
+        let order = alliance_build(&initial);
+        let command =
+            build_production_command(&initial.world, order.0, order.1, order.2, 1).unwrap();
+        same_as_app(&initial, |state| build(state, order), command);
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_reserved_toggle_and_stop_match_the_app_s() {
+        let initial = seed42();
+        let (system, area, kind) = alliance_build(&initial);
+        same_as_app(
+            &initial,
+            |state| {
+                assert!(toggle_reserved(&mut state.manufacturing, system, Some(area)));
+            },
+            toggle_reserved_command(&initial.world, system, Some(area)).unwrap(),
+        );
+        same_as_app(
+            &initial,
+            |state| {
+                toggle_reserved(&mut state.manufacturing, system, None);
+            },
+            toggle_reserved_command(&initial.world, system, None).unwrap(),
+        );
+        // Stop what an order queued.
+        let mut queued = initial.clone();
+        build(&mut queued, (system, area, kind));
+        same_as_app(
+            &queued,
+            |state| state.manufacturing.stop(system, area),
+            stop_production_command(&initial.world, system, area).unwrap(),
+        );
+    }
+
     #[test]
     fn a_command_error_says_what_it_missed() {
         assert_eq!(CommandIdError::Fleet(7).to_string(), "no fleet with creation serial 7");
         assert_eq!(CommandIdError::System(DatId(0x9000_0109)).to_string(), "no system 0x90000109");
         assert_eq!(CommandIdError::Regiment(DatId(0x1000_0002)).to_string(), "no regiment 0x10000002");
         assert_eq!(CommandIdError::FighterClass(DatId(0x1c00_0001)).to_string(), "no fighter class 0x1c000001");
+        assert_eq!(CommandIdError::ShipClass(DatId(0x1400_0040)).to_string(), "no capital ship class 0x14000040");
         assert_eq!(CommandIdError::Unnamed.to_string(), "an object has no stable id");
         assert_eq!(CommandError::from(CommandIdError::Unnamed).to_string(), "an object has no stable id");
         assert_eq!(CommandError::Refused("x".into()).to_string(), "the order was refused: x");
