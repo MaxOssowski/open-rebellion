@@ -32,7 +32,7 @@ it does not yet make the app and playtest simulation loops equivalent.
 | Automatic battle native/WASM equality | Complete 2026-11-20 | Sweep's staged seed-42 battle |
 | Tactical battle native/WASM equality | Complete 2026-11-20 | Same battle headless with Observe Battle; `portable_math` |
 | Automatic = tactical outcome | Not comparable | Different engines (see below) |
-| Player orders as replay commands | Stages 1-3e, 2026-11-24 | `ReplayCommand::Player` for every app order but Planetary Bombardment and Assault (`player_command`), each through the function the app calls, with the order's aftermath (`after_order`); `docs/plans/2026-11-24-player-orders-in-replay.md` |
+| Player orders as replay commands | Stages 1-3e, 2026-11-24 | `ReplayCommand::Player` for every app order, Planetary Bombardment and Assault included (`player_command`), each through the function the app calls, with the order's aftermath (`after_order`); `docs/plans/2026-11-24-player-orders-in-replay.md` |
 | App session as a replay | Stage 2, 2026-11-24 | `session::SessionLog`: the app logs each order with its day and moment (between days, or after so many AI passes) and speed changes; `SessionLog::replay`; palette "Check Session Replay" |
 
 ## Format v2
@@ -220,8 +220,7 @@ battle on each combat engine. The app and the runner now share one day
 (F-012), checked natively by
 `the_app_s_day_with_its_presentation_matches_the_headless_runner`; the sweep
 runs that day's AI passes spread in WASM but not the app's own presentation
-host. Still open: Planetary Bombardment and Assault have no replay command yet
-(an app session with one counts it as unrecorded); a battle alert's
+host. Still open: a battle alert's
 choice and a played tactical battle are not logged; a frame that runs
 several days at once (high speed, a slow frame) begins them together,
 while the replay runs them one by one, so the session check can differ

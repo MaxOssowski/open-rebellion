@@ -640,39 +640,19 @@ pub(super) fn present_assault_reports(
     clippy::too_many_arguments,
     reason = "The planet's cleanup touches each of these states."
 )]
-pub(super) fn destroy_planet(
-    world: &mut GameWorld,
-    system: SystemKey,
-    killed: &[rebellion_core::ids::CharacterKey],
-    mfg_state: &mut ManufacturingState,
-    blockade_state: &mut BlockadeState,
+/// A destroyed system's messages: each character it killed (the cleanup's
+/// effects, drained into the log at once as the headless flow does through
+/// the `PerceptionIntegrator`) and the destruction's story movie.
+pub(super) fn destroyed_planet_messages(
+    world: &GameWorld,
+    name: &str,
+    holder: Option<Faction>,
+    effects: Vec<rebellion_core::effects::GameEffect>,
     msg_log: &mut MessageLog,
     tick: u64,
     message_texts: &std::collections::HashMap<u16, String>,
 ) {
-    let name = world
-        .systems
-        .get(system)
-        .map_or_else(|| "Unknown".to_string(), |s| s.name.clone());
-    // The side the system had before the blast (FUN_004950d0 +0x64).
-    let holder = world.systems.get(system).and_then(|s| s.control.faction());
-    if let Some(sys) = world.systems.get_mut(system) {
-        sys.is_destroyed = true;
-    }
-    // Drain the telemetry out-param into the message log so
-    // interactive play surfaces the killed characters
-    // immediately; the run_simulation_tick flow does the same
-    // via the `PerceptionIntegrator`.
-    let mut cleanup_effects: Vec<rebellion_core::effects::GameEffect> = Vec::new();
-    rebellion_core::death_star::cleanup_destroyed_system(
-        world,
-        system,
-        killed,
-        mfg_state,
-        blockade_state,
-        &mut cleanup_effects,
-    );
-    for effect in cleanup_effects.drain(..) {
+    for effect in effects {
         if let rebellion_core::effects::GameEffect::CharacterKilled { character } = effect {
             // Notification 0x106, Character Health (FUN_0048fdf0).
             push_character_health(msg_log, world, character, tick, message_texts);
@@ -681,6 +661,6 @@ pub(super) fn destroy_planet(
     // Notification 0x182, System Destroyed by the Death Star
     // (FUN_004950d0): a story movie, MDATA.101, whichever side plays.
     msg_log.queue_story_movie(
-        rebellion_render::story_messages::death_star_destroyed_movie(&name, holder, message_texts),
+        rebellion_render::story_messages::death_star_destroyed_movie(name, holder, message_texts),
     );
 }

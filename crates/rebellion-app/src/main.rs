@@ -21,7 +21,7 @@ use day_messages::{blockade_event, joins_event};
 #[cfg(any(test, all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
 use day_messages::blockade_started_message;
 mod outcomes;
-use outcomes::{apply_mission_result, battle_winner, apply_space_combat_result, log_bombardment, log_assault, present_assault_reports, destroy_planet};
+use outcomes::{apply_mission_result, battle_winner, apply_space_combat_result, log_bombardment, log_assault, present_assault_reports, destroyed_planet_messages};
 mod orders;
 use orders::{FleetMoveContext, DefensesMoveContext, issue_defenses_move, FleetDropOrder, fleet_drop_order, ship_move_action, TeamMenuOrder, team_menu_order, product_confirmation, team_squadron_place, team_gates, team_confirmation, defenses_selection_team, issue_team_move, issue_fleet_move, confirm_character_move, confirm_ship_move, move_out_of_blockade_asks, confirm_troop_move, order_headquarters_move, confirm_squadron_move, confirm_special_force_move, order_gates, retire_check, bombard_team, UNTRACED_REFUSAL, OTHER_SIDE_REFUSAL, RefusedOrder, refusal_status};
 mod advisor_actions;
@@ -59,7 +59,6 @@ use std::path::{Path, PathBuf};
 use rebellion_core::ai::{AIAction, AIState, AiFaction, FleetMoveReason};
 use rebellion_core::ai_schedule::AiDay;
 use rebellion_core::blockade::{BlockadeState, BlockadeSystem};
-use rebellion_core::bombardment::BombardEnv;
 use rebellion_core::combat::CombatSide;
 use rebellion_core::agent_automation::{AutomationModule, PlayerAgent};
 use rebellion_core::dat::Faction;

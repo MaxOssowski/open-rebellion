@@ -590,61 +590,55 @@ pub(super) fn apply_panel_action(
             kind,
         } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
-            // No replay command yet (docs/plans/2026-11-24-player-orders-in-replay.md).
-            session.mark_unrecorded();
-            if rebellion_core::bombardment::order_enabled(
+            let command = order::order_bombardment_command(world, &fleets, system, kind);
+            // The shared order (rebellion_data::player_command).
+            match order::order_bombardment(
                 world,
                 movement_state,
+                troop_transport_state,
+                blockade_state,
+                mfg_state,
+                victory_state.alliance_hq,
+                clock.tick,
                 is_alliance,
                 &fleets,
                 system,
                 kind,
             ) {
-                let mut bombard = BombardEnv::new(clock.tick, Some(victory_state.alliance_hq));
-                let outcome = bombard
-                    .bombard_reported(
+                Some(done) => {
+                    keep!(command);
+                    log_bombardment(world, system, &done.outcome, clock.tick, msg_log);
+                    present_assault_reports(
+                        done.reports,
                         world,
-                        troop_transport_state,
-                        Faction::of_alliance(is_alliance),
-                        &fleets,
-                        system,
-                        kind,
-                    )
-                    .clone();
-                for (system, losses) in &bombard.losses {
-                    blockade_state.record_losses(*system, *losses);
-                }
-                log_bombardment(world, system, &outcome, clock.tick, msg_log);
-                present_assault_reports(
-                    std::mem::take(&mut bombard.reports),
-                    world,
-                    *player_faction,
-                    message_texts,
-                    assault_summaries,
-                    msg_log,
-                    clock.tick,
-                );
-                if outcome.system_destroyed {
-                    destroy_planet(
-                        world,
-                        system,
-                        &outcome.killed,
-                        mfg_state,
-                        blockade_state,
+                        *player_faction,
+                        message_texts,
+                        assault_summaries,
                         msg_log,
                         clock.tick,
-                        message_texts,
+                    );
+                    if let Some((name, holder, effects)) = done.destroyed {
+                        destroyed_planet_messages(
+                            world,
+                            &name,
+                            holder,
+                            effects,
+                            msg_log,
+                            clock.tick,
+                            message_texts,
+                        );
+                    }
+                }
+                None => {
+                    msg_log.refuse(
+                        GameMessage::new(
+                            clock.tick,
+                            "Planetary bombardment refused".to_string(),
+                            MessageCategory::Combat,
+                        ),
+                        UNTRACED_REFUSAL,
                     );
                 }
-            } else {
-                msg_log.refuse(
-                    GameMessage::new(
-                        clock.tick,
-                        "Planetary bombardment refused".to_string(),
-                        MessageCategory::Combat,
-                    ),
-                    UNTRACED_REFUSAL,
-                );
             }
         }
         // FUN_00486fb0 -> FUN_00487740: the Move order's 0x241 validates
@@ -857,60 +851,56 @@ pub(super) fn apply_panel_action(
         // reports the refusal. port: the draws come from the day.
         PanelAction::OrderAssault { fleets, system } => {
             let is_alliance = *player_faction == MissionFaction::Alliance;
-            // No replay command yet (docs/plans/2026-11-24-player-orders-in-replay.md).
-            session.mark_unrecorded();
-            if rebellion_core::assault::order_enabled(
+            let command = order::order_assault_command(world, &fleets, system);
+            // The shared order (rebellion_data::player_command): the
+            // landed regiments take the system in the assault's own pass
+            // (FUN_00508660 -> FUN_0050b610 -> FUN_00510d70, event 0x31b ->
+            // FUN_00517aa0 -> FUN_005180e0 for Coruscant), so the victory
+            // word settles on the assault's day (A0 2026-11-17-edited-saves-5
+            // run 2: day 94 throughout).
+            match order::order_assault(
                 world,
                 movement_state,
                 troop_transport_state,
+                blockade_state,
+                victory_state.alliance_hq,
+                clock.tick,
                 is_alliance,
                 &fleets,
                 system,
             ) {
-                let mut env = BombardEnv::new(clock.tick, Some(victory_state.alliance_hq));
-                let outcome = env
-                    .assault(
+                Some(done) => {
+                    keep!(command);
+                    log_assault(world, system, &done.outcome, clock.tick, msg_log);
+                    if let Some(winner) = done.occupied {
+                        tactical_flow::occupation_message(world, system, winner, clock.tick, msg_log);
+                    }
+                    macroquad::logging::info!(
+                        "[assault] system={} holder={:?} day={}",
+                        world.systems[system].name,
+                        world.systems[system].control,
+                        clock.tick
+                    );
+                    present_assault_reports(
+                        done.reports,
                         world,
-                        troop_transport_state,
-                        Faction::of_alliance(is_alliance),
-                        &fleets,
-                        system,
-                    )
-                    .clone();
-                for (system, losses) in &env.losses {
-                    blockade_state.record_losses(*system, *losses);
-                }
-                log_assault(world, system, &outcome, clock.tick, msg_log);
-                // The landed regiments take the system in the assault's own
-                // pass (FUN_00508660 -> FUN_0050b610 -> FUN_00510d70, event
-                // 0x31b -> FUN_00517aa0 -> FUN_005180e0 for Coruscant), so
-                // the victory word settles on the assault's day (A0
-                // 2026-11-17-edited-saves-5 run 2: day 94 throughout).
-                tactical_flow::occupy_system(world, system, clock.tick, msg_log);
-                macroquad::logging::info!(
-                    "[assault] system={} holder={:?} day={}",
-                    world.systems[system].name,
-                    world.systems[system].control,
-                    clock.tick
-                );
-                present_assault_reports(
-                    std::mem::take(&mut env.reports),
-                    world,
-                    *player_faction,
-                    message_texts,
-                    assault_summaries,
-                    msg_log,
-                    clock.tick,
-                );
-            } else {
-                msg_log.refuse(
-                    GameMessage::new(
+                        *player_faction,
+                        message_texts,
+                        assault_summaries,
+                        msg_log,
                         clock.tick,
-                        "Planetary assault refused".to_string(),
-                        MessageCategory::Combat,
-                    ),
-                    UNTRACED_REFUSAL,
-                );
+                    );
+                }
+                None => {
+                    msg_log.refuse(
+                        GameMessage::new(
+                            clock.tick,
+                            "Planetary assault refused".to_string(),
+                            MessageCategory::Combat,
+                        ),
+                        UNTRACED_REFUSAL,
+                    );
+                }
             }
         }
         PanelAction::AdvanceTicks(n) => {

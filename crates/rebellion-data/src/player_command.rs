@@ -139,6 +139,15 @@ pub enum PlayerCommand {
     OrderCommand { character: DatId, order_id: u16 },
     /// A member retired (`PanelAction::Retire`).
     Retire { member: MemberId },
+    /// Planetary Bombardment of a system by fleets
+    /// (`PanelAction::OrderBombardment`).
+    OrderBombardment {
+        fleets: Vec<u64>,
+        system: DatId,
+        kind: u32,
+    },
+    /// Planetary Assault of a system by fleets (`PanelAction::OrderAssault`).
+    OrderAssault { fleets: Vec<u64>, system: DatId },
     /// A mission sent (`PanelAction::DispatchMission`).
     DispatchMission {
         kind: MissionKind,
@@ -1133,6 +1142,230 @@ pub fn retire_command(world: &GameWorld, member: MissionMember) -> Result<Player
     })
 }
 
+/// The galaxy's part of a system's destruction (the app's
+/// `destroy_planet` before its messages): the system is destroyed and
+/// what stood there is cleared (`death_star::cleanup_destroyed_system`).
+/// Returns the cleanup's effects (characters killed) for the messages.
+pub fn destroy_system(
+    world: &mut GameWorld,
+    system: SystemKey,
+    killed: &[CharacterKey],
+    manufacturing: &mut ManufacturingState,
+    blockade: &mut BlockadeState,
+) -> Vec<rebellion_core::effects::GameEffect> {
+    if let Some(value) = world.systems.get_mut(system) {
+        value.is_destroyed = true;
+    }
+    let mut effects = Vec::new();
+    rebellion_core::death_star::cleanup_destroyed_system(
+        world,
+        system,
+        killed,
+        manufacturing,
+        blockade,
+        &mut effects,
+    );
+    effects
+}
+
+/// The galaxy's part of a side taking a system (the app's
+/// `apply_system_occupation` before its message; `FUN_00510d70` ->
+/// `FUN_004f6f40`): the system and its facilities go to `winner`, and the
+/// other side's characters there are taken captive. Returns whether the
+/// holder changed.
+pub fn occupy(world: &mut GameWorld, system: SystemKey, winner: rebellion_core::dat::Faction, tick: u64) -> bool {
+    use rebellion_core::dat::Faction;
+    use rebellion_core::world::ControlKind;
+    let previous = world.systems.get(system).map(|value| value.control);
+    if let Some(value) = world.systems.get_mut(system) {
+        value.control = ControlKind::Controlled(winner);
+    }
+    world.hand_over_facilities(system);
+    for (_, character) in &mut world.characters {
+        let is_enemy = match winner {
+            Faction::Alliance => character.is_empire,
+            Faction::Empire => character.is_alliance,
+            Faction::Neutral => false,
+        };
+        if character.current_system == Some(system) && is_enemy && !character.is_killed {
+            character.is_captive = true;
+            character.captured_by = Some(winner);
+            character.capture_tick = Some(tick);
+            character.current_fleet = None;
+        }
+    }
+    previous != Some(ControlKind::Controlled(winner))
+}
+
+/// A Planetary Assault's landing settles the system at once (the app's
+/// `occupy_system`): when its regiments give it a holder other than its
+/// own, that side takes it. Returns the new holder when it changed.
+pub fn occupy_after_landing(
+    world: &mut GameWorld,
+    system: SystemKey,
+    tick: u64,
+) -> Option<rebellion_core::dat::Faction> {
+    use rebellion_core::world::ControlKind;
+    let value = world.systems.get(system)?;
+    if value.ground_units.is_empty() {
+        return None;
+    }
+    match rebellion_core::economy::system_holder(world, value) {
+        ControlKind::Controlled(winner) if value.control != ControlKind::Controlled(winner) => {
+            occupy(world, system, winner, tick).then_some(winner)
+        }
+        _ => None,
+    }
+}
+
+/// What a Planetary Bombardment did, for the app's messages.
+pub struct BombardmentDone {
+    pub outcome: rebellion_core::bombardment::BombardmentOutcome,
+    pub reports: Vec<rebellion_core::assault_report::AssaultReport>,
+    /// The system's name and holder before a destruction, and the
+    /// destruction's effects (characters killed); `None` when it stands.
+    pub destroyed: Option<(String, Option<rebellion_core::dat::Faction>, Vec<rebellion_core::effects::GameEffect>)>,
+}
+
+/// Planetary Bombardment (the app's `PanelAction::OrderBombardment`):
+/// when the order is enabled, the bombardment (a stream seeded by the
+/// tick), its losses recorded at the systems, and a destroyed system's
+/// end. `None` when the order is refused.
+#[allow(clippy::too_many_arguments)]
+pub fn order_bombardment(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    troop_transport: &mut TroopTransportState,
+    blockade: &mut BlockadeState,
+    manufacturing: &mut ManufacturingState,
+    alliance_hq: SystemKey,
+    tick: u64,
+    is_alliance: bool,
+    fleets: &[FleetKey],
+    system: SystemKey,
+    kind: u32,
+) -> Option<BombardmentDone> {
+    if !rebellion_core::bombardment::order_enabled(world, movement, is_alliance, fleets, system, kind) {
+        return None;
+    }
+    let mut bombard = rebellion_core::bombardment::BombardEnv::new(tick, Some(alliance_hq));
+    let outcome = bombard
+        .bombard_reported(
+            world,
+            troop_transport,
+            rebellion_core::dat::Faction::of_alliance(is_alliance),
+            fleets,
+            system,
+            kind,
+        )
+        .clone();
+    for (system, losses) in &bombard.losses {
+        blockade.record_losses(*system, *losses);
+    }
+    let destroyed = outcome.system_destroyed.then(|| {
+        let name = world
+            .systems
+            .get(system)
+            .map_or_else(|| "Unknown".to_string(), |s| s.name.clone());
+        let holder = world.systems.get(system).and_then(|s| s.control.faction());
+        let effects = destroy_system(world, system, &outcome.killed, manufacturing, blockade);
+        (name, holder, effects)
+    });
+    Some(BombardmentDone {
+        outcome,
+        reports: std::mem::take(&mut bombard.reports),
+        destroyed,
+    })
+}
+
+/// What a Planetary Assault did, for the app's messages.
+pub struct AssaultDone {
+    pub outcome: rebellion_core::assault::AssaultOutcome,
+    pub reports: Vec<rebellion_core::assault_report::AssaultReport>,
+    /// The side that took the system on the assault's day, if one did.
+    pub occupied: Option<rebellion_core::dat::Faction>,
+}
+
+/// Planetary Assault (the app's `PanelAction::OrderAssault`): when the
+/// order is enabled, the assault (a stream seeded by the tick), its losses
+/// recorded, and the landing's occupation in the same pass. `None` when
+/// the order is refused.
+#[allow(clippy::too_many_arguments)]
+pub fn order_assault(
+    world: &mut GameWorld,
+    movement: &MovementState,
+    troop_transport: &mut TroopTransportState,
+    blockade: &mut BlockadeState,
+    alliance_hq: SystemKey,
+    tick: u64,
+    is_alliance: bool,
+    fleets: &[FleetKey],
+    system: SystemKey,
+) -> Option<AssaultDone> {
+    if !rebellion_core::assault::order_enabled(world, movement, troop_transport, is_alliance, fleets, system) {
+        return None;
+    }
+    let mut env = rebellion_core::bombardment::BombardEnv::new(tick, Some(alliance_hq));
+    let outcome = env
+        .assault(
+            world,
+            troop_transport,
+            rebellion_core::dat::Faction::of_alliance(is_alliance),
+            fleets,
+            system,
+        )
+        .clone();
+    for (system, losses) in &env.losses {
+        blockade.record_losses(*system, *losses);
+    }
+    let occupied = occupy_after_landing(world, system, tick);
+    Some(AssaultDone {
+        outcome,
+        reports: std::mem::take(&mut env.reports),
+        occupied,
+    })
+}
+
+fn fleet_ids(world: &GameWorld, fleets: &[FleetKey]) -> Result<Vec<u64>, CommandIdError> {
+    fleets.iter().map(|&fleet| fleet_id(world, fleet)).collect()
+}
+
+fn fleet_keys(world: &GameWorld, fleets: &[u64]) -> Result<Vec<FleetKey>, CommandIdError> {
+    fleets.iter().map(|&serial| fleet_key(world, serial)).collect()
+}
+
+/// The replay form of a Planetary Bombardment.
+///
+/// # Errors
+/// An unnamed fleet or a missing system.
+pub fn order_bombardment_command(
+    world: &GameWorld,
+    fleets: &[FleetKey],
+    system: SystemKey,
+    kind: u32,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::OrderBombardment {
+        fleets: fleet_ids(world, fleets)?,
+        system: system_id(world, system)?,
+        kind,
+    })
+}
+
+/// The replay form of a Planetary Assault.
+///
+/// # Errors
+/// An unnamed fleet or a missing system.
+pub fn order_assault_command(
+    world: &GameWorld,
+    fleets: &[FleetKey],
+    system: SystemKey,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::OrderAssault {
+        fleets: fleet_ids(world, fleets)?,
+        system: system_id(world, system)?,
+    })
+}
+
 /// The replay form of the headquarters' move.
 ///
 /// # Errors
@@ -1206,7 +1439,7 @@ impl From<CommandIdError> for CommandError {
 pub struct CommandStates<'a> {
     pub movement: &'a mut MovementState,
     pub troop_transport: &'a mut TroopTransportState,
-    pub blockade: &'a BlockadeState,
+    pub blockade: &'a mut BlockadeState,
     pub victory: &'a mut VictoryState,
     pub manufacturing: &'a mut ManufacturingState,
     pub missions: &'a mut MissionState,
@@ -1450,6 +1683,44 @@ fn apply_order(
             )
             .map(|_| ())
             .map_err(refused)
+        }
+        PlayerCommand::OrderBombardment { fleets, system, kind } => {
+            let fleets = fleet_keys(world, fleets)?;
+            let system = system_key(world, *system)?;
+            let alliance_hq = states.victory.alliance_hq;
+            order_bombardment(
+                world,
+                states.movement,
+                states.troop_transport,
+                states.blockade,
+                states.manufacturing,
+                alliance_hq,
+                states.tick,
+                is_alliance,
+                &fleets,
+                system,
+                *kind,
+            )
+            .map(|_| ())
+            .ok_or_else(|| CommandError::Refused("Planetary Bombardment".into()))
+        }
+        PlayerCommand::OrderAssault { fleets, system } => {
+            let fleets = fleet_keys(world, fleets)?;
+            let system = system_key(world, *system)?;
+            let alliance_hq = states.victory.alliance_hq;
+            order_assault(
+                world,
+                states.movement,
+                states.troop_transport,
+                states.blockade,
+                alliance_hq,
+                states.tick,
+                is_alliance,
+                &fleets,
+                system,
+            )
+            .map(|_| ())
+            .ok_or_else(|| CommandError::Refused("Planetary Assault".into()))
         }
         PlayerCommand::MoveMembers {
             members,
@@ -2524,6 +2795,157 @@ mod tests {
         advance(&mut replay);
         advance(&mut app);
         assert_eq!(replay.fingerprint().unwrap(), app.fingerprint().unwrap());
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_bombardment_matches_the_app_s() {
+        // A0 menus/13, 15: a side may bombard its own system, so a fleet at
+        // home will do; the strike's stream is seeded by the day.
+        let initial = seed42();
+        let world = &initial.world;
+        let found = [false, true].into_iter().find_map(|side| {
+            sorted_fleets(world, side).into_iter().find_map(|fleet| {
+                let at = world.fleets[fleet].location;
+                [rebellion_core::bombardment::TARGET_MILITARY, rebellion_core::bombardment::TARGET_CIVILIAN]
+                    .into_iter()
+                    .find(|&kind| {
+                        // One that changes the galaxy (a strike can miss
+                        // every target).
+                        let mut probe = initial.clone();
+                        let before = CampaignDayRunner::new(probe.clone()).fingerprint().unwrap();
+                        let hq = probe.victory.alliance_hq;
+                        let tick = probe.clock.tick;
+                        order_bombardment(
+                            &mut probe.world,
+                            &probe.movement,
+                            &mut probe.troop_transport,
+                            &mut probe.blockade,
+                            &mut probe.manufacturing,
+                            hq,
+                            tick,
+                            side,
+                            &[fleet],
+                            at,
+                            kind,
+                        )
+                        .is_some()
+                            && CampaignDayRunner::new(probe).fingerprint().unwrap() != before
+                    })
+                    .map(|kind| (side, fleet, at, kind))
+            })
+        });
+        let (side, fleet, at, kind) = found.expect("a fleet that may bombard its system");
+        let actor = if side { ReplayActor::Alliance } else { ReplayActor::Empire };
+        let command = order_bombardment_command(world, &[fleet], at, kind).unwrap();
+        same_as_app_for(
+            actor,
+            &initial,
+            |state| {
+                let hq = state.victory.alliance_hq;
+                let tick = state.clock.tick;
+                order_bombardment(
+                    state.world,
+                    state.movement,
+                    state.troop_transport,
+                    state.blockade,
+                    state.manufacturing,
+                    hq,
+                    tick,
+                    side,
+                    &[fleet],
+                    at,
+                    kind,
+                )
+                .expect("the bombardment goes");
+            },
+            command,
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_assault_matches_the_app_s() {
+        // An Alliance fleet takes a regiment aboard and flies to a neutral
+        // system (replayed orders that match the app's, above), then
+        // assaults it.
+        let start = seed42();
+        let world = &start.world;
+        let side = true;
+        let systems = sorted_systems(world);
+        let plan = sorted_alliance_fleets(world).into_iter().find_map(|fleet| {
+            let at = world.fleets[fleet].location;
+            let troop = world.systems[at].ground_units.iter().copied().find(|&troop| {
+                if !world.troops[troop].is_alliance || world.object_views.regiment_id(troop).is_none() {
+                    return false;
+                }
+                let mut probe = start.clone();
+                move_regiment(
+                    &mut probe.world,
+                    &mut probe.troop_transport,
+                    &probe.movement,
+                    probe.blockade.blockaded_systems(),
+                    troop,
+                    RegimentTarget::Fleet(fleet),
+                    probe.clock.tick,
+                    true,
+                )
+                .is_ok()
+            })?;
+            let to = systems.iter().copied().find(|&to| {
+                world.systems[to].control == rebellion_core::world::ControlKind::Uncontrolled
+                    && validate_fleet_dispatch(&start.movement, world, fleet, to, true).is_ok()
+            })?;
+            Some((fleet, troop, to))
+        });
+        let (fleet, troop, at) = plan.expect("an Alliance fleet, a regiment and a neutral system");
+        let mut runner = CampaignDayRunner::new(start.clone());
+        for command in [
+            move_regiment_command(world, troop, RegimentTarget::Fleet(fleet)).unwrap(),
+            dispatch_fleet_command(world, fleet, at, &[]).unwrap(),
+        ] {
+            runner
+                .apply_as(ReplayActor::Alliance, &ReplayCommand::Player { command })
+                .unwrap();
+        }
+        for _ in 0..120 {
+            let (world, states) = runner.parts_mut();
+            if rebellion_core::assault::order_enabled(
+                world,
+                &states.movement,
+                &states.troop_transport,
+                true,
+                &[fleet],
+                at,
+            ) {
+                break;
+            }
+            runner.apply(&ReplayCommand::AdvanceTicks { count: 1 }).unwrap();
+        }
+        let initial = runner.state();
+        let actor = if side { ReplayActor::Alliance } else { ReplayActor::Empire };
+        let command = order_assault_command(&initial.world, &[fleet], at).unwrap();
+        same_as_app_for(
+            actor,
+            &initial,
+            |state| {
+                let hq = state.victory.alliance_hq;
+                let tick = state.clock.tick;
+                order_assault(
+                    state.world,
+                    state.movement,
+                    state.troop_transport,
+                    state.blockade,
+                    hq,
+                    tick,
+                    side,
+                    &[fleet],
+                    at,
+                )
+                .expect("the assault goes");
+            },
+            command,
+        );
     }
 
     #[test]

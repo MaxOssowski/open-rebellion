@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use rebellion_core::dat::Faction;
 use rebellion_core::ids::{FleetKey, SystemKey};
 use rebellion_core::troop_transport::TroopTransportState;
-use rebellion_core::world::{ControlKind, GameWorld};
+use rebellion_core::world::GameWorld;
 use rebellion_render::{
     BattleSession, CombatWinner, GameMessage, MessageCategory, MessageLog, TacticalState,
 };
@@ -404,16 +404,10 @@ pub(crate) fn occupy_system(
     tick: u64,
     log: &mut MessageLog,
 ) {
-    let Some(value) = world.systems.get(system) else {
-        return;
-    };
-    if value.ground_units.is_empty() {
-        return;
-    }
-    if let ControlKind::Controlled(winner) = rebellion_core::economy::system_holder(world, value) {
-        if value.control != ControlKind::Controlled(winner) {
-            apply_system_occupation(world, system, winner, tick, log);
-        }
+    // The galaxy's part, shared with the replay
+    // (rebellion_data::player_command::occupy_after_landing).
+    if let Some(winner) = rebellion_data::player_command::occupy_after_landing(world, system, tick) {
+        occupation_message(world, system, winner, tick, log);
     }
 }
 
@@ -424,43 +418,34 @@ pub(crate) fn apply_system_occupation(
     tick: u64,
     log: &mut MessageLog,
 ) {
-    let previous = world.systems.get(system).map(|value| value.control);
-    if let Some(value) = world.systems.get_mut(system) {
-        value.control = ControlKind::Controlled(winner);
+    // The galaxy's part, shared with the replay
+    // (rebellion_data::player_command::occupy).
+    if rebellion_data::player_command::occupy(world, system, winner, tick) {
+        occupation_message(world, system, winner, tick, log);
     }
-    // FUN_00510d70 → FUN_004f6f40: the system's facilities follow its new
-    // holder, as the headless integrator's occupation does.
-    world.hand_over_facilities(system);
-    if previous != Some(ControlKind::Controlled(winner)) {
-        let name = world
-            .systems
-            .get(system)
-            .map_or("unknown", |value| value.name.as_str());
-        // port: a log line only. Regiments taking the planet set its
-        // control bits 0x30, so FUN_00510d70 leaves bit 0x2000 clear and
-        // System Joins (FUN_00499760) stays silent; notification 0x31b has
-        // no message (FUN_00488de0).
-        log.push(GameMessage::at_system(
-            tick,
-            format!("{name} occupied by {winner:?}"),
-            MessageCategory::Combat,
-            system,
-        ));
-    }
+}
 
-    for (_, character) in &mut world.characters {
-        let is_enemy = match winner {
-            Faction::Alliance => character.is_empire,
-            Faction::Empire => character.is_alliance,
-            Faction::Neutral => false,
-        };
-        if character.current_system == Some(system) && is_enemy && !character.is_killed {
-            character.is_captive = true;
-            character.captured_by = Some(winner);
-            character.capture_tick = Some(tick);
-            character.current_fleet = None;
-        }
-    }
+/// The line for a system taken. port: a log line only. Regiments taking
+/// the planet set its control bits 0x30, so FUN_00510d70 leaves bit 0x2000
+/// clear and System Joins (FUN_00499760) stays silent; notification 0x31b
+/// has no message (FUN_00488de0).
+pub(crate) fn occupation_message(
+    world: &GameWorld,
+    system: SystemKey,
+    winner: Faction,
+    tick: u64,
+    log: &mut MessageLog,
+) {
+    let name = world
+        .systems
+        .get(system)
+        .map_or("unknown", |value| value.name.as_str());
+    log.push(GameMessage::at_system(
+        tick,
+        format!("{name} occupied by {winner:?}"),
+        MessageCategory::Combat,
+        system,
+    ));
 }
 
 #[cfg(test)]

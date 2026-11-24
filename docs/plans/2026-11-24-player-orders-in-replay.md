@@ -59,9 +59,12 @@ added (a file with a player command fails closed on an older reader).
   a day's AI passes, as the app's frame step does.
 - Every order's aftermath (`after_order`: an order's units placed in
   their containers) runs in the app and in the replay.
-- Left in stage 3: Planetary Bombardment and Assault. Their app arms use
-  app-only parts (`BombardEnv`, `destroy_planet`, `occupy_system`, the
-  assault reports) and the day's draws, so they move with those parts.
+- Stage 3f: Planetary Bombardment and Assault. The galaxy's parts of a
+  system's destruction (`destroy_system`) and of an occupation
+  (`occupy`, `occupy_after_landing`) moved out of the app's
+  `destroy_planet` / `apply_system_occupation` / `occupy_system`, which
+  keep only their messages; the strike's stream is seeded by the day, as
+  before.
 - Seen on the way: the save-state fingerprint encodes slotmap key
   versions. A product's move stages and drops a fleet; a live world
   reuses the slot with a new version while a state loaded afresh hands
