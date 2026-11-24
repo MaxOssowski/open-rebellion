@@ -82,6 +82,7 @@ pub enum BuildError {
     Duplicate(String),
     BadBitmap(String),
     UnknownNamedBitmap { file: String, name: String },
+    BadTable(String),
 }
 
 impl fmt::Display for BuildError {
@@ -95,6 +96,7 @@ impl fmt::Display for BuildError {
             Self::Duplicate(key) => write!(f, "duplicate pack key {key}"),
             Self::BadBitmap(key) => write!(f, "{key} is not a bitmap the pack can hold"),
             Self::UnknownNamedBitmap { file, name } => write!(f, "{file}: unknown named bitmap {name}"),
+            Self::BadTable(why) => write!(f, "a text table does not decode: {why}"),
         }
     }
 }
@@ -369,6 +371,7 @@ pub fn build_entries(install: &InstallFiles) -> Result<Vec<Entry>, BuildError> {
             .map(|id| (id, format!("voice/{side}/{id}-{suffix}.wav")));
         wave_entries(install, file, ids, &mut out)?;
     }
+    super::strings::text_tables(install, &mut out)?;
     for &(file, key) in MUSIC {
         if let Some(data) = install.get(file) {
             out.push(Entry { kind: KIND_AUDIO, key: key.to_owned(), data: data.to_vec() });
@@ -480,12 +483,12 @@ mod tests {
         // above); what this stage does not build yet: the JSON tables, the
         // two REBEXE cursors, and the tactical meshes and textures.
         let not_yet = |kind: u8, key: &str| match kind {
-            KIND_GAME_DATA => key.ends_with(".json"),
+            KIND_GAME_DATA => key.starts_with("encyclopedia-source"),
             KIND_BITMAP => key.starts_with("rebexe-exe/"),
             4 | 5 => true,
             _ => false,
         };
         assert!(missing.iter().all(|(kind, key)| not_yet(*kind, key)), "{missing:?}");
-        assert_eq!(missing.len(), 9 + 2 + 484);
+        assert_eq!(missing.len(), 2 + 2 + 484);
     }
 }

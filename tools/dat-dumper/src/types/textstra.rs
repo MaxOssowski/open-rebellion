@@ -6,13 +6,17 @@
 //! code units. A length of 0 means the slot is empty.
 
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
 use anyhow::Context;
+#[cfg(not(target_arch = "wasm32"))]
 use pelite::resources::{Entry, Name};
+#[cfg(not(target_arch = "wasm32"))]
 use pelite::{FileMap, PeFile};
 
 /// `RT_STRING` resource type ID.
+#[cfg(not(target_arch = "wasm32"))]
 const RT_STRING_ID: u32 = 6;
 
 /// Load all `RT_STRING` entries from a Win32 PE DLL into a `HashMap<string_id, name>`.
@@ -23,6 +27,7 @@ const RT_STRING_ID: u32 = 6;
 /// # Errors
 /// Returns an error if the DLL cannot be read, its PE resource tree is invalid,
 /// or a string bundle is truncated or malformed.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_strings(path: &Path) -> anyhow::Result<HashMap<u16, String>> {
     let map = FileMap::open(path).with_context(|| format!("opening {}", path.display()))?;
 
@@ -91,7 +96,7 @@ pub fn load_strings(path: &Path) -> anyhow::Result<HashMap<u16, String>> {
     clippy::cast_possible_truncation,
     reason = "Preserve the existing fixed-width DAT/resource encoding and its low-bit conversions."
 )]
-fn parse_string_bundle(
+pub fn parse_string_bundle(
     raw: &[u8],
     base_id: u32,
     out: &mut HashMap<u16, String>,
@@ -139,6 +144,7 @@ fn parse_string_bundle(
 }
 
 /// `RT_RCDATA` resource type ID.
+#[cfg(not(target_arch = "wasm32"))]
 const RT_RCDATA_ID: u32 = 10;
 
 /// Load TEXTSTRA's `RT_RCDATA` message texts: the titles and bodies the
@@ -149,6 +155,7 @@ const RT_RCDATA_ID: u32 = 10;
 /// # Errors
 /// Returns an error if the DLL cannot be read or its PE resource tree is
 /// invalid.
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_message_texts(path: &Path) -> anyhow::Result<HashMap<u16, String>> {
     let map = FileMap::open(path).with_context(|| format!("opening {}", path.display()))?;
     let pe =

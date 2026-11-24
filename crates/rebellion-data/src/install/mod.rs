@@ -3,3 +3,4 @@
 
 pub mod pe;
 pub mod pack;
+pub mod strings;

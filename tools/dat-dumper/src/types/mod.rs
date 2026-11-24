@@ -37,8 +37,8 @@ pub mod gid_legend;
 // The agent's advice list from TEXTSTRA.DLL (its loader is native only).
 pub mod agent_advice;
 
-// Win32 PE resource extraction (native only — uses memory-mapped file I/O)
-#[cfg(not(target_arch = "wasm32"))]
+// Win32 PE resource extraction: the file loaders are native only (they use
+// memory-mapped file I/O); the byte decoders also build for the browser.
 pub mod textstra;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod wave_resources;
