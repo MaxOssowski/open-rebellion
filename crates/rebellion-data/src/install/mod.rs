@@ -6,3 +6,4 @@ pub mod pack;
 pub mod strings;
 pub mod encyclopedia;
 pub mod cursor;
+pub mod tactical;

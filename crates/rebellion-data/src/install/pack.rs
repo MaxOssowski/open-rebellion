@@ -374,6 +374,7 @@ pub fn build_entries(install: &InstallFiles) -> Result<Vec<Entry>, BuildError> {
     super::strings::text_tables(install, &mut out)?;
     super::encyclopedia::encyclopedia_tables(install, &mut out)?;
     super::cursor::cursor_entries(install, &mut out)?;
+    super::tactical::tactical_entries(install, &mut out)?;
     for &(file, key) in MUSIC {
         if let Some(data) = install.get(file) {
             out.push(Entry { kind: KIND_AUDIO, key: key.to_owned(), data: data.to_vec() });
@@ -481,9 +482,9 @@ mod tests {
             .filter(|(kind, key)| !built.iter().any(|e| e.kind == *kind && &e.key == key))
             .collect();
         eprintln!("built and equal per kind: {per_kind:?}; offline entries not built yet: {}", missing.len());
-        // Every entry built equals the offline pack's (checked above); not
-        // built yet are only the tactical meshes and textures (kinds 4, 5).
-        assert!(missing.iter().all(|(kind, _)| matches!(kind, 4 | 5)), "{missing:?}");
-        assert_eq!(missing.len(), 87 + 397);
+        // Every entry built equals the offline pack's (checked above), and
+        // every offline entry is built.
+        assert!(missing.is_empty(), "{missing:?}");
+        assert_eq!(built.len(), offline.len());
     }
 }
