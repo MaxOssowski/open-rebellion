@@ -142,6 +142,19 @@ python3 -m http.server 8080 -d web/
 
 **Controls**: scroll to zoom, right-drag to pan, left-click to select a system, `R` to reset view, `Esc` to quit.
 
+### Browser build without the game data (bring your own data)
+
+The browser build can also be served with no game data at all: just
+`web/index.html`, `web/gl.js` and `web/open-rebellion.wasm`. When the server
+has no `data/runtime.orpk` (or the address ends in `?data=own`), the page asks
+the player for the folder of their own copy—the one holding `REBEXE.EXE`,
+such as the GOG installation. The game reads the files in the browser, builds
+the same runtime pack the offline pipeline builds (byte for byte), plays the
+movies from the original `MDATA` Smacker files, and keeps all of it in the
+browser's IndexedDB for the next visit. Nothing is uploaded. From the browser
+console, `openRebellionOwnData.forget()` drops what was kept. Details:
+[docs/plans/2026-11-24-bring-your-own-data.md](docs/plans/2026-11-24-bring-your-own-data.md).
+
 ## Docker (Browser Build)
 
 On Linux, building the native app requires ALSA/X11/GL dev headers, and the
