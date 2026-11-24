@@ -47,6 +47,7 @@ pub mod replay_fixture;
 pub mod replay_sweep;
 pub mod save;
 pub mod seeds;
+pub mod session;
 pub mod settings;
 pub mod simulation;
 

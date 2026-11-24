@@ -805,6 +805,61 @@ impl CampaignDayRunner {
         );
     }
 
+    /// Run the next day with the app's spread AI passes, applying each
+    /// `(passes_done, actor, command)` once that many of the day's passes
+    /// have run (0: right after the day begins), as the app's frame step
+    /// gives an order between sub-ticks. With `stop_after`, the day stops
+    /// open after that many passes, as a paused app holds it (read the
+    /// state then; run no further day); otherwise it closes.
+    ///
+    /// # Errors
+    /// The first command that does not apply.
+    pub fn run_day_with_orders(
+        &mut self,
+        orders: &[(u32, ReplayActor, ReplayCommand)],
+        stop_after: Option<u32>,
+    ) -> anyhow::Result<()> {
+        let (tick, rolls) = self.runtime.next_day();
+        let tick_events = [TickEvent { tick }];
+        let mut integrator = crate::integrator::PerceptionIntegrator::new(tick, tick);
+        crate::simulation::begin_simulation_day(
+            &mut self.runtime.world,
+            &mut self.runtime.states,
+            &tick_events,
+            &rolls,
+            &mut integrator,
+        );
+        let passes = self.runtime.states.ai_day.passes;
+        for upto in 0..=passes {
+            if upto > 0 {
+                crate::simulation::run_ai_passes(
+                    &mut self.runtime.world,
+                    &mut self.runtime.states,
+                    &mut integrator,
+                    &mut crate::simulation::NoPresentation,
+                    upto,
+                );
+            }
+            for (_, actor, command) in orders.iter().filter(|(done, _, _)| *done == upto) {
+                command.validate(*actor)?;
+                self.runtime.apply_command(*actor, command)?;
+            }
+            if stop_after == Some(upto) {
+                // Left open: read the state, run no further day.
+                return Ok(());
+            }
+        }
+        let cursor = self.runtime.states.ai_day.roll_cursor as usize;
+        crate::simulation::close_simulation_day(
+            &mut self.runtime.world,
+            &mut self.runtime.states,
+            &mut crate::simulation::SliceRolls::at(&rolls, cursor),
+            &mut integrator,
+            &mut crate::simulation::NoPresentation,
+        );
+        Ok(())
+    }
+
     /// Run the next day with its AI passes on `schedule`.
     pub fn run_day(&mut self, schedule: AiPassSchedule) -> CampaignDay {
         let (tick, rolls) = self.runtime.next_day();
