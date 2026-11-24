@@ -32,6 +32,7 @@ it does not yet make the app and playtest simulation loops equivalent.
 | Automatic battle native/WASM equality | Complete 2026-11-20 | Sweep's staged seed-42 battle |
 | Tactical battle native/WASM equality | Complete 2026-11-20 | Same battle headless with Observe Battle; `portable_math` |
 | Automatic = tactical outcome | Not comparable | Different engines (see below) |
+| Player orders as replay commands | Stage 1 of 4, 2026-11-24 | `ReplayCommand::Player`: fleet moves (`player_command`), same function as the app; `docs/plans/2026-11-24-player-orders-in-replay.md` |
 
 ## Format v2
 
@@ -48,7 +49,12 @@ contains:
 
 Each command has the simulation tick immediately before application, a
 zero-based global sequence, an actor, and a typed command. Format v2 supports
-the current headless control commands. Existing command semantics may not
+the headless control commands and, since 2026-11-24, player orders
+(`ReplayCommand::Player` with a `PlayerCommand`, issued by the Alliance or
+Empire actor, never the engine; objects named by `DatId`, fleet creation
+serial or regiment object id, never by slotmap key). Commands are only
+added, so the version stays 2; an older reader rejects a file with a
+player order. Existing command semantics may not
 change without incrementing `REPLAY_FORMAT_VERSION`.
 
 Each checkpoint identifies a tick, the exact number of commands already
@@ -213,8 +219,9 @@ battle on each combat engine. The app and the runner now share one day
 (F-012), checked natively by
 `the_app_s_day_with_its_presentation_matches_the_headless_runner`; the sweep
 runs that day's AI passes spread in WASM but not the app's own presentation
-host. Still open: player commands from the app (orders, missions, production)
-have no replay command, so no app session can be replayed; a played tactical
+host. Still open: of the app's player commands only fleet moves have a replay
+command (`player_command`, stage 1), the app does not yet record its
+session, so no app session can be replayed; a played tactical
 battle has no recorded command stream; and the sweep has run on Linux
 x86_64 and Chromium 157 only (macOS, other browsers and other CPUs are
 untested). This is not a claim of full interactive game parity.

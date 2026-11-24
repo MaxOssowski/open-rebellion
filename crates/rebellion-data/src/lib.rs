@@ -41,6 +41,7 @@ pub mod encyclopedia_catalog;
 pub mod encyclopedia_topics;
 pub mod integrator;
 pub mod mods;
+pub mod player_command;
 pub mod replay;
 pub mod replay_fixture;
 pub mod replay_sweep;

@@ -74,9 +74,8 @@ use rebellion_core::missions::{
     MissionEffect, MissionFaction, MissionKind, MissionMember, MissionState,
 };
 use rebellion_core::movement::{
-    begin_faction_fleet_transit, fleet_move_confirms, fleet_move_enabled,
-    fleet_transit_ticks, fleets_move_enabled, system_side_fleets, validate_fleet_dispatch,
-    validate_fleets_dispatch, MovementState,
+    fleet_move_confirms, fleet_move_enabled, fleet_transit_ticks, fleets_move_enabled,
+    system_side_fleets, validate_fleets_dispatch, MovementState,
 };
 use rebellion_core::production_cycle::ProductionState;
 use rebellion_core::repair::{RepairEvent, RepairState};

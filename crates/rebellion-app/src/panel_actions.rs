@@ -316,41 +316,15 @@ pub(super) fn apply_panel_action(
             troops,
         } => {
             let expected_is_alliance = *player_faction == MissionFaction::Alliance;
-            if let Err(error) = validate_fleet_dispatch(
-                movement_state,
+            // The shared order (rebellion_data::player_command), as a
+            // replay applies it.
+            match rebellion_data::player_command::dispatch_fleet(
                 world,
+                movement_state,
+                troop_transport_state,
                 fleet,
                 destination,
-                expected_is_alliance,
-            ) {
-                msg_log.refuse(
-                    GameMessage::new(
-                        clock.tick,
-                        format!("Fleet move rejected: {error}"),
-                        MessageCategory::Event,
-                    ),
-                    UNTRACED_REFUSAL,
-                );
-                return;
-            }
-            if let Err(error) = troop_transport_state.embark(world, fleet, &troops) {
-                if !troops.is_empty() {
-                    msg_log.refuse(
-                        GameMessage::new(
-                            clock.tick,
-                            format!("Troop embarkation rejected: {error}"),
-                            MessageCategory::Event,
-                        ),
-                        UNTRACED_REFUSAL,
-                    );
-                    return;
-                }
-            }
-            match begin_faction_fleet_transit(
-                movement_state,
-                world,
-                fleet,
-                destination,
+                &troops,
                 expected_is_alliance,
             ) {
                 Ok(departure) => {
@@ -376,22 +350,17 @@ pub(super) fn apply_panel_action(
                         audio_engine.play_sfx(SfxKind::FleetDeparture, audio_vol);
                     }
                 }
-                Err(error) => {
-                    if !troops.is_empty() {
-                        let origin = world
-                            .fleets
-                            .get(fleet)
-                            .map(|value| value.location)
-                            .unwrap_or_default();
-                        let _ =
-                            troop_transport_state.disembark_selected(world, fleet, origin, &troops);
-                    }
+                Err(refusal) => {
+                    let text = match refusal {
+                        rebellion_data::player_command::DispatchRefusal::Move(error) => {
+                            format!("Fleet move rejected: {error}")
+                        }
+                        rebellion_data::player_command::DispatchRefusal::Embark(error) => {
+                            format!("Troop embarkation rejected: {error}")
+                        }
+                    };
                     msg_log.refuse(
-                        GameMessage::new(
-                            clock.tick,
-                            format!("Fleet move rejected: {error}"),
-                            MessageCategory::Event,
-                        ),
+                        GameMessage::new(clock.tick, text, MessageCategory::Event),
                         UNTRACED_REFUSAL,
                     );
                 }

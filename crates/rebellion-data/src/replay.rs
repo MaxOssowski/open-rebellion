@@ -179,6 +179,11 @@ pub enum ReplayCommand {
     ToggleDualAi,
     RevealAllSystems,
     ForceVictoryCheck,
+    /// A player's order, issued by the side's actor
+    /// ([`crate::player_command`]).
+    Player {
+        command: crate::player_command::PlayerCommand,
+    },
 }
 
 impl ReplayCommand {
@@ -202,6 +207,9 @@ impl ReplayCommand {
         ) && actor != ReplayActor::Engine
         {
             bail!("engine control command cannot be issued by {actor:?}");
+        }
+        if matches!(self, Self::Player { .. }) && actor == ReplayActor::Engine {
+            bail!("a player order needs a side, not the engine");
         }
         Ok(())
     }
@@ -530,7 +538,7 @@ where
     for (actor, command) in commands {
         let tick = runtime.current_tick();
         manifest.record_command(tick, actor, command.clone())?;
-        runtime.apply_command(&command)?;
+        runtime.apply_command(actor, &command)?;
 
         let command_count = manifest.commands.len() as u64;
         let fingerprint = compute_state_fingerprint(&runtime.snapshot())?;
@@ -608,7 +616,7 @@ where
                 runtime.current_tick()
             );
         }
-        runtime.apply_command(&record.command)?;
+        runtime.apply_command(record.actor, &record.command)?;
         verify_checkpoints_at_prefix(
             manifest,
             &runtime,
@@ -771,7 +779,17 @@ impl CampaignDayRunner {
     /// # Errors
     /// Returns an error if the command cannot apply, as a replay would.
     pub fn apply(&mut self, command: &ReplayCommand) -> anyhow::Result<()> {
-        self.runtime.apply_command(command)
+        self.runtime.apply_command(ReplayActor::Engine, command)
+    }
+
+    /// Apply one replay command issued by `actor` (a player's order names
+    /// its side).
+    ///
+    /// # Errors
+    /// Returns an error if the command cannot apply, as a replay would.
+    pub fn apply_as(&mut self, actor: ReplayActor, command: &ReplayCommand) -> anyhow::Result<()> {
+        command.validate(actor)?;
+        self.runtime.apply_command(actor, command)
     }
 
     /// Run the next day through `driver`, with the day's tick and the rolls
@@ -849,6 +867,12 @@ impl CampaignDayRunner {
     #[must_use]
     pub fn world(&self) -> &GameWorld {
         &self.runtime.world
+    }
+
+    /// The simulation tick (day) reached.
+    #[must_use]
+    pub fn tick(&self) -> u64 {
+        self.runtime.current_tick()
     }
 
     /// The galaxy, for fixtures that stage a situation before a day.
@@ -1010,8 +1034,19 @@ impl ReplayRuntime {
         self.states.clock.tick
     }
 
-    fn apply_command(&mut self, command: &ReplayCommand) -> anyhow::Result<()> {
+    fn apply_command(&mut self, actor: ReplayActor, command: &ReplayCommand) -> anyhow::Result<()> {
         match command {
+            ReplayCommand::Player { command } => {
+                crate::player_command::apply(
+                    &mut self.world,
+                    crate::player_command::CommandStates {
+                        movement: &mut self.states.movement,
+                        troop_transport: &mut self.states.troop_transport,
+                    },
+                    actor == ReplayActor::Alliance,
+                    command,
+                )?;
+            }
             ReplayCommand::AdvanceTicks { count } => {
                 for _ in 0..*count {
                     let tick = self
