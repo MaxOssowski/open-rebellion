@@ -421,6 +421,184 @@ mod native {
 /// `<video>` over the canvas (`web/index.html`, `open_rebellion_video`),
 /// black around it and keeping its aspect, as the native player draws its
 /// decoded frames; the game polls its state and stops it on a skip.
+/// A movie decoded from the player's own files (the browser's own-data
+/// mode, `rebellion-app` `own_data`): frames as RGBA and the sound as one
+/// WAVE. The app supplies the decoder ([`set_movie_opener`]) so this crate
+/// keeps out of the data crate. port: not part of the original's player,
+/// which plays the same Smacker files.
+pub trait MovieDecoder {
+    fn size(&self) -> (u32, u32);
+    fn frame_duration_us(&self) -> u64;
+    /// The next frame into `out` (width * height * 4 bytes); `None` at the end.
+    fn next_frame_rgba(&mut self, out: &mut Vec<u8>) -> Option<Result<(), String>>;
+    /// The whole sound track as a RIFF WAVE, when the movie has one.
+    fn audio_wav(&self) -> Option<Result<Vec<u8>, String>>;
+}
+
+/// Opens a movie file's bytes as a [`MovieDecoder`].
+pub type MovieOpener = fn(Vec<u8>) -> Result<Box<dyn MovieDecoder>, String>;
+
+thread_local! {
+    static MOVIE_OPENER: std::cell::Cell<Option<MovieOpener>> = const { std::cell::Cell::new(None) };
+}
+
+/// Set the decoder for movies the page serves from the player's files.
+pub fn set_movie_opener(opener: MovieOpener) {
+    MOVIE_OPENER.with(|cell| cell.set(Some(opener)));
+}
+
+#[cfg(target_arch = "wasm32")]
+mod own {
+    use macroquad::prelude::{FilterMode, Texture2D};
+    use quad_snd::{AudioContext, Playback, Sound};
+
+    use super::{MovieDecoder, MOVIE_OPENER};
+
+    extern "C" {
+        fn open_rebellion_own_movie_request(ptr: *const u8, len: usize) -> u32;
+        fn open_rebellion_own_movie_size() -> i32;
+        fn open_rebellion_own_movie_take(ptr: *mut u8, len: usize);
+    }
+
+    struct Sounding {
+        ctx: AudioContext,
+        playback: Playback,
+        _sound: Sound,
+    }
+
+    struct Playing {
+        decoder: Box<dyn MovieDecoder>,
+        texture: Texture2D,
+        rgba: Vec<u8>,
+        frame_seconds: f32,
+        accumulated: f32,
+        sound: Option<Sounding>,
+    }
+
+    /// A movie the page reads from the player's files, then decoded here.
+    pub struct OwnMovie {
+        stem: String,
+        volume: f32,
+        playing: Option<Playing>,
+        loading: bool,
+        failed: bool,
+        finished: bool,
+    }
+
+    impl OwnMovie {
+        /// Ask the page for the movie `stem`; `None` when the page is not in
+        /// the own-data mode or no decoder is set.
+        pub fn request(stem: &str, volume: f32) -> Option<OwnMovie> {
+            MOVIE_OPENER.with(std::cell::Cell::get)?;
+            if unsafe { open_rebellion_own_movie_request(stem.as_ptr(), stem.len()) } == 0 {
+                return None;
+            }
+            Some(OwnMovie { stem: stem.to_owned(), volume, playing: None, loading: true, failed: false, finished: false })
+        }
+
+        fn start(&mut self) -> Result<(), String> {
+            let size = unsafe { open_rebellion_own_movie_size() };
+            match size {
+                -1 => return Ok(()),
+                n if n <= 0 => return Err("the movie is not among the player's files".into()),
+                _ => {}
+            }
+            self.loading = false;
+            let mut bytes = vec![0u8; size as usize];
+            unsafe { open_rebellion_own_movie_take(bytes.as_mut_ptr(), bytes.len()) };
+            let opener = MOVIE_OPENER.with(std::cell::Cell::get).ok_or("no movie decoder")?;
+            let mut decoder = opener(bytes)?;
+            let (width, height) = decoder.size();
+            let mut rgba = Vec::new();
+            match decoder.next_frame_rgba(&mut rgba) {
+                Some(Ok(())) => {}
+                Some(Err(error)) => return Err(error),
+                None => return Err("the movie has no frames".into()),
+            }
+            let texture = Texture2D::from_rgba8(width as u16, height as u16, &rgba);
+            texture.set_filter(FilterMode::Linear);
+            let sound = match decoder.audio_wav() {
+                Some(Ok(wav)) => {
+                    let ctx = AudioContext::new();
+                    let sound = Sound::load(&ctx, &wav);
+                    let playback = sound.play(&ctx, quad_snd::PlaySoundParams { looped: false, volume: self.volume });
+                    Some(Sounding { ctx, playback, _sound: sound })
+                }
+                Some(Err(error)) => {
+                    macroquad::logging::warn!("[cutscene] own movie sound: {error}");
+                    None
+                }
+                None => None,
+            };
+            let frame_seconds = (decoder.frame_duration_us().max(1) as f32) / 1_000_000.0;
+            macroquad::logging::info!(
+                "[cutscene] own_movie playing stem={} size={width}x{height} frame_us={} sound={}",
+                self.stem,
+                decoder.frame_duration_us(),
+                sound.is_some()
+            );
+            self.playing = Some(Playing { decoder, texture, rgba, frame_seconds, accumulated: 0.0, sound });
+            Ok(())
+        }
+
+        pub fn advance(&mut self, dt: f32) {
+            if self.finished || self.failed {
+                return;
+            }
+            if self.loading {
+                if let Err(error) = self.start() {
+                    macroquad::logging::warn!("[cutscene] own movie: {error}");
+                    self.loading = false;
+                    self.failed = true;
+                }
+                return;
+            }
+            let Some(playing) = self.playing.as_mut() else { return };
+            playing.accumulated += dt.max(0.0);
+            let mut shown = false;
+            while playing.accumulated >= playing.frame_seconds {
+                playing.accumulated -= playing.frame_seconds;
+                match playing.decoder.next_frame_rgba(&mut playing.rgba) {
+                    Some(Ok(())) => shown = true,
+                    Some(Err(error)) => {
+                        macroquad::logging::warn!("[cutscene] own movie frame: {error}");
+                        self.stop();
+                        return;
+                    }
+                    None => {
+                        self.stop();
+                        return;
+                    }
+                }
+            }
+            if shown {
+                let (width, height) = playing.decoder.size();
+                playing.texture.update_from_bytes(width, height, &playing.rgba);
+            }
+        }
+
+        pub fn current_frame(&self) -> Option<&Texture2D> {
+            self.playing.as_ref().map(|playing| &playing.texture)
+        }
+
+        pub fn is_finished(&self) -> bool {
+            self.finished || self.failed
+        }
+
+        pub fn stop(&mut self) {
+            self.finished = true;
+            if let Some(sound) = self.playing.as_mut().and_then(|playing| playing.sound.take()) {
+                sound.playback.stop(&sound.ctx);
+            }
+        }
+
+        /// The page found no such movie among the player's files.
+        pub fn load_failed(&self) -> bool {
+            self.failed && !self.finished
+        }
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 mod web {
     use std::path::{Path, PathBuf};
@@ -441,11 +619,14 @@ mod web {
 
     pub struct VideoPlayer {
         finished: bool,
+        /// Played from the player's own files instead of the page's video.
+        own: Option<super::own::OwnMovie>,
     }
 
     impl VideoPlayer {
         /// Ask the page to play the movie `path` names (its file stem, as in
-        /// `assets/references/ref-videos/000.webm`).
+        /// `assets/references/ref-videos/000.webm`): from the player's own
+        /// files in the own-data mode, else in the page's `<video>`.
         pub fn open(path: &Path, volume: f32) -> Result<VideoPlayer, VideoError> {
             let stem = path
                 .file_stem()
@@ -454,10 +635,13 @@ mod web {
                     path: path.to_path_buf(),
                     message: "missing file stem".to_string(),
                 })?;
+            if let Some(own) = super::own::OwnMovie::request(stem, volume) {
+                return Ok(VideoPlayer { finished: false, own: Some(own) });
+            }
             let started =
                 unsafe { open_rebellion_video_play(stem.as_ptr(), stem.len(), volume) } != 0;
             if started {
-                Ok(VideoPlayer { finished: false })
+                Ok(VideoPlayer { finished: false, own: None })
             } else {
                 Err(VideoError::NotDecoded {
                     path: PathBuf::from(format!("data/video/{stem}.webm")),
@@ -467,28 +651,42 @@ mod web {
 
         /// The page plays on its own clock; a movie that ended or failed to
         /// load is finished.
-        pub fn advance(&mut self, _dt: f32) {
+        pub fn advance(&mut self, dt: f32) {
+            if let Some(own) = self.own.as_mut() {
+                own.advance(dt);
+                return;
+            }
             if unsafe { open_rebellion_video_state() } >= ENDED {
                 self.finished = true;
             }
         }
 
-        /// The page draws the movie itself.
+        /// The page draws its `<video>` itself; an own movie is drawn here.
         pub fn current_frame(&self) -> Option<&Texture2D> {
-            None
+            self.own.as_ref().and_then(super::own::OwnMovie::current_frame)
         }
 
         pub fn is_finished(&self) -> bool {
+            if let Some(own) = self.own.as_ref() {
+                return own.is_finished();
+            }
             self.finished || unsafe { open_rebellion_video_state() } >= ENDED
         }
 
         pub fn stop(&mut self) {
+            if let Some(own) = self.own.as_mut() {
+                own.stop();
+                return;
+            }
             unsafe { open_rebellion_video_stop() };
             self.finished = true;
         }
 
         /// Whether the page could not load the movie (FAILED).
         pub fn load_failed(&self) -> bool {
+            if let Some(own) = self.own.as_ref() {
+                return own.load_failed();
+            }
             !self.finished && unsafe { open_rebellion_video_state() } == FAILED
         }
     }

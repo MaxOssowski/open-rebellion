@@ -407,6 +407,7 @@
 
             const DB_NAME = "open-rebellion-own-data";
             const STORE = "packs";
+            const MOVIES = "movies";
             const KEY = "runtime";
             const params = new URLSearchParams(window.location.search);
             const overlay = document.getElementById("own-data");
@@ -414,6 +415,11 @@
             const choose = document.getElementById("own-data-choose");
             const input = document.getElementById("own-data-input");
             let picked = [];
+            // The picked movies (MDATA.000-.2xx, Smacker files) by stem,
+            // kept beside the pack; the game asks for one when it plays it.
+            let pickedMovies = new Map();
+            let ownMode = false;
+            const movie = { state: 0, bytes: null };
 
             const modeOn = params.get("data") === "own"
                 ? Promise.resolve(true)
@@ -424,18 +430,24 @@
 
             function openDb() {
                 return new Promise((resolve, reject) => {
-                    const request = indexedDB.open(DB_NAME, 1);
-                    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+                    const request = indexedDB.open(DB_NAME, 2);
+                    request.onupgradeneeded = () => {
+                        for (const name of [STORE, MOVIES]) {
+                            if (!request.result.objectStoreNames.contains(name)) {
+                                request.result.createObjectStore(name);
+                            }
+                        }
+                    };
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
                 });
             }
 
-            function withStore(mode, action) {
+            function withStore(mode, action, store = STORE) {
                 return openDb().then(db => new Promise((resolve, reject) => {
-                    const transaction = db.transaction(STORE, mode);
-                    const request = action(transaction.objectStore(STORE));
-                    transaction.oncomplete = () => { db.close(); resolve(request.result); };
+                    const transaction = db.transaction(store, mode);
+                    const request = action(transaction.objectStore(store));
+                    transaction.oncomplete = () => { db.close(); resolve(request ? request.result : undefined); };
                     transaction.onerror = () => { db.close(); reject(transaction.error); };
                     transaction.onabort = () => { db.close(); reject(transaction.error); };
                 }));
@@ -447,7 +459,7 @@
             }
 
             // The files the pack builder reads (install::pack), from the
-            // folder that holds REBEXE.EXE.
+            // folder that holds REBEXE.EXE, and the movies apart.
             function gameFiles(files) {
                 const paths = files.map(file => file.webkitRelativePath || file.name);
                 const exe = paths.find(path => /(^|\/)REBEXE\.EXE$/i.test(path));
@@ -456,13 +468,17 @@
                 }
                 const root = exe.slice(0, exe.length - "REBEXE.EXE".length).toUpperCase();
                 const chosen = [];
+                chosen.movies = new Map();
                 files.forEach((file, index) => {
                     const path = paths[index];
                     if (!path.toUpperCase().startsWith(root)) {
                         return;
                     }
                     const rest = path.slice(root.length).toUpperCase();
-                    if (/^[^/]+\.(DLL|DLL\.OLD|EXE)$/.test(rest)
+                    const film = /^MDATA\/MDATA\.([0-2]\d\d)$/.exec(rest);
+                    if (film) {
+                        chosen.movies.set(film[1], file);
+                    } else if (/^[^/]+\.(DLL|DLL\.OLD|EXE)$/.test(rest)
                         || /^GDATA\/[^/]+\.(DAT|SPT)$/.test(rest)
                         || /^EDATA\/EDATA\.\d{3}$/.test(rest)
                         || /^MDATA\/MDATA\.3\d\d$/.test(rest)) {
@@ -493,6 +509,7 @@
                 if (!(await modeOn)) {
                     return null;
                 }
+                ownMode = true;
                 const builder = wasm_exports.open_rebellion_own_data_builder();
                 try {
                     const kept = await withStore("readonly", store => store.get(KEY));
@@ -504,6 +521,7 @@
                     console.warn("Open Rebellion could not read its kept game data", error);
                 }
                 picked = await pickFolder();
+                pickedMovies = picked.movies;
                 choose.hidden = true;
                 show("Building the game data from your files…");
                 // Let the message paint before the build holds the page.
@@ -550,8 +568,45 @@
                     // The game keeps the keyboard.
                     document.getElementById("glcanvas").focus();
                     withStore("readwrite", store => store.put({ builder, pack, kept: Date.now() }, KEY))
-                        .then(() => console.info("Open Rebellion kept the game data built from your files"),
+                        .then(() => withStore("readwrite", store => {
+                            store.clear();
+                            pickedMovies.forEach((file, stem) => store.put(file, stem));
+                        }, MOVIES))
+                        .then(() => console.info("Open Rebellion kept the game data built from your files ("
+                            + pickedMovies.size + " movies)"),
                             error => console.warn("Open Rebellion could not keep the game data; the folder is asked for again next time", error));
+                };
+                // A movie from the player's files (video_player.rs, own
+                // movies): 1 when the game should play it from them.
+                imports.env.open_rebellion_own_movie_request = function (ptr, len) {
+                    if (!ownMode) {
+                        return 0;
+                    }
+                    const stem = UTF8ToString(ptr, len);
+                    movie.state = -1;
+                    movie.bytes = null;
+                    const picked = pickedMovies.get(stem);
+                    (picked ? Promise.resolve(picked) : withStore("readonly", store => store.get(stem), MOVIES))
+                        .then(blob => blob ? blob.arrayBuffer() : null)
+                        .then(buffer => {
+                            movie.bytes = buffer ? new Uint8Array(buffer) : null;
+                            movie.state = buffer ? buffer.byteLength : -2;
+                        }, error => {
+                            console.warn("Open Rebellion could not read movie " + stem, error);
+                            movie.state = -2;
+                        });
+                    return 1;
+                };
+                // -1 while reading, -2 when missing, else its length.
+                imports.env.open_rebellion_own_movie_size = function () {
+                    return movie.state;
+                };
+                imports.env.open_rebellion_own_movie_take = function (ptr, len) {
+                    if (movie.bytes && movie.bytes.length === len) {
+                        new Uint8Array(wasm_memory.buffer, ptr, len).set(movie.bytes);
+                    }
+                    movie.bytes = null;
+                    movie.state = 0;
                 };
                 imports.env.open_rebellion_own_data_failed = function (ptr, len) {
                     const reason = UTF8ToString(ptr, len);
@@ -565,7 +620,8 @@
             // From the console: drop the kept game data; the next visit asks
             // for the folder again.
             window.openRebellionOwnData = {
-                forget: () => withStore("readwrite", store => store.delete(KEY)),
+                forget: () => withStore("readwrite", store => store.delete(KEY))
+                    .then(() => withStore("readwrite", store => store.clear(), MOVIES)),
             };
 
             miniquad_add_plugin({

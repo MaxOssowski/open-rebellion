@@ -11,6 +11,8 @@
 
 use macroquad::file::load_file;
 use rebellion_data::install::pack::{build_entries, write_pack, InstallFiles};
+use rebellion_data::install::smacker::Smacker;
+use rebellion_render::video_player::{set_movie_opener, MovieDecoder};
 
 /// Bumped when the builder's output changes, so a kept pack is rebuilt.
 pub const BUILDER_VERSION: u32 = 1;
@@ -31,9 +33,39 @@ pub fn report_failure(reason: &str) {
     unsafe { open_rebellion_own_data_failed(reason.as_ptr(), reason.len()) };
 }
 
+/// A Smacker movie from the player's MDATA files, for the video player.
+struct SmackerMovie(Smacker);
+
+impl MovieDecoder for SmackerMovie {
+    fn size(&self) -> (u32, u32) {
+        (self.0.width() as u32, self.0.height() as u32)
+    }
+
+    fn frame_duration_us(&self) -> u64 {
+        self.0.frame_duration_us()
+    }
+
+    fn next_frame_rgba(&mut self, out: &mut Vec<u8>) -> Option<Result<(), String>> {
+        self.0.next_frame_rgba(out).map(|done| done.map_err(|error| error.to_string()))
+    }
+
+    fn audio_wav(&self) -> Option<Result<Vec<u8>, String>> {
+        self.0.audio_wav(0).map(|wav| wav.map_err(|error| error.to_string()))
+    }
+}
+
+fn open_smacker(bytes: Vec<u8>) -> Result<Box<dyn MovieDecoder>, String> {
+    Smacker::open(bytes)
+        .map(|movie| Box::new(SmackerMovie(movie)) as Box<dyn MovieDecoder>)
+        .map_err(|error| error.to_string())
+}
+
 /// The runtime pack from the player's own files, when the page is in that
 /// mode: `None` when it is not, else the pack or why it could not be built.
+/// The movies then play from the player's files too (the page serves them
+/// when the video player asks).
 pub async fn pack() -> Option<Result<Vec<u8>, String>> {
+    set_movie_opener(open_smacker);
     let answer = load_file("own-data/pack").await.ok()?;
     if answer.starts_with(b"ORPK") {
         return Some(Ok(answer));

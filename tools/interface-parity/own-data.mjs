@@ -78,24 +78,37 @@ const waitFor = async (predicate, what, ms = 60000) => {
     await page.waitForTimeout(200);
   }
 };
-const toMainMenu = async () => {
+// The intro movies play from the player's files, drawn by the game: each
+// one is skipped (Escape, FUN_005f7240) a moment after it starts, the first
+// one after a screenshot.
+const toMainMenu = async shotName => {
+  let skipped = 0;
   for (const deadline = Date.now() + 120_000; ;) {
     if (await page.locator('#main-menu-semantics[data-active=true]').count() > 0) break;
     if (Date.now() > deadline) throw new Error('the main menu never became active');
-    if (await page.evaluate(() => Boolean(document.querySelector('video')))) await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
+    const playing = consoleLog.filter(line => /own_movie playing/.test(line)).length;
+    if (playing > skipped) {
+      await page.waitForTimeout(2000);
+      if (skipped === 0 && shotName) await screenshot(shotName);
+      await page.keyboard.press('Escape');
+      skipped += 1;
+    }
+    if (await page.evaluate(() => Boolean(document.querySelector('video')))) throw new Error('a <video> played in the own-data mode');
+    await page.waitForTimeout(300);
   }
+  return skipped;
 };
 const pickerShown = () => page.evaluate(() => !document.getElementById('own-data').hidden);
 const statusText = () => page.locator('#own-data-status').textContent();
 // The kept pack: its builder, length and SHA-256, read in the page.
 const kept = () => page.evaluate(() => new Promise((resolve, reject) => {
-  const request = indexedDB.open('open-rebellion-own-data', 1);
+  const request = indexedDB.open('open-rebellion-own-data');
   request.onerror = () => reject(request.error);
-  request.onupgradeneeded = () => request.result.createObjectStore('packs');
   request.onsuccess = () => {
-    const tx = request.result.transaction('packs', 'readonly');
+    if (!request.result.objectStoreNames.contains('packs')) { request.result.close(); return resolve(null); }
+    const tx = request.result.transaction(['packs', 'movies'], 'readonly');
     const get = tx.objectStore('packs').get('runtime');
+    const movies = tx.objectStore('movies').getAllKeys();
     tx.oncomplete = async () => {
       request.result.close();
       const value = get.result;
@@ -104,6 +117,7 @@ const kept = () => page.evaluate(() => new Promise((resolve, reject) => {
       const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
       resolve({
         builder: value.builder,
+        movies: movies.result,
         length: bytes.byteLength,
         sha256: Array.from(digest, b => b.toString(16).padStart(2, '0')).join(''),
       });
@@ -128,7 +142,7 @@ try {
   // 3. The install builds the pack; the game reaches the main menu.
   const started = Date.now();
   await chooseFolder(gameDir);
-  await toMainMenu();
+  result.movies_skipped = await toMainMenu('03a-intro-from-own-files');
   result.build_ms = Date.now() - started;
   if (await pickerShown()) throw new Error('the picker stayed over the game');
   if (!consoleLog.some(line => /own_data built the runtime pack/.test(line))) throw new Error('no own_data build line');
@@ -137,24 +151,32 @@ try {
   result.pack_line = loaded;
   await screenshot('03-main-menu-from-own-files');
   check('the picked install builds the pack and the game reaches the main menu');
+  const intro = consoleLog.find(line => /own_movie playing stem=000/.test(line));
+  if (!intro || !/sound=true/.test(intro)) throw new Error(`the intro did not play with sound from the player's files: ${intro}`);
+  result.intro_line = intro;
+  const webm = network.filter(entry => /\.webm/.test(entry.url));
+  if (webm.length) throw new Error(`movies were fetched from the server: ${JSON.stringify(webm)}`);
+  check('the intro movie plays from the player\'s own MDATA file, with its sound, and no movie is fetched');
 
   await waitFor(async () => (await kept()) !== null, 'the kept pack in IndexedDB');
   const first = await kept();
   result.kept = first;
   if (first.sha256 !== expectedSha) throw new Error(`kept pack ${first.sha256} differs from the offline pack ${expectedSha}`);
-  check('the kept pack is byte for byte the offline pack');
+  await waitFor(async () => (await kept()).movies.length === 15, 'the 15 kept movies');
+  check('the kept pack is byte for byte the offline pack, and the 15 movies are kept');
 
   // 4. A reload starts from the kept pack: no picker, no pack fetched.
   consoleLog.length = 0;
   network.length = 0;
   await page.reload();
-  await toMainMenu();
+  await toMainMenu('04a-intro-from-kept-movies');
   if (await pickerShown()) throw new Error('the picker showed although a pack was kept');
+  if (!consoleLog.some(line => /own_movie playing stem=000/.test(line))) throw new Error('the intro did not play from the kept movies');
   if (!consoleLog.some(line => /loads the game data kept from your files/.test(line))) throw new Error('no kept-pack line');
-  const fetched = network.filter(entry => /runtime\.orpk/.test(entry.url) && entry.method === 'GET');
+  const fetched = network.filter(entry => (/runtime\.orpk/.test(entry.url) && entry.method === 'GET') || /\.webm/.test(entry.url));
   if (fetched.length) throw new Error(`a pack was fetched: ${JSON.stringify(fetched)}`);
   await screenshot('04-main-menu-from-kept-pack');
-  check('a reload starts from the kept pack without asking or fetching');
+  check('a reload starts from the kept pack and movies without asking or fetching');
 
   // 5. forget() drops it; the next visit asks again.
   await page.evaluate(() => window.openRebellionOwnData.forget());

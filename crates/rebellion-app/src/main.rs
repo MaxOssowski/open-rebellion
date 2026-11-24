@@ -1165,7 +1165,7 @@ async fn load_wasm_assets() -> std::collections::HashMap<String, Vec<u8>> {
             Ok(audio) => return audio,
             Err(error) => {
                 own_data::report_failure(&error);
-                macroquad::logging::error!("own_data: {error}");
+                macroquad::logging::error!("own_data: {}", error);
                 loop {
                     next_frame().await;
                 }
