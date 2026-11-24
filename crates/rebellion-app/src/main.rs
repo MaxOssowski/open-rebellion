@@ -48,6 +48,8 @@ mod tactical_test_fixture;
 mod web_accessibility;
 #[cfg(target_arch = "wasm32")]
 mod web_replay;
+#[cfg(target_arch = "wasm32")]
+mod own_data;
 
 use ::rand::Rng;
 use ::rand::SeedableRng;
@@ -1155,6 +1157,21 @@ async fn load_legacy_wasm_assets() {
 async fn load_wasm_assets() -> std::collections::HashMap<String, Vec<u8>> {
     draw_loading_progress("Loading optimized runtime assets…", 0, 0);
     next_frame().await;
+
+    // The pack built from the player's own copy, when the page asks for it.
+    // When it cannot be built the page shows why; the game waits.
+    if let Some(built) = own_data::pack().await {
+        match built.and_then(install_runtime_pack) {
+            Ok(audio) => return audio,
+            Err(error) => {
+                own_data::report_failure(&error);
+                macroquad::logging::error!("own_data: {error}");
+                loop {
+                    next_frame().await;
+                }
+            }
+        }
+    }
 
     match macroquad::file::load_file("data/runtime.orpk").await {
         Ok(bytes) => install_runtime_pack(bytes)

@@ -35,6 +35,23 @@
             white-space: nowrap;
         }
         #report-problem:hover, #report-problem:focus-visible { color: #e8ecf4; text-decoration: underline; }
+        /* Not part of the original: the folder picker of the own-data
+           mode (registerOwnData below). */
+        #own-data {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(5, 5, 16, 0.94);
+            color: #d8dce8;
+            font: 15px/1.5 sans-serif;
+        }
+        #own-data[hidden] { display: none; }
+        #own-data .panel { max-width: 34em; padding: 1.5em 2em; border: 1px solid #39405a; background: #0c0e1c; }
+        #own-data h1 { font-size: 1.2em; margin: 0 0 0.8em; color: #f0f2f8; }
+        #own-data button { font: inherit; padding: 0.4em 1.2em; cursor: pointer; }
+        #own-data-status:empty { display: none; }
     </style>
 </head>
 <body>
@@ -363,6 +380,199 @@
             });
             window.addEventListener("resize", place);
             place();
+        }());
+    </script>
+    <div id="own-data" hidden>
+        <div class="panel" role="dialog" aria-labelledby="own-data-title" aria-describedby="own-data-text">
+            <h1 id="own-data-title">Open Rebellion needs your copy of Star Wars: Rebellion</h1>
+            <p id="own-data-text">Choose the game's folder: the one that holds REBEXE.EXE and the
+                GData folder, such as the GOG installation. The game reads the files here, in this
+                browser, and keeps what it needs for your next visit. Nothing is uploaded.</p>
+            <p id="own-data-status" role="status"></p>
+            <button type="button" id="own-data-choose">Choose game folder</button>
+            <input type="file" id="own-data-input" webkitdirectory directory multiple hidden>
+        </div>
+    </div>
+    <script>
+        // Bring your own data (docs/plans/2026-11-24-bring-your-own-data.md).
+        // Not part of the original. When the server has no runtime pack, or
+        // the address asks for ?data=own, the game builds the pack from the
+        // player's folder: the WASM asks for own-data/pack and this script
+        // answers with the pack kept from an earlier visit, or with the list
+        // of the picked files, each then served as own-data/file/<index>
+        // (crates/rebellion-app/src/own_data.rs). Without the mode the
+        // request is not found and the game loads data/runtime.orpk.
+        (function registerOwnData() {
+            "use strict";
+
+            const DB_NAME = "open-rebellion-own-data";
+            const STORE = "packs";
+            const KEY = "runtime";
+            const params = new URLSearchParams(window.location.search);
+            const overlay = document.getElementById("own-data");
+            const statusLine = document.getElementById("own-data-status");
+            const choose = document.getElementById("own-data-choose");
+            const input = document.getElementById("own-data-input");
+            let picked = [];
+
+            const modeOn = params.get("data") === "own"
+                ? Promise.resolve(true)
+                : params.get("data") === "server"
+                    ? Promise.resolve(false)
+                    : fetch("data/runtime.orpk", { method: "HEAD" })
+                        .then(response => !response.ok, () => true);
+
+            function openDb() {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, 1);
+                    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            }
+
+            function withStore(mode, action) {
+                return openDb().then(db => new Promise((resolve, reject) => {
+                    const transaction = db.transaction(STORE, mode);
+                    const request = action(transaction.objectStore(STORE));
+                    transaction.oncomplete = () => { db.close(); resolve(request.result); };
+                    transaction.onerror = () => { db.close(); reject(transaction.error); };
+                    transaction.onabort = () => { db.close(); reject(transaction.error); };
+                }));
+            }
+
+            function show(message) {
+                statusLine.textContent = message || "";
+                overlay.hidden = false;
+            }
+
+            // The files the pack builder reads (install::pack), from the
+            // folder that holds REBEXE.EXE.
+            function gameFiles(files) {
+                const paths = files.map(file => file.webkitRelativePath || file.name);
+                const exe = paths.find(path => /(^|\/)REBEXE\.EXE$/i.test(path));
+                if (exe === undefined) {
+                    return null;
+                }
+                const root = exe.slice(0, exe.length - "REBEXE.EXE".length).toUpperCase();
+                const chosen = [];
+                files.forEach((file, index) => {
+                    const path = paths[index];
+                    if (!path.toUpperCase().startsWith(root)) {
+                        return;
+                    }
+                    const rest = path.slice(root.length).toUpperCase();
+                    if (/^[^/]+\.(DLL|DLL\.OLD|EXE)$/.test(rest)
+                        || /^GDATA\/[^/]+\.(DAT|SPT)$/.test(rest)
+                        || /^EDATA\/EDATA\.\d{3}$/.test(rest)
+                        || /^MDATA\/MDATA\.3\d\d$/.test(rest)) {
+                        chosen.push({ path: rest, file });
+                    }
+                });
+                return chosen;
+            }
+
+            function pickFolder() {
+                return new Promise(resolve => {
+                    choose.onclick = () => input.click();
+                    input.onchange = () => {
+                        const chosen = gameFiles(Array.from(input.files || []));
+                        input.value = "";
+                        if (chosen === null) {
+                            show("That folder has no REBEXE.EXE. Choose the folder the game is installed in.");
+                            return;
+                        }
+                        resolve(chosen);
+                    };
+                    show("");
+                    choose.focus();
+                });
+            }
+
+            async function answerPack() {
+                if (!(await modeOn)) {
+                    return null;
+                }
+                const builder = wasm_exports.open_rebellion_own_data_builder();
+                try {
+                    const kept = await withStore("readonly", store => store.get(KEY));
+                    if (kept && kept.builder === builder && kept.pack instanceof Blob) {
+                        console.info("Open Rebellion loads the game data kept from your files");
+                        return new Uint8Array(await kept.pack.arrayBuffer());
+                    }
+                } catch (error) {
+                    console.warn("Open Rebellion could not read its kept game data", error);
+                }
+                picked = await pickFolder();
+                choose.hidden = true;
+                show("Building the game data from your files…");
+                // Let the message paint before the build holds the page.
+                await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+                return new TextEncoder().encode(picked.map(item => item.path).join("\n"));
+            }
+
+            async function answer(url) {
+                if (url === "own-data/pack") {
+                    return answerPack();
+                }
+                const match = /^own-data\/file\/(\d+)$/.exec(url);
+                const item = match && picked[Number(match[1])];
+                if (!item) {
+                    return null;
+                }
+                const bytes = new Uint8Array(await item.file.arrayBuffer());
+                picked[Number(match[1])] = null;
+                return bytes;
+            }
+
+            function register(imports) {
+                const fetchFile = imports.env.fs_load_file;
+                imports.env.fs_load_file = function (ptr, len) {
+                    const url = UTF8ToString(ptr, len);
+                    if (!url.startsWith("own-data/")) {
+                        return fetchFile(ptr, len);
+                    }
+                    const fileId = FS.unique_id;
+                    FS.unique_id += 1;
+                    answer(url).then(bytes => bytes, error => {
+                        console.error("Open Rebellion could not read " + url, error);
+                        return null;
+                    }).then(bytes => {
+                        FS.loaded_files[fileId] = bytes;
+                        wasm_exports.file_loaded(fileId);
+                    });
+                    return fileId;
+                };
+                imports.env.open_rebellion_own_data_keep = function (ptr, len, builder) {
+                    // A Blob: Chromium refuses larger structured values.
+                    const pack = new Blob([new Uint8Array(wasm_memory.buffer, ptr, len)]);
+                    overlay.hidden = true;
+                    // The game keeps the keyboard.
+                    document.getElementById("glcanvas").focus();
+                    withStore("readwrite", store => store.put({ builder, pack, kept: Date.now() }, KEY))
+                        .then(() => console.info("Open Rebellion kept the game data built from your files"),
+                            error => console.warn("Open Rebellion could not keep the game data; the folder is asked for again next time", error));
+                };
+                imports.env.open_rebellion_own_data_failed = function (ptr, len) {
+                    const reason = UTF8ToString(ptr, len);
+                    show("The game data could not be built from that folder: " + reason);
+                    choose.hidden = false;
+                    choose.textContent = "Choose another folder";
+                    choose.onclick = () => window.location.reload();
+                };
+            }
+
+            // From the console: drop the kept game data; the next visit asks
+            // for the folder again.
+            window.openRebellionOwnData = {
+                forget: () => withStore("readwrite", store => store.delete(KEY)),
+            };
+
+            miniquad_add_plugin({
+                register_plugin: register,
+                version: 1,
+                name: "open_rebellion_own_data",
+            });
         }());
     </script>
     <script>load("open-rebellion.wasm");</script>
