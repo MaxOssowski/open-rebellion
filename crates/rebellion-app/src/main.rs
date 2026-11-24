@@ -8638,10 +8638,10 @@ async fn main() {
                     );
                     // An order's units are objects from its fire
                     // (FUN_0052a140): placed now, in their containers.
-                    rebellion_core::products::reconcile_carrying(
+                    rebellion_data::player_command::after_order(
                         &mut world,
                         &mfg_state,
-                        &|fleet| troop_transport_state.carried_count(fleet),
+                        &troop_transport_state,
                     );
                     if let Some((system, area, count)) = confirmed {
                         system_window_state.confirmed_build(

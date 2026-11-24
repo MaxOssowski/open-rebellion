@@ -1225,15 +1225,39 @@ fn refused(refusal: impl std::fmt::Debug) -> CommandError {
     CommandError::Refused(format!("{refusal:?}"))
 }
 
+/// What follows every player order in the app: an order's units are
+/// objects from its fire (`FUN_0052a140`), placed now in their containers
+/// (`products::reconcile_carrying`).
+pub fn after_order(
+    world: &mut GameWorld,
+    manufacturing: &ManufacturingState,
+    troop_transport: &TroopTransportState,
+) {
+    rebellion_core::products::reconcile_carrying(world, manufacturing, &|fleet| {
+        troop_transport.carried_count(fleet)
+    });
+}
+
 /// Apply a replayed player command for the side `is_alliance`, as the app
-/// does for the same order.
+/// does for the same order, then [`after_order`].
 ///
 /// # Errors
 /// An id the world does not hold, or the order's refusal (a replay fails
 /// closed on either: the recorded session applied it).
 pub fn apply(
     world: &mut GameWorld,
-    states: CommandStates<'_>,
+    mut states: CommandStates<'_>,
+    is_alliance: bool,
+    command: &PlayerCommand,
+) -> Result<(), CommandError> {
+    let result = apply_order(world, &mut states, is_alliance, command);
+    after_order(world, states.manufacturing, states.troop_transport);
+    result
+}
+
+fn apply_order(
+    world: &mut GameWorld,
+    states: &mut CommandStates<'_>,
     is_alliance: bool,
     command: &PlayerCommand,
 ) -> Result<(), CommandError> {
@@ -1668,23 +1692,52 @@ mod tests {
     /// The order applied the app's way (`app`) and replayed (`command`,
     /// Alliance actor) give one state, then the same state ten days on, and
     /// it differs from the run without the order.
-    fn same_as_app(initial: &SaveState, app: impl FnOnce(&mut SaveState), command: PlayerCommand) {
+    fn same_as_app(initial: &SaveState, app: impl FnOnce(&mut Live<'_>), command: PlayerCommand) {
         same_as_app_for(ReplayActor::Alliance, initial, app, command);
+    }
+
+    /// The app's states as the order code sees them, borrowed from a live
+    /// runner.
+    struct Live<'a> {
+        world: &'a mut GameWorld,
+        clock: &'a mut rebellion_core::tick::GameClock,
+        manufacturing: &'a mut ManufacturingState,
+        missions: &'a mut MissionState,
+        movement: &'a mut MovementState,
+        troop_transport: &'a mut TroopTransportState,
+        blockade: &'a mut BlockadeState,
+        victory: &'a mut VictoryState,
+    }
+
+    /// Run `app` on a live runner's states, as the app's loop does, then
+    /// the order's aftermath. Both paths stay in one live runtime: a slot
+    /// a live world reuses differs in version from one a fresh load gives
+    /// (a key, not the game).
+    fn applied_live(initial: &SaveState, app: impl FnOnce(&mut Live<'_>)) -> CampaignDayRunner {
+        let mut runner = CampaignDayRunner::new(initial.clone());
+        let (world, states) = runner.parts_mut();
+        let mut live = Live {
+            world,
+            clock: &mut states.clock,
+            manufacturing: &mut states.manufacturing,
+            missions: &mut states.missions,
+            movement: &mut states.movement,
+            troop_transport: &mut states.troop_transport,
+            blockade: &mut states.blockade,
+            victory: &mut states.victory,
+        };
+        app(&mut live);
+        after_order(live.world, live.manufacturing, live.troop_transport);
+        runner
     }
 
     fn same_as_app_for(
         actor: ReplayActor,
         initial: &SaveState,
-        app: impl FnOnce(&mut SaveState),
+        app: impl FnOnce(&mut Live<'_>),
         command: PlayerCommand,
     ) {
-        let mut applied = initial.clone();
-        app(&mut applied);
-        // A save keeps the fleet Destinations apart and the runner restores
-        // them from there; the app's own state has no such copy.
-        applied.production_fleets =
-            crate::save::production_fleets(&applied.manufacturing, &applied.world.products);
-        let mut applied = CampaignDayRunner::new(applied);
+        let mut applied = applied_live(initial, app);
         let mut replay = CampaignDayRunner::new(initial.clone());
         replay
             .apply_as(actor, &ReplayCommand::Player { command })
@@ -1939,10 +1992,14 @@ mod tests {
             .expect("an Alliance production order that queues")
     }
 
-    fn build(state: &mut SaveState, (system, area, kind): (SystemKey, ProductionArea, BuildableKind)) {
+    fn build(
+        world: &mut GameWorld,
+        manufacturing: &mut ManufacturingState,
+        (system, area, kind): (SystemKey, ProductionArea, BuildableKind),
+    ) {
         assert!(rebellion_core::build_selection::confirm_order(
-            &mut state.world,
-            &mut state.manufacturing,
+            world,
+            manufacturing,
             system,
             area,
             kind,
@@ -1958,7 +2015,7 @@ mod tests {
         let order = alliance_build(&initial);
         let command =
             build_production_command(&initial.world, order.0, order.1, order.2, 1).unwrap();
-        same_as_app(&initial, |state| build(state, order), command);
+        same_as_app(&initial, |state| build(state.world, state.manufacturing, order), command);
     }
 
     #[test]
@@ -1982,7 +2039,7 @@ mod tests {
         );
         // Stop what an order queued.
         let mut queued = initial.clone();
-        build(&mut queued, (system, area, kind));
+        build(&mut queued.world, &mut queued.manufacturing, (system, area, kind));
         same_as_app(
             &queued,
             |state| state.manufacturing.stop(system, area),

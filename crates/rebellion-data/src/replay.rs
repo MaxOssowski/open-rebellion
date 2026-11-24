@@ -875,6 +875,12 @@ impl CampaignDayRunner {
         self.runtime.current_tick()
     }
 
+    /// The galaxy and the simulation states, for fixtures and tests that
+    /// change the live runtime as the app does.
+    pub fn parts_mut(&mut self) -> (&mut GameWorld, &mut SimulationStates) {
+        (&mut self.runtime.world, &mut self.runtime.states)
+    }
+
     /// The whole state reached, as a save holds it.
     #[must_use]
     pub fn state(&self) -> SaveState {
