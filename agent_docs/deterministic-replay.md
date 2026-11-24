@@ -221,10 +221,11 @@ battle on each combat engine. The app and the runner now share one day
 `the_app_s_day_with_its_presentation_matches_the_headless_runner`; the sweep
 runs that day's AI passes spread in WASM but not the app's own presentation
 host. Still open: a battle alert's
-choice and a played tactical battle are not logged; a frame that runs
-several days at once (high speed, a slow frame) begins them together,
-while the replay runs them one by one, so the session check can differ
-then; the session check is native and developer-only; a played tactical
+choice and a played tactical battle are not logged (the app takes the
+player's battle into the tactical flow, the runner resolves it
+automatically); the session check is native and developer-only. Days a
+long frame begins together are logged and replayed together
+(`SessionLog::record_days_together`, `run_days_with_orders`); a played tactical
 battle has no recorded command stream; and the sweep has run on Linux
 x86_64 and Chromium 157 only (macOS, other browsers and other CPUs are
 untested). This is not a claim of full interactive game parity.

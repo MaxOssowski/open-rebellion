@@ -57,6 +57,8 @@ added (a file with a player command fails closed on an older reader).
   its day and moment, speed changes) and the palette's "Check Session
   Replay"; `CampaignDayRunner::run_day_with_orders` puts an order between
   a day's AI passes, as the app's frame step does.
+- Days one long frame begins together (one set of rolls, one day's
+  passes) are logged and replayed together (b33ff69b).
 - Every order's aftermath (`after_order`: an order's units placed in
   their containers) runs in the app and in the replay.
 - Stage 3f: Planetary Bombardment and Assault. The galaxy's parts of a
