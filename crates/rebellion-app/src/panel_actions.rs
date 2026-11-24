@@ -202,16 +202,12 @@ pub(super) fn apply_panel_action(
             area,
             destination,
         } => {
-            let areas = area.map_or(
-                rebellion_core::manufacturing::ProductionArea::ALL.to_vec(),
-                |area| vec![area],
-            );
-            for area in &areas {
-                mfg_state.set_destination(system, *area, destination);
-            }
+            // The shared order (rebellion_data::player_command).
+            let areas =
+                rebellion_data::player_command::set_destination(mfg_state, system, area, destination);
             macroquad::logging::info!(
                 "[interface] command=0x214 destination=production_destination status=set areas={} to={}",
-                areas.len(),
+                areas,
                 world
                     .systems
                     .get(destination)
@@ -225,10 +221,9 @@ pub(super) fn apply_panel_action(
             at,
             ship,
         } => {
-            let set = match ship {
-                Some(ship) => mfg_state.set_ship_destination(system, area, fleet, ship, at),
-                None => mfg_state.set_fleet_destination(system, area, fleet, at),
-            };
+            let set = rebellion_data::player_command::set_fleet_destination(
+                mfg_state, system, area, fleet, at, ship,
+            );
             let named =
                 ship.and_then(|ship| rebellion_core::products::ship_name(world, fleet, ship));
             macroquad::logging::info!(
@@ -245,10 +240,7 @@ pub(super) fn apply_panel_action(
             );
         }
         PanelAction::Rename { fleet, ship, name } => {
-            let renamed = match ship {
-                Some(index) => world.rename_ship(fleet, index, &name),
-                None => world.rename_fleet(fleet, &name),
-            };
+            let renamed = rebellion_data::player_command::rename(world, fleet, ship, &name);
             macroquad::logging::info!(
                 "[interface] command=0x203 destination=rename status={} object={} name={name}",
                 if renamed { "applied" } else { "refused" },

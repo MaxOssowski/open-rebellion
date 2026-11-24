@@ -875,6 +875,12 @@ impl CampaignDayRunner {
         self.runtime.current_tick()
     }
 
+    /// The whole state reached, as a save holds it.
+    #[must_use]
+    pub fn state(&self) -> SaveState {
+        self.runtime.snapshot()
+    }
+
     /// The galaxy, for fixtures that stage a situation before a day.
     pub fn world_mut(&mut self) -> &mut GameWorld {
         &mut self.runtime.world

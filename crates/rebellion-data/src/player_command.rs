@@ -80,6 +80,46 @@ pub enum PlayerCommand {
         kind: BuildId,
         count: u32,
     },
+    /// A production area's Destination, or every area's when none is named
+    /// (`PanelAction::SetDestination`).
+    SetDestination {
+        system: DatId,
+        area: Option<ProductionArea>,
+        destination: DatId,
+    },
+    /// A production area's Destination set to a fleet at `at`, or one ship
+    /// of it by its id (`PanelAction::SetFleetDestination`).
+    SetFleetDestination {
+        system: DatId,
+        area: ProductionArea,
+        fleet: u64,
+        at: DatId,
+        ship: Option<u64>,
+    },
+    /// A queued product renamed, by its product id
+    /// (`PanelAction::RenameProduct`).
+    RenameProduct { product: u64, name: String },
+    /// A fleet, or one of its ships by list place, renamed
+    /// (`PanelAction::Rename`).
+    Rename {
+        fleet: u64,
+        ship: Option<usize>,
+        name: String,
+    },
+    /// Ships of a fleet made a new fleet (`PanelAction::CreateFleet`).
+    CreateFleet {
+        fleet: u64,
+        ships: Vec<usize>,
+        roster: u64,
+    },
+    /// Ships of a fleet moved into the side's spare fleet at a system
+    /// (`PanelAction::MoveShips`).
+    MoveShips {
+        fleet: u64,
+        ships: Vec<usize>,
+        roster: u64,
+        system: DatId,
+    },
     /// A mission sent (`PanelAction::DispatchMission`).
     DispatchMission {
         kind: MissionKind,
@@ -771,6 +811,137 @@ pub fn dispatch_mission(
     missions.dispatch_guarded(request, world)
 }
 
+/// A production Destination for one area, or for every area when `area`
+/// is `None` (the app's `PanelAction::SetDestination`).
+pub fn set_destination(
+    manufacturing: &mut ManufacturingState,
+    system: SystemKey,
+    area: Option<ProductionArea>,
+    destination: SystemKey,
+) -> usize {
+    let areas = area.map_or(ProductionArea::ALL.to_vec(), |area| vec![area]);
+    for &area in &areas {
+        manufacturing.set_destination(system, area, destination);
+    }
+    areas.len()
+}
+
+/// A production Destination that is a fleet, or one ship of it (the app's
+/// `PanelAction::SetFleetDestination`). False when refused.
+pub fn set_fleet_destination(
+    manufacturing: &mut ManufacturingState,
+    system: SystemKey,
+    area: ProductionArea,
+    fleet: FleetKey,
+    at: SystemKey,
+    ship: Option<u64>,
+) -> bool {
+    match ship {
+        Some(ship) => manufacturing.set_ship_destination(system, area, fleet, ship, at),
+        None => manufacturing.set_fleet_destination(system, area, fleet, at),
+    }
+}
+
+/// A fleet, or one of its ships, renamed (the app's `PanelAction::Rename`).
+/// False when refused.
+pub fn rename(world: &mut GameWorld, fleet: FleetKey, ship: Option<usize>, name: &str) -> bool {
+    match ship {
+        Some(index) => world.rename_ship(fleet, index, name),
+        None => world.rename_fleet(fleet, name),
+    }
+}
+
+/// The replay form of a production Destination.
+///
+/// # Errors
+/// A missing system.
+pub fn set_destination_command(
+    world: &GameWorld,
+    system: SystemKey,
+    area: Option<ProductionArea>,
+    destination: SystemKey,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::SetDestination {
+        system: system_id(world, system)?,
+        area,
+        destination: system_id(world, destination)?,
+    })
+}
+
+/// The replay form of a fleet Destination.
+///
+/// # Errors
+/// A missing system or an unnamed fleet.
+pub fn set_fleet_destination_command(
+    world: &GameWorld,
+    system: SystemKey,
+    area: ProductionArea,
+    fleet: FleetKey,
+    at: SystemKey,
+    ship: Option<u64>,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::SetFleetDestination {
+        system: system_id(world, system)?,
+        area,
+        fleet: fleet_id(world, fleet)?,
+        at: system_id(world, at)?,
+        ship,
+    })
+}
+
+/// The replay form of a fleet or ship rename.
+///
+/// # Errors
+/// An unnamed fleet.
+pub fn rename_command(
+    world: &GameWorld,
+    fleet: FleetKey,
+    ship: Option<usize>,
+    name: &str,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::Rename {
+        fleet: fleet_id(world, fleet)?,
+        ship,
+        name: name.to_owned(),
+    })
+}
+
+/// The replay form of a Create Fleet order.
+///
+/// # Errors
+/// An unnamed fleet.
+pub fn create_fleet_command(
+    world: &GameWorld,
+    fleet: FleetKey,
+    ships: &[usize],
+    roster: u64,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::CreateFleet {
+        fleet: fleet_id(world, fleet)?,
+        ships: ships.to_vec(),
+        roster,
+    })
+}
+
+/// The replay form of ships moved into the side's spare fleet.
+///
+/// # Errors
+/// An unnamed fleet or a missing system.
+pub fn move_ships_command(
+    world: &GameWorld,
+    fleet: FleetKey,
+    ships: &[usize],
+    roster: u64,
+    system: SystemKey,
+) -> Result<PlayerCommand, CommandIdError> {
+    Ok(PlayerCommand::MoveShips {
+        fleet: fleet_id(world, fleet)?,
+        ships: ships.to_vec(),
+        roster,
+        system: system_id(world, system)?,
+    })
+}
+
 /// The replay form of the headquarters' move.
 ///
 /// # Errors
@@ -976,6 +1147,86 @@ pub fn apply(
             } else {
                 Err(CommandError::Refused("the production order".into()))
             }
+        }
+        PlayerCommand::SetDestination {
+            system,
+            area,
+            destination,
+        } => {
+            let system = system_key(world, *system)?;
+            let destination = system_key(world, *destination)?;
+            set_destination(states.manufacturing, system, *area, destination);
+            Ok(())
+        }
+        PlayerCommand::SetFleetDestination {
+            system,
+            area,
+            fleet,
+            at,
+            ship,
+        } => {
+            let system = system_key(world, *system)?;
+            let fleet = fleet_key(world, *fleet)?;
+            let at = system_key(world, *at)?;
+            if set_fleet_destination(states.manufacturing, system, *area, fleet, at, *ship) {
+                Ok(())
+            } else {
+                Err(CommandError::Refused("the fleet Destination".into()))
+            }
+        }
+        PlayerCommand::RenameProduct { product, name } => {
+            if rebellion_core::products::rename(world, states.manufacturing, *product, name.clone()) {
+                Ok(())
+            } else {
+                Err(CommandError::Refused("the product's name".into()))
+            }
+        }
+        PlayerCommand::Rename { fleet, ship, name } => {
+            let fleet = fleet_key(world, *fleet)?;
+            if rename(world, fleet, *ship, name) {
+                Ok(())
+            } else {
+                Err(CommandError::Refused("the name".into()))
+            }
+        }
+        PlayerCommand::CreateFleet {
+            fleet,
+            ships,
+            roster,
+        } => {
+            let fleet = fleet_key(world, *fleet)?;
+            rebellion_core::fleet_join::create_fleet(
+                world,
+                states.movement,
+                states.troop_transport,
+                fleet,
+                ships,
+                *roster,
+                is_alliance,
+            )
+            .map(|_| ())
+            .map_err(refused)
+        }
+        PlayerCommand::MoveShips {
+            fleet,
+            ships,
+            roster,
+            system,
+        } => {
+            let fleet = fleet_key(world, *fleet)?;
+            let system = system_key(world, *system)?;
+            rebellion_core::fleet_join::move_ships_into_spare(
+                world,
+                states.movement,
+                states.troop_transport,
+                fleet,
+                ships,
+                *roster,
+                system,
+                is_alliance,
+            )
+            .map(|_| ())
+            .map_err(refused)
         }
         PlayerCommand::DispatchMission {
             kind,
@@ -1187,6 +1438,10 @@ mod tests {
     ) {
         let mut applied = initial.clone();
         app(&mut applied);
+        // A save keeps the fleet Destinations apart and the runner restores
+        // them from there; the app's own state has no such copy.
+        applied.production_fleets =
+            crate::save::production_fleets(&applied.manufacturing, &applied.world.products);
         let mut applied = CampaignDayRunner::new(applied);
         let mut replay = CampaignDayRunner::new(initial.clone());
         replay
@@ -1387,8 +1642,20 @@ mod tests {
         );
     }
 
+    /// An Alliance capital ship order that queues.
+    fn alliance_ship_build(initial: &SaveState) -> (SystemKey, ProductionArea, BuildableKind) {
+        alliance_build_of(initial, |kind| matches!(kind, BuildableKind::CapitalShip(_)))
+    }
+
     /// An Alliance production order that queues: system, area, kind.
     fn alliance_build(initial: &SaveState) -> (SystemKey, ProductionArea, BuildableKind) {
+        alliance_build_of(initial, |_| true)
+    }
+
+    fn alliance_build_of(
+        initial: &SaveState,
+        wanted: impl Fn(BuildableKind) -> bool,
+    ) -> (SystemKey, ProductionArea, BuildableKind) {
         let world = &initial.world;
         let mut kinds: Vec<(u32, BuildableKind)> = world
             .capital_ship_classes
@@ -1402,6 +1669,7 @@ mod tests {
             )
             .collect();
         kinds.sort_by_key(|(id, _)| *id);
+        kinds.retain(|&(_, kind)| wanted(kind));
         let areas = [
             ProductionArea::Shipyard,
             ProductionArea::TrainingFacility,
@@ -1585,6 +1853,205 @@ mod tests {
         assert_eq!(
             target_key(world, TargetId::DefenseFacility { system, index: usize::MAX }),
             Err(CommandIdError::Slot)
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn replayed_destinations_match_the_app_s() {
+        let initial = seed42();
+        let world = &initial.world;
+        let (system, area, _) = alliance_build(&initial);
+        let other = sorted_systems(world)
+            .into_iter()
+            .find(|&to| to != system)
+            .unwrap();
+        same_as_app(
+            &initial,
+            |state| {
+                set_destination(&mut state.manufacturing, system, Some(area), other);
+            },
+            set_destination_command(world, system, Some(area), other).unwrap(),
+        );
+        same_as_app(
+            &initial,
+            |state| {
+                assert_eq!(set_destination(&mut state.manufacturing, system, None, other), 3);
+            },
+            set_destination_command(world, system, None, other).unwrap(),
+        );
+        // A fleet as the Destination of an area that takes one.
+        let found = sorted_systems(world).into_iter().find_map(|yard| {
+            [ProductionArea::Shipyard, ProductionArea::TrainingFacility]
+                .into_iter()
+                .find_map(|area| {
+                    sorted_alliance_fleets(world).into_iter().find_map(|fleet| {
+                        let at = world.fleets[fleet].location;
+                        let mut probe = initial.clone();
+                        set_fleet_destination(&mut probe.manufacturing, yard, area, fleet, at, None)
+                            .then_some((yard, area, fleet, at))
+                    })
+                })
+        });
+        let (yard, area, fleet, at) = found.expect("an area that takes an Alliance fleet");
+
+        same_as_app(
+            &initial,
+            |state| {
+                assert!(set_fleet_destination(&mut state.manufacturing, yard, area, fleet, at, None));
+            },
+            set_fleet_destination_command(world, yard, area, fleet, at, None).unwrap(),
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn replayed_renames_match_the_app_s() {
+        let initial = seed42();
+        let world = &initial.world;
+        let fleet = sorted_alliance_fleets(world)
+            .into_iter()
+            .find(|&fleet| world.fleets[fleet].ship_count() > 0)
+            .unwrap();
+        same_as_app(
+            &initial,
+            |state| assert!(rename(&mut state.world, fleet, None, "Red Squadron")),
+            rename_command(world, fleet, None, "Red Squadron").unwrap(),
+        );
+        same_as_app(
+            &initial,
+            |state| assert!(rename(&mut state.world, fleet, Some(0), "Home One")),
+            rename_command(world, fleet, Some(0), "Home One").unwrap(),
+        );
+        // A product renamed by its id: products appear once production
+        // runs, so the replay orders a ship, runs a day, then renames it
+        // through products::rename, the function the app calls.
+        let (system, area, kind) = alliance_ship_build(&initial);
+        let mut runner = CampaignDayRunner::new(initial.clone());
+        let order = build_production_command(world, system, area, kind, 1).unwrap();
+        runner
+            .apply_as(ReplayActor::Alliance, &ReplayCommand::Player { command: order })
+            .unwrap();
+        runner.apply(&ReplayCommand::AdvanceTicks { count: 1 }).unwrap();
+        let product = runner
+            .world()
+            .products
+            .all()
+            .iter()
+            .map(|p| p.id)
+            .max()
+            .expect("the ship order made a product");
+        let rename_it = ReplayCommand::Player {
+            command: PlayerCommand::RenameProduct { product, name: "Liberty".into() },
+        };
+        runner.apply_as(ReplayActor::Alliance, &rename_it).unwrap();
+        assert_eq!(
+            runner.world().products.get(product).and_then(|p| p.name.as_deref()),
+            Some("Liberty")
+        );
+        let missing = ReplayCommand::Player {
+            command: PlayerCommand::RenameProduct { product: u64::MAX, name: "x".into() },
+        };
+        assert!(runner.apply_as(ReplayActor::Alliance, &missing).is_err());
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn replayed_ship_orders_match_the_app_s() {
+        // No fleet opens with two ships: join two Alliance fleets first
+        // (a replayed join matches the app's, above).
+        let start = seed42();
+        let fleets = sorted_alliance_fleets(&start.world);
+        let (mover, fleet) = fleets
+            .iter()
+            .find_map(|&mover| {
+                fleets.iter().copied().filter(|&t| t != mover).find_map(|target| {
+                    let mut probe = start.clone();
+                    join_fleet(
+                        &mut probe.world,
+                        &mut probe.movement,
+                        &mut probe.troop_transport,
+                        &FleetMover::Fleet(mover),
+                        target,
+                        true,
+                    )
+                    .ok()
+                    .map(|_| (mover, target))
+                })
+            })
+            .expect("two Alliance fleets that can join");
+        // The mover flies to its target and joins it on arrival.
+        let mut runner = CampaignDayRunner::new(start.clone());
+        runner
+            .apply_as(
+                ReplayActor::Alliance,
+                &ReplayCommand::Player {
+                    command: join_fleet_command(&start.world, &FleetMover::Fleet(mover), fleet)
+                        .unwrap(),
+                },
+            )
+            .unwrap();
+        for _ in 0..120 {
+            if runner.world().fleets.get(fleet).is_some_and(|f| f.ship_count() > 1) {
+                break;
+            }
+            runner.apply(&ReplayCommand::AdvanceTicks { count: 1 }).unwrap();
+        }
+        let initial = runner.state();
+        let (side, actor) = (true, ReplayActor::Alliance);
+        let world = &initial.world;
+        assert!(world.fleets[fleet].ship_count() > 1);
+        let roster = rebellion_core::fleet_join::roster(world, fleet).unwrap();
+        same_as_app_for(
+            actor,
+            &initial,
+            |state| {
+                rebellion_core::fleet_join::create_fleet(
+                    &mut state.world,
+                    &state.movement,
+                    &mut state.troop_transport,
+                    fleet,
+                    &[0],
+                    roster,
+                    side,
+                )
+                .unwrap();
+            },
+            create_fleet_command(world, fleet, &[0], roster).unwrap(),
+        );
+        // Ships moved on into the spare fleet at a system they may reach.
+        let found = sorted_systems(world).into_iter().find(|&to| {
+            let mut probe = initial.clone();
+            rebellion_core::fleet_join::move_ships_into_spare(
+                &mut probe.world,
+                &mut probe.movement,
+                &mut probe.troop_transport,
+                fleet,
+                &[0],
+                roster,
+                to,
+                side,
+            )
+            .is_ok()
+        });
+        let to = found.expect("a system the ships may move to");
+        same_as_app_for(
+            actor,
+            &initial,
+            |state| {
+                rebellion_core::fleet_join::move_ships_into_spare(
+                    &mut state.world,
+                    &mut state.movement,
+                    &mut state.troop_transport,
+                    fleet,
+                    &[0],
+                    roster,
+                    to,
+                    side,
+                )
+                .unwrap();
+            },
+            move_ships_command(world, fleet, &[0], roster, to).unwrap(),
         );
     }
 
