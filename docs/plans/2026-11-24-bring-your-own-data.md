@@ -32,3 +32,25 @@ builds the same pack from it, locally; the server holds only the engine.
    Firefox), read the files the builder needs, build the pack in the
    WASM app, keep it in IndexedDB for the next visit; a gate drives it.
 5. Movies.
+
+## Progress (2026-11-24)
+
+- Stages 1-3 (b03eae64, f84fcfad, 145c971b, 763e8595, f7372cd6,
+  c07a0dc0): `rebellion_data::install` builds every entry of the pack
+  from the GOG install: `pe` (resource tree), `pack` (DATs, SPTs, EDATA,
+  DLL bitmaps, advisor frames and records, WAVEs, sound effects, voice
+  banks, music, ORPK v3 writer), `strings` (text tables), `encyclopedia`
+  (catalog and manifest in Go's JSON layout), `cursor` (REBEXE cursors),
+  `tactical` (meshes and textures). The ignored native test builds all
+  15,737 entries and the written pack equals `web/data/runtime.orpk`
+  byte for byte.
+- Stage 4 (e2d6e27c): the page's folder picker and IndexedDB keeping;
+  `crates/rebellion-app/src/own_data.rs` builds the pack in the WASM app.
+  Gate `tools/interface-parity/own-data.mjs` (served without a pack)
+  passes in Chromium 157 and Firefox 160; the kept pack's SHA-256 equals
+  the offline pack's. Firefox's own folder dialog is not driven
+  (Playwright's BiDi driver has no folder upload); there the gate gives
+  the same files to the input's change handler.
+- Open: movies (stage 5: a Smacker decoder, the WASM player, the movies
+  kept in IndexedDB); a release packaging without the pack, to be
+  decided with the deployment (password, hosting).
