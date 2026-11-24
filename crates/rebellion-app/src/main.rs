@@ -1158,24 +1158,25 @@ async fn load_wasm_assets() -> std::collections::HashMap<String, Vec<u8>> {
     draw_loading_progress("Loading optimized runtime assets…", 0, 0);
     next_frame().await;
 
-    // The pack built from the player's own copy, when the page asks for it.
-    // When it cannot be built the page shows why; the game waits.
-    if let Some(built) = own_data::pack().await {
-        match built.and_then(install_runtime_pack) {
-            Ok(audio) => return audio,
-            Err(error) => {
-                own_data::report_failure(&error);
-                macroquad::logging::error!("own_data: {}", error);
-                loop {
-                    next_frame().await;
-                }
-            }
-        }
-    }
-
     match macroquad::file::load_file("data/runtime.orpk").await {
         Ok(bytes) => install_runtime_pack(bytes)
             .unwrap_or_else(|error| panic!("Invalid data/runtime.orpk: {error}")),
+        // No pack on the server: the one built from the player's own copy,
+        // when the page offers it. When it cannot be built the page shows
+        // why; the game waits.
+        Err(error) if own_data::offered() => match own_data::pack().await {
+            Some(built) => match built.and_then(install_runtime_pack) {
+                Ok(audio) => audio,
+                Err(failure) => {
+                    own_data::report_failure(&failure);
+                    macroquad::logging::error!("own_data: {} (server pack: {:?})", failure, error);
+                    loop {
+                        next_frame().await;
+                    }
+                }
+            },
+            None => std::collections::HashMap::new(),
+        },
         Err(error) => {
             eprintln!(
                 "WARNING: data/runtime.orpk unavailable ({error:?}); using legacy per-file loading"

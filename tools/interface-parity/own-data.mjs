@@ -173,7 +173,8 @@ try {
   if (await pickerShown()) throw new Error('the picker showed although a pack was kept');
   if (!consoleLog.some(line => /own_movie playing stem=000/.test(line))) throw new Error('the intro did not play from the kept movies');
   if (!consoleLog.some(line => /loads the game data kept from your files/.test(line))) throw new Error('no kept-pack line');
-  const fetched = network.filter(entry => (/runtime\.orpk/.test(entry.url) && entry.method === 'GET') || /\.webm/.test(entry.url));
+  // The game asks the server for its pack first; this server has none (404).
+  const fetched = network.filter(entry => (/runtime\.orpk/.test(entry.url) && entry.status === 200) || /\.webm/.test(entry.url));
   if (fetched.length) throw new Error(`a pack was fetched: ${JSON.stringify(fetched)}`);
   await screenshot('04-main-menu-from-kept-pack');
   check('a reload starts from the kept pack and movies without asking or fetching');

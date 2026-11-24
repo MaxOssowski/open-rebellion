@@ -1,8 +1,10 @@
 //! Bring your own data: the browser builds the runtime pack from the
 //! player's copy of the game (`docs/plans/2026-11-24-bring-your-own-data.md`).
 //!
-//! The page answers `own-data/pack` (index.html, "own data"): not found
-//! when the mode is off; the pack it kept from an earlier visit; or a list
+//! When the server has no `data/runtime.orpk` (or the address asks for
+//! `?data=own`, which makes that request fail), the game asks the page for
+//! `own-data/pack` (index.html, "own data"), which answers with the pack it
+//! kept from an earlier visit, or with a list
 //! of the files the player picked, each then served as
 //! `own-data/file/<index>`. From those this module builds the pack with
 //! `rebellion_data::install`, hands it to the page to keep, and returns it.
@@ -20,6 +22,12 @@ pub const BUILDER_VERSION: u32 = 1;
 extern "C" {
     fn open_rebellion_own_data_keep(ptr: *const u8, len: usize, builder: u32);
     fn open_rebellion_own_data_failed(ptr: *const u8, len: usize);
+    fn open_rebellion_own_data_offered() -> u32;
+}
+
+/// Whether the page offers the player's own files (not with `?data=server`).
+pub fn offered() -> bool {
+    unsafe { open_rebellion_own_data_offered() != 0 }
 }
 
 /// The page asks which builder made a kept pack before serving it.

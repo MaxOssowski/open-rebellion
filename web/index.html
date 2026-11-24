@@ -396,12 +396,13 @@
     <script>
         // Bring your own data (docs/plans/2026-11-24-bring-your-own-data.md).
         // Not part of the original. When the server has no runtime pack, or
-        // the address asks for ?data=own, the game builds the pack from the
-        // player's folder: the WASM asks for own-data/pack and this script
-        // answers with the pack kept from an earlier visit, or with the list
-        // of the picked files, each then served as own-data/file/<index>
-        // (crates/rebellion-app/src/own_data.rs). Without the mode the
-        // request is not found and the game loads data/runtime.orpk.
+        // the address asks for ?data=own (this script then answers the
+        // pack's request as not found, without asking the server), the game
+        // builds the pack from the player's folder: the WASM asks for
+        // own-data/pack and this script answers with the pack kept from an
+        // earlier visit, or with the list of the picked files, each then
+        // served as own-data/file/<index> (crates/rebellion-app/src/own_data.rs).
+        // ?data=server turns the mode off.
         (function registerOwnData() {
             "use strict";
 
@@ -421,12 +422,8 @@
             let ownMode = false;
             const movie = { state: 0, bytes: null };
 
-            const modeOn = params.get("data") === "own"
-                ? Promise.resolve(true)
-                : params.get("data") === "server"
-                    ? Promise.resolve(false)
-                    : fetch("data/runtime.orpk", { method: "HEAD" })
-                        .then(response => !response.ok, () => true);
+            const forced = params.get("data") === "own";
+            const offered = params.get("data") !== "server";
 
             function openDb() {
                 return new Promise((resolve, reject) => {
@@ -506,7 +503,7 @@
             }
 
             async function answerPack() {
-                if (!(await modeOn)) {
+                if (!offered) {
                     return null;
                 }
                 ownMode = true;
@@ -547,7 +544,7 @@
                 const fetchFile = imports.env.fs_load_file;
                 imports.env.fs_load_file = function (ptr, len) {
                     const url = UTF8ToString(ptr, len);
-                    if (!url.startsWith("own-data/")) {
+                    if (!url.startsWith("own-data/") && !(forced && url === "data/runtime.orpk")) {
                         return fetchFile(ptr, len);
                     }
                     const fileId = FS.unique_id;
@@ -560,6 +557,9 @@
                         wasm_exports.file_loaded(fileId);
                     });
                     return fileId;
+                };
+                imports.env.open_rebellion_own_data_offered = function () {
+                    return offered ? 1 : 0;
                 };
                 imports.env.open_rebellion_own_data_keep = function (ptr, len, builder) {
                     // A Blob: Chromium refuses larger structured values.
