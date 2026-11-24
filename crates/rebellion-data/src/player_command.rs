@@ -2931,7 +2931,7 @@ mod tests {
             |state| {
                 let hq = state.victory.alliance_hq;
                 let tick = state.clock.tick;
-                order_assault(
+                let done = order_assault(
                     state.world,
                     state.movement,
                     state.troop_transport,
@@ -2943,9 +2943,141 @@ mod tests {
                     at,
                 )
                 .expect("the assault goes");
+                // The landing takes the neutral system in the same pass.
+                assert_eq!(done.occupied, Some(rebellion_core::dat::Faction::Alliance));
+                assert_eq!(
+                    state.world.systems[at].control,
+                    rebellion_core::world::ControlKind::Controlled(rebellion_core::dat::Faction::Alliance)
+                );
             },
             command,
         );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_ship_order_finds_the_ship_class() {
+        let initial = seed42();
+        let order = alliance_ship_build(&initial);
+        let command = build_production_command(&initial.world, order.0, order.1, order.2, 1).unwrap();
+        let PlayerCommand::BuildProduction { kind, .. } = &command else { panic!() };
+        assert_eq!(build_kind(&initial.world, *kind).unwrap(), order.2);
+        same_as_app(&initial, |state| build(state.world, state.manufacturing, order), command);
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn an_order_s_aftermath_places_its_units() {
+        // FUN_0052a140: an order's units are objects from its fire.
+        let initial = seed42();
+        let order = alliance_ship_build(&initial);
+        let mut placed = initial.clone();
+        build(&mut placed.world, &mut placed.manufacturing, order);
+        let mut bare = placed.clone();
+        after_order(&mut placed.world, &placed.manufacturing, &placed.troop_transport);
+        assert_ne!(
+            format!("{:?}", placed.world.products.all()),
+            format!("{:?}", bare.world.products.all()),
+            "the aftermath placed the order's units"
+        );
+        let _ = &mut bare;
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn special_forces_aboard_fleets_and_in_abodes_keep_their_slots() {
+        let initial = seed42();
+        let mut world = initial.world.clone();
+        let (system, unit) = world
+            .systems
+            .iter()
+            .find_map(|(key, s)| s.special_forces.first().map(|&u| (key, u)))
+            .expect("a special force at a system");
+        // The unit moved by hand into a fleet, then into an abode.
+        world.systems[system].special_forces.retain(|&u| u != unit);
+        let fleet = sorted_fleets(&world, true)[0];
+        world.fleets[fleet].special_forces.insert(0, unit);
+        let slot = special_force_slot(&world, unit).unwrap();
+        assert_eq!(slot, SlotId { holder: Holder::Fleet(world.fleet_serial(fleet)), index: 0 });
+        assert_eq!(special_force_key(&world, slot).unwrap(), unit);
+        world.fleets[fleet].special_forces.retain(|&u| u != unit);
+        let abode = world.abodes.keys().next().unwrap();
+        world.abodes[abode].special_forces.push(unit);
+        let index = world.abodes[abode].special_forces.len() - 1;
+        let slot = special_force_slot(&world, unit).unwrap();
+        assert_eq!(slot, SlotId { holder: Holder::Abode(world.abodes[abode].dat_id), index });
+        assert_eq!(special_force_key(&world, slot).unwrap(), unit);
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_destroyed_system_is_cleared_and_reports_its_dead() {
+        let initial = seed42();
+        let mut state = initial.clone();
+        let (system, character) = state
+            .world
+            .characters
+            .iter()
+            .find_map(|(key, c)| c.current_system.map(|s| (s, key)))
+            .expect("a character in a system");
+        let effects = destroy_system(
+            &mut state.world,
+            system,
+            &[character],
+            &mut state.manufacturing,
+            &mut state.blockade,
+        );
+        assert!(state.world.systems[system].is_destroyed);
+        assert!(
+            effects.iter().any(|e| matches!(e,
+                rebellion_core::effects::GameEffect::CharacterKilled { character: c } if *c == character)),
+            "the cleanup reports the dead: {effects:?}"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn an_occupation_hands_over_the_system_and_takes_its_enemies() {
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::ControlKind;
+        let initial = seed42();
+        let mut world = initial.world.clone();
+        // An Imperial system with an Imperial character in it.
+        let (system, character) = world
+            .characters
+            .iter()
+            .filter(|(_, c)| c.is_empire && !c.is_alliance && !c.is_killed)
+            .find_map(|(key, c)| {
+                let s = c.current_system?;
+                (world.systems[s].control == ControlKind::Controlled(Faction::Empire)).then_some((s, key))
+            })
+            .expect("an Imperial character in an Imperial system");
+        assert!(occupy(&mut world, system, Faction::Alliance, 9), "the holder changed");
+        assert_eq!(world.systems[system].control, ControlKind::Controlled(Faction::Alliance));
+        let c = &world.characters[character];
+        assert!(c.is_captive);
+        assert_eq!(c.captured_by, Some(Faction::Alliance));
+        assert_eq!(c.capture_tick, Some(9));
+        assert_eq!(c.current_fleet, None);
+        // Taking it again does not change its holder (the enemies there are
+        // taken again, as the app's occupation always did).
+        assert!(!occupy(&mut world, system, Faction::Alliance, 10));
+        assert_eq!(world.systems[system].control, ControlKind::Controlled(Faction::Alliance));
+        // No regiments, no landing's occupation.
+        let empty = world.systems.iter().find(|(_, s)| s.ground_units.is_empty()).unwrap().0;
+        assert_eq!(occupy_after_landing(&mut world, empty, 11), None);
+        // A system whose own regiments hold it stays as it is.
+        let held = world
+            .systems
+            .iter()
+            .find(|(_, s)| {
+                !s.ground_units.is_empty()
+                    && matches!(s.control, ControlKind::Controlled(_))
+                    && rebellion_core::economy::system_holder(&world, s) == s.control
+            })
+            .unwrap()
+            .0;
+        assert_eq!(occupy_after_landing(&mut world, held, 11), None);
     }
 
     #[test]

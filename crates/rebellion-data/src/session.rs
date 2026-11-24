@@ -182,3 +182,143 @@ fn side(is_alliance: bool) -> ReplayActor {
         ReplayActor::Empire
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::player_command::{after_order, dispatch_fleet, dispatch_fleet_command};
+    use crate::simulation::{
+        begin_simulation_day, close_simulation_day, run_ai_passes, NoPresentation, SliceRolls,
+    };
+    use rebellion_core::ids::{FleetKey, SystemKey};
+    use rebellion_core::tick::GameSpeed;
+
+    fn seed42() -> SaveState {
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let world = crate::load_game_data_with_options(
+            &data,
+            &crate::replay_fixture::seed42_seed_options(),
+        )
+        .expect("load original campaign data");
+        crate::replay_fixture::seed42_initial_state(world).unwrap()
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn the_log_keeps_orders_only_with_a_start() {
+        let mut log = SessionLog::default();
+        assert!(!log.has_start());
+        log.record_speed(0, OrderMoment::BetweenDays, true, GameSpeed::Fast);
+        log.record_order(0, OrderMoment::BetweenDays, true, Err(CommandIdError::Unnamed));
+        log.mark_unrecorded();
+        assert!(log.entries().is_empty());
+        assert_eq!(log.unrecorded(), 0);
+        assert!(log.replay(0, OrderMoment::BetweenDays).is_err(), "no start");
+
+        log.restart(seed42());
+        assert!(log.has_start());
+        log.record_speed(0, OrderMoment::BetweenDays, false, GameSpeed::Fast);
+        log.record_order(0, OrderMoment::BetweenDays, true, Err(CommandIdError::Unnamed));
+        log.mark_unrecorded();
+        log.mark_unrecorded();
+        assert_eq!(
+            log.entries(),
+            &[SessionEntry {
+                tick: 0,
+                moment: OrderMoment::BetweenDays,
+                actor: ReplayActor::Empire,
+                command: ReplayCommand::SetSpeed { speed: GameSpeed::Fast },
+            }]
+        );
+        assert_eq!(log.unrecorded(), 3);
+        log.clear();
+        assert!(!log.has_start());
+        assert!(log.entries().is_empty());
+        assert_eq!(log.unrecorded(), 0);
+    }
+
+    /// An "app" run without presentation: spread passes, a fleet move
+    /// given after `pass` passes of day `day` (or after it closed when
+    /// `pass` is `None`), logged with its moment.
+    fn run_with_order(initial: &SaveState, days: u64, day: u64, pass: Option<u32>) -> (u64, SessionLog) {
+        let mut log = SessionLog::default();
+        log.restart(initial.clone());
+        log.record_speed(initial.clock.tick, OrderMoment::BetweenDays, true, GameSpeed::Medium);
+        let mut fleets: Vec<FleetKey> = initial
+            .world
+            .fleets
+            .iter()
+            .filter(|(_, f)| f.is_alliance && f.ship_count() > 0)
+            .map(|(k, _)| k)
+            .collect();
+        fleets.sort_by_key(|&f| initial.world.fleet_serial(f));
+        let mut systems: Vec<(u32, SystemKey)> =
+            initial.world.systems.iter().map(|(k, s)| (s.dat_id.0, k)).collect();
+        systems.sort_unstable();
+        let mut today = 0u64;
+        let fingerprint = crate::replay::drive_days(
+            initial.clone(),
+            GameSpeed::Medium,
+            false,
+            days,
+            &mut |world, sim, ticks, rolls| {
+                today += 1;
+                let mut order = |world: &mut rebellion_core::world::GameWorld,
+                                 sim: &mut crate::simulation::SimulationStates,
+                                 moment| {
+                    let (fleet, to) = fleets
+                        .iter()
+                        .flat_map(|&f| systems.iter().map(move |&(_, s)| (f, s)))
+                        .find(|&(f, s)| {
+                            rebellion_core::movement::validate_fleet_dispatch(&sim.movement, world, f, s, true)
+                                .is_ok()
+                        })
+                        .unwrap();
+                    let command = dispatch_fleet_command(world, fleet, to, &[]);
+                    dispatch_fleet(world, &mut sim.movement, &mut sim.troop_transport, fleet, to, &[], true)
+                        .unwrap();
+                    after_order(world, &sim.manufacturing, &sim.troop_transport);
+                    log.record_order(sim.clock.tick, moment, true, command);
+                };
+                let mut integrator = crate::integrator::PerceptionIntegrator::new(ticks[0].tick, 0);
+                begin_simulation_day(world, sim, ticks, rolls, &mut integrator);
+                if today == day && pass == Some(0) {
+                    order(world, sim, OrderMoment::InDay { passes_done: 0 });
+                }
+                for upto in 1..=sim.ai_day.passes {
+                    run_ai_passes(world, sim, &mut integrator, &mut NoPresentation, upto);
+                    if today == day && pass == Some(upto) {
+                        order(world, sim, OrderMoment::InDay { passes_done: upto });
+                    }
+                }
+                let cursor = sim.ai_day.roll_cursor as usize;
+                close_simulation_day(world, sim, &mut SliceRolls::at(rolls, cursor), &mut integrator, &mut NoPresentation);
+                if today == day && pass.is_none() {
+                    order(world, sim, OrderMoment::BetweenDays);
+                }
+            },
+        )
+        .unwrap();
+        (fingerprint.value, log)
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_session_puts_orders_at_their_moment() {
+        let initial = seed42();
+        let days = 6;
+        for pass in [Some(0), Some(2), None] {
+            let (app, log) = run_with_order(&initial, days, 2, pass);
+            assert_eq!(log.entries().len(), 2);
+            let replayed = log.replay(days, OrderMoment::BetweenDays).unwrap();
+            assert_eq!(replayed.fingerprint().unwrap().value, app, "order at {pass:?}");
+            assert_eq!(replayed.tick(), days);
+        }
+        // Stopped in the open last day, after its second pass.
+        let (_, log) = run_with_order(&initial, days, 2, Some(2));
+        let open = log.replay(days, OrderMoment::InDay { passes_done: 2 }).unwrap();
+        let closed = log.replay(days, OrderMoment::BetweenDays).unwrap();
+        assert_eq!(open.tick(), days);
+        assert_ne!(open.fingerprint().unwrap(), closed.fingerprint().unwrap(), "the day stays open");
+    }
+}
