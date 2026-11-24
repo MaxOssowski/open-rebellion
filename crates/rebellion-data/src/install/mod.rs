@@ -7,3 +7,4 @@ pub mod strings;
 pub mod encyclopedia;
 pub mod cursor;
 pub mod tactical;
+pub mod smacker;
