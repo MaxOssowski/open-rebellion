@@ -597,6 +597,90 @@ pub fn tactical_entries(install: &InstallFiles, out: &mut Vec<Entry>) -> Result<
 mod tests {
     use super::*;
 
+    /// Binary X tokens: each a little-endian kind word, then its payload.
+    fn x(parts: &[&[u8]]) -> Vec<u8> {
+        parts.concat()
+    }
+
+    fn word(value: u16) -> Vec<u8> {
+        value.to_le_bytes().to_vec()
+    }
+
+    fn dword(value: u32) -> Vec<u8> {
+        value.to_le_bytes().to_vec()
+    }
+
+    fn read(data: &[u8]) -> Result<Token, BuildError> {
+        XReader { data, at: 0 }.next()
+    }
+
+    #[test]
+    fn a_name_token_must_fit_and_be_printable() {
+        let name = x(&[&word(TOKEN_NAME), &dword(4), b"Mesh"]);
+        assert_eq!(read(&name).unwrap().text, "Mesh");
+        assert!(read(&x(&[&word(TOKEN_NAME), &dword(0)])).is_err(), "empty");
+        assert!(read(&x(&[&word(TOKEN_NAME), &dword(5), b"Mesh"])).is_err(), "longer than the data");
+        assert!(read(&x(&[&word(TOKEN_NAME), &dword(4), b"Me\x01h"])).is_err(), "control byte");
+        let long = vec![b'a'; MAX_X_STRING as usize + 1];
+        assert!(read(&x(&[&word(TOKEN_NAME), &dword(MAX_X_STRING + 1), &long])).is_err(), "over the cap");
+        let most = vec![b'a'; MAX_X_STRING as usize];
+        assert!(read(&x(&[&word(TOKEN_NAME), &dword(MAX_X_STRING), &most])).is_ok(), "at the cap");
+    }
+
+    #[test]
+    fn a_string_token_ends_with_a_semicolon_or_a_comma() {
+        for (end, ok) in [(TOKEN_SEMICOLON, true), (TOKEN_COMMA, true), (TOKEN_OPEN, false)] {
+            let data = x(&[&word(TOKEN_STRING), &dword(2), b"ab", &word(end)]);
+            assert_eq!(read(&data).is_ok(), ok, "terminator {end}");
+        }
+    }
+
+    #[test]
+    fn a_guid_is_skipped_whole_and_a_short_one_is_refused() {
+        let data = x(&[&word(TOKEN_GUID), &[7; 16], &word(TOKEN_OPEN)]);
+        let mut reader = XReader { data: &data, at: 0 };
+        assert_eq!(reader.next().unwrap().kind, TOKEN_GUID);
+        assert_eq!(reader.at, 18);
+        assert_eq!(reader.next().unwrap().kind, TOKEN_OPEN);
+        assert!(read(&x(&[&word(TOKEN_GUID), &[7; 15]])).is_err());
+        assert!(read(&x(&[&word(TOKEN_GUID), &[7; 16]])).is_ok(), "a GUID ending the data");
+    }
+
+    #[test]
+    fn lists_read_their_count_of_values_and_no_more_than_the_data_holds() {
+        let ints = x(&[&word(TOKEN_INTEGER_LIST), &dword(2), &dword(5), &dword(9)]);
+        assert_eq!(read(&ints).unwrap().ints, vec![5, 9]);
+        let trailing = x(&[&ints, &word(TOKEN_CLOSE)]);
+        assert_eq!(read(&trailing).unwrap().ints, vec![5, 9], "data left after the list");
+        let floats = x(&[&word(TOKEN_FLOAT_LIST), &dword(1), &1.5f32.to_bits().to_le_bytes()]);
+        assert_eq!(read(&floats).unwrap().floats, vec![1.5]);
+        assert!(read(&x(&[&word(TOKEN_INTEGER_LIST), &dword(3), &dword(5), &dword(9)])).is_err());
+        let over = u32::try_from(MAX_X_CORNERS + 1).unwrap();
+        assert!(read(&x(&[&word(TOKEN_INTEGER_LIST), &dword(over)])).is_err());
+        assert!(read(&x(&[&word(TOKEN_INTEGER), &dword(4)])).unwrap().ints == vec![4]);
+        assert!(read(&word(99)).is_err(), "an unknown token");
+    }
+
+    #[test]
+    fn objects_and_integers_are_checked_by_kind() {
+        let object = x(&[&word(TOKEN_NAME), &dword(4), b"Mesh", &word(TOKEN_OPEN)]);
+        assert!(XReader { data: &object, at: 0 }.expect_object("Mesh").is_ok());
+        assert!(XReader { data: &object, at: 0 }.expect_object("Frame").is_err());
+        let string = x(&[&word(TOKEN_STRING), &dword(4), b"Mesh", &word(TOKEN_COMMA), &word(TOKEN_OPEN)]);
+        assert!(XReader { data: &string, at: 0 }.expect_object("Mesh").is_err(), "a string is not a name");
+        let one = x(&[&word(TOKEN_INTEGER), &dword(4)]);
+        assert_eq!(XReader { data: &one, at: 0 }.integers().unwrap(), vec![4]);
+        let list = x(&[&word(TOKEN_INTEGER_LIST), &dword(1), &dword(6)]);
+        assert_eq!(XReader { data: &list, at: 0 }.integers().unwrap(), vec![6]);
+        let floats = x(&[&word(TOKEN_FLOAT_LIST), &dword(2), &2.5f32.to_bits().to_le_bytes(), &(-1.0f32).to_bits().to_le_bytes()]);
+        assert!(XReader { data: &floats, at: 0 }.integers().is_err());
+        assert_eq!(XReader { data: &floats, at: 0 }.floats().unwrap(), vec![2.5, -1.0]);
+        assert!(XReader { data: &list, at: 0 }.floats().is_err());
+        let close = word(TOKEN_CLOSE);
+        assert!(XReader { data: &close, at: 0 }.expect(TOKEN_CLOSE).is_ok());
+        assert!(XReader { data: &close, at: 0 }.expect(TOKEN_OPEN).is_err());
+    }
+
     #[test]
     fn a_run_of_zero_paints_256_pixels_and_a_tail_is_refused_unless_allowed() {
         // 16x16: one run of 256 pixels of colour 7.
