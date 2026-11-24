@@ -433,7 +433,10 @@ pub(super) fn apply_panel_action(
             };
             let has_target = request.target_character.is_some() || request.target_object.is_some();
             let has_decoys = !request.decoys.is_empty();
-            if let Err(refused) = mission_state.dispatch_guarded(request, world) {
+            // The shared order (rebellion_data::player_command).
+            if let Err(refused) =
+                rebellion_data::player_command::dispatch_mission(world, mission_state, request)
+            {
                 // FUN_00487c90 shows no text; the side's advisor schedules a
                 // reaction (`mission-dialog.md`, "Refusal"). The line is the
                 // port's, for a game without the advisor's messages.

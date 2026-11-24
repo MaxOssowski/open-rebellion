@@ -1045,6 +1045,7 @@ impl ReplayRuntime {
                         blockade: &self.states.blockade,
                         victory: &mut self.states.victory,
                         manufacturing: &mut self.states.manufacturing,
+                        missions: &mut self.states.missions,
                         tick: self.states.clock.tick,
                     },
                     actor == ReplayActor::Alliance,

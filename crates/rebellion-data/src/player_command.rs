@@ -16,7 +16,13 @@ use std::collections::HashSet;
 use rebellion_core::blockade::BlockadeState;
 use rebellion_core::fleet_join::{join_fleet, FleetMover, FleetOrderError, FleetOrderOutcome};
 use rebellion_core::headquarters_move::{move_headquarters, HeadquartersMove, HeadquartersMoveError};
-use rebellion_core::ids::{CapitalShipKey, DatId, FighterKey, FleetKey, SystemKey, TroopKey};
+use rebellion_core::ids::{
+    CapitalShipKey, CharacterKey, DatId, FighterKey, FleetKey, SpecialForceKey, SystemKey, TroopKey,
+};
+use rebellion_core::missions::{
+    MissionFaction, MissionKind, MissionMember, MissionRefusal, MissionRequest, MissionState,
+    MissionTarget,
+};
 use rebellion_core::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, ProductionArea};
 use rebellion_core::squadrons::{SquadronMove, SquadronMoveError, SquadronPlace};
 use rebellion_core::troop_transport::{RegimentMove, RegimentTarget};
@@ -74,6 +80,59 @@ pub enum PlayerCommand {
         kind: BuildId,
         count: u32,
     },
+    /// A mission sent (`PanelAction::DispatchMission`).
+    DispatchMission {
+        kind: MissionKind,
+        team: Vec<MemberId>,
+        decoys: Vec<MemberId>,
+        target: DatId,
+        target_character: Option<DatId>,
+        target_object: Option<TargetId>,
+    },
+}
+
+/// Where an object without an id of its own stands: a system, a fleet or
+/// an abode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum Holder {
+    System(DatId),
+    Fleet(u64),
+    Abode(DatId),
+}
+
+/// A special force: its holder and its place in the holder's list (the
+/// order the original keeps a container's children in, the same in a
+/// fresh run from the same seed).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SlotId {
+    pub holder: Holder,
+    pub index: usize,
+}
+
+/// A mission member.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum MemberId {
+    Character(DatId),
+    SpecialForce(SlotId),
+}
+
+/// A Sabotage target: a facility by its system and place in that
+/// system's list, a regiment by object id, a special force by slot, a
+/// fleet's ship or squadron by the fleet's serial and the class's DatId.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum TargetId {
+    DefenseFacility { system: DatId, index: usize },
+    ManufacturingFacility { system: DatId, index: usize },
+    ProductionFacility { system: DatId, index: usize },
+    Troop(DatId),
+    SpecialForce(SlotId),
+    DeathStar(u64),
+    CapitalShip { fleet: u64, class: DatId },
+    Fighter { fleet: u64, class: DatId },
 }
 
 /// What a production order builds: a class by its `DatId`.
@@ -119,6 +178,8 @@ pub enum CommandIdError {
     Regiment(DatId),
     FighterClass(DatId),
     ShipClass(DatId),
+    Character(DatId),
+    Slot,
     Unnamed,
 }
 
@@ -130,6 +191,8 @@ impl std::fmt::Display for CommandIdError {
             Self::Regiment(id) => write!(f, "no regiment {:#010x}", id.0),
             Self::FighterClass(id) => write!(f, "no fighter class {:#010x}", id.0),
             Self::ShipClass(id) => write!(f, "no capital ship class {:#010x}", id.0),
+            Self::Character(id) => write!(f, "no character {:#010x}", id.0),
+            Self::Slot => write!(f, "no object in that slot"),
             Self::Unnamed => write!(f, "an object has no stable id"),
         }
     }
@@ -493,6 +556,221 @@ pub fn build_production_command(
     })
 }
 
+fn character_id(world: &GameWorld, character: CharacterKey) -> Result<DatId, CommandIdError> {
+    world
+        .characters
+        .get(character)
+        .map(|value| value.dat_id)
+        .ok_or(CommandIdError::Unnamed)
+}
+
+fn character_key(world: &GameWorld, id: DatId) -> Result<CharacterKey, CommandIdError> {
+    world
+        .characters
+        .iter()
+        .find(|(_, value)| value.dat_id == id)
+        .map(|(key, _)| key)
+        .ok_or(CommandIdError::Character(id))
+}
+
+fn special_force_slot(world: &GameWorld, unit: SpecialForceKey) -> Result<SlotId, CommandIdError> {
+    let systems = world.systems.values().filter_map(|system| {
+        let index = system.special_forces.iter().position(|&key| key == unit)?;
+        Some(SlotId {
+            holder: Holder::System(system.dat_id),
+            index,
+        })
+    });
+    let fleets = world.fleets.iter().filter_map(|(fleet, value)| {
+        let index = value.special_forces.iter().position(|&key| key == unit)?;
+        Some(SlotId {
+            holder: Holder::Fleet(world.fleet_serial(fleet)),
+            index,
+        })
+    });
+    let abodes = world.abodes.values().filter_map(|abode| {
+        let index = abode.special_forces.iter().position(|&key| key == unit)?;
+        Some(SlotId {
+            holder: Holder::Abode(abode.dat_id),
+            index,
+        })
+    });
+    systems
+        .chain(fleets)
+        .chain(abodes)
+        .find(|slot| slot.holder != Holder::Fleet(0))
+        .ok_or(CommandIdError::Unnamed)
+}
+
+fn special_force_key(world: &GameWorld, slot: SlotId) -> Result<SpecialForceKey, CommandIdError> {
+    let list = match slot.holder {
+        Holder::System(id) => &world.systems[system_key(world, id)?].special_forces,
+        Holder::Fleet(serial) => &world.fleets[fleet_key(world, serial)?].special_forces,
+        Holder::Abode(id) => {
+            &world
+                .abodes
+                .values()
+                .find(|abode| abode.dat_id == id)
+                .ok_or(CommandIdError::Slot)?
+                .special_forces
+        }
+    };
+    list.get(slot.index).copied().ok_or(CommandIdError::Slot)
+}
+
+fn member_id(world: &GameWorld, member: MissionMember) -> Result<MemberId, CommandIdError> {
+    Ok(match member {
+        MissionMember::Character(key) => MemberId::Character(character_id(world, key)?),
+        MissionMember::SpecialForce(key) => MemberId::SpecialForce(special_force_slot(world, key)?),
+    })
+}
+
+fn member_key(world: &GameWorld, member: MemberId) -> Result<MissionMember, CommandIdError> {
+    Ok(match member {
+        MemberId::Character(id) => MissionMember::Character(character_key(world, id)?),
+        MemberId::SpecialForce(slot) => MissionMember::SpecialForce(special_force_key(world, slot)?),
+    })
+}
+
+/// The system holding a facility in one of its lists, and its place there.
+fn facility_slot<K: PartialEq + Copy>(
+    world: &GameWorld,
+    key: K,
+    list: impl Fn(&rebellion_core::world::System) -> &[K],
+) -> Result<(DatId, usize), CommandIdError> {
+    world
+        .systems
+        .values()
+        .find_map(|system| {
+            let index = list(system).iter().position(|&k| k == key)?;
+            Some((system.dat_id, index))
+        })
+        .ok_or(CommandIdError::Unnamed)
+}
+
+fn facility_key<K: Copy>(
+    world: &GameWorld,
+    system: DatId,
+    index: usize,
+    list: impl Fn(&rebellion_core::world::System) -> &[K],
+) -> Result<K, CommandIdError> {
+    list(&world.systems[system_key(world, system)?])
+        .get(index)
+        .copied()
+        .ok_or(CommandIdError::Slot)
+}
+
+fn target_id(world: &GameWorld, target: MissionTarget) -> Result<TargetId, CommandIdError> {
+    Ok(match target {
+        MissionTarget::DefenseFacility(key) => {
+            let (system, index) = facility_slot(world, key, |s| &s.defense_facilities)?;
+            TargetId::DefenseFacility { system, index }
+        }
+        MissionTarget::ManufacturingFacility(key) => {
+            let (system, index) = facility_slot(world, key, |s| &s.manufacturing_facilities)?;
+            TargetId::ManufacturingFacility { system, index }
+        }
+        MissionTarget::ProductionFacility(key) => {
+            let (system, index) = facility_slot(world, key, |s| &s.production_facilities)?;
+            TargetId::ProductionFacility { system, index }
+        }
+        MissionTarget::Troop(key) => {
+            TargetId::Troop(world.object_views.regiment_id(key).ok_or(CommandIdError::Unnamed)?)
+        }
+        MissionTarget::SpecialForce(key) => TargetId::SpecialForce(special_force_slot(world, key)?),
+        MissionTarget::DeathStar(fleet) => TargetId::DeathStar(fleet_id(world, fleet)?),
+        MissionTarget::CapitalShip { fleet, class } => TargetId::CapitalShip {
+            fleet: fleet_id(world, fleet)?,
+            class: world
+                .capital_ship_classes
+                .get(class)
+                .ok_or(CommandIdError::Unnamed)?
+                .dat_id,
+        },
+        MissionTarget::Fighter { fleet, class } => TargetId::Fighter {
+            fleet: fleet_id(world, fleet)?,
+            class: world.fighter_classes.get(class).ok_or(CommandIdError::Unnamed)?.dat_id,
+        },
+    })
+}
+
+fn ship_class_key(world: &GameWorld, id: DatId) -> Result<CapitalShipKey, CommandIdError> {
+    world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, class)| class.dat_id == id)
+        .map(|(key, _)| key)
+        .ok_or(CommandIdError::ShipClass(id))
+}
+
+fn target_key(world: &GameWorld, target: TargetId) -> Result<MissionTarget, CommandIdError> {
+    Ok(match target {
+        TargetId::DefenseFacility { system, index } => MissionTarget::DefenseFacility(
+            facility_key(world, system, index, |s| &s.defense_facilities)?,
+        ),
+        TargetId::ManufacturingFacility { system, index } => MissionTarget::ManufacturingFacility(
+            facility_key(world, system, index, |s| &s.manufacturing_facilities)?,
+        ),
+        TargetId::ProductionFacility { system, index } => MissionTarget::ProductionFacility(
+            facility_key(world, system, index, |s| &s.production_facilities)?,
+        ),
+        TargetId::Troop(id) => MissionTarget::Troop(troop_key(world, id)?),
+        TargetId::SpecialForce(slot) => MissionTarget::SpecialForce(special_force_key(world, slot)?),
+        TargetId::DeathStar(serial) => MissionTarget::DeathStar(fleet_key(world, serial)?),
+        TargetId::CapitalShip { fleet, class } => MissionTarget::CapitalShip {
+            fleet: fleet_key(world, fleet)?,
+            class: ship_class_key(world, class)?,
+        },
+        TargetId::Fighter { fleet, class } => MissionTarget::Fighter {
+            fleet: fleet_key(world, fleet)?,
+            class: fighter_class_key(world, class)?,
+        },
+    })
+}
+
+/// The replay form of a mission order (its side goes with the actor, its
+/// day with the command's tick).
+///
+/// # Errors
+/// An object without a stable id.
+pub fn dispatch_mission_command(
+    world: &GameWorld,
+    request: &MissionRequest,
+) -> Result<PlayerCommand, CommandIdError> {
+    let members = |list: &[MissionMember]| {
+        list.iter()
+            .map(|&member| member_id(world, member))
+            .collect::<Result<Vec<_>, _>>()
+    };
+    Ok(PlayerCommand::DispatchMission {
+        kind: request.kind,
+        team: members(&request.team)?,
+        decoys: members(&request.decoys)?,
+        target: system_id(world, request.target_system)?,
+        target_character: request
+            .target_character
+            .map(|key| character_id(world, key))
+            .transpose()?,
+        target_object: request
+            .target_object
+            .map(|target| target_id(world, target))
+            .transpose()?,
+    })
+}
+
+/// A mission order (the app's `PanelAction::DispatchMission`), through the
+/// missions' own guard.
+///
+/// # Errors
+/// The missions' refusal.
+pub fn dispatch_mission(
+    world: &mut GameWorld,
+    missions: &mut MissionState,
+    request: MissionRequest,
+) -> Result<u64, MissionRefusal> {
+    missions.dispatch_guarded(request, world)
+}
+
 /// The replay form of the headquarters' move.
 ///
 /// # Errors
@@ -569,6 +847,7 @@ pub struct CommandStates<'a> {
     pub blockade: &'a BlockadeState,
     pub victory: &'a mut VictoryState,
     pub manufacturing: &'a mut ManufacturingState,
+    pub missions: &'a mut MissionState,
     pub tick: u64,
 }
 
@@ -697,6 +976,39 @@ pub fn apply(
             } else {
                 Err(CommandError::Refused("the production order".into()))
             }
+        }
+        PlayerCommand::DispatchMission {
+            kind,
+            team,
+            decoys,
+            target,
+            target_character,
+            target_object,
+        } => {
+            let members = |list: &[MemberId]| {
+                list.iter()
+                    .map(|&member| member_key(world, member))
+                    .collect::<Result<Vec<_>, _>>()
+            };
+            let request = MissionRequest {
+                kind: *kind,
+                faction: if is_alliance {
+                    MissionFaction::Alliance
+                } else {
+                    MissionFaction::Empire
+                },
+                team: members(team)?,
+                decoys: members(decoys)?,
+                target_system: system_key(world, *target)?,
+                target_character: target_character
+                    .map(|id| character_key(world, id))
+                    .transpose()?,
+                target_object: target_object.map(|id| target_key(world, id)).transpose()?,
+                tick: states.tick,
+            };
+            dispatch_mission(world, states.missions, request)
+                .map(|_| ())
+                .map_err(refused)
         }
     }
 }
@@ -1168,6 +1480,114 @@ mod tests {
         );
     }
 
+    /// The first Alliance character (by DatId) that a mission of `kind`
+    /// to some system (by DatId) accepts.
+    fn alliance_mission(initial: &SaveState, kind: MissionKind) -> Option<MissionRequest> {
+        let world = &initial.world;
+        let mut characters: Vec<(DatId, CharacterKey)> = world
+            .characters
+            .iter()
+            .filter(|(_, c)| c.is_alliance)
+            .map(|(key, c)| (c.dat_id, key))
+            .collect();
+        characters.sort_by_key(|(id, _)| id.0);
+        let systems = sorted_systems(world);
+        characters.iter().find_map(|&(_, character)| {
+            systems.iter().find_map(|&system| {
+                let request = MissionRequest::single(
+                    kind,
+                    MissionFaction::Alliance,
+                    character,
+                    system,
+                    None,
+                    initial.clock.tick,
+                );
+                let mut probe = initial.clone();
+                dispatch_mission(&mut probe.world, &mut probe.missions, request.clone()).ok()?;
+                Some(request)
+            })
+        })
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_replayed_mission_matches_the_app_s() {
+        let initial = seed42();
+        for kind in [MissionKind::Diplomacy, MissionKind::Espionage] {
+            let request = alliance_mission(&initial, kind).expect("an Alliance mission that goes");
+            let command = dispatch_mission_command(&initial.world, &request).unwrap();
+            same_as_app(
+                &initial,
+                |state| {
+                    dispatch_mission(&mut state.world, &mut state.missions, request).unwrap();
+                },
+                command,
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn mission_targets_and_members_keep_their_ids() {
+        let initial = seed42();
+        let world = &initial.world;
+        // Every facility, regiment and special force at a system names
+        // itself back.
+        for system in world.systems.values() {
+            for &key in &system.defense_facilities {
+                let id = target_id(world, MissionTarget::DefenseFacility(key)).unwrap();
+                assert_eq!(target_key(world, id).unwrap(), MissionTarget::DefenseFacility(key));
+            }
+            for &key in &system.manufacturing_facilities {
+                let id = target_id(world, MissionTarget::ManufacturingFacility(key)).unwrap();
+                assert_eq!(target_key(world, id).unwrap(), MissionTarget::ManufacturingFacility(key));
+            }
+            for &key in &system.production_facilities {
+                let id = target_id(world, MissionTarget::ProductionFacility(key)).unwrap();
+                assert_eq!(target_key(world, id).unwrap(), MissionTarget::ProductionFacility(key));
+            }
+            for &key in &system.special_forces {
+                let member = member_id(world, MissionMember::SpecialForce(key)).unwrap();
+                assert_eq!(member_key(world, member).unwrap(), MissionMember::SpecialForce(key));
+                let id = target_id(world, MissionTarget::SpecialForce(key)).unwrap();
+                assert_eq!(target_key(world, id).unwrap(), MissionTarget::SpecialForce(key));
+            }
+            for &key in &system.ground_units {
+                if world.object_views.regiment_id(key).is_some() {
+                    let id = target_id(world, MissionTarget::Troop(key)).unwrap();
+                    assert_eq!(target_key(world, id).unwrap(), MissionTarget::Troop(key));
+                }
+            }
+        }
+        for (fleet, value) in &world.fleets {
+            for &key in &value.special_forces {
+                let member = member_id(world, MissionMember::SpecialForce(key)).unwrap();
+                assert_eq!(member_key(world, member).unwrap(), MissionMember::SpecialForce(key));
+            }
+            for ship in &value.capital_ships {
+                let target = MissionTarget::CapitalShip { fleet, class: ship.class };
+                assert_eq!(target_key(world, target_id(world, target).unwrap()).unwrap(), target);
+            }
+            for entry in &value.fighters {
+                let target = MissionTarget::Fighter { fleet, class: entry.class };
+                assert_eq!(target_key(world, target_id(world, target).unwrap()).unwrap(), target);
+            }
+            let target = MissionTarget::DeathStar(fleet);
+            assert_eq!(target_key(world, target_id(world, target).unwrap()).unwrap(), target);
+        }
+        for (key, character) in &world.characters {
+            let member = member_id(world, MissionMember::Character(key)).unwrap();
+            assert_eq!(member, MemberId::Character(character.dat_id));
+            assert_eq!(member_key(world, member).unwrap(), MissionMember::Character(key));
+        }
+        // A slot past the list's end names nothing.
+        let system = world.systems.values().next().unwrap().dat_id;
+        assert_eq!(
+            target_key(world, TargetId::DefenseFacility { system, index: usize::MAX }),
+            Err(CommandIdError::Slot)
+        );
+    }
+
     #[test]
     fn a_command_error_says_what_it_missed() {
         assert_eq!(CommandIdError::Fleet(7).to_string(), "no fleet with creation serial 7");
@@ -1175,6 +1595,8 @@ mod tests {
         assert_eq!(CommandIdError::Regiment(DatId(0x1000_0002)).to_string(), "no regiment 0x10000002");
         assert_eq!(CommandIdError::FighterClass(DatId(0x1c00_0001)).to_string(), "no fighter class 0x1c000001");
         assert_eq!(CommandIdError::ShipClass(DatId(0x1400_0040)).to_string(), "no capital ship class 0x14000040");
+        assert_eq!(CommandIdError::Character(DatId(0x3000_0240)).to_string(), "no character 0x30000240");
+        assert_eq!(CommandIdError::Slot.to_string(), "no object in that slot");
         assert_eq!(CommandIdError::Unnamed.to_string(), "an object has no stable id");
         assert_eq!(CommandError::from(CommandIdError::Unnamed).to_string(), "an object has no stable id");
         assert_eq!(CommandError::Refused("x".into()).to_string(), "the order was refused: x");
