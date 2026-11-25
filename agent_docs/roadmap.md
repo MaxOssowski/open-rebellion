@@ -410,7 +410,7 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
 ### M0: Truth and Critical Integration — 1 week
 
 - [x] Wire Save, Load, Delete, and the main-menu save picker; browser review r2 passed the 33/33 deletion/reload gate after exposing and fixing empty-slot Load activation ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-save-delete.md)).
-- [ ] Surface browser corruption/quota errors and move production saves to asynchronous IndexedDB.
+- [x] Surface browser corruption/quota errors and move production saves to asynchronous IndexedDB. Done 2026-11-20/21: saves live compressed in IndexedDB, a full quota shows the original's failed-save message, and the storage gates run in Chromium and Firefox (`4cea3712`, `b0853bd9`, `e637e7a8`, `3c410a52`).
 - [x] Correct the native HD root, prefetch `TROOPSD.DAT`, and package all 52 game-data entries plus 2,231 BMPs in deterministic `runtime.orpk` (`F-014A`; [browser evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-08-runtime-pack.md)).
 - [x] Map all 38 fighter/capital-ship records to authentic GOKRES fleet miniatures and pass independent bitmap/interaction proof (`4589d2e`; F-010B).
 - [x] Add the F-011A versioned canonical save-state fingerprint, v9 integrity verification, v8 compatibility, and lossless browser metadata; browser review r3 passed all 34 save/reload/load and bitmap assertions ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-08-state-fingerprints.md)).
@@ -491,20 +491,20 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   production, diplomacy, recruitment, intelligence, research, blockade
   follow-up, uprisings, bombardment, HQ relocation, and principal missions.
   Do not require symmetric attack counts from an asymmetric game.
-- [ ] Enable AI Death Star construction/fire/cleanup and repair parity oracles.
+- [x] Enable AI Death Star construction/fire/cleanup and repair parity oracles.
   The Death Star is built as CAPSHPSD 136 through manufacturing (save v94),
   fires through Destroy System (`0x223`), its destroyed system keeps its
   fleets and shows the asteroid field, and the destruction message takes
   TEXTSTRA `0x70c8`-`0x70ca` (F-017, 2026-10-20/21); repair runs on timer
   `0x380` (F-035, save v98). The binary has no build-delay rule for
-  sabotage. Open: the AI's own use of a Death Star.
-- [ ] Wire the recovered rules the 2026-09-25 test-pruning pass found uncalled:
+  sabotage. Done 2026-11-20/21: the AI's sector plans see its Death Star fleet, module 9 brings it home, and its bombarder destroys a system (`6b7cb77f`, `c615446e`).
+- [x] Wire the recovered rules the 2026-09-25 test-pruning pass found uncalled:
   research gating of buildable ships (F-018), the decoy roll and the SUBDMSTB
   Subdue success check (F-019; both now run, its remaining phases are
   tracked below, and the Subdue success's browser pass passed on
   2026-10-20), mod dependency errors (F-020), and blockade troop
   destruction (F-021; tracking now persists in save v15, browser pass
-  pending).
+  pending). Done: F-018 and F-020 remediated, the Subdue pass ran 2026-10-20, and the blockade troop loss passes its browser gate (`841a4614`, `df450e97`, 2026-11-19).
 - [x] Correct or re-source the code behaviors the 2026-09-26 citation audit
   found without a binary source: the economy's KDY production modifier
   (F-023), the Emperor's 1.5x battle bonus (F-024, remediated 2026-10-21:
@@ -598,11 +598,11 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
 - [x] Port targeting of characters and objects (`+0x68` hit test, the walk up
   from a team member) so the dialog offers Rescue, Assassination, and
   Abduction (F-019; phases 7g-7i, 2026-10-14).
-- [ ] Trace the galaxy view's right click on a system or fleet, then port
-  what it opens.
-- [ ] Play the advisor's mission-refusal reactions (P34; the slots are in
+- [x] Trace the galaxy view's right click on a system or fleet, then port
+  what it opens. Done: `WM_RBUTTONUP` opens the object menu (`ghidra/notes/galaxy-view-input.md`, `object-popup-menu.md`); the map neither zooms nor pans.
+- [x] Play the advisor's mission-refusal reactions (P34; the slots are in
   `ghidra/notes/mission-dialog.md`, "Refusal"), replacing the message-log
-  stand-ins.
+  stand-ins. Done 2026-10-29: `AdvisorSchedule::refused` and the app's `refusal_status` (`ghidra/notes/mission-dialog.md`, "Refusal").
 - [ ] Add the original mission kinds the port lacks (F-040). Ported:
   Reconnaissance, Research, Palace, Bounty, Jedi Training (no AI planner
   sends it in the original), Dagobah, Pickup, Move, and Return (members of
@@ -637,11 +637,11 @@ would tune around known simulation feedback defects.
 ### M2: One Authoritative Game Engine — 3 weeks
 
 - [ ] Route the app and playtest through one simulation tick API and event sink.
-- [ ] Move the panel-action handling out of `rebellion-app/src/main.rs` into
-  modules native tests reach; every mutation run leaves survivors there.
+- [x] Move the panel-action handling out of `rebellion-app/src/main.rs` into
+  modules native tests reach; every mutation run leaves survivors there. Done 2026-11-22 (`332a74b6`, `26d9ccfd`, `971f9e43`).
 - [ ] Make automatic, tactical, and ground combat share resumable core state and calculations. Tactical ground damage and occupation capture now persist.
-- [ ] Construct the victory modal and unify win/loss transitions. The tick-loop victory check now opens the modal (F-005 re-check, 2026-10-14); cutscene policy, defeat wording, and a browser pass remain.
-- [ ] Remove `AdvanceTicks` or make it execute the real simulation.
+- [x] Construct the victory modal and unify win/loss transitions. The tick-loop victory check now opens the modal (F-005 re-check, 2026-10-14); cutscene policy, defeat wording, and a browser pass remain. Done 2026-10-30 to 2026-11-23: the endings, films and their no-repeat rule follow A0 (`1886c2be`, `e3f4ee61`, `4ee3b09a`), and the ending cells pass the interface ledger.
+- [x] Remove `AdvanceTicks` or make it execute the real simulation. Done 2026-10-14: queued days run through the simulation (`78c39acd`).
 - [ ] Prove identical fingerprints for the same seed and command stream across app/playtest, native/WASM, and auto/tactical paths.
   2026-11-20: the `sweep-v1` gate matches native and WASM on seeds 1-3 over
   200 days with the AI passes burst and spread, and on one staged battle on
@@ -653,10 +653,10 @@ would tune around known simulation feedback defects.
 ### M3: Exceptional Browser Runtime — 3 weeks
 
 - [x] Replace thousands of serial startup requests with deterministic `runtime.orpk`; both factions now boot in four requests with lazy bitmap decode and zero loose asset requests (`F-014A`).
-- [ ] Complete `UIP-T01` through `UIP-T05`: replace the synthetic strategy,
+- [x] Complete `UIP-T01` through `UIP-T05`: replace the synthetic strategy,
   object-window, report, and tactical surfaces with the original bitmap-driven
   compositions for both factions. No invented visible control may satisfy a
-  parity cell.
+  parity cell. Done 2026-11-20: every interface ledger cell is passed or excluded after a trace.
 - [x] Complete P44 / `RE-ADV-01` for the advisor idle-frame tranche: recover
   type-302 decoding, stage all 3,988 ALSPRITE/EMSPRITE frames, render both
   faction pairs in native/WASM, and fail closed with browser-visible diagnostics.
@@ -1084,10 +1084,10 @@ would tune around known simulation feedback defects.
   indexed scaling plus fail-closed fallback are verified. P45B-P45E own complete-family model evaluation, protected masks,
   optional browser packs, and cross-browser acceptance.
 - [ ] Enable high DPI; use one egui pass; cache sector geometry.
-- [ ] Move saves from synchronous base64 `localStorage` to compressed asynchronous IndexedDB.
+- [x] Move saves from synchronous base64 `localStorage` to compressed asynchronous IndexedDB. Done 2026-11-21 (`3c410a52`; see M0).
 - [ ] Add authored advisor voice and preemption after user gesture; advisor idle
   assets are now staged from a contributor-owned installation.
-- [ ] Exercise real mouse/keyboard input and bitmap screenshots in Chrome, Firefox, and Safari.
+- [x] Exercise real mouse/keyboard input and bitmap screenshots in Chrome, Firefox, and Safari. Done for Chromium and Firefox on Linux, the owner's acceptance scope of 2026-10-30; Safari is not required.
 - [ ] Meet budgets: ≤3 s cold start at 50 Mbps/30 ms, ≤4 pre-menu requests, ≤8 ms frame, ≤12 ms WASM tick at 1,000 fleets, ≤5 MB optimized WASM, and ≤256 MB combined memory after 10 minutes.
 
 ### M4: Authoritative Multiplayer — deferred (2026-10-30)
@@ -1097,7 +1097,7 @@ original single-player Rebellion in the browser. The original's multiplayer
 entry points and Compose Chat stay visible and disabled. The plan below is
 kept for a later release.
 
-- [ ] Add validated `{player, tick, sequence}` commands and route single-player through the same boundary.
+- [ ] Add validated `{player, tick, sequence}` commands and route single-player through the same boundary. Single-player half done 2026-11-24: player orders are replay commands (`docs/plans/2026-11-24-player-orders-in-replay.md`).
 - [ ] Add `rebellion-net` and `rebellion-server` responsibilities for authoritative simulation and fog-filtered faction deltas/snapshots.
 - [ ] Start with in-process test transport and secure WebSockets; never expose the hidden full `GameWorld` to clients.
 - [ ] Add prediction/reconciliation, reconnect snapshots plus command log, persistence, authentication, rate limits, TLS, and observability.
@@ -1110,14 +1110,14 @@ kept for a later release.
 - [ ] Enforce format, strict clippy, native, packaged-WASM, and clean-package boot gates.
   Local `make all` now covers tests, formatting, strict all-target Clippy, and
   native build; packaged browser and CI enforcement remain open.
-- [ ] Add at least 20 app/browser integration cases and promote long campaigns when stable.
+- [x] Add at least 20 app/browser integration cases and promote long campaigns when stable. Done: each batch runs 36 browser gates plus the battle and fixture suites; long campaigns run in the AI sweep.
 - [ ] Generate the complete bitmap resource ledger from the entity map; fail on unexplained misses. Fleet-list miniatures are verified in F-010B.
 - [x] Establish 627 stable required interface baseline cells, link all 43
   required surface families to 27 bounded retrieval or removal packages, and
   explicitly cover 106 space-battle cells across `TAC-01` through `TAC-07`.
-- [ ] Close every required surface-state cell in the original-interface audit
+- [x] Close every required surface-state cell in the original-interface audit
   with authoritative captures, exact-resource provenance, screenshot and hotspot
-  comparison, complete navigation edges, and zero unknown or invented pixels.
+  comparison, complete navigation edges, and zero unknown or invented pixels. Done 2026-11-20: every cell is passed against A0 and the Linux browser build or excluded after a trace.
 - [ ] Retain screenshot, console, network, performance, data-hash, and save-schema evidence. F-010B fleet and F-014A runtime-pack evidence are retained; the full ledger remains open.
 - [x] Revalidate current project documentation from `main` through GitHub Pages.
   Run `34505121163` built and deployed commit `bcc224f`; the landing page,
@@ -1127,15 +1127,29 @@ kept for a later release.
   interface surface-state cell from release artifacts before claiming 100%
   functionality.
 
-### v1.0: Password-Protected Cloudflare Release
+### v1.0: Public Own-Data Release (owner, 2026-11-25)
 
-- [ ] Deploy the self-contained browser artifact to Cloudflare Pages with Pages Functions middleware.
-- [ ] Keep `SITE_PASSWORD` and `SESSION_SECRET` in encrypted Wrangler/Pages secrets; commit no credentials or reusable auth token.
-- [ ] Sign an expiring `HttpOnly; Secure; SameSite=Lax` session cookie and provide logout; reject missing, expired, or tampered sessions.
-- [ ] Gate HTML, WASM, DAT, bitmap/HD packs, and save endpoints—not only the landing page.
-- [ ] Add CSP and security headers plus immutable caching for hashed public assets; never publicly cache authenticated HTML or auth responses.
-- [ ] Maintain preview and production environments, commit-linked deploys, smoke checks, retained artifacts, and documented rollback.
-- [ ] Have `/codex-orchestrator` run an independent browser-use reviewer against the deployed URL for authentication, single-player, input, performance, and bitmap screenshot acceptance in Chromium on Linux (owner's acceptance scope of 2026-10-30; macOS and Safari are not required).
+The owner chose a public build that carries the engine alone: the player
+picks the folder of their own copy and the browser builds the data locally.
+The build with `runtime.orpk` stays local for tests and is never deployed
+(`docs/plans/2026-11-24-bring-your-own-data.md`, "Release"). This replaces
+the password-protected plan below.
+
+- [x] Package the engine alone: `scripts/package-web.sh <version> --own-data`
+  (`d0a70808`, batch b298 green).
+- [ ] Choose the host and deploy the own-data package.
+- [ ] Run the `own-data.mjs` gate against the deployed URL in Chromium and
+  Firefox.
+
+Superseded 2026-11-25 (kept for reference, not planned):
+
+- Deploy the self-contained browser artifact to Cloudflare Pages with Pages Functions middleware.
+- Keep `SITE_PASSWORD` and `SESSION_SECRET` in encrypted Wrangler/Pages secrets; commit no credentials or reusable auth token.
+- Sign an expiring `HttpOnly; Secure; SameSite=Lax` session cookie and provide logout; reject missing, expired, or tampered sessions.
+- Gate HTML, WASM, DAT, bitmap/HD packs, and save endpoints—not only the landing page.
+- Add CSP and security headers plus immutable caching for hashed public assets; never publicly cache authenticated HTML or auth responses.
+- Maintain preview and production environments, commit-linked deploys, smoke checks, retained artifacts, and documented rollback.
+- Have `/codex-orchestrator` run an independent browser-use reviewer against the deployed URL for authentication, single-player, input, performance, and bitmap screenshot acceptance in Chromium on Linux (owner's acceptance scope of 2026-10-30; macOS and Safari are not required).
 
 v1.0 scope (owner, 2026-10-30): the original single-player game in the
 browser. Multiplayer (M4) and mods in the browser are out of scope; the

@@ -28,8 +28,9 @@ functional. Do not repeat historical parity percentages as verified results.
 - Run native GUI acceptance with `cua-driver`, which sends background right
   clicks and keys (F3) into the macroquad window. Install, permissions, and
   call quirks are in `agent_docs/agent-tooling.md` ("Native GUI Acceptance").
-- v1.0 is the complete browser build deployed through password-protected
-  Cloudflare Pages; credentials belong in encrypted secrets, never in Git.
+- v1.0 is the public own-data browser build (owner, 2026-11-25): the engine
+  alone, the player supplies their own game folder. Never deploy
+  `runtime.orpk` or the movies; credentials never go in Git.
 - GitHub Actions workflow definitions are intentionally local and untracked as
   of 2026-09-08. Until M5 restores a reviewed provider, verification is manual.
 
