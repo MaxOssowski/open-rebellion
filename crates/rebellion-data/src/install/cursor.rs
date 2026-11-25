@@ -127,6 +127,70 @@ pub fn cursor_entries(install: &InstallFiles, out: &mut Vec<Entry>) -> Result<()
 mod tests {
     use super::*;
 
+    /// A cursor resource: hotspot words, a `bits`-deep DIB `width` wide and
+    /// `rows` high (its header says twice that), `palette` (BGR0 entries),
+    /// then `xor` and `and` image bytes.
+    fn cursor(width: u32, rows: u32, bits: u16, palette: &[[u8; 4]], xor: &[u8], and: &[u8]) -> Vec<u8> {
+        let mut out = vec![0u8; 4];
+        let mut dib = vec![0u8; 40];
+        dib[0..4].copy_from_slice(&40u32.to_le_bytes());
+        dib[4..8].copy_from_slice(&width.to_le_bytes());
+        dib[8..12].copy_from_slice(&(rows * 2).to_le_bytes());
+        dib[14..16].copy_from_slice(&bits.to_le_bytes());
+        dib[32..36].copy_from_slice(&(palette.len() as u32).to_le_bytes());
+        out.extend(dib);
+        out.extend(palette.iter().flatten());
+        out.extend_from_slice(xor);
+        out.extend_from_slice(and);
+        out
+    }
+
+    #[test]
+    fn each_cursor_pixel_takes_its_palette_entry_row_by_row() {
+        // 4 bpp, 2x2: indices 1, 2 on the bottom row, 3, 1 on the top.
+        let palette = [[0, 0, 0, 0], [10, 20, 30, 0], [40, 50, 60, 0], [70, 80, 90, 0]];
+        let xor = [0x12, 0, 0, 0, 0x31, 0, 0, 0];
+        let bmp = cursor_to_bmp(&cursor(2, 2, 4, &palette, &xor, &[0; 8])).unwrap();
+        // 24-bit rows padded to 8 bytes, bottom row first, BGR.
+        assert_eq!(&bmp[54..], &[10, 20, 30, 40, 50, 60, 0, 0, 70, 80, 90, 10, 20, 30, 0, 0]);
+        assert_eq!(u32::from_le_bytes(bmp[18..22].try_into().unwrap()), 2);
+        assert_eq!(u32::from_le_bytes(bmp[22..26].try_into().unwrap()), 2);
+    }
+
+    #[test]
+    fn a_cursor_that_is_not_a_whole_one_bit_four_or_eight_bit_image_is_refused() {
+        let palette = [[0, 0, 0, 0], [255, 255, 255, 0]];
+        let whole = cursor(1, 1, 1, &palette, &[0; 4], &[0; 4]);
+        assert!(cursor_to_bmp(&whole).is_ok());
+        assert!(cursor_to_bmp(&whole[..whole.len() - 1]).is_err(), "one byte short");
+        assert!(cursor_to_bmp(&cursor(1, 1, 24, &palette, &[0; 4], &[0; 4])).is_err(), "24 bpp");
+        assert!(cursor_to_bmp(&cursor(0, 1, 1, &palette, &[0; 4], &[0; 4])).is_err(), "no width");
+        assert!(cursor_to_bmp(&cursor(1, 0, 1, &palette, &[0; 4], &[0; 4])).is_err(), "no height");
+        let mut odd = whole.clone();
+        odd[12..16].copy_from_slice(&3u32.to_le_bytes());
+        assert!(cursor_to_bmp(&odd).is_err(), "an odd double height");
+    }
+
+    /// A cursor group: type 2, then (bits, id) entries of 14 bytes.
+    fn group(kind: u16, entries: &[(u16, u16)]) -> Vec<u8> {
+        let mut out = [0u16, kind, entries.len() as u16].iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<_>>();
+        for &(bits, id) in entries {
+            let mut entry = [0u8; 14];
+            entry[6..8].copy_from_slice(&bits.to_le_bytes());
+            entry[12..14].copy_from_slice(&id.to_le_bytes());
+            out.extend(entry);
+        }
+        out
+    }
+
+    #[test]
+    fn a_cursor_group_names_its_deepest_image_the_first_of_equals() {
+        assert_eq!(group_cursor_image(&group(2, &[(1, 5), (8, 6), (4, 7)])), Some(6));
+        assert_eq!(group_cursor_image(&group(2, &[(8, 5), (8, 6)])), Some(5));
+        assert_eq!(group_cursor_image(&group(1, &[(1, 5)])), None, "an icon group");
+        assert_eq!(group_cursor_image(&group(2, &[])), None, "no image");
+    }
+
     #[test]
     fn a_masked_black_cursor_pixel_becomes_the_key_and_an_inverting_one_is_refused() {
         // A 1x1 1-bit cursor: palette black, white; XOR row then AND row.

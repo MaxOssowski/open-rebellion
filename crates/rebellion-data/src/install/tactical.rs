@@ -681,6 +681,224 @@ mod tests {
         assert!(XReader { data: &close, at: 0 }.expect(TOKEN_OPEN).is_err());
     }
 
+    fn name(text: &str) -> Vec<u8> {
+        x(&[&word(TOKEN_NAME), &dword(text.len() as u32), text.as_bytes()])
+    }
+
+    fn string(text: &str) -> Vec<u8> {
+        x(&[&word(TOKEN_STRING), &dword(text.len() as u32), text.as_bytes(), &word(TOKEN_SEMICOLON)])
+    }
+
+    fn ints(values: &[u32]) -> Vec<u8> {
+        let mut out = x(&[&word(TOKEN_INTEGER_LIST), &dword(values.len() as u32)]);
+        values.iter().for_each(|v| out.extend(dword(*v)));
+        out
+    }
+
+    fn floats(values: &[f32]) -> Vec<u8> {
+        let mut out = x(&[&word(TOKEN_FLOAT_LIST), &dword(values.len() as u32)]);
+        values.iter().for_each(|v| out.extend(dword(v.to_bits())));
+        out
+    }
+
+    fn open() -> Vec<u8> {
+        word(TOKEN_OPEN)
+    }
+
+    fn close() -> Vec<u8> {
+        word(TOKEN_CLOSE)
+    }
+
+    /// A Material object: 11 values and, when given, a texture token.
+    fn material(values: &[f32], texture: Option<Vec<u8>>) -> Vec<u8> {
+        let texture = texture.map(|t| x(&[&name("TextureFilename"), &open(), &t, &close()])).unwrap_or_default();
+        x(&[&name("Material"), &open(), &floats(values), &texture, &close()])
+    }
+
+    const PLAIN: [f32; 11] = [1.0; 11];
+
+    fn material_list(header: &[u32], materials: &[Vec<u8>]) -> Vec<u8> {
+        x(&[&name("MeshMaterialList"), &open(), &ints(header), &materials.concat(), &close()])
+    }
+
+    /// A why of a refusal.
+    fn why<T: std::fmt::Debug>(result: Result<T, BuildError>) -> String {
+        match result {
+            Err(BuildError::BadTable(why)) => why,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn materials_for(faces: usize, data: &[u8]) -> Result<Mesh, BuildError> {
+        let mut mesh = Mesh { faces: vec![vec![0, 1, 2]; faces], ..Mesh::default() };
+        decode_materials(&mut XReader { data, at: 0 }, &mut mesh)?;
+        Ok(mesh)
+    }
+
+    #[test]
+    fn a_material_list_names_one_to_256_materials_and_its_faces_ones() {
+        let one = vec![material(&PLAIN, None)];
+        assert_eq!(materials_for(2, &material_list(&[1, 1, 0], &one)).unwrap().face_materials, [0, 0], "one for all");
+        assert_eq!(materials_for(2, &material_list(&[1, 2, 0, 0], &one)).unwrap().face_materials, [0, 0]);
+        for header in [&[1, 1][..], &[0, 1, 0], &[257, 1, 0], &[1, 0, 0]] {
+            assert!(why(materials_for(1, &material_list(header, &one))).contains("invalid header"), "{header:?}");
+        }
+        let all = vec![material(&PLAIN, None); 256];
+        assert_eq!(materials_for(1, &material_list(&[256, 1, 255], &all)).unwrap().materials.len(), 256);
+        for header in [&[1, 2, 0, 0][..], &[1, 1, 0, 0]] {
+            assert!(why(materials_for(3, &material_list(header, &one))).contains("do not match the faces"), "{header:?}");
+        }
+        assert!(why(materials_for(1, &material_list(&[1, 1, 1], &one))).contains("missing material"));
+    }
+
+    #[test]
+    fn a_material_is_eleven_finite_values_and_an_optional_plain_texture_name() {
+        let list = |m: Vec<u8>| materials_for(1, &material_list(&[1, 1, 0], &[m]));
+        assert!(why(list(material(&PLAIN[..10], None))).contains("11 finite values"));
+        let mut nan = PLAIN;
+        nan[4] = f32::NAN;
+        assert!(why(list(material(&nan, None))).contains("11 finite values"));
+        assert_eq!(list(material(&PLAIN, Some(string("a.bmp")))).unwrap().materials[0].texture, "a.bmp");
+        let other = x(&[&name("Material"), &open(), &floats(&PLAIN), &name("TextureFileName"), &open(), &string("b.bmp"),
+            &close(), &close()]);
+        assert_eq!(list(other).unwrap().materials[0].texture, "b.bmp", "either spelling");
+        for texture in [name("a.bmp"), string("."), string(".."), string("a/b"), string("a\\b")] {
+            assert!(why(list(material(&PLAIN, Some(texture)))).contains("invalid TextureFilename"));
+        }
+        // A string that reads TextureFilename is not the texture object.
+        let string_token = x(&[&name("Material"), &open(), &floats(&PLAIN), &string("TextureFilename"), &open(),
+            &string("c.bmp"), &close(), &close()]);
+        assert!(why(list(string_token)).contains("expected closing brace"));
+    }
+
+    /// A one-triangle binary X mesh with `normals` and `coords` objects.
+    fn mesh_file(count: &[u32], positions: &[f32], normals: &[u8], coords: &[u8]) -> Vec<u8> {
+        x(&[b"xof 0302bin 0032", &name("Header"), &open(), &ints(&[1, 0, 0]), &close(), &name("Mesh"), &open(),
+            &ints(count), &floats(positions), &ints(&[1, 3, 0, 1, 2]),
+            &material_list(&[1, 1, 0], &[material(&PLAIN, None)]), normals, coords, &close()])
+    }
+
+    const TRIANGLE: [f32; 9] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+
+    fn coords(values: &[f32]) -> Vec<u8> {
+        x(&[&name("MeshTextureCoords"), &open(), &ints(&[3]), &floats(values), &close()])
+    }
+
+    fn normals(count: u32, faces: &[u32]) -> Vec<u8> {
+        x(&[&name("MeshNormals"), &open(), &ints(&[count]), &floats(&vec![0.0; count as usize * 3]), &ints(faces), &close()])
+    }
+
+    #[test]
+    fn a_mesh_reads_its_vertices_faces_normals_and_coordinates() {
+        let uv = coords(&[0.0; 6]);
+        let mesh = decode_mesh(&mesh_file(&[3], &TRIANGLE, &normals(1, &[1, 3, 0, 0, 0]), &uv)).unwrap();
+        assert_eq!((mesh.positions.len(), mesh.faces.len(), mesh.normals.len()), (3, 1, 1));
+        assert_eq!(mesh.bounds_max, Vec3 { x: 1.0, y: 1.0, z: 0.0 });
+        assert!(decode_mesh(&mesh_file(&[3], &TRIANGLE, &[], &uv)).unwrap().normals.is_empty());
+        for count in [0, MAX_X_VERTICES + 1] {
+            assert!(why(decode_mesh(&mesh_file(&[count], &TRIANGLE, &[], &uv))).contains("invalid vertex count"), "{count}");
+        }
+        for count in [0, MAX_X_VERTICES + 1] {
+            let odd = x(&[&name("MeshNormals"), &open(), &ints(&[count]), &floats(&[0.0; 3]), &ints(&[1, 3, 0, 0, 0]), &close()]);
+            assert!(why(decode_mesh(&mesh_file(&[3], &TRIANGLE, &odd, &uv))).contains("MeshNormals: invalid count"), "{count}");
+        }
+    }
+
+    #[test]
+    fn a_mesh_s_normal_faces_and_coordinates_must_match_its_own() {
+        let uv = coords(&[0.0; 6]);
+        let quad_normals = normals(1, &[1, 4, 0, 0, 0, 0]);
+        assert!(why(decode_mesh(&mesh_file(&[3], &TRIANGLE, &quad_normals, &uv))).contains("faces do not match"));
+        let two_faces = normals(1, &[2, 3, 0, 0, 0, 3, 0, 0, 0]);
+        assert!(why(decode_mesh(&mesh_file(&[3], &TRIANGLE, &two_faces, &uv))).contains("faces do not match"));
+        let renamed = x(&[&name("MeshTextureCoordz"), &open(), &ints(&[3]), &floats(&[0.0; 6]), &close()]);
+        assert!(why(decode_mesh(&mesh_file(&[3], &TRIANGLE, &[], &renamed))).contains("expected MeshTextureCoords"));
+        let as_string = x(&[&string("MeshTextureCoords"), &open(), &ints(&[3]), &floats(&[0.0; 6]), &close()]);
+        assert!(why(decode_mesh(&mesh_file(&[3], &TRIANGLE, &[], &as_string))).contains("expected MeshTextureCoords"));
+        let mut nan = [0.0; 6];
+        nan[3] = f32::NAN;
+        assert!(why(decode_mesh(&mesh_file(&[3], &TRIANGLE, &[], &coords(&nan)))).contains("invalid coordinates"));
+        assert!(why(decode_mesh(&mesh_file(&[3], &TRIANGLE, &[], &coords(&[0.0; 4])))).contains("invalid coordinates"));
+    }
+
+    #[test]
+    fn a_position_or_normal_with_a_non_finite_coordinate_is_refused() {
+        for at in 0..3 {
+            let mut values = [0.0; 3];
+            values[at] = f32::INFINITY;
+            assert!(vec3s(&values, "position").is_err(), "{at}");
+        }
+        assert!(vec3s(&[0.0; 3], "position").is_ok());
+    }
+
+    #[test]
+    fn a_face_list_counts_one_to_a_million_faces_and_corners_to_its_limit() {
+        assert!(why(decode_faces(&[0], 3, "t")).contains("invalid face count"));
+        assert!(why(decode_faces(&[MAX_X_FACES + 1, 3, 0, 1, 2], 3, "t")).contains("invalid face count"));
+        assert!(why(decode_faces(&[1, 4, 0, 1, 2], 3, "t")).contains("invalid corner count 4"));
+        // Two faces: the second's corners push the total past the limit.
+        let big = MAX_X_CORNERS as u32 - 3;
+        let mut values = vec![2, 3, 0, 1, 2, big];
+        values.resize(values.len() + big as usize, 0);
+        assert_eq!(decode_faces(&values, 3, "t").unwrap().len(), 2, "at the limit, 2^24 corners");
+        let mut over = vec![2, 3, 0, 1, 2, big + 1];
+        over.resize(over.len() + big as usize + 1, 0);
+        assert!(why(decode_faces(&over, 3, "t")).contains("exceed the limit"));
+    }
+
+    #[test]
+    fn a_degenerate_face_has_no_normal_and_the_fan_tries_the_next_corner() {
+        let p = |x, y, z| Vec3 { x, y, z };
+        let flat = [p(0.0, 0.0, 0.0), p(1.0, 0.0, 0.0), p(2.0, 0.0, 0.0), p(0.0, 1.0, 0.0)];
+        assert_eq!(face_normal(&flat, &[0, 1, 2]), None, "collinear");
+        assert_eq!(face_normal(&flat, &[0, 1, 2, 3]), Some(p(0.0, 0.0, 1.0)));
+        let huge = [p(0.0, 0.0, 0.0), p(1e30, 0.0, 0.0), p(0.0, 1e30, 0.0)];
+        assert_eq!(face_normal(&huge, &[0, 1, 2]), None, "an infinite length");
+    }
+
+    #[test]
+    fn chunks_hold_one_material_and_at_most_65536_vertices() {
+        let p = |x: f32, y: f32| Vec3 { x, y, z: 0.0 };
+        // A fan of 21,846 triangles: 21,845 fill 65,535 vertices.
+        let corners = 21_848;
+        let positions: Vec<_> = (0..corners).map(|i| p((i as f32).cos(), (i as f32).sin())).collect();
+        let mesh = Mesh {
+            uvs: vec![[0.0; 2]; corners],
+            faces: vec![(0..corners as u32).collect()],
+            normals: vec![p(0.0, 0.0)],
+            normal_faces: vec![vec![0; corners]],
+            positions,
+            materials: vec![Material::default(); 2],
+            face_materials: vec![1],
+            ..Mesh::default()
+        };
+        let chunks = build_chunks(&mesh).unwrap();
+        assert_eq!(chunks.iter().map(|c| c.vertices.len()).collect::<Vec<_>>(), [65_535, 3]);
+        assert!(chunks.iter().all(|c| c.material == 1));
+        let two = Mesh {
+            positions: vec![p(0.0, 0.0), p(1.0, 0.0), p(0.0, 1.0)],
+            faces: vec![vec![0, 1, 2]; 3],
+            uvs: vec![[0.0; 2]; 3],
+            materials: vec![Material::default(); 2],
+            face_materials: vec![0, 1, 1],
+            ..Mesh::default()
+        };
+        let chunks = build_chunks(&two).unwrap();
+        assert_eq!(chunks.iter().map(|c| (c.material, c.vertices.len())).collect::<Vec<_>>(), [(0, 3), (1, 6)]);
+    }
+
+    #[test]
+    fn a_type_303_image_is_at_most_4096_square_and_its_runs_stay_inside_it() {
+        let image = |w: u32, h: u32, runs: &[u8]| x(&[&dword(w), &dword(h), runs]);
+        for (w, h) in [(0, 1), (1, 0), (4097, 4096)] {
+            assert!(why(encode_image(&image(w, h, &[1, 0]), 0, 1, false)).contains("invalid dimensions"), "{w}x{h}");
+        }
+        let full: Vec<u8> = [0u8, 3].repeat(65_536);
+        assert_eq!(encode_image(&image(4096, 4096, &full), 0, 1, false).unwrap().len(), 36 + 4096 * 4096);
+        assert!(why(encode_image(&image(2, 1, &[3, 0]), 0, 1, false)).contains("run exceeds"));
+        assert_eq!(encode_image(&image(2, 1, &[1, 5, 1, 6]), 0, 1, false).unwrap()[36..], [5, 6]);
+    }
+
     #[test]
     fn a_run_of_zero_paints_256_pixels_and_a_tail_is_refused_unless_allowed() {
         // 16x16: one run of 256 pixels of colour 7.

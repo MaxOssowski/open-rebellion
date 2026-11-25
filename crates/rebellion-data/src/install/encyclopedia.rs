@@ -206,6 +206,59 @@ mod tests {
         assert!(decode_text(1, b"\x81\0").is_err());
     }
 
+    /// A string-table bundle: 16 counted UTF-16 strings, `names` first.
+    fn bundle(names: &[&str]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for i in 0..16 {
+            let name = names.get(i).copied().unwrap_or("");
+            out.extend_from_slice(&(name.encode_utf16().count() as u16).to_le_bytes());
+            for unit in name.encode_utf16() {
+                out.extend_from_slice(&unit.to_le_bytes());
+            }
+        }
+        out
+    }
+
+    fn refusal(texts: &[(u32, &[u8])], bundles: &[(u32, &[u8])]) -> String {
+        match catalog(texts, bundles, b"", b"") {
+            Err(BuildError::BadTable(why)) => why,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_topic_id_is_a_nonzero_sixteen_bit_resource_id() {
+        for id in [0, 0x1_0000] {
+            assert!(refusal(&[(id, b"a\0")], &[]).contains("invalid resource id"), "{id}");
+        }
+        assert!(refusal(&[(0xffff, b"a\0")], &[]).starts_with("the Encyclopedia has 1 topics"));
+    }
+
+    #[test]
+    fn a_picture_bundle_lies_in_the_string_table_s_range() {
+        let empty = bundle(&[]);
+        for id in [0, 4097] {
+            assert!(refusal(&[], &[(id, &empty)]).contains("outside the string range"), "{id}");
+        }
+        assert!(refusal(&[], &[(4096, &empty)]).starts_with("the Encyclopedia has 0 topics"));
+    }
+
+    #[test]
+    fn a_picture_name_is_edata_and_three_digits_under_a_nonzero_id() {
+        // Bundle 2 holds ids 16..31; bundle 1's first is id 0.
+        assert!(refusal(&[], &[(2, &bundle(&["EDATA.001"]))]).contains("0 topics and 1 pictures"));
+        for name in ["EDATA.0001", "XDATA.001", "EDATA.0A1"] {
+            assert!(refusal(&[], &[(2, &bundle(&[name]))]).contains("invalid artwork name"), "{name}");
+        }
+        assert!(refusal(&[], &[(1, &bundle(&["EDATA.001"]))]).contains("ENCYBMAP 0 has invalid artwork name"));
+    }
+
+    #[test]
+    fn the_catalog_needs_the_release_s_topics_and_pictures_both() {
+        let texts: Vec<(u32, &[u8])> = (1..=EXPECTED_TEXTS as u32).map(|id| (id, &b"a\0"[..])).collect();
+        assert!(refusal(&texts, &[]).starts_with("the Encyclopedia has 348 topics and 0 pictures"));
+    }
+
     #[test]
     fn strings_escape_as_go_writes_them() {
         assert_eq!(go_string("a<b>&c"), "\"a\\u003cb\\u003e\\u0026c\"");

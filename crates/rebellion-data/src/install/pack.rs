@@ -321,7 +321,7 @@ fn target_entries(target: &Target, file: &[u8], out: &mut Vec<Entry>) -> Result<
 pub fn build_entries(install: &InstallFiles) -> Result<Vec<Entry>, BuildError> {
     let mut out = Vec::new();
     // Kind 0: the DATs and the advisor's scripts, byte for byte.
-    for (name, data) in install.matching(|folder, name| folder == "GDATA" && name.ends_with(".DAT")) {
+    for (name, data) in install.matching(is_game_data) {
         out.push(Entry { kind: KIND_GAME_DATA, key: name.to_owned(), data: data.to_vec() });
     }
     for name in ["C3POACT.SPT", "IMP22ACT.SPT"] {
@@ -329,17 +329,12 @@ pub fn build_entries(install: &InstallFiles) -> Result<Vec<Entry>, BuildError> {
         out.push(Entry { kind: KIND_GAME_DATA, key: name.to_owned(), data: data.to_vec() });
     }
     // The encyclopedia's pictures (collect_edata_entries).
-    for (name, data) in install.matching(|_, name| {
-        name.strip_prefix("EDATA.").is_some_and(|n| n.len() == 3 && n.bytes().all(|b| b.is_ascii_digit()))
-    }) {
+    for (name, data) in install.matching(|_, name| is_edata_picture(name)) {
         out.push(Entry { kind: KIND_GAME_DATA, key: format!("encyclopedia/assets/{name}"), data: data.to_vec() });
     }
     for target in TARGETS {
-        let file = install.get(target.file).or_else(|| target.alias.and_then(|alias| install.get(alias)));
-        match file {
-            Some(file) => target_entries(target, file, &mut out)?,
-            None if target.optional => {}
-            None => return Err(BuildError::Missing(target.file.to_owned())),
+        if let Some(file) = target_file(install, target)? {
+            target_entries(target, file, &mut out)?;
         }
     }
     wave_entries(
@@ -370,6 +365,31 @@ pub fn build_entries(install: &InstallFiles) -> Result<Vec<Entry>, BuildError> {
             out.push(Entry { kind: KIND_AUDIO, key: key.to_owned(), data: data.to_vec() });
         }
     }
+    sort_unique(out)
+}
+
+/// A DAT in the game's GData folder.
+fn is_game_data(folder: &str, name: &str) -> bool {
+    folder == "GDATA" && name.ends_with(".DAT")
+}
+
+/// `EDATA.` and three digits: an encyclopedia picture file.
+fn is_edata_picture(name: &str) -> bool {
+    name.strip_prefix("EDATA.").is_some_and(|n| n.len() == 3 && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// The target's file, under its name or its alias; `None` for a missing
+/// optional one.
+fn target_file<'a>(install: &'a InstallFiles, target: &Target) -> Result<Option<&'a [u8]>, BuildError> {
+    match install.get(target.file).or_else(|| target.alias.and_then(|alias| install.get(alias))) {
+        Some(file) => Ok(Some(file)),
+        None if target.optional => Ok(None),
+        None => Err(BuildError::Missing(target.file.to_owned())),
+    }
+}
+
+/// The entries sorted by kind and key; two with the same pair refused.
+fn sort_unique(mut out: Vec<Entry>) -> Result<Vec<Entry>, BuildError> {
     out.sort_by(|a, b| (a.kind, &a.key).cmp(&(b.kind, &b.key)));
     if let Some(pair) = out.windows(2).find(|w| w[0].kind == w[1].kind && w[0].key == w[1].key) {
         return Err(BuildError::Duplicate(pair[0].key.clone()));
@@ -453,6 +473,10 @@ mod tests {
         assert_eq!(files.get("A.DAT"), Some(&b"two"[..]), "elsewhere, the later file wins");
         let in_gdata: Vec<_> = files.matching(|folder, _| folder == "GDATA").collect();
         assert!(in_gdata.is_empty());
+        files.insert("Game/GData/B.DAT", b"three".to_vec());
+        files.insert("Game/GData/C.TXT", b"four".to_vec());
+        let dats: Vec<_> = files.matching(|folder, name| folder == "GDATA" && name.ends_with(".DAT")).collect();
+        assert_eq!(dats, [("B.DAT", &b"three"[..])]);
     }
 
     #[test]
@@ -490,6 +514,128 @@ mod tests {
         assert_eq!(u32::from_le_bytes(bmp[10..14].try_into().unwrap()), 14 + 40 + 8);
         assert_eq!(&bmp[14..], &dib[..]);
         assert!(dib_to_bmp(&dib[..20]).is_none());
+    }
+
+    /// A DIB of `header` bytes' header, `bits` per pixel and `colors`
+    /// palette entries, `len` bytes long.
+    fn dib(header: u32, bits: u16, colors: u32, len: usize) -> Vec<u8> {
+        let mut dib = vec![0u8; len.max(36)];
+        dib[0..4].copy_from_slice(&header.to_le_bytes());
+        dib[14..16].copy_from_slice(&bits.to_le_bytes());
+        dib[32..36].copy_from_slice(&colors.to_le_bytes());
+        dib.truncate(len);
+        dib
+    }
+
+    #[test]
+    fn a_dib_header_is_at_least_forty_bytes_and_inside_the_resource() {
+        // 24-bit, no palette: the pixels start right after the header.
+        assert!(dib_to_bmp(&dib(40, 24, 0, 40)).is_some(), "a header filling the resource");
+        assert!(dib_to_bmp(&dib(39, 24, 0, 48)).is_none(), "under 40 bytes");
+        assert!(dib_to_bmp(&dib(41, 24, 0, 40)).is_none(), "past the resource");
+    }
+
+    #[test]
+    fn a_dib_whose_palette_runs_past_the_resource_is_refused() {
+        // An 8-bit DIB with no count has 256 entries, 1024 bytes.
+        assert!(dib_to_bmp(&dib(40, 8, 0, 40)).is_none());
+        assert!(dib_to_bmp(&dib(40, 8, 0, 40 + 1024)).is_some(), "the palette exactly fits");
+        assert!(dib_to_bmp(&dib(40, 8, 2, 40 + 7)).is_none(), "two entries need 8 bytes");
+    }
+
+    fn bitmap() -> Vec<u8> {
+        dib(40, 24, 0, 44)
+    }
+
+    fn target(frames: usize, waves: usize, dir: &'static str) -> Target {
+        Target { file: "X.DLL", alias: None, dir, bitmaps: 1, frames, records: 0, waves, optional: false }
+    }
+
+    #[test]
+    fn a_dll_with_other_counts_than_the_release_s_is_refused() {
+        let bitmap = bitmap();
+        let file = super::super::pe::fixture::tiny_pe(
+            &[(Some(RT_BITMAP), 1, 1033, &bitmap), (Some(RT_ADVISOR_FRAME), 5, 1033, b"frame")],
+            false,
+        );
+        let mut out = Vec::new();
+        assert!(target_entries(&target(1, 0, "x-dll"), &file, &mut out).is_ok());
+        assert_eq!(out.iter().map(|e| (e.kind, e.key.as_str())).collect::<Vec<_>>(),
+            [(KIND_BITMAP, "x-dll/1"), (KIND_ADVISOR_FRAME, "x-dll/5")]);
+        for wrong in [Target { bitmaps: 2, ..target(1, 0, "x-dll") }, target(2, 0, "x-dll")] {
+            let result = target_entries(&wrong, &file, &mut Vec::new());
+            assert!(matches!(result, Err(BuildError::Count { .. })), "{result:?}");
+        }
+    }
+
+    #[test]
+    fn a_dll_s_frames_and_waves_are_taken_only_where_the_release_has_them() {
+        let bitmap = bitmap();
+        let wave = b"RIFF\x04\0\0\0WAVE";
+        let file = super::super::pe::fixture::tiny_pe(
+            &[(Some(RT_BITMAP), 1, 1033, &bitmap), (Some(RT_ADVISOR_FRAME), 5, 1033, b"frame"), (None, 7, 1033, wave)],
+            false,
+        );
+        let kinds = |target: Target| {
+            let mut out = Vec::new();
+            target_entries(&target, &file, &mut out).unwrap();
+            out.iter().map(|e| e.key.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(kinds(target(0, 0, "strategy-dll")), ["strategy-dll/1"]);
+        assert_eq!(kinds(target(0, 1, "x-dll")), ["x-dll/1"], "not an advisor's voice DLL");
+        assert_eq!(kinds(target(0, 1, "strategy-dll")), ["strategy-dll/1", "advisor/strategy-dll/7.wav"]);
+    }
+
+    #[test]
+    fn an_encyclopedia_picture_is_edata_and_three_digits() {
+        for (name, ok) in [("EDATA.001", true), ("EDATA.0001", false), ("EDATA.01", false), ("EDATA.0A1", false), ("XDATA.001", false)] {
+            assert_eq!(is_edata_picture(name), ok, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_missing_dll_is_refused_unless_the_release_may_lack_it() {
+        let mut install = InstallFiles::default();
+        install.insert("B.DLL.OLD", b"old".to_vec());
+        let optional = Target { optional: true, ..target(0, 0, "x-dll") };
+        assert_eq!(target_file(&install, &optional).unwrap(), None);
+        assert!(matches!(target_file(&install, &target(0, 0, "x-dll")), Err(BuildError::Missing(name)) if name == "X.DLL"));
+        let aliased = Target { file: "B.DLL", alias: Some("B.DLL.OLD"), ..target(0, 0, "x-dll") };
+        assert_eq!(target_file(&install, &aliased).unwrap(), Some(&b"old"[..]));
+    }
+
+    #[test]
+    fn the_entries_are_sorted_and_a_repeated_key_of_a_kind_is_refused() {
+        let entry = |kind, key: &str| Entry { kind, key: key.into(), data: Vec::new() };
+        let sorted = sort_unique(vec![entry(1, "b"), entry(0, "b"), entry(1, "a")]).unwrap();
+        assert_eq!(sorted, [entry(0, "b"), entry(1, "a"), entry(1, "b")]);
+        assert!(matches!(sort_unique(vec![entry(1, "a"), entry(1, "a")]), Err(BuildError::Duplicate(key)) if key == "a"));
+    }
+
+    #[test]
+    fn the_pack_is_its_header_then_each_entry_s_kind_lengths_key_and_bytes() {
+        let entries = [
+            Entry { kind: 0, key: "A".into(), data: vec![1, 2] },
+            Entry { kind: 5, key: "bc".into(), data: vec![] },
+        ];
+        let mut expected = MAGIC.to_vec();
+        expected.extend_from_slice(&VERSION.to_le_bytes());
+        expected.extend_from_slice(&[0, 0, 2, 0, 0, 0]);
+        expected.extend_from_slice(&[0, 1, 0, 2, 0, 0, 0, b'A', 1, 2]);
+        expected.extend_from_slice(&[5, 2, 0, 0, 0, 0, 0, b'b', b'c']);
+        assert_eq!(write_pack(&entries), expected);
+    }
+
+    #[test]
+    fn a_dat_outside_gdata_or_another_gdata_file_is_not_game_data() {
+        assert!(is_game_data("GDATA", "SYSTEMSD.DAT"));
+        assert!(!is_game_data("GAME", "UNINS000.DAT"));
+        assert!(!is_game_data("GDATA", "README.TXT"));
+    }
+
+    #[test]
+    fn an_empty_folder_builds_no_pack() {
+        assert!(matches!(build_entries(&InstallFiles::default()), Err(BuildError::Missing(name)) if name == "C3POACT.SPT"));
     }
 
     #[test]
