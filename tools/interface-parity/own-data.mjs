@@ -195,6 +195,20 @@ try {
   await fs.rm(partial, { recursive: true, force: true });
   check('a folder missing the game files shows why the pack cannot be built');
 
+  // 7. A phone has no folder picker: the page says so and offers none.
+  const phone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+  });
+  const phonePage = await phone.newPage();
+  phonePage.on('pageerror', error => errors.push(String(error)));
+  await phonePage.goto(url);
+  await phonePage.waitForFunction(() => /cannot open a folder/.test(document.getElementById('own-data-status')?.textContent ?? ''));
+  if (!(await phonePage.$eval('#own-data-choose', button => button.disabled))) throw new Error('the phone page offers the folder button');
+  await phonePage.screenshot({ path: path.join(output, '07-phone.png') });
+  await phone.close();
+  check('a phone is told the game needs a desktop browser and gets no folder button');
+
   if (errors.length) throw new Error(`page errors: ${errors.join('; ')}`);
   result.status = 'pass';
 } catch (error) {

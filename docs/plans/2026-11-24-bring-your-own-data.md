@@ -66,5 +66,24 @@ builds the same pack from it, locally; the server holds only the engine.
   use, header checks) and `tactical.rs` (76: the X-file reader's
   refusals, materials); list kept in
   `target/claude-tmp/install-mutants-missed-2026-11-24.txt`.
-- Open: those mutants; a release packaging without the pack, to be
-  decided with the deployment (password, hosting).
+- Mutants closed 2026-11-25 (7b7e5b71, 052a2fd5, 3ace9ebf): the
+  survivors left are equivalent and named in those commits.
+
+## Release (decided 2026-11-25)
+
+The user chose the own-data mode for the public release ("Wybieram 2
+opcje i do testów prywatna lokalnie z plikami gry"): the public build
+ships only the engine and asks every player for their own copy; the build
+with `data/runtime.orpk` stays local, for testing, and is never deployed.
+
+- `scripts/package-web.sh <version> --own-data` writes
+  `dist/open-rebellion-web-own-data-<version>/` (index.html, gl.js, the
+  WASM and SHA256SUMS, about 4 MB zipped) and refuses any other file.
+- The page's panel says where the GOG and Steam installs are, that a
+  desktop Chrome, Edge or Firefox and about 500 MB of browser storage
+  (pack and movies) are needed, and that the game is not included; on a
+  phone or tablet it says the browser cannot open a folder and disables
+  the button.
+- `own-data.mjs` passes against the packaged folder in Chromium 157 and
+  Firefox 160, the phone check included.
+- Open: the host (Cloudflare Pages or GitHub Pages; no password needed).

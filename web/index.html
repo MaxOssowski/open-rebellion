@@ -52,6 +52,9 @@
         #own-data h1 { font-size: 1.2em; margin: 0 0 0.8em; color: #f0f2f8; }
         #own-data button { font: inherit; padding: 0.4em 1.2em; cursor: pointer; }
         #own-data-status:empty { display: none; }
+        #own-data ul { padding-left: 1.2em; }
+        #own-data code { color: #f0f2f8; }
+        #own-data-needs { font-size: 0.9em; color: #a8aec0; }
     </style>
 </head>
 <body>
@@ -388,6 +391,14 @@
             <p id="own-data-text">Choose the game's folder: the one that holds REBEXE.EXE and the
                 GData folder, such as the GOG installation. The game reads the files here, in this
                 browser, and keeps what it needs for your next visit. Nothing is uploaded.</p>
+            <ul id="own-data-where">
+                <li>GOG Galaxy: the game's page, Manage installation, Show folder; by default
+                    <code>C:\GOG Games\Star Wars - Rebellion</code>.</li>
+                <li>Steam: Library, the game's Properties, Installed Files, Browse.</li>
+                <li>Another computer: copy that whole folder here first.</li>
+            </ul>
+            <p id="own-data-needs">Needs a desktop browser that opens folders (Chrome, Edge or Firefox)
+                and about 500 MB of browser storage (the game data and its movies). The game is not included: you need your own copy.</p>
             <p id="own-data-status" role="status"></p>
             <button type="button" id="own-data-choose">Choose game folder</button>
             <input type="file" id="own-data-input" webkitdirectory directory multiple hidden>
@@ -485,7 +496,18 @@
                 return chosen;
             }
 
+            // Phones and tablets have no folder picker.
+            function canPickFolders() {
+                return "webkitdirectory" in input && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+                    && !(navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+            }
+
             function pickFolder() {
+                if (!canPickFolders()) {
+                    choose.disabled = true;
+                    show("This browser cannot open a folder. Open the game on a computer in Chrome, Edge or Firefox.");
+                    return new Promise(() => {});
+                }
                 return new Promise(resolve => {
                     choose.onclick = () => input.click();
                     input.onchange = () => {
