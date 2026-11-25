@@ -548,7 +548,9 @@ pub(crate) fn apply(
         key
     } else if request.umgul_backdrop {
         // A0 TAC-01-C008 was taken at Umgul: the same system gives the
-        // same planet decal. Its own fleets stay out.
+        // same planet decal. Its own fleets stay out, and so do squadrons
+        // an army seed (FUN_0051b1f0) may put on its planet: A0's sides
+        // are two hulls each.
         let key = world
             .systems
             .iter()
@@ -556,6 +558,7 @@ pub(crate) fn apply(
             .map(|(key, _)| key)
             .ok_or("fixture system Umgul is missing")?;
         world.systems[key].fleets.clear();
+        world.systems[key].fighters.clear();
         key
     } else if request.hull_scale_presentation {
         // A0 TAC-01-C003 was taken at Mon Calamari: the same system gives
@@ -1334,6 +1337,28 @@ fn coruscant_chase_fleets(
             !world.fleets[fleet].is_alliance && !world.fleets[fleet].capital_ships.is_empty()
         })
         .ok_or("Coruscant has no Imperial fleet")?;
+    // A0's save holds the Judicator alone there. The army seeds
+    // (FUN_0051b1f0) may join more ship-led groups to the side's first fleet
+    // at Coruscant, or found fleets of their own: the defender keeps its
+    // first ship and the squadrons aboard it, and the other Imperial fleets
+    // leave the system.
+    let others: Vec<_> = world.systems[system]
+        .fleets
+        .iter()
+        .copied()
+        .filter(|&fleet| fleet != defender && !world.fleets[fleet].is_alliance)
+        .collect();
+    world.systems[system]
+        .fleets
+        .retain(|fleet| !others.contains(fleet));
+    for fleet in others {
+        world.fleets.remove(fleet);
+    }
+    let home = &mut world.fleets[defender];
+    home.capital_ships.truncate(1);
+    let flagship = home.capital_ships[0].id;
+    home.fighters
+        .retain(|entry| entry.carrier.is_none_or(|carrier| carrier == flagship));
     // A0's Empire counted 12 objects: A0 TAC-04-C014's pyramids fit a battle
     // extent of 136 = 100 + 3 x 12 (FUN_005ab650, 0x5abb11..0x5abb4b), and
     // not 109 (ghidra/notes/tactical-chase-camera-distance.md). The count

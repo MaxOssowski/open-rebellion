@@ -1134,6 +1134,13 @@ pub fn apply(
     if request.scenario.is_new_game() {
         return;
     }
+    // The fixtures stage their scenes on empty holds: a new game seeds
+    // regiments aboard ship-led fleets (FUN_0051b1f0), which land here.
+    for fleet in troop_transport.fleet_keys() {
+        if let Some(at) = world.fleets.get(fleet).map(|value| value.location) {
+            let _ = troop_transport.disembark_all(world, fleet, at);
+        }
+    }
 
     // The Coruscant assault's primary system (the first, which every
     // observer reads) stands as Coruscant: it takes Coruscant's key
@@ -5627,6 +5634,19 @@ fn place_finder_fleets(
     ) else {
         return;
     };
+    // The occlusion case needs empty Finder rows over the sector window's
+    // planets: the player keeps its first four seeded fleets, as many as the
+    // case was laid out on before the army seeds (FUN_0051b1f0) added more.
+    let surplus: Vec<_> = world
+        .fleets
+        .iter()
+        .filter(|(_, fleet)| fleet.is_alliance == player_is_alliance)
+        .map(|(key, _)| key)
+        .skip(4)
+        .collect();
+    for key in surplus {
+        world.fleets.remove(key);
+    }
     let mut second = world.fleets[first].clone();
     second.location = third;
     second.is_alliance = player_is_alliance;
@@ -5872,6 +5892,9 @@ fn place_facility_room(
             QueueItem::new(BuildableKind::ManufacturingFacility(build), 10),
         );
     }
+    if full {
+        grant_maintenance_for_every_ship(request, world, manufacturing, primary);
+    }
     let system = &mut world.systems[primary];
     let mines = system
         .production_facilities
@@ -5890,6 +5913,53 @@ fn place_facility_room(
     let free = usize::from(!full);
     system.total_energy = u8::try_from(facilities + free).unwrap_or(u8::MAX);
     system.raw_materials = u8::try_from(mines + free).unwrap_or(u8::MAX);
+}
+
+/// The room case walks every ship and regiment class with Confirm lit, so
+/// only room may refuse one: a new game's army seeds (FUN_0051b1f0) spend a
+/// side's maintenance below a Death Star's 600, so the side gets mine and
+/// refinery pairs (no upkeep, `FUN_0052e970`) on another system until its
+/// unallocated maintenance pays for its dearest class.
+fn grant_maintenance_for_every_ship(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    manufacturing: &ManufacturingState,
+    primary: SystemKey,
+) {
+    let is_alliance = request.faction == CockpitFaction::Alliance;
+    let side = rebellion_core::dat::Faction::of_alliance(is_alliance);
+    let player = if is_alliance { Faction::Alliance } else { Faction::Empire };
+    let Some(host) = world.systems.iter().find_map(|(key, system)| {
+        (key != primary && system.control == ControlKind::Controlled(player)).then_some(key)
+    }) else {
+        return;
+    };
+    let dearest = world
+        .capital_ship_classes
+        .values()
+        .filter(|class| class.is_alliance == is_alliance)
+        .map(|class| class.maintenance_cost)
+        .chain(world.buildable_classes.values().map(|class| class.maintenance_cost))
+        .max()
+        .unwrap_or(0);
+    let dearest = i32::try_from(dearest).unwrap_or(i32::MAX);
+    for _ in 0..64 {
+        let totals =
+            rebellion_core::side_resources::maintenance_totals(world, manufacturing, &[], side, |_| false);
+        if totals.unallocated() >= dearest {
+            break;
+        }
+        for (raw, is_mine) in [(0x2c00_0001, true), (0x2d00_0002, false)] {
+            let key = world
+                .production_facilities
+                .insert(rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(raw),
+                    side,
+                    is_mine,
+                });
+            world.systems[host].production_facilities.push(key);
+        }
+    }
 }
 
 fn place_training(
@@ -6641,10 +6711,20 @@ fn place_loading_fleet(
     }
     reconcile_fleet_orbits(movement, world);
 
-    let class_dat_id = world
-        .troops
-        .values()
-        .find(|troop| troop.is_alliance == player_is_alliance)
+    // A regiment of the player's side, an Alliance Army Regiment (TROOPSD
+    // 2, A0 assault-clean's) first when the Alliance has one: its first
+    // regiment is the army seeds' draw (FUN_0051b1f0), maybe a Fleet
+    // Regiment.
+    let army = rebellion_core::ids::DatId::new(0x1000_0002);
+    let side_regiments = || {
+        world
+            .troops
+            .values()
+            .filter(|troop| troop.is_alliance == player_is_alliance)
+    };
+    let class_dat_id = side_regiments()
+        .find(|troop| player_is_alliance && troop.class_dat_id == army)
+        .or_else(|| side_regiments().next())
         .map_or_else(
             || {
                 rebellion_core::ids::DatId::new(if player_is_alliance {

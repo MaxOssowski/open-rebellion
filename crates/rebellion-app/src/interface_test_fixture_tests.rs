@@ -173,9 +173,30 @@ fn the_new_game_fixture_s_empire_copy_of_yavin_lists_its_heroes_regiments_and_sq
             "{hero}: {personnel:?}"
         );
     }
-    assert_eq!(page(DefensesPage::Regiments).rows.len(), 2);
+    // A0's two regiments and two squadrons are Yavin's fixed table
+    // (FUN_0051acb0); the army seeds (FUN_0051b1f0) may add a planet group
+    // there, so the copy lists what the system holds, A0's units among them.
+    let yavin = &world.systems[named_system(&world, "Yavin")];
+    let regiments = page(DefensesPage::Regiments).rows.len();
+    assert_eq!(regiments, yavin.ground_units.len());
+    assert!(regiments >= 2, "{regiments}");
     assert_eq!(page(DefensesPage::Regiments).garrison, None);
-    assert_eq!(page(DefensesPage::Squadrons).rows, ["X-wing", "Y-wing"]);
+    let squadrons = &page(DefensesPage::Squadrons).rows;
+    let held: Vec<_> = yavin
+        .fighters
+        .iter()
+        .flat_map(|entry| {
+            std::iter::repeat_n(world.fighter_classes[entry.class].name.clone(), entry.count as usize)
+        })
+        .collect();
+    let mut sorted = squadrons.clone();
+    sorted.sort();
+    let mut held_sorted = held.clone();
+    held_sorted.sort();
+    assert_eq!(sorted, held_sorted, "{squadrons:?}");
+    for name in ["X-wing", "Y-wing"] {
+        assert!(squadrons.iter().any(|row| row == name), "{name}: {squadrons:?}");
+    }
     assert!(page(DefensesPage::Shields).rows.is_empty());
     assert!(page(DefensesPage::Batteries).rows.is_empty());
 }
@@ -226,20 +247,28 @@ fn the_new_game_fixture_lights_an_enemy_core_defenses_icon_by_its_facilities_alo
 // its planet (e-31, a05fee9087eb) and one TIE Fighter aboard Fleet 2
 // (e-26, acd453b96a53), and takes the smallest Fighter Squadrons mark
 // (e-02): FUN_00503550 walks the copy's direct children, and a fleet's
-// are its ships. The browser seed's Drall holds no squadron on its
-// planet either (gid-a0.mjs compares its mark with e-02's); since the
-// seed rolls every system's resources (471b20e1) it holds none aboard
-// a fleet, and the fleet case is the_squadron_display_counts_the_
-// holder_s_squadrons_on_the_planet's (rebellion-render).
+// are its ships. Whether a planet group lands there is the army seeds'
+// draw (FUN_0051b1f0, a uniform pick among the side's systems; seed 0
+// lands one, so gid-a0.mjs allows a larger mark there); a squadron the
+// seeds put in a fleet rides one of its ships, as A0's TIE Fighter does.
 #[test]
 #[ignore = "requires original data/base DAT files"]
-fn the_new_game_fixture_s_drall_holds_no_squadron_on_its_planet() {
+fn the_new_game_fixture_s_drall_is_the_empire_s_and_its_fleets_squadrons_ride_their_ships() {
     let world = new_game(Scenario::NewGame, CockpitFaction::Empire);
     let drall = named_system(&world, "Drall");
     assert!(world.systems[drall]
         .control
         .is_controlled_by(Faction::Empire));
-    assert!(world.systems[drall].fighters.is_empty());
+    assert!(world.systems[drall]
+        .fighters
+        .iter()
+        .all(|entry| entry.carrier.is_none()));
+    for fleet in world.fleets.values().filter(|fleet| fleet.location == drall) {
+        for entry in &fleet.fighters {
+            let carrier = entry.carrier.expect("a squadron aboard a ship");
+            assert!(fleet.capital_ships.iter().any(|ship| ship.id == carrier));
+        }
+    }
 }
 
 // A0 2026-11-19-fog-14 e-05 (ed937647a151): Triton bare while the
@@ -5054,6 +5083,23 @@ fn the_fleet_load_scenarios_regiment_is_of_the_players_troop_class() {
             "{faction:?}"
         );
     }
+}
+
+#[test]
+fn the_alliance_fleet_load_regiment_is_an_army_regiment_when_the_side_has_one() {
+    // A0 assault-clean's second row: an Alliance Army Regiment (TROOPSD 2).
+    let applied = apply_to_loading_world_with(request(Scenario::FleetLoad, CockpitFaction::Alliance), |world| {
+        for raw in [0x1000_0020, 0x1000_0002] {
+            world.troops.insert(TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(raw),
+                is_alliance: true,
+                regiment_strength: 100,
+            });
+        }
+    });
+    let here = applied.world.systems.keys().next().unwrap();
+    let regiment = loading_regiment(&applied.world, here).unwrap();
+    assert_eq!(applied.world.troops[regiment].class_dat_id.raw(), 0x1000_0002);
 }
 
 #[test]

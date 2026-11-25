@@ -520,6 +520,13 @@ try {
     // FUN_00426ee0's tables, smallest first.
     const ALLIANCE_MARKS = [10149, 10148, 10147, 10146];
     const EMPIRE_MARKS = [10150, 10151, 10152, 10153];
+    // Yavin's units are seeded twice: its fixed table (FUN_0051acb0)
+    // gives A0's medium marks, and the army seeds (FUN_0051b1f0)
+    // may add a planet group there, a uniform pick among the side's
+    // systems, so the port's mark is A0's or larger, and only the same mark
+    // is compared pixel by pixel. With seed 0 a Y-wing group lands there.
+    // Drall has no fixed table; A0's game put no planet group there.
+    const SEEDED = { Yavin: ALLIANCE_MARKS, Drall: EMPIRE_MARKS };
     const games = [
       { side: EMPIRE, label: "empire", fighters: "e02", troopers: "e03", enemy: ALLIANCE_MARKS,
         named: { Coruscant: [10153, 10153], Yavin: [10148, 10148], Drall: [10150, null] } },
@@ -602,8 +609,14 @@ try {
           if (expected === null) continue;
           const marks = { a0: await markAt(a0Png, at_), port: await markAt(png, at_) };
           assert.equal(marks.a0, expected, `A0 ${game.label} ${name} ${display}`);
-          marks.diff = await markDiffAt(png, at_, a0Png, at_, expected);
           row[display] = marks;
+          const sizes = SEEDED[name];
+          if (sizes && marks.port !== expected) {
+            assert.ok(sizes.indexOf(marks.port) > sizes.indexOf(expected),
+              `${game.label} ${name} ${display}, below A0's: ${JSON.stringify(marks)}`);
+            continue;
+          }
+          marks.diff = await markDiffAt(png, at_, a0Png, at_, expected);
           assert.equal(marks.port, expected, `${game.label} ${name} ${display}: ${JSON.stringify(marks)}`);
           assert.equal(marks.diff.different, 0, `${game.label} ${name} ${display}: ${JSON.stringify(marks)}`);
         }
