@@ -163,6 +163,10 @@ mod tests {
         let whole = cursor(1, 1, 1, &palette, &[0; 4], &[0; 4]);
         assert!(cursor_to_bmp(&whole).is_ok());
         assert!(cursor_to_bmp(&whole[..whole.len() - 1]).is_err(), "one byte short");
+        // Two rows need both AND mask rows, 4 bytes each.
+        let tall = cursor(1, 2, 1, &palette, &[0; 8], &[0; 8]);
+        assert!(cursor_to_bmp(&tall).is_ok());
+        assert!(cursor_to_bmp(&tall[..tall.len() - 4]).is_err(), "a mask row short");
         assert!(cursor_to_bmp(&cursor(1, 1, 24, &palette, &[0; 4], &[0; 4])).is_err(), "24 bpp");
         assert!(cursor_to_bmp(&cursor(0, 1, 1, &palette, &[0; 4], &[0; 4])).is_err(), "no width");
         assert!(cursor_to_bmp(&cursor(1, 0, 1, &palette, &[0; 4], &[0; 4])).is_err(), "no height");
