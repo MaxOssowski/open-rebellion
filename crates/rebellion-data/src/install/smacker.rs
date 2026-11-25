@@ -949,6 +949,475 @@ mod tests {
     }
 
     #[test]
+    fn a_mono_wave_s_block_is_two_bytes() {
+        let wav = Pcm { sample_rate: 11_025, channels: 1, samples: vec![7] }.to_wav();
+        assert_eq!(u32::from_le_bytes(wav[28..32].try_into().unwrap()), 22_050);
+        assert_eq!(u16::from_le_bytes(wav[32..34].try_into().unwrap()), 2);
+    }
+
+    #[test]
+    fn errors_say_what_failed() {
+        let cases = [
+            (SmackerError::NotSmacker, "not a Smacker movie"),
+            (SmackerError::Truncated("trees"), "truncated trees"),
+            (SmackerError::BadTree("big"), "invalid big tree"),
+            (SmackerError::BadPalette, "invalid palette chunk"),
+            (SmackerError::BadAudio("chunk size"), "invalid audio: chunk size"),
+            (SmackerError::UnsupportedAudio(8), "unsupported (Bink) audio, flags 0x8"),
+            (SmackerError::NoTrack(3), "no audio track 3"),
+        ];
+        for (error, text) in cases {
+            assert_eq!(error.to_string(), text);
+        }
+    }
+
+    #[test]
+    fn the_bits_left_go_negative_past_the_end() {
+        let mut bits = Bits::new(&[0, 0]);
+        assert_eq!(bits.left(), 16);
+        bits.bits(3);
+        assert_eq!(bits.left(), 13);
+        bits.bits(17);
+        assert_eq!(bits.left(), -4);
+    }
+
+    fn leaf_bits(value: u8) -> Vec<u32> {
+        let mut out = vec![0];
+        out.extend(byte_bits(value));
+        out
+    }
+
+    /// A byte tree whose leaves all lie `depth` deep.
+    fn full_tree(depth: usize) -> Vec<u32> {
+        if depth == 0 {
+            return leaf_bits(0);
+        }
+        let mut out = vec![1];
+        out.extend(full_tree(depth - 1));
+        out.extend(full_tree(depth - 1));
+        out
+    }
+
+    fn read_byte_tree(stream: &[u32]) -> Result<ByteTree, SmackerError> {
+        ByteTree::read(&mut Bits::new(&pack(stream)))
+    }
+
+    #[test]
+    fn a_byte_tree_is_at_most_32_deep_on_either_side() {
+        let left_chain = |depth: usize| {
+            let mut out = vec![1; depth];
+            for _ in 0..=depth {
+                out.extend(leaf_bits(0));
+            }
+            out
+        };
+        let right_chain = |depth: usize| {
+            let mut out = Vec::new();
+            for _ in 0..depth {
+                out.push(1);
+                out.extend(leaf_bits(0));
+            }
+            out.extend(leaf_bits(0));
+            out
+        };
+        assert!(read_byte_tree(&left_chain(32)).is_ok());
+        assert_eq!(read_byte_tree(&left_chain(33)).err(), Some(SmackerError::BadTree("byte")));
+        assert!(read_byte_tree(&right_chain(32)).is_ok());
+        assert_eq!(read_byte_tree(&right_chain(33)).err(), Some(SmackerError::BadTree("byte")));
+    }
+
+    #[test]
+    fn a_byte_tree_holds_at_most_256_leaves() {
+        assert_eq!(read_byte_tree(&full_tree(8)).unwrap().nodes.len(), 511);
+        let mut more = vec![1];
+        more.extend(full_tree(8));
+        more.extend(leaf_bits(0));
+        assert_eq!(read_byte_tree(&more).err(), Some(SmackerError::BadTree("byte")));
+    }
+
+    #[test]
+    fn a_byte_tree_leaf_needs_its_eight_bits() {
+        // Two zero bytes: a leaf flag at bit 7 leaves exactly 8 bits, at
+        // bit 8 only 7.
+        let data = [0, 0];
+        let mut bits = Bits { data: &data, pos: 7 };
+        assert!(ByteTree::read(&mut bits).is_ok());
+        let mut bits = Bits { data: &data, pos: 8 };
+        assert_eq!(ByteTree::read(&mut bits).err(), Some(SmackerError::BadTree("byte")));
+    }
+
+    fn word_bits(value: u32) -> Vec<u32> {
+        (0..16).map(|i| (value >> i) & 1).collect()
+    }
+
+    /// A big tree with both byte trees absent and escapes 1, 2 and 3, then `nodes`.
+    fn big_stream(nodes: &[u32]) -> Vec<u32> {
+        let mut out = vec![0, 0];
+        for escape in [1, 2, 3] {
+            out.extend(word_bits(escape));
+        }
+        out.extend_from_slice(nodes);
+        out
+    }
+
+    fn read_big(stream: &[u32], size: u32) -> Result<BigTree, SmackerError> {
+        BigTree::read(&mut Bits::new(&pack(stream)), size)
+    }
+
+    #[test]
+    fn a_big_tree_fits_the_size_its_header_gives() {
+        // A quarter of the size, rounded up, is the entry count.
+        let one = read_big(&big_stream(&[0]), 1).unwrap();
+        assert_eq!(one.values, vec![0, 0, 0, 0], "a leaf and three escape slots");
+        assert_eq!(one.last, [1, 2, 3]);
+        assert_eq!(read_big(&big_stream(&[0]), 0).err(), Some(SmackerError::BadTree("big")));
+        assert!(read_big(&big_stream(&[1, 0, 0]), 9).is_ok());
+        assert_eq!(read_big(&big_stream(&[1, 0, 0]), 8).err(), Some(SmackerError::BadTree("big")));
+        let mut none = Bits::new(&[]);
+        assert_eq!(BigTree::read(&mut none, u32::MAX >> 4).err(), Some(SmackerError::BadTree("header")));
+    }
+
+    #[test]
+    fn a_big_tree_is_at_most_500_deep_on_either_side() {
+        let left_chain = |depth: usize| {
+            let mut nodes = vec![1; depth];
+            nodes.extend(vec![0; depth + 1]);
+            big_stream(&nodes)
+        };
+        let right_chain = |depth: usize| {
+            let mut nodes = [1, 0].repeat(depth);
+            nodes.push(0);
+            big_stream(&nodes)
+        };
+        let size = |depth: usize| 4 * (2 * depth as u32 + 1);
+        assert!(read_big(&left_chain(500), size(500)).is_ok());
+        assert_eq!(read_big(&left_chain(501), size(501)).err(), Some(SmackerError::BadTree("big")));
+        assert!(read_big(&right_chain(500), size(500)).is_ok());
+        assert_eq!(read_big(&right_chain(501), size(501)).err(), Some(SmackerError::BadTree("big")));
+    }
+
+    #[test]
+    fn a_big_tree_cut_short_is_refused() {
+        // 50 header bits and six branches fill seven bytes exactly.
+        let stream = big_stream(&[1; 6]);
+        assert_eq!(pack(&stream).len() * 8, stream.len());
+        assert_eq!(read_big(&stream, 100).err(), Some(SmackerError::BadTree("big")));
+    }
+
+    #[test]
+    fn a_frame_is_its_palette_colours_and_shows_doubled_or_interlaced() {
+        let mut palette = [0u8; 768];
+        palette[..9].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let frame = Frame { width: 2, height: 2, indices: &[1, 2, 0, 1], palette: &palette };
+        let (a, b, c) = ([4, 5, 6, 255], [7, 8, 9, 255], [1, 2, 3, 255]);
+        let black = [0, 0, 0, 255];
+        let rows = |rows: &[[[u8; 4]; 2]]| rows.iter().flatten().flatten().copied().collect::<Vec<u8>>();
+        assert_eq!(frame.to_rgba(), rows(&[[a, b], [c, a]]));
+        assert_eq!(frame.to_display_rgba(0), (2, 2, rows(&[[a, b], [c, a]])));
+        assert_eq!(frame.to_display_rgba(FLAG_RING_FRAME), (2, 2, rows(&[[a, b], [c, a]])));
+        let doubled = rows(&[[a, b], [a, b], [c, a], [c, a]]);
+        assert_eq!(frame.to_display_rgba(FLAG_Y_DOUBLE), (2, 4, doubled.clone()));
+        assert_eq!(frame.to_display_rgba(FLAG_Y_DOUBLE | FLAG_Y_INTERLACE), (2, 4, doubled));
+        let interlaced = rows(&[[a, b], [black, black], [c, a], [black, black]]);
+        assert_eq!(frame.to_display_rgba(FLAG_Y_INTERLACE), (2, 4, interlaced));
+    }
+
+    fn put_u32(out: &mut [u8], at: usize, value: u32) {
+        out[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    /// A movie with absent trees: `magic`, `size`, header `flags`, audio
+    /// `rates`, then each frame's (flags, bytes), padded to 4 bytes.
+    fn smk_file(magic: &[u8; 4], (width, height): (u32, u32), flags: u32, rates: [u32; 7], frames: &[(u8, Vec<u8>)]) -> Vec<u8> {
+        let mut out = vec![0u8; HEADER_SIZE];
+        out[0..4].copy_from_slice(magic);
+        put_u32(&mut out, 4, width);
+        put_u32(&mut out, 8, height);
+        put_u32(&mut out, 12, frames.len() as u32 - (flags & FLAG_RING_FRAME));
+        put_u32(&mut out, 16, (-6666i32) as u32);
+        put_u32(&mut out, 20, flags);
+        put_u32(&mut out, 52, 4);
+        for (i, rate) in rates.iter().enumerate() {
+            put_u32(&mut out, 72 + i * 4, *rate);
+        }
+        let padded: Vec<Vec<u8>> = frames
+            .iter()
+            .map(|(_, bytes)| {
+                let mut bytes = bytes.clone();
+                bytes.resize(bytes.len().div_ceil(4) * 4, 0);
+                bytes
+            })
+            .collect();
+        for bytes in &padded {
+            out.extend((bytes.len() as u32).to_le_bytes());
+        }
+        out.extend(frames.iter().map(|(flags, _)| *flags));
+        out.extend([0u8; 4]);
+        out.extend(padded.concat());
+        out
+    }
+
+    #[test]
+    fn the_header_gives_the_size_flags_frames_and_audio_tracks() {
+        let stereo = (AUDIO_PACKED | AUDIO_16BIT | AUDIO_STEREO) << 24;
+        let rates = [22_050 | stereo, 0, 11_025, AUDIO_16BIT << 24, 0, 0, 0];
+        let file = smk_file(b"SMK2", (8, 4), FLAG_Y_DOUBLE, rates, &[(0, vec![0; 4]), (0, vec![0; 8])]);
+        let smk = Smacker::open(file).unwrap();
+        assert_eq!((smk.width(), smk.height(), smk.flags(), smk.frame_count()), (8, 4, FLAG_Y_DOUBLE, 2));
+        assert_eq!(smk.frame_sizes, vec![4, 8]);
+        assert!(!smk.version4);
+        let packed = AudioTrack { sample_rate: 22_050, channels: 2, bits: 16, packed: true };
+        let plain = AudioTrack { sample_rate: 11_025, channels: 1, bits: 8, packed: false };
+        assert_eq!(smk.audio_tracks(), vec![(0, packed), (2, plain)]);
+        assert!(smk.audio_wav(3).is_none(), "flags without a rate");
+        assert!(smk.audio_wav(1).is_none());
+        assert!(smk.audio_wav(7).is_none());
+    }
+
+    #[test]
+    fn a_ring_frame_adds_a_frame_and_smk4_reads_too() {
+        let file = smk_file(b"SMK4", (4, 4), FLAG_RING_FRAME, [0; 7], &[(0, vec![]), (0, vec![])]);
+        let smk = Smacker::open(file).unwrap();
+        assert_eq!(smk.frame_count(), 2);
+        assert!(smk.version4);
+    }
+
+    #[test]
+    fn a_header_past_the_size_limits_is_refused() {
+        let open = |width, height| Smacker::open(smk_file(b"SMK2", (width, height), 0, [0; 7], &[])).map(|_| ());
+        assert_eq!(open(4096, 4), Ok(()));
+        assert_eq!(open(4, 4096), Ok(()));
+        for (width, height) in [(0, 4), (4, 0), (4097, 4), (4, 4097)] {
+            assert_eq!(open(width, height), Err(SmackerError::NotSmacker), "{width}x{height}");
+        }
+        let mut file = smk_file(b"SMK2", (4, 4), 0, [0; 7], &[]);
+        put_u32(&mut file, 12, 1_000_000);
+        assert_eq!(Smacker::open(file.clone()).err(), Some(SmackerError::Truncated("frame sizes")));
+        put_u32(&mut file, 12, 1_000_001);
+        assert_eq!(Smacker::open(file).err(), Some(SmackerError::NotSmacker));
+    }
+
+    fn first_frame(file: Vec<u8>) -> Result<(Vec<u8>, [u8; 768]), SmackerError> {
+        let mut smk = Smacker::open(file)?;
+        let frame = smk.next_frame().unwrap()?;
+        Ok((frame.indices.to_vec(), *frame.palette))
+    }
+
+    #[test]
+    fn a_palette_chunk_must_fit_its_frame() {
+        let movie = |bytes: Vec<u8>| smk_file(b"SMK2", (4, 4), 0, [0; 7], &[(FRAME_PALETTE, bytes)]);
+        // Size byte 2 (8 bytes): entry 0 = (63, 0, 0), then skip 128 and 127.
+        let (_, palette) = first_frame(movie(vec![2, 63, 0, 0, 0xff, 0xfe, 0, 0])).unwrap();
+        assert_eq!(&palette[..6], &[255, 0, 0, 0, 0, 0]);
+        assert_eq!(first_frame(movie(vec![0, 0, 0, 0])).err(), Some(SmackerError::BadPalette), "no size");
+        assert_eq!(first_frame(movie(vec![3, 0xff, 0xff, 0, 0, 0, 0, 0])).err(), Some(SmackerError::BadPalette));
+    }
+
+    #[test]
+    fn an_audio_chunk_is_at_least_8_bytes_and_inside_its_frame() {
+        let movie = |size: u32| {
+            let mut bytes = size.to_le_bytes().to_vec();
+            bytes.extend([0; 4]);
+            smk_file(b"SMK2", (4, 4), 0, [4, 0, 0, 0, 0, 0, 0], &[(0x02, bytes)])
+        };
+        assert!(first_frame(movie(8)).is_ok());
+        for size in [4, 7, 12] {
+            assert_eq!(first_frame(movie(size)).err(), Some(SmackerError::BadAudio("chunk size")), "size {size}");
+            assert_eq!(Smacker::open(movie(size)).unwrap().audio(0).err(), Some(SmackerError::BadAudio("chunk size")));
+        }
+    }
+
+    #[test]
+    fn unpacked_audio_tracks_are_read_past_the_palette_and_other_tracks() {
+        let rates = [
+            4 | (AUDIO_16BIT | AUDIO_STEREO) << 24,
+            4,
+            4 | AUDIO_BINK << 24,
+            AUDIO_16BIT << 24,
+            4 | AUDIO_DCT << 24,
+            0,
+            0,
+        ];
+        let mut bytes = vec![1, 0xff, 0xff, 0];
+        bytes.extend(12u32.to_le_bytes());
+        bytes.extend([1, 0, 0xfe, 0xff, 3, 0, 0xfc, 0xff]);
+        bytes.extend(8u32.to_le_bytes());
+        bytes.extend([128, 0, 255, 129]);
+        let smk = Smacker::open(smk_file(b"SMK2", (4, 4), 0, rates, &[(FRAME_PALETTE | 0x02 | 0x04, bytes)])).unwrap();
+        assert_eq!(smk.audio(0), Ok(Pcm { sample_rate: 4, channels: 2, samples: vec![1, -2, 3, -4] }));
+        assert_eq!(smk.audio(1), Ok(Pcm { sample_rate: 4, channels: 1, samples: vec![0, -32768, 32512, 256] }));
+        assert_eq!(smk.audio(2).err(), Some(SmackerError::UnsupportedAudio(AUDIO_BINK)));
+        assert_eq!(smk.audio(3).err(), Some(SmackerError::NoTrack(3)));
+        assert_eq!(smk.audio(4).err(), Some(SmackerError::UnsupportedAudio(AUDIO_DCT)));
+        assert_eq!(smk.audio(9).err(), Some(SmackerError::NoTrack(9)));
+        let wav = smk.audio_wav(1).unwrap().unwrap();
+        assert_eq!(&wav[44..], &[0, 0, 0, 0x80, 0, 0x7f, 0, 1]);
+    }
+
+    fn leaf(value: u32) -> BigTree {
+        BigTree { values: vec![value, 0, 0, 0], last: [1, 2, 3] }
+    }
+
+    /// A tree giving `zero` on a 0 bit and `one` on a 1.
+    fn pair(zero: u32, one: u32) -> BigTree {
+        BigTree { values: vec![NODE | 1, zero, one, 0, 0, 0], last: [3, 4, 5] }
+    }
+
+    #[test]
+    fn solid_and_skipped_blocks_run_to_the_frame_s_last_block_and_no_further() {
+        let mut smk = Smacker::open(smk_file(b"SMK2", (8, 4), 0, [0; 7], &[(0, vec![]), (0, vec![]), (0, vec![])])).unwrap();
+        // Type 3 (solid) with run 2 in colour 0x55; skip (2) with run 3;
+        // solid 0x66 with run 3 over the two blocks.
+        smk.trees[TYPE] = leaf(3 | 1 << 2 | 0x55 << 8);
+        assert_eq!(smk.next_frame().unwrap().unwrap().indices, &[0x55; 32]);
+        smk.trees[TYPE] = leaf(2 | 2 << 2);
+        assert_eq!(smk.next_frame().unwrap().unwrap().indices, &[0x55; 32]);
+        smk.trees[TYPE] = leaf(3 | 2 << 2 | 0x66 << 8);
+        assert_eq!(smk.next_frame().unwrap().unwrap().indices, &[0x66; 32]);
+    }
+
+    #[test]
+    fn full_blocks_take_smk4_s_doubled_and_paired_modes() {
+        let (p, q) = ([0x11, 0x22], [0x33, 0x44]);
+        let row = |left: [u8; 2], right: [u8; 2]| [left, right].concat();
+        let rows_mode0 = [row(q, p), row(p, q), row(q, q), row(p, p)].concat();
+        let mode0 = [0, 1, 1, 0, 1, 1, 0, 0];
+        let frames = |magic: &[u8; 4], streams: &[Vec<u32>]| {
+            let frames: Vec<(u8, Vec<u8>)> = streams.iter().map(|s| (0, pack(s))).collect();
+            let mut smk = Smacker::open(smk_file(magic, (4, 4), 0, [0; 7], &frames)).unwrap();
+            smk.trees[TYPE] = leaf(1);
+            smk.trees[FULL] = pair(0x2211, 0x4433);
+            streams.iter().map(|_| smk.next_frame().unwrap().unwrap().indices.to_vec()).collect::<Vec<_>>()
+        };
+        // SMK2: every full block is mode 0, rows' right half first.
+        assert_eq!(frames(b"SMK2", &[mode0.to_vec()]), vec![rows_mode0.clone()]);
+        let smk4 = frames(
+            b"SMK4",
+            &[[&[0, 0][..], &mode0].concat(), vec![1, 0, 1], vec![0, 1, 0, 1, 1, 0]],
+        );
+        assert_eq!(smk4[0], rows_mode0, "00: mode 0");
+        let doubled = [[0x11, 0x11, 0x22, 0x22]; 2].concat();
+        let doubled_q = [[0x33, 0x33, 0x44, 0x44]; 2].concat();
+        assert_eq!(smk4[1], [doubled, doubled_q].concat(), "1: a pixel pair per two rows");
+        assert_eq!(smk4[2], [row(q, p), row(q, p), row(p, q), row(p, q)].concat(), "01: right, left per two rows");
+    }
+
+    #[test]
+    fn palette_copies_take_consecutive_old_entries_up_to_entry_255() {
+        let mut old = [0u8; 768];
+        for (i, value) in old.iter_mut().enumerate() {
+            *value = i as u8;
+        }
+        // Copy 3 from 5 into 0, skip 253.
+        let mut palette = old;
+        update_palette(&mut palette, &[0x40 | 2, 5, 0x80 | 127, 0x80 | 124]).unwrap();
+        assert_eq!(&palette[..9], &old[15..24]);
+        assert_eq!(&palette[9..], &old[9..]);
+        // Copy 2 from 254 (the last two), skip 254.
+        let mut palette = old;
+        update_palette(&mut palette, &[0x40 | 1, 254, 0x80 | 127, 0x80 | 125]).unwrap();
+        assert_eq!(&palette[..6], &old[762..768]);
+        // Skip 250, then a copy of 10 stops at entry 255.
+        let mut palette = old;
+        update_palette(&mut palette, &[0x80 | 127, 0x80 | 121, 0x40 | 9, 0]).unwrap();
+        assert_eq!(&palette[750..], &old[..18]);
+    }
+
+    /// A packed chunk: the unpacked size, then `stream`.
+    fn packed(unpacked: u32, stream: &[u32]) -> Vec<u8> {
+        let mut out = unpacked.to_le_bytes().to_vec();
+        out.extend(pack(stream));
+        out
+    }
+
+    /// A byte tree: 0 adds 1, 10 subtracts 1 (255), 11 adds 2, framed by
+    /// the unused bits around each tree.
+    fn delta_tree() -> Vec<u32> {
+        let mut out = vec![0, 1];
+        out.extend(leaf_bits(1));
+        out.push(1);
+        out.extend(leaf_bits(255));
+        out.extend(leaf_bits(2));
+        out.push(0);
+        out
+    }
+
+    #[test]
+    fn packed_audio_s_unpacked_size_is_capped_and_whole_samples() {
+        let mut out = Vec::new();
+        assert_eq!(unpack_audio(&packed(1 << 24, &[0]), false, false, &mut out), Ok(()));
+        assert_eq!(
+            unpack_audio(&packed((1 << 24) + 1, &[0]), false, false, &mut out).err(),
+            Some(SmackerError::BadAudio("unpacked size"))
+        );
+        assert!(out.is_empty());
+        // Mono 16-bit, one 2-byte sample: two one-leaf trees, then the
+        // first sample big-endian.
+        let mut stream = vec![1, 0, 1];
+        for _ in 0..2 {
+            stream.push(0);
+            stream.extend(leaf_bits(0));
+            stream.push(0);
+        }
+        stream.extend(word_bits(0x3412));
+        assert_eq!(unpack_audio(&packed(2, &stream), false, true, &mut out), Ok(()));
+        assert_eq!(out, vec![0x1234]);
+        // Stereo 8-bit, one 2-byte frame: right then left first samples.
+        let mut stream = vec![1, 1, 0];
+        for _ in 0..2 {
+            stream.push(0);
+            stream.extend(leaf_bits(0));
+            stream.push(0);
+        }
+        stream.extend(byte_bits(129));
+        stream.extend(byte_bits(130));
+        out.clear();
+        assert_eq!(unpack_audio(&packed(2, &stream), true, false, &mut out), Ok(()));
+        assert_eq!(out, vec![widen(130), widen(129)]);
+    }
+
+    #[test]
+    fn packed_8_bit_audio_decodes_deltas_until_the_chunk_is_overread() {
+        // 3 flag bits, a 31-bit tree, the first sample: 42 bits; codes 11,
+        // 10, 11 fill 48, so the fourth delta reads at the very end.
+        let mut stream = vec![1, 0, 0];
+        stream.extend(delta_tree());
+        stream.extend(byte_bits(128));
+        stream.extend([1, 1, 1, 0, 1, 1]);
+        assert_eq!(stream.len(), 48);
+        let mut out = Vec::new();
+        assert_eq!(unpack_audio(&packed(5, &stream), false, false, &mut out), Ok(()));
+        assert_eq!(out, vec![0, 512, 256, 768, 1024]);
+        out.clear();
+        assert_eq!(
+            unpack_audio(&packed(6, &stream), false, false, &mut out).err(),
+            Some(SmackerError::BadAudio("chunk ends early"))
+        );
+    }
+
+    #[test]
+    fn packed_16_bit_audio_decodes_deltas_until_the_chunk_is_overread() {
+        // 3 flag bits, the delta tree (low bytes) and a one-leaf tree
+        // (high bytes), the first sample: 61 bits; codes 11, 0 fill 64.
+        let mut stream = vec![1, 0, 1];
+        stream.extend(delta_tree());
+        stream.push(0);
+        stream.extend(leaf_bits(0));
+        stream.push(0);
+        stream.extend(word_bits(0x3412));
+        stream.extend([1, 1, 0]);
+        assert_eq!(stream.len(), 64);
+        let mut out = Vec::new();
+        assert_eq!(unpack_audio(&packed(8, &stream), false, true, &mut out), Ok(()));
+        assert_eq!(out, vec![0x1234, 0x1236, 0x1237, 0x1238]);
+        out.clear();
+        assert_eq!(
+            unpack_audio(&packed(10, &stream), false, true, &mut out).err(),
+            Some(SmackerError::BadAudio("chunk ends early"))
+        );
+    }
+
+    #[test]
     fn a_file_that_is_not_smacker_is_refused() {
         assert_eq!(Smacker::open(b"RIFF....".to_vec()).err(), Some(SmackerError::NotSmacker));
     }
