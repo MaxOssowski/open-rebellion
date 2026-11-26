@@ -96,8 +96,7 @@ fn side_tallies(
 /// other managers' Builds for that site take their slots. A later Build of
 /// the same manager replaces the earlier one (`FUN_00529ab0`).
 ///
-/// port: the order's maintenance check (`FUN_0052e970`) is left to the
-/// modules' own budgets.
+/// The order's maintenance check is [`build_exceeds_maintenance`].
 pub(crate) fn build_lacks_room(
     order: &AIAction,
     world: &GameWorld,
@@ -170,6 +169,58 @@ pub(crate) fn build_lacks_room(
         u32::try_from(*count).unwrap_or(0),
         taken,
     )
+}
+
+/// The maintenance check of a Build order (`FUN_005385f0` ->
+/// `FUN_0052e970`, the check Build Selection's Confirm passes,
+/// [`crate::build_selection::exceeds_maintenance`]): true when the
+/// order's units cost more maintenance than the side's unallocated
+/// capacity (side `+0x58` less `+0x5c`). `capacity` and `upkeep` are the
+/// side's totals at the start of the tick ([`side_tallies`]).
+///
+/// The original carries out each order as it is given (`FUN_00529ab0`
+/// scraps the manager's queue and creates the new units, which cost from
+/// creation), so each Build given earlier the same day (`pending`, the
+/// latest per manager) adds its units' maintenance and takes off that of
+/// the queue it replaces.
+pub(crate) fn build_exceeds_maintenance(
+    order: &AIAction,
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    totals: (i32, i32),
+    pending: &[AIAction],
+) -> bool {
+    let AIAction::Build { kind, count, .. } = order else {
+        return false;
+    };
+    let unit = |kind: BuildableKind| {
+        crate::build_selection::unit_costs(world, kind).map_or(0_i64, |(_, m)| i64::from(m))
+    };
+    let (capacity, mut upkeep) = (i64::from(totals.0), i64::from(totals.1));
+    let mut seen: Vec<(SystemKey, ProductionArea)> = Vec::new();
+    for o in pending.iter().rev() {
+        let AIAction::Build {
+            system: s,
+            kind: k,
+            count: n,
+            ..
+        } = o
+        else {
+            continue;
+        };
+        let a = ProductionArea::of(*k);
+        if seen.contains(&(*s, a)) {
+            continue;
+        }
+        seen.push((*s, a));
+        upkeep += unit(*k) * i64::from(*n);
+        upkeep -= manufacturing
+            .queue(*s, a)
+            .map_or(0, |q| q.items().iter().map(|item| unit(item.kind)).sum());
+    }
+    let unallocated = capacity - upkeep.clamp(0, capacity.max(0));
+    let maintenance = unit(*kind) * i64::from(*count);
+    maintenance != 0 && maintenance > unallocated
 }
 
 /// Controller `+0x2c4` (`FUN_0041bc10`): the summed record `+0x64` of the
@@ -1723,6 +1774,13 @@ impl AISystem {
                     troop_transport,
                     movement,
                 ) && !build_lacks_room(&order, world, mfg_state, deliveries.en_route(), &orders)
+                    && !build_exceeds_maintenance(
+                        &order,
+                        world,
+                        mfg_state,
+                        (tallies.capacity, tallies.requirement),
+                        &orders,
+                    )
                 {
                     state.orders_today += 1;
                     orders.push(order);
@@ -11245,6 +11303,61 @@ mod tests {
             count: 9,
         };
         assert!(!lacks(&ship, &[]));
+    }
+
+    #[test]
+    fn a_build_order_needs_unallocated_maintenance() {
+        // FUN_005385f0 -> FUN_0052e970: an order whose maintenance (class
+        // cost times count) is above side +0x58 less +0x5c is refused
+        // ({0xf3, 1}); one that costs none passes. The day's earlier
+        // orders count as carried out (FUN_00529ab0 replaces the queue).
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.1, 0.1);
+        let other = add_system(&mut world, sector, 0.2, 0.1);
+        let regiment = DatId(0x1000_0001);
+        world.buildable_classes.insert(
+            regiment,
+            crate::world::BuildableClass {
+                is_alliance: true,
+                maintenance_cost: 6,
+                ..Default::default()
+            },
+        );
+        let troops = BuildableKind::Troop(regiment);
+        let mut mfg = ManufacturingState::default();
+        mfg.build_units(
+            other,
+            vec![
+                crate::manufacturing::QueueItem::new(troops, 1),
+                crate::manufacturing::QueueItem::new(troops, 1),
+            ],
+        );
+        let build = |system, kind, count| AIAction::Build {
+            system,
+            kind,
+            cost: 10,
+            count,
+        };
+        let over = |order: &AIAction, totals, pending: &[AIAction]| {
+            build_exceeds_maintenance(order, &world, &mfg, totals, pending)
+        };
+        // Capacity 20, upkeep 8: 12 unallocated.
+        assert!(!over(&build(site, troops, 2), (20, 8), &[]));
+        assert!(over(&build(site, troops, 3), (20, 8), &[]));
+        // Upkeep above capacity leaves nothing, but a free order passes.
+        assert!(over(&build(site, troops, 1), (20, 25), &[]));
+        let free = BuildableKind::Troop(DatId(0x1000_0002));
+        assert!(!over(&build(site, free, 1), (20, 25), &[]));
+        // An earlier Build the same day costs its units: 6 more upkeep.
+        assert!(over(&build(site, troops, 2), (20, 8), &[build(site, troops, 1)]));
+        assert!(over(&build(site, troops, 1), (20, 8), &[build(site, troops, 2)]));
+        // ... less the queue it replaces (two regiments at `other`).
+        assert!(!over(&build(site, troops, 3), (20, 8), &[build(other, troops, 1)]));
+        // Only a manager's latest Build counts.
+        let both = [build(site, troops, 2), build(site, troops, 1)];
+        assert!(!over(&build(other, troops, 1), (20, 8), &both));
+        assert!(!over(&AIAction::AbortMission { mission_id: 1 }, (0, 0), &[]));
     }
 
     #[test]
