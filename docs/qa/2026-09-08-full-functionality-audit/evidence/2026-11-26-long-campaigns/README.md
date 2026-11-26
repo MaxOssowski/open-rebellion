@@ -80,4 +80,45 @@ The playtest summary's "Fleet attack orders" and "Fleet reinforce orders"
 read 0: they count the retired heuristic AI's events, not the ported
 planners'.
 
+## Second follow-up: 25 seeds, and squadrons on a lost planet
+
+**Point 1 (no game ends).** Five seeds were too few. Seeds 6 to 25 on the
+same build (`0461a7b0`) ended 3 games of 20, all Empire wins by the full
+word (headquarters, Luke and Mon Mothma captive: `0x10100031`) on days
+2332, 4280 and 4816. Captives come back often: the Rescue missions of
+both sides succeed in 216 of 240 tries over seeds 1 to 5 (76% to 100%
+per side and seed),
+by the combat skill against the MSTB table (`FUN_0056ae30`). The victory
+path works; no Alliance win was seen in 25 games, which stays open.
+
+**The Selonia trickle.** A temporary trace (not committed) showed that the
+Alliance took Selonia on day 742 by regiments alone, while the Empire's
+squadrons stayed on the planet. More kept arriving from Imperial yards,
+42 squadrons by day 764, and they stayed for 4,000 days. Every Alliance
+ship built at or sent to Selonia met them, retreated on the battle's
+first step and withdrew (`withdraw_loser`, `FUN_00516ef0`): 270 battles.
+In the original, a side change calls slot `+0xb0` on every object there
+(`FUN_004fae40`); a squadron's (`FightSquad_vtb0`, `FUN_00503510`) sets
+Autorouting, and the `0x307` handler (`FUN_00515480`) sends another
+side's squadron to the nearest unblockaded system of its side, or
+destroys it with none (`ghidra/notes/planet-squadrons.md`, "A system that
+changes sides"). The port now does this for planet squadrons, squadrons
+on their way, and squadron products.
+
+The same 25 seeds before and after (`side-change-25-seeds.json`):
+
+| | Before | After |
+|---|---|---|
+| Games ended (all Empire wins) | 3 | 4 |
+| Space battles, all seeds | 10,511 | 7,574 |
+| Busiest system's share, most / median | 52% (Selonia) / 17.7% | 28.6% / 15.5% |
+| Seeds whose busiest system takes more than 30% | 5 | 0 |
+| Fleets at the last snapshot, both sides | 9 to 66 | 15 to 74 |
+
+Six battles of seed 4 after the change show an Empire side with no ship
+or squadron: a fleet holding only the Death Star, which the summary's
+ship count leaves out.
+
+Points 2 and 3 (fleet count and transit) stay open: no leak was found.
+
 Hashes of the committed files are in `SHA256SUMS`.
