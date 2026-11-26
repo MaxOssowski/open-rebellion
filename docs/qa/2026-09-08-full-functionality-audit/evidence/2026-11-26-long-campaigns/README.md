@@ -43,6 +43,39 @@ seeding (`cdd29b66`).
    only cargo; which one, and whether the original fights it, is not yet
    traced.
 
+## Follow-up the same day (commits `805f4ec0`, `206fb40f`)
+
+Point 4 was empty fleets. A temporary trace in the runner (not committed)
+found four paths:
+
+- A listed fleet whose finished ships left, holding only an unfinished
+  one, counted as presence. `FUN_00509710` and `FUN_0050b8e0` walk mode 1
+  (Usable fleets only): fixed in `805f4ec0`.
+- Scrap of a fleet's last ship left a squadron entry (count 0) on the
+  fleet; a fleet whose last ship fell kept the planet's squadrons that
+  flew with it until they landed; and a listed fleet whose last product
+  went stayed. `FUN_004fe630` destroys a Created fleet with no ship:
+  fixed in `206fb40f`.
+
+The same five seeds after both fixes:
+
+| Seed | Alliance / Empire systems | Fleets now (most, side) | Space battles (one side shipless) | Busiest system |
+|---|---|---|---|---|
+| 1 | 19 / 38 | 37 (33 Empire) | 519 (0) | Selonia 52% |
+| 2 | 36 / 12 | 37 (30 Alliance) | 443 (0) | Coruscant 37% |
+| 3 | 20 / 23 | 17 (22 Alliance) | 284 (0) | Adega 12% |
+| 4 | 29 / 25 | 24 (33 Alliance) | 460 (0) | Denab 9% |
+| 5 | 33 / 26 | 45 (46 Alliance) | 196 (0) | Chalcedon 32% |
+
+No empty fleet is left at any day of the five runs. The most fleets one
+side holds fell from 26..70 to 15..46 (systems and fleets from the day-5000
+snapshot). Still no game ends.
+
+New, open: in seed 1 the Empire holds Selonia with 42 planet squadrons
+and no ship, and the Alliance AI sends one or two ships there 270 times;
+they survive each battle, which the Empire wins, and come back. Whether the original's planners do this is
+not traced.
+
 The playtest summary's "Fleet attack orders" and "Fleet reinforce orders"
 read 0: they count the retired heuristic AI's events, not the ported
 planners'.
