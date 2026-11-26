@@ -741,8 +741,9 @@ impl BlockadeSystem {
     ///
     /// A side is present by a fleet or a squadron on the planet
     /// (`FUN_00509710` → `FUN_00503a50`), but only a fleet blockades
-    /// (`FUN_0050b8e0` walks `FUN_004ffe70`). port: every fleet and squadron
-    /// is active. hyp: `Contested` is the original's side 3, and an
+    /// (`FUN_0050b8e0` walks `FUN_004ffe70`). Both walk mode 1: only a
+    /// Usable fleet counts ([`crate::products::is_usable`]). port: every
+    /// squadron is active. hyp: `Contested` is the original's side 3, and an
     /// `Uprising` system keeps its holder's side.
     #[must_use]
     pub fn system_is_blockaded(world: &GameWorld, sys: &crate::world::System) -> bool {
@@ -757,6 +758,7 @@ impl BlockadeSystem {
             &mut sys
                 .fleets
                 .iter()
+                .filter(|&&fk| crate::products::is_usable(world, fk))
                 .filter_map(|&fk| world.fleets.get(fk))
                 .map(|fleet| fleet.is_alliance),
         );

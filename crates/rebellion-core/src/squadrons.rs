@@ -870,6 +870,7 @@ pub fn sides_present(world: &GameWorld, system: SystemKey) -> (bool, bool) {
     let fleets = value
         .fleets
         .iter()
+        .filter(|&&key| crate::products::is_usable(world, key))
         .filter_map(|&key| world.fleets.get(key))
         .map(|fleet| fleet.is_alliance);
     let squadrons = value

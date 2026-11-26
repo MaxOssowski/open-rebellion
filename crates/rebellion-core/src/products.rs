@@ -231,6 +231,23 @@ fn unlisted(world: &GameWorld, fleet: FleetKey) -> bool {
 /// Whether `fleet` is staged: a spare that holds only unfinished ships and
 /// so is in no system's fleet list (module docs).
 #[must_use]
+/// Whether `fleet` is Usable (`Fleet_vt84`, `FUN_004fe540`): it holds a
+/// finished unit. The system walks in mode 1 skip a fleet that is not: a
+/// battle's presence (`FUN_00509710` -> `FUN_004ffef0(system, 1, side)`)
+/// and the blockade bit (`FUN_0050b8e0` -> `FUN_004ffe70(system, 1)`). A
+/// listed fleet whose finished ships left, holding only an unfinished one,
+/// is no presence (A0 2026-11-15 run "u-" run 2: no battle with such a
+/// fleet). port: a fleet with no unit and no product disbands
+/// (`FUN_004fe630`) and exists only in unit tests, which use it as a
+/// finished fleet.
+#[must_use]
+pub fn is_usable(world: &GameWorld, fleet: FleetKey) -> bool {
+    world
+        .fleets
+        .get(fleet)
+        .is_some_and(|value| !value.is_empty() || !world.products.holds(fleet))
+}
+
 pub fn is_staged(world: &GameWorld, fleet: FleetKey) -> bool {
     world.products.holds(fleet) && unlisted(world, fleet)
 }

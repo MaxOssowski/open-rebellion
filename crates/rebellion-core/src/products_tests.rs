@@ -2272,3 +2272,55 @@ fn a_squadron_build_for_a_fleet_needs_fighter_room_aboard() {
     assert!(!lacks(&s, 2));
     assert!(lacks(&s, 3));
 }
+
+#[test]
+fn a_listed_fleet_holding_only_an_unfinished_ship_is_no_presence_for_a_battle_or_blockade() {
+    // FUN_00509710 (battle presence) and FUN_0050b8e0 (blockade bit) walk a
+    // system's fleets in mode 1 (FUN_004ffef0 / FUN_004ffe70 with 1), which
+    // skips a fleet that is not Usable (FUN_004fe540): one holding no
+    // finished unit. A0 2026-11-15 run "u-" run 2: with only such a fleet
+    // at Corellia, the Alliance blockaded and took it with no battle.
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let spare = s.only_fleet();
+    // Its finished ships left: the fleet stays listed, holding the product.
+    s.world.systems[s.yard].fleets.push(spare);
+    let x_wing_class = s.world.capital_ship_classes.insert(CapitalShipClass {
+        is_alliance: true,
+        hull: 50,
+        ..CapitalShipClass::default()
+    });
+    let rebels = s.world.fleets.insert(Fleet {
+        location: s.yard,
+        is_alliance: true,
+        capital_ships: vec![ShipInstance::new(x_wing_class, 50, true)],
+        ..Default::default()
+    });
+    s.world.systems[s.yard].fleets.push(rebels);
+
+    assert!(!is_usable(&s.world, spare));
+    assert!(is_usable(&s.world, rebels));
+    assert_eq!(
+        crate::squadrons::sides_present(&s.world, s.yard),
+        (true, false)
+    );
+    assert!(crate::blockade::BlockadeSystem::system_is_blockaded(
+        &s.world,
+        &s.world.systems[s.yard]
+    ));
+
+    // A finished ship makes it Usable: both sides present, a battle and
+    // no blockade.
+    s.world.fleets[spare]
+        .capital_ships
+        .push(ShipInstance::new(s.carrack, 50, false));
+    assert!(is_usable(&s.world, spare));
+    assert_eq!(
+        crate::squadrons::sides_present(&s.world, s.yard),
+        (true, true)
+    );
+    assert!(!crate::blockade::BlockadeSystem::system_is_blockaded(
+        &s.world,
+        &s.world.systems[s.yard]
+    ));
+}
