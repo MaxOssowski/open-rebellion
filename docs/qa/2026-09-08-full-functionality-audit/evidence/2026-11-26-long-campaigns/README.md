@@ -165,4 +165,40 @@ Whether the original's garrisons grow the same way, and so its fleets,
 is not settled: no long run of the original exists to compare. Points 2
 and 3 stay open with this chain as the lead.
 
+## Fourth follow-up: the facilities behind the growth (commit `4a7d9734`)
+
+The maintenance capacity behind the garrisons was not earned. Another
+temporary dump of seed 20 on day 10,000 counted 10,359 mines and
+refineries in the galaxy: 1,736 mines and 2,259 refineries at Oetrago
+(energy 9, raw materials 6), more than 2,700 at Allyuen (energy 4). From
+day 2940 on, a dozen Imperial construction yards set Oetrago as their
+destination and kept building for it.
+
+The AI's Build orders are the same order objects as Build Selection's
+Confirm, so the original checks them the same way (`FUN_0051ff30` ->
+`FUN_005385f0`), the facility room included (`System_vt78`,
+`FUN_00507750`), and carries them out the same way (manager slot
+`+0x1f0`, `FUN_00529ab0`: the queue is replaced). The port let the AI's
+Build skip the room and append to the queue. It now checks the room at
+the order and replaces the queue. With the room check alone the 25 runs
+came out the same, so the queue change does not move these numbers.
+
+The same 25 seeds, 10,000 days, before (`edaeb9ba`) and after
+(`facility-room-10000-days.json`):
+
+| | Before | After |
+|---|---|---|
+| Mines and refineries built | 184,759 | 4,448 |
+| Capital ships built | 16,825 | 2,667 |
+| Fleets on day 5,000, median / most | 41 / 74 | 12 / 33 |
+| Fleets on day 10,000, median / most | 79 / 201 | 9 / 17 |
+| Space battles | 13,807 | 4,996 |
+| Games ended (Alliance / Empire) | 8 (1 / 7) | 8 (6 / 2) |
+
+Points 2 and 3 are closed: no fleet growth is left, and the share in
+transit falls from about 20% early to near 0 late. The war also slows
+late: space battles over the 25 runs fall from 1,187 in the first 1,000
+days to 152 in the last, with 17 games still running. Whether the
+original's late game is as quiet is not known.
+
 Hashes of the committed files are in `SHA256SUMS`.

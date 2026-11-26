@@ -1,0 +1,457 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 10000 --dual-ai --summary",
+ "before_edaeb9ba": {
+  "1": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 485,
+   "capital_ships_built": 721,
+   "mines_refineries_built": 9949,
+   "fleets_day_5000": 33,
+   "fleets_day_10000": 118
+  },
+  "2": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 1062,
+   "capital_ships_built": 1032,
+   "mines_refineries_built": 8041,
+   "fleets_day_5000": 33,
+   "fleets_day_10000": 57
+  },
+  "3": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 313,
+   "capital_ships_built": 403,
+   "mines_refineries_built": 3817,
+   "fleets_day_5000": 15,
+   "fleets_day_10000": 28
+  },
+  "4": {
+   "end_day": 7713,
+   "winner": "Alliance",
+   "space_battles": 369,
+   "capital_ships_built": 291,
+   "mines_refineries_built": 3570,
+   "fleets_day_5000": 36,
+   "fleets_day_10000": null
+  },
+  "5": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 387,
+   "capital_ships_built": 1187,
+   "mines_refineries_built": 12323,
+   "fleets_day_5000": 66,
+   "fleets_day_10000": 96
+  },
+  "6": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 290,
+   "capital_ships_built": 915,
+   "mines_refineries_built": 10838,
+   "fleets_day_5000": 23,
+   "fleets_day_10000": 80
+  },
+  "7": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 609,
+   "capital_ships_built": 812,
+   "mines_refineries_built": 10400,
+   "fleets_day_5000": 37,
+   "fleets_day_10000": 42
+  },
+  "8": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 605,
+   "capital_ships_built": 1212,
+   "mines_refineries_built": 10070,
+   "fleets_day_5000": 74,
+   "fleets_day_10000": 67
+  },
+  "9": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 1071,
+   "capital_ships_built": 801,
+   "mines_refineries_built": 9650,
+   "fleets_day_5000": 69,
+   "fleets_day_10000": 161
+  },
+  "10": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 552,
+   "capital_ships_built": 547,
+   "mines_refineries_built": 7541,
+   "fleets_day_5000": 61,
+   "fleets_day_10000": 50
+  },
+  "11": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 483,
+   "capital_ships_built": 1076,
+   "mines_refineries_built": 11371,
+   "fleets_day_5000": 56,
+   "fleets_day_10000": 134
+  },
+  "12": {
+   "end_day": 7018,
+   "winner": "Empire",
+   "space_battles": 260,
+   "capital_ships_built": 373,
+   "mines_refineries_built": 4682,
+   "fleets_day_5000": 36,
+   "fleets_day_10000": null
+  },
+  "13": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 959,
+   "capital_ships_built": 754,
+   "mines_refineries_built": 8436,
+   "fleets_day_5000": 41,
+   "fleets_day_10000": 42
+  },
+  "14": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 912,
+   "capital_ships_built": 1199,
+   "mines_refineries_built": 10116,
+   "fleets_day_5000": 63,
+   "fleets_day_10000": 86
+  },
+  "15": {
+   "end_day": 6910,
+   "winner": "Empire",
+   "space_battles": 651,
+   "capital_ships_built": 754,
+   "mines_refineries_built": 5316,
+   "fleets_day_5000": 47,
+   "fleets_day_10000": null
+  },
+  "16": {
+   "end_day": 3140,
+   "winner": "Empire",
+   "space_battles": 310,
+   "capital_ships_built": 199,
+   "mines_refineries_built": 1055,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "17": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 510,
+   "capital_ships_built": 461,
+   "mines_refineries_built": 7766,
+   "fleets_day_5000": 41,
+   "fleets_day_10000": 31
+  },
+  "18": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 580,
+   "capital_ships_built": 601,
+   "mines_refineries_built": 10019,
+   "fleets_day_5000": 23,
+   "fleets_day_10000": 79
+  },
+  "19": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 466,
+   "capital_ships_built": 607,
+   "mines_refineries_built": 9008,
+   "fleets_day_5000": 17,
+   "fleets_day_10000": 37
+  },
+  "20": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 311,
+   "capital_ships_built": 1064,
+   "mines_refineries_built": 10880,
+   "fleets_day_5000": 50,
+   "fleets_day_10000": 201
+  },
+  "21": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 1133,
+   "capital_ships_built": 766,
+   "mines_refineries_built": 8714,
+   "fleets_day_5000": 42,
+   "fleets_day_10000": 105
+  },
+  "22": {
+   "end_day": 3294,
+   "winner": "Empire",
+   "space_battles": 332,
+   "capital_ships_built": 247,
+   "mines_refineries_built": 1336,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "23": {
+   "end_day": 2184,
+   "winner": "Empire",
+   "space_battles": 129,
+   "capital_ships_built": 72,
+   "mines_refineries_built": 412,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "24": {
+   "end_day": 4867,
+   "winner": "Empire",
+   "space_battles": 288,
+   "capital_ships_built": 309,
+   "mines_refineries_built": 2841,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "25": {
+   "end_day": 7651,
+   "winner": "Empire",
+   "space_battles": 740,
+   "capital_ships_built": 422,
+   "mines_refineries_built": 6608,
+   "fleets_day_5000": 42,
+   "fleets_day_10000": null
+  }
+ },
+ "after": {
+  "1": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 305,
+   "capital_ships_built": 289,
+   "mines_refineries_built": 265,
+   "fleets_day_5000": 14,
+   "fleets_day_10000": 10
+  },
+  "2": {
+   "end_day": 3014,
+   "winner": "Alliance",
+   "space_battles": 85,
+   "capital_ships_built": 66,
+   "mines_refineries_built": 104,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "3": {
+   "end_day": 3244,
+   "winner": "Alliance",
+   "space_battles": 135,
+   "capital_ships_built": 73,
+   "mines_refineries_built": 138,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "4": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 101,
+   "capital_ships_built": 80,
+   "mines_refineries_built": 140,
+   "fleets_day_5000": 16,
+   "fleets_day_10000": 11
+  },
+  "5": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 76,
+   "capital_ships_built": 73,
+   "mines_refineries_built": 169,
+   "fleets_day_5000": 18,
+   "fleets_day_10000": 17
+  },
+  "6": {
+   "end_day": 4367,
+   "winner": "Alliance",
+   "space_battles": 100,
+   "capital_ships_built": 96,
+   "mines_refineries_built": 219,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "7": {
+   "end_day": 5816,
+   "winner": "Alliance",
+   "space_battles": 206,
+   "capital_ships_built": 122,
+   "mines_refineries_built": 202,
+   "fleets_day_5000": 10,
+   "fleets_day_10000": null
+  },
+  "8": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 94,
+   "capital_ships_built": 62,
+   "mines_refineries_built": 121,
+   "fleets_day_5000": 8,
+   "fleets_day_10000": 8
+  },
+  "9": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 209,
+   "capital_ships_built": 366,
+   "mines_refineries_built": 158,
+   "fleets_day_5000": 13,
+   "fleets_day_10000": 13
+  },
+  "10": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 351,
+   "capital_ships_built": 57,
+   "mines_refineries_built": 184,
+   "fleets_day_5000": 8,
+   "fleets_day_10000": 8
+  },
+  "11": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 24,
+   "capital_ships_built": 0,
+   "mines_refineries_built": 175,
+   "fleets_day_5000": 7,
+   "fleets_day_10000": 7
+  },
+  "12": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 52,
+   "capital_ships_built": 38,
+   "mines_refineries_built": 147,
+   "fleets_day_5000": 12,
+   "fleets_day_10000": 9
+  },
+  "13": {
+   "end_day": 5405,
+   "winner": "Empire",
+   "space_battles": 159,
+   "capital_ships_built": 75,
+   "mines_refineries_built": 218,
+   "fleets_day_5000": 6,
+   "fleets_day_10000": null
+  },
+  "14": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 689,
+   "capital_ships_built": 196,
+   "mines_refineries_built": 291,
+   "fleets_day_5000": 33,
+   "fleets_day_10000": 8
+  },
+  "15": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 82,
+   "capital_ships_built": 95,
+   "mines_refineries_built": 151,
+   "fleets_day_5000": 7,
+   "fleets_day_10000": 9
+  },
+  "16": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 117,
+   "capital_ships_built": 81,
+   "mines_refineries_built": 177,
+   "fleets_day_5000": 9,
+   "fleets_day_10000": 9
+  },
+  "17": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 528,
+   "capital_ships_built": 152,
+   "mines_refineries_built": 222,
+   "fleets_day_5000": 12,
+   "fleets_day_10000": 9
+  },
+  "18": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 107,
+   "capital_ships_built": 78,
+   "mines_refineries_built": 164,
+   "fleets_day_5000": 11,
+   "fleets_day_10000": 13
+  },
+  "19": {
+   "end_day": 5622,
+   "winner": "Alliance",
+   "space_battles": 181,
+   "capital_ships_built": 78,
+   "mines_refineries_built": 194,
+   "fleets_day_5000": 17,
+   "fleets_day_10000": null
+  },
+  "20": {
+   "end_day": 3566,
+   "winner": "Empire",
+   "space_battles": 358,
+   "capital_ships_built": 78,
+   "mines_refineries_built": 143,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "21": {
+   "end_day": 2701,
+   "winner": "Alliance",
+   "space_battles": 189,
+   "capital_ships_built": 76,
+   "mines_refineries_built": 84,
+   "fleets_day_5000": null,
+   "fleets_day_10000": null
+  },
+  "22": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 78,
+   "capital_ships_built": 27,
+   "mines_refineries_built": 191,
+   "fleets_day_5000": 17,
+   "fleets_day_10000": 14
+  },
+  "23": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 169,
+   "capital_ships_built": 88,
+   "mines_refineries_built": 158,
+   "fleets_day_5000": 20,
+   "fleets_day_10000": 14
+  },
+  "24": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 218,
+   "capital_ships_built": 235,
+   "mines_refineries_built": 156,
+   "fleets_day_5000": 12,
+   "fleets_day_10000": 9
+  },
+  "25": {
+   "end_day": 10000,
+   "winner": null,
+   "space_battles": 383,
+   "capital_ships_built": 86,
+   "mines_refineries_built": 277,
+   "fleets_day_5000": 11,
+   "fleets_day_10000": 17
+  }
+ }
+}
