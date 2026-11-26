@@ -2850,17 +2850,28 @@ fn apply_ai_actions_inner(
                 mfg_state.set_destination(*system, *area, *destination);
                 true
             }
+            // The order's units replace what the manager was building
+            // (manager slot +0x1f0, FUN_00529ab0), as Build Selection's
+            // Confirm does.
             AIAction::Build {
                 system,
                 kind,
-                cost,
                 count,
-            } => {
-                for _ in 0..*count {
-                    mfg_state.enqueue(*system, QueueItem::new(*kind, *cost).ordered(world));
-                }
-                *count > 0
-            }
+                ..
+            } => ai_state.faction.is_some_and(|side| {
+                u32::try_from(*count).is_ok_and(|count| {
+                    count > 0
+                        && rebellion_core::build_selection::confirm_order(
+                            world,
+                            mfg_state,
+                            *system,
+                            rebellion_core::manufacturing::ProductionArea::of(*kind),
+                            *kind,
+                            count,
+                            matches!(side, AiFaction::Alliance),
+                        )
+                })
+            }),
             AIAction::MoveFleet {
                 fleet,
                 to_system,
@@ -4664,10 +4675,30 @@ mod tests {
     fn module_one_s_destination_and_build_reach_the_manager() {
         // FUN_004dc9f0 (0x214) sets the area's destination; FUN_004dcb30
         // (0x210) builds +0x4c units; a count of 0 builds nothing and is
-        // not reported.
+        // not reported. The manager needs a yard to build (FUN_00528d30),
+        // as the order's check (ai::accepts) ensures.
         let mut world = GameWorld::default();
         let site = add_system(&mut world, "Kuat");
         let target = add_system(&mut world, "Fondor");
+        let yard = DatId(0x2a00_0003);
+        for (class, refined_material_cost) in [(yard, 30), (DatId(0x2c00_0001), 20)] {
+            world.buildable_classes.insert(
+                class,
+                rebellion_core::world::BuildableClass {
+                    refined_material_cost,
+                    processing_rate: 1,
+                    ..Default::default()
+                },
+            );
+        }
+        let key = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: yard,
+                side: rebellion_core::dat::Faction::Empire,
+                is_shipyard: false,
+            },
+        );
+        world.systems[site].manufacturing_facilities.push(key);
         let kind = rebellion_core::manufacturing::BuildableKind::ProductionFacility(
             rebellion_core::manufacturing::FacilityBuild {
                 class: DatId(0x2c00_0001),
@@ -4742,6 +4773,27 @@ mod tests {
             &mut BombardEnv::new(0, None),
         );
         assert_eq!(applied, [false]);
+        // Another Build replaces the queue (manager slot +0x1f0,
+        // FUN_00529ab0 scraps it with FUN_0052a2c0 first).
+        let applied = apply_ai_actions_inner(
+            &[AIAction::Build {
+                system: site,
+                kind,
+                cost: 20,
+                count: 1,
+            }],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut manufacturing,
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            &mut BombardEnv::new(0, None),
+        );
+        assert_eq!(applied, [true]);
+        assert_eq!(manufacturing.queue(site, area).unwrap().len(), 1);
     }
 
     /// Apply `actions` for the Empire AI and return the telemetry.

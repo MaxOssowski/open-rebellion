@@ -84,6 +84,94 @@ fn side_tallies(
     tallies
 }
 
+/// The facility room check of a Build order (`FUN_0051ff30` -> `vt+0x50`,
+/// `FUN_005385f0`, the check Build Selection's Confirm passes,
+/// [`crate::build_selection::lacks_facility_room`]): true when a
+/// facility's units find no room at the manager's destination.
+///
+/// The original carries out each order as it is given; the port carries
+/// out the day's orders after the AI's steps, so the Destination and
+/// Build orders given earlier the same day (`pending`) count: the latest
+/// Destination of the manager names the site, and the facility units of
+/// other managers' Builds for that site take their slots. A later Build of
+/// the same manager replaces the earlier one (`FUN_00529ab0`).
+///
+/// port: the order's maintenance check (`FUN_0052e970`) is left to the
+/// modules' own budgets.
+pub(crate) fn build_lacks_room(
+    order: &AIAction,
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    en_route: &[crate::delivery::Delivery],
+    pending: &[AIAction],
+) -> bool {
+    let AIAction::Build {
+        system, kind, count, ..
+    } = order
+    else {
+        return false;
+    };
+    if crate::build_selection::facility_slot(*kind).is_none() {
+        return false;
+    }
+    let site_of = |system: SystemKey, area: ProductionArea| {
+        pending
+            .iter()
+            .rev()
+            .find_map(|o| match o {
+                AIAction::SetDestination {
+                    system: s,
+                    area: a,
+                    destination,
+                } if *s == system && *a == area => Some(*destination),
+                _ => None,
+            })
+            .unwrap_or_else(|| {
+                crate::products::delivery_system(world, manufacturing, system, area)
+            })
+    };
+    let area = ProductionArea::of(*kind);
+    let site = site_of(*system, area);
+    let mut taken = (0_u32, 0_u32);
+    let mut seen: Vec<(SystemKey, ProductionArea)> = vec![(*system, area)];
+    for o in pending.iter().rev() {
+        let AIAction::Build {
+            system: s,
+            kind: k,
+            count: n,
+            ..
+        } = o
+        else {
+            continue;
+        };
+        let a = ProductionArea::of(*k);
+        if seen.contains(&(*s, a)) {
+            continue;
+        }
+        seen.push((*s, a));
+        let Some(mine) = crate::build_selection::facility_slot(*k) else {
+            continue;
+        };
+        if site_of(*s, a) == site {
+            let n = u32::try_from(*n).unwrap_or(0);
+            taken.0 += n;
+            if mine {
+                taken.1 += n;
+            }
+        }
+    }
+    crate::build_selection::lacks_facility_room_besides(
+        world,
+        manufacturing,
+        en_route,
+        (*system, area),
+        site,
+        *kind,
+        u32::try_from(*count).unwrap_or(0),
+        taken,
+    )
+}
+
 /// Controller `+0x2c4` (`FUN_0041bc10`): the summed record `+0x64` of the
 /// side's own objects. `FUN_00402230` sets it only for a non-character,
 /// to its class maintenance (`FUN_004f2990` -> `FUN_0053b870`), so it is
@@ -1634,7 +1722,8 @@ impl AISystem {
                     faction,
                     troop_transport,
                     movement,
-                ) {
+                ) && !build_lacks_room(&order, world, mfg_state, deliveries.en_route(), &orders)
+                {
                     state.orders_today += 1;
                     orders.push(order);
                 } else {
@@ -11077,6 +11166,85 @@ mod tests {
         assert!(!ok(&build(site, 0x2a00_0009, 1)));
         // Other orders are checked when applied.
         assert!(ok(&AIAction::AbortMission { mission_id: 1 }));
+    }
+
+    #[test]
+    fn a_build_order_needs_a_facility_slot_at_its_destination() {
+        // FUN_0051ff30 -> FUN_005385f0: the build orders' check (Build
+        // Selection's Confirm, the AI's orders alike) refuses a facility
+        // whose destination has no free energy (System_vt78, FUN_00507750,
+        // {0x90, 1}). The day's earlier orders count as carried out.
+        let mut world = empty_world();
+        let sector = add_sector(&mut world);
+        let site = add_system(&mut world, sector, 0.1, 0.1);
+        let full = add_system(&mut world, sector, 0.2, 0.1);
+        let other = add_system(&mut world, sector, 0.3, 0.1);
+        for (system, energy) in [(site, 2), (full, 1)] {
+            world.systems[system].total_energy = energy;
+            world.systems[system].raw_materials = 5;
+            let key = world
+                .production_facilities
+                .insert(crate::world::ProductionFacilityInstance {
+                    class_dat_id: DatId(0x2d00_0001),
+                    side: crate::dat::Faction::Alliance,
+                    is_mine: false,
+                });
+            world.systems[system].production_facilities.push(key);
+        }
+        let mfg = ManufacturingState::default();
+        let mine = BuildableKind::ProductionFacility(FacilityBuild {
+            class: DatId(0x2c00_0001),
+            is_alliance: true,
+        });
+        let build = |system, count| AIAction::Build {
+            system,
+            kind: mine,
+            cost: 10,
+            count,
+        };
+        let lacks = |order: &AIAction, pending: &[AIAction]| {
+            build_lacks_room(order, &world, &mfg, &[], pending)
+        };
+        assert!(!lacks(&build(site, 1), &[]));
+        assert!(lacks(&build(site, 2), &[]));
+        let area = ProductionArea::ConstructionYard;
+        let to = |system, destination| AIAction::SetDestination {
+            system,
+            area,
+            destination,
+        };
+        assert!(lacks(&build(site, 1), &[to(site, full)]));
+        assert!(!lacks(&build(site, 1), &[to(site, full), to(site, site)]));
+        // Another manager's Destination, or another area's, leaves it.
+        assert!(!lacks(&build(site, 1), &[to(other, full)]));
+        let shipyard = AIAction::SetDestination {
+            system: site,
+            area: ProductionArea::Shipyard,
+            destination: full,
+        };
+        assert!(!lacks(&build(site, 1), &[shipyard]));
+        // Another manager's Build for the same site takes the last slot; the
+        // same manager's earlier Build is replaced (FUN_00529ab0).
+        assert!(lacks(&build(site, 1), &[to(other, site), build(other, 1)]));
+        assert!(!lacks(&build(site, 1), &[build(site, 1)]));
+        assert!(!lacks(&build(site, 1), &[build(other, 1)]));
+        // A mine also needs a raw deposit ({0x90, 2}); another manager's
+        // mine for the site takes the last one.
+        world.systems[site].total_energy = 9;
+        world.systems[site].raw_materials = 1;
+        let lacks = |order: &AIAction, pending: &[AIAction]| {
+            build_lacks_room(order, &world, &mfg, &[], pending)
+        };
+        assert!(!lacks(&build(site, 1), &[]));
+        assert!(lacks(&build(site, 1), &[to(other, site), build(other, 1)]));
+        // Not a facility: no slot.
+        let ship = AIAction::Build {
+            system: full,
+            kind: BuildableKind::Troop(DatId(0x1000_0001)),
+            cost: 10,
+            count: 9,
+        };
+        assert!(!lacks(&ship, &[]));
     }
 
     #[test]

@@ -382,6 +382,19 @@ raw deposit. Ported as `build_selection::lacks_facility_room`. A0
 Level I n/a at number 1) fits it; Jerijador's energy and facility count
 are not in those captures.
 
+**The AI's build orders** (2026-11-26). The AI modules' Build `0x210`,
+`0x211`, `0x212` are the same order objects (`FUN_0051f4b0`), so the
+same `vt+0x1c` (`FUN_0051ff30` -> `FUN_005385f0`) checks them, room
+included, and the same manager slot `+0x1f0` (`FUN_00529ab0`) carries
+them out: the queue is scrapped and the units created. The port had let
+the AI's Build skip the room and append to the queue; in long dual-AI
+runs construction yards across the galaxy kept building mines and
+refineries for one system (seed 20, day 10,000: 1,736 mines and 2,259
+refineries at Oetrago, energy 9). Ported 2026-11-26: `ai::build_lacks_room`
+at the order's check, `build_selection::confirm_order` to carry it out.
+port: the maintenance check (`FUN_0052e970`) is left to the modules'
+budgets.
+
 **List** (`FUN_0052e580`): the classes of the manager's production family
 (`0x28` ships, `0x29` regiments and special forces, `0x2a` facilities) that
 its side builds and has researched, the side's level at `+0x9c`, `+0xa0`,

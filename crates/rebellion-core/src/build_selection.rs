@@ -259,7 +259,7 @@ pub fn exceeds_maintenance(maintenance: u32, unallocated: i32) -> bool {
 /// `0x20..0x30` and `0x2c..0x2d`): `Some(true)` for a mine (PROFACSD family
 /// `0x2c`), `Some(false)` for any other facility, `None` for a ship, a
 /// squadron, a regiment or a special force.
-fn facility_slot(kind: BuildableKind) -> Option<bool> {
+pub fn facility_slot(kind: BuildableKind) -> Option<bool> {
     match kind {
         BuildableKind::ProductionFacility(build) => Some(build.class.family() == 0x2c),
         BuildableKind::DefenseFacility(_) | BuildableKind::ManufacturingFacility(_) => Some(false),
@@ -302,6 +302,37 @@ pub fn lacks_facility_room(
     site: SystemKey,
     kind: BuildableKind,
     count: u32,
+) -> bool {
+    lacks_facility_room_besides(
+        world,
+        manufacturing,
+        en_route,
+        ordering,
+        site,
+        kind,
+        count,
+        (0, 0),
+    )
+}
+
+/// [`lacks_facility_room`] with `pending` (facilities, mines among them)
+/// more taken at `site`: the units of orders given earlier the same day
+/// that the port has not carried out yet. The original carries out each
+/// order as it is given, so the next order's check sees its units.
+#[must_use]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "FUN_005385f0 reads the manager, the order, the site and the day's orders together."
+)]
+pub fn lacks_facility_room_besides(
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    en_route: &[Delivery],
+    ordering: (SystemKey, ProductionArea),
+    site: SystemKey,
+    kind: BuildableKind,
+    count: u32,
+    pending: (u32, u32),
 ) -> bool {
     let Some(mine) = facility_slot(kind) else {
         return false;
@@ -351,7 +382,7 @@ pub fn lacks_facility_room(
                 .map(|(product, _)| product.kind),
         )
         .filter_map(facility_slot);
-    let (mut facilities, mut mines) = (0_u32, 0_u32);
+    let (mut facilities, mut mines) = pending;
     for is_mine in built.chain(queued).chain(travelling) {
         facilities += 1;
         mines += u32::from(is_mine);
