@@ -489,7 +489,8 @@ fn check_route(
 ///
 /// The original moves the squadron into its new container at once and marks
 /// it en route. port: as for regiments and deliveries, the port holds it here
-/// and places it on arrival, so no walk of the destination sees it early.
+/// and places it on arrival, so no walk of the destination sees it early;
+/// the AI's system record reads it here (`ai_records`, mode 3).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SquadronTransit {
     pub class: FighterKey,

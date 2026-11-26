@@ -1025,6 +1025,11 @@ pub struct SystemInputs<'a> {
     pub squadron_goals: [i32; 3],
     /// Side `+0x37c`, `+0x380`, `+0x384` ([`GARRISON_GOALS`] at setup).
     pub garrison_goals: [i32; 3],
+    /// The regiments and squadrons travelling on their own. The original
+    /// moves them into their destination at once, en route
+    /// (`object-state-flags.md`), so its mode-3 walks of that system see
+    /// them; the port holds them here until they arrive.
+    pub transport: Option<&'a crate::troop_transport::TroopTransportState>,
 }
 
 /// A system record (`FUN_00433b10`, refreshed by `FUN_00433e40`).
@@ -1075,6 +1080,23 @@ fn side_number(side: Option<crate::dat::Faction>) -> u32 {
 pub const KEPT_STATE: u32 = 0x3e0_0000;
 /// See [`KEPT_STATE`] (`FUN_00433e40`).
 pub const KEPT_KIND: u32 = 0x35ff_0000;
+
+/// The units held in `system` that exist but are not finished, or are
+/// finished and still on their way (`FUN_00433e40`'s mode-3 walks see both,
+/// `ghidra/notes/unfinished-products.md`): the products whose container is
+/// the system.
+fn existing_here<'a>(
+    inputs: &SystemInputs<'a>,
+    system: crate::ids::SystemKey,
+) -> impl Iterator<Item = crate::manufacturing::BuildableKind> + 'a {
+    inputs
+        .world
+        .products
+        .all()
+        .iter()
+        .filter(move |p| p.container == crate::products::Container::System(system))
+        .map(|p| p.kind)
+}
 
 impl SystemRecord {
     /// [`Self::build_kept`] with the yard marks `marks` and no kept `+0x30`
@@ -1197,13 +1219,31 @@ impl SystemRecord {
         if f30 & 1 != 0 {
             v[0] = 100;
         }
-        // FUN_00504c40: the regiments (0x10..0x13).
-        for unit in sys.ground_units.iter().filter_map(|&t| world.troops.get(t)) {
-            let class = inputs
-                .classes
-                .get(unit.class_dat_id)
-                .copied()
-                .unwrap_or_default();
+        // FUN_00504c40: the regiments (0x10..0x13), walked in mode 3
+        // (Existing): an unfinished regiment ordered here (`products`), one
+        // whose delivery or Move brings it here (en route) count too; only
+        // a usable one (+0x50 bit 0) adds to v[18] (+0x90).
+        let regiments = sys
+            .ground_units
+            .iter()
+            .filter_map(|&t| world.troops.get(t))
+            .map(|unit| (unit.class_dat_id, true))
+            .chain(existing_here(inputs, system).filter_map(|kind| match kind {
+                crate::manufacturing::BuildableKind::Troop(class) => Some((class, false)),
+                _ => None,
+            }))
+            .chain(
+                inputs
+                    .transport
+                    .into_iter()
+                    .flat_map(|t| t.transits())
+                    .filter(|t| t.leg == crate::troop_transport::RegimentLeg::Surface(system))
+                    .filter_map(|t| world.troops.get(t.troop))
+                    .map(|unit| (unit.class_dat_id, false)),
+            )
+            .collect::<Vec<_>>();
+        for (class_id, usable) in regiments {
+            let class = inputs.classes.get(class_id).copied().unwrap_or_default();
             if f30 & 1 != 0 {
                 let counted = if f28 & 0x83e0_0000 == 0 {
                     class.flags & CLASS_OFFENSIVE == 0
@@ -1236,7 +1276,9 @@ impl SystemRecord {
             }
             v[16] += 1;
             v[30] += class.maintenance;
-            v[18] += 1;
+            if usable {
+                v[18] += 1;
+            }
         }
         // FUN_004ffe70: the fleets (0x08..0x0f).
         for fleet in sys.fleets.iter().filter_map(|f| inputs.fleets.get(f)) {
@@ -1427,6 +1469,36 @@ impl SystemRecord {
             // `+0x40 -> +0x28` (ClassFloors). port: every squadron is active
             // (+0x50 bit 0); its strengths are at its craft
             // (FUN_00473610/620/630).
+            // Mode 3 also walks the squadrons ordered here, delivered here
+            // or moving here: they add to v[23], v[24] and v[32]; only a
+            // usable one (+0x50 bit 0) to v[25..28] and 0x80000.
+            let en_route = existing_here(inputs, system)
+                .filter_map(|kind| match kind {
+                    crate::manufacturing::BuildableKind::Fighter(class) => Some((class, 1)),
+                    _ => None,
+                })
+                .chain(
+                    inputs
+                        .transport
+                        .into_iter()
+                        .flat_map(|t| t.squadrons.transits())
+                        .filter(|t| t.to == crate::squadrons::SquadronPlace::Planet(system))
+                        .map(|t| (t.class, t.count)),
+                );
+            for (fighter, count) in en_route {
+                let Some(class) = inputs.classes.fighter(fighter) else {
+                    continue;
+                };
+                for _ in 0..count {
+                    v[23] += 1;
+                    v[32] += class.maintenance;
+                    if f30 & 1 != 0
+                        && (f28 & 0x83e0_0000 == 0 || class.values[1] >= floors.fighter_defense)
+                    {
+                        v[24] += 1;
+                    }
+                }
+            }
             for entry in &sys.fighters {
                 let Some(class) = inputs.classes.fighter(entry.class) else {
                     continue;
@@ -2994,6 +3066,7 @@ mod tests {
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
             garrison_goals: GARRISON_GOALS,
+            transport: None,
         };
         SystemRecord::build(&inputs, fixture.system, marks).unwrap()
     }
@@ -3090,6 +3163,133 @@ mod tests {
         assert_eq!((v[23], v[24], v[25]), (3, 0, 3));
         assert_eq!(r.state & 0x8_0000, 0);
         assert_eq!(v[29], 2 + 3);
+    }
+
+    #[test]
+    fn a_system_record_counts_the_units_on_their_way_to_it() {
+        // FUN_00433e40 walks the regiments (FUN_00504c40) and squadrons
+        // (FUN_005039d0) in mode 3, Existing (object-state-flags.md): an
+        // unfinished unit ordered there (unfinished-products.md) and one
+        // moving there count in +0x88/+0x8c/+0xc0 and +0xa4/+0xa8/+0xc8;
+        // only a usable one (+0x50 bit 0) in +0x90 and +0xac..+0xb8, 0x80000.
+        let mut fixture = system_fixture();
+        let x_wing = fixture.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            maintenance_cost: 4,
+            squadron_size: 2,
+            laser_cannon_fore: 1,
+            maneuverability: 3,
+            ..crate::world::FighterClass::default()
+        });
+        let here = fixture.system;
+        let regiment = DatId::new(0x1000_0001);
+        let mut manufacturing = crate::manufacturing::ManufacturingState::new();
+        manufacturing.build_units(
+            here,
+            vec![crate::manufacturing::QueueItem::new(
+                crate::manufacturing::BuildableKind::Fighter(x_wing),
+                1,
+            )],
+        );
+        manufacturing.build_units(
+            here,
+            vec![crate::manufacturing::QueueItem::new(
+                crate::manufacturing::BuildableKind::Troop(regiment),
+                1,
+            )],
+        );
+        crate::products::reconcile(&mut fixture.world, &manufacturing);
+        assert_eq!(fixture.world.products.all().len(), 2);
+        let mut transport = crate::troop_transport::TroopTransportState::default();
+        let travelling = fixture.world.troops.insert(crate::world::TroopUnit {
+            class_dat_id: regiment,
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let elsewhere = system(&mut fixture.world);
+        // One regiment and two squadrons move here; two regiments and three
+        // squadrons elsewhere.
+        for leg in [
+            crate::troop_transport::RegimentLeg::Surface(here),
+            crate::troop_transport::RegimentLeg::Surface(elsewhere),
+            crate::troop_transport::RegimentLeg::Surface(elsewhere),
+        ] {
+            transport.push_transit(crate::troop_transport::RegimentTransit {
+                troop: travelling,
+                origin: elsewhere,
+                leg,
+                arrival_tick: 5,
+            });
+        }
+        for (to, count) in [
+            (crate::squadrons::SquadronPlace::Planet(here), 2),
+            (crate::squadrons::SquadronPlace::Planet(elsewhere), 3),
+        ] {
+            transport.squadrons.push_transit_for_test(crate::squadrons::SquadronTransit {
+                class: x_wing,
+                count,
+                origin: elsewhere,
+                to,
+                arrival_tick: 5,
+                lost: Vec::new(),
+            });
+        }
+        let fleets = HashMap::new();
+        let uprisings = crate::uprising::UprisingState::default();
+        let research = crate::research::ResearchState::new();
+        let record_as = |transport, is_alliance, marks, world: &GameWorld| {
+            let classes = ClassRecords::build(world);
+            let inputs = SystemInputs {
+                world,
+                classes: &classes,
+                fleets: &fleets,
+                person: &|_| None,
+                economy: &fixture.economy,
+                uprisings: &uprisings,
+                manufacturing: &manufacturing,
+                research: &research,
+                is_alliance,
+                minor_classes: 1,
+                shield_goal: SHIELD_GOAL,
+                squadron_goals: SQUADRON_GOALS,
+                garrison_goals: GARRISON_GOALS,
+                transport,
+            };
+            SystemRecord::build(&inputs, here, marks).unwrap()
+        };
+        let record = |transport| record_as(transport, true, 0, &fixture.world);
+        let r = record(Some(&transport));
+        let v = &r.values;
+        // The two regiments on the planet, the unfinished one and the one
+        // moving here; three maintenance each.
+        assert_eq!((v[16], v[17], v[18], v[30]), (4, 4, 2, 12));
+        // The unfinished squadron and the two moving here; four each.
+        assert_eq!((v[23], v[24], v[25], v[32]), (3, 3, 0, 12));
+        assert_eq!((v[26], v[27], v[28]), (0, 0, 0));
+        assert_eq!(r.state & 0x8_0000, 0);
+        // Without the travellers: the products alone.
+        let r = record(None);
+        assert_eq!((r.values[16], r.values[23]), (3, 1));
+        // The opponent's record counts them, none toward a goal.
+        let r = record_as(Some(&transport), false, 0, &fixture.world);
+        assert_eq!((r.values[16], r.values[17], r.values[23], r.values[24]), (4, 0, 3, 0));
+        // A marked system counts a squadron whose class +0x34 reaches the
+        // class tree's best (here the X-wing's own), not a weaker one.
+        let r = record_as(Some(&transport), true, 0x20_0000, &fixture.world);
+        assert_eq!((r.values[23], r.values[24]), (3, 3));
+        let mut better = fixture.world.clone();
+        better.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            maneuverability: 4,
+            laser_cannon_fore: 1,
+            squadron_size: 2,
+            ..crate::world::FighterClass::default()
+        });
+        let r = record_as(Some(&transport), true, 0x20_0000, &better);
+        assert_eq!((r.values[23], r.values[24]), (3, 0));
+        // An unmarked one counts every squadron.
+        let r = record_as(Some(&transport), true, 0, &better);
+        assert_eq!((r.values[23], r.values[24]), (3, 3));
     }
 
     #[test]
@@ -3264,6 +3464,7 @@ mod tests {
                 shield_goal: SHIELD_GOAL,
                 squadron_goals: SQUADRON_GOALS,
                 garrison_goals: GARRISON_GOALS,
+                transport: None,
             },
             fixture.system,
             0,
@@ -3514,6 +3715,7 @@ mod tests {
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
             garrison_goals: GARRISON_GOALS,
+            transport: None,
         };
         let galaxy = Galaxy::build(
             &inputs,
@@ -3600,6 +3802,7 @@ mod tests {
                 shield_goal: SHIELD_GOAL,
                 squadron_goals: SQUADRON_GOALS,
                 garrison_goals: GARRISON_GOALS,
+                transport: None,
             },
             fixture.system,
             0,
@@ -3873,6 +4076,7 @@ mod tests {
                 shield_goal: SHIELD_GOAL,
                 squadron_goals: SQUADRON_GOALS,
                 garrison_goals: GARRISON_GOALS,
+                transport: None,
             },
             sys,
             0,
@@ -4137,6 +4341,7 @@ mod tests {
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
             garrison_goals: GARRISON_GOALS,
+            transport: None,
         };
         let galaxy = Galaxy::build(
             &inputs,
@@ -4292,6 +4497,7 @@ mod tests {
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
             garrison_goals: GARRISON_GOALS,
+            transport: None,
         };
         let marks = HashMap::from([(other, 0x20_0000)]);
         let galaxy = Galaxy::build(

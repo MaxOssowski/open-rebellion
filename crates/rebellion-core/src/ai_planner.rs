@@ -1465,6 +1465,7 @@ pub(crate) mod tests {
             shield_goal: SHIELD_GOAL,
             squadron_goals: SQUADRON_GOALS,
             garrison_goals: GARRISON_GOALS,
+            transport: None,
         };
         fx.galaxy = Galaxy::build(
             &inputs,

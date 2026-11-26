@@ -1871,6 +1871,7 @@ impl AISystem {
             shield_goal: state.controller.shield_goal,
             squadron_goals: state.controller.squadron_goals,
             garrison_goals: state.controller.garrison_goals,
+            transport: Some(inputs.transport),
         };
         let mut galaxy = crate::ai_records::Galaxy::build(
             &system_inputs,

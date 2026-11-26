@@ -1098,6 +1098,7 @@ mod tests {
                 shield_goal,
                 squadron_goals: crate::ai_records::SQUADRON_GOALS,
                 garrison_goals: crate::ai_records::GARRISON_GOALS,
+                transport: None,
             };
             let r = SystemRecord::build(&inputs, f.empty, MARK_MINES).unwrap();
             (r.values[1], r.values[9])

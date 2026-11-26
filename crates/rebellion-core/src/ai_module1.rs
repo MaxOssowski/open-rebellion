@@ -1517,6 +1517,7 @@ pub(crate) mod tests {
             shield_goal: SHIELD_GOAL,
             squadron_goals: crate::ai_records::SQUADRON_GOALS,
             garrison_goals: crate::ai_records::GARRISON_GOALS,
+            transport: None,
         };
         Galaxy::build(
             &inputs,
