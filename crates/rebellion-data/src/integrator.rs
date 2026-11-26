@@ -303,6 +303,17 @@ pub fn ai_action_json(action: &AIAction, world: &GameWorld) -> serde_json::Value
                 "destination": sys_name(world, *destination),
             })
         }
+        AIAction::SetFleetDestination { system, area, fleet } => {
+            serde_json::json!({
+                "type": "SetFleetDestination",
+                "system": sys_name(world, *system),
+                "area": format!("{area:?}"),
+                "fleet": world
+                    .fleets
+                    .get(*fleet)
+                    .map_or_else(|| "unknown".into(), |f| sys_name(world, f.location)),
+            })
+        }
         AIAction::Build {
             system,
             kind,
@@ -2850,6 +2861,11 @@ fn apply_ai_actions_inner(
                 mfg_state.set_destination(*system, *area, *destination);
                 true
             }
+            AIAction::SetFleetDestination { system, area, fleet } => {
+                world.fleets.get(*fleet).map(|f| f.location).is_some_and(|at| {
+                    mfg_state.set_fleet_destination(*system, *area, *fleet, at)
+                })
+            }
             // The order's units replace what the manager was building
             // (manager slot +0x1f0, FUN_00529ab0), as Build Selection's
             // Confirm does.
@@ -4794,6 +4810,48 @@ mod tests {
         );
         assert_eq!(applied, [true]);
         assert_eq!(manufacturing.queue(site, area).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn module_a_s_fleet_destination_reaches_the_shipyard_manager() {
+        // FUN_004ce350 (0x214) names a fleet, which a shipyard manager
+        // takes (FUN_00537180); a construction yard's refuses it.
+        let mut world = GameWorld::default();
+        let site = add_system(&mut world, "Kuat");
+        let there = add_system(&mut world, "Fondor");
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: there,
+            ..Default::default()
+        });
+        let mut manufacturing = ManufacturingState::new();
+        let order = |area| AIAction::SetFleetDestination {
+            system: site,
+            area,
+            fleet,
+        };
+        let shipyard = rebellion_core::manufacturing::ProductionArea::Shipyard;
+        let construction = rebellion_core::manufacturing::ProductionArea::ConstructionYard;
+        let mut integrator = PerceptionIntegrator::new(5, 0);
+        integrator.apply_ai_actions(
+            &[order(shipyard), order(construction)],
+            &mut AIState::new(AiFaction::Empire),
+            &mut MissionState::new(),
+            &mut manufacturing,
+            &mut MovementState::new(),
+            &mut TroopTransportState::default(),
+            &mut ProductionState::new(),
+            &mut world,
+            5,
+            false,
+            &mut BombardEnv::new(0, None),
+        );
+        assert_eq!(manufacturing.destination_fleet(site, shipyard), Some(fleet));
+        assert_eq!(manufacturing.destination(site, shipyard), Some(there));
+        assert_eq!(manufacturing.destination_fleet(site, construction), None);
+        let events = integrator.finish();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].details["type"], "SetFleetDestination");
+        assert_eq!(events[0].details["fleet"], "Fondor");
     }
 
     /// Apply `actions` for the Empire AI and return the telemetry.

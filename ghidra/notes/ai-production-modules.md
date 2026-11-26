@@ -1579,12 +1579,13 @@ longer hands on the token `0x10` at its start.
   `ai_module7::fifth_less_yards` is the 20% yard budget.
 
 port:
-- A production manager's destination is a system in the port
-  (`ProductionState::set_destination`). The original's Destination takes
-  a fleet from a shipyard manager (`FUN_00537180` refuses a non-system
-  only from the construction managers `0xa0..0xa1`); the port names the
-  fleet's system when the order is given, so the squadrons land on that
-  planet, where module 7's surplus cycle can carry them aboard.
+- The original's Destination takes a fleet from a shipyard manager
+  (`FUN_00537180` refuses a non-system only from the construction
+  managers `0xa0..0xa1`). Since 2026-11-26 the port gives it as
+  `AIAction::SetFleetDestination` (`ManufacturingState::set_fleet_destination`),
+  so the squadrons go aboard. Before, the port named the fleet's system
+  and the squadrons landed on that planet, where module 7's relief
+  (`FUN_004d4800`) scrapped them whenever the squadrons were over budget.
 - A fleet's squadrons ride on its first ship's record (`ai_records`), so
   `FUN_004cd310`'s ship is that one; the squadron is the fleet's weakest
   (the smallest class, losses not counted).

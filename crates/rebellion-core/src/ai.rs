@@ -275,6 +275,16 @@ fn accepts(
                 crate::build_selection::area_family(*area),
             ) && world.systems.contains_key(*destination)
         }
+        AIAction::SetFleetDestination { system, area, fleet } => {
+            area.takes_fleet_destination()
+                && crate::ai_module1::has_yard(
+                    world,
+                    side,
+                    *system,
+                    crate::build_selection::area_family(*area),
+                )
+                && world.fleets.get(*fleet).is_some_and(|f| f.is_alliance == is_alliance)
+        }
         AIAction::Build {
             system,
             kind,
@@ -1507,6 +1517,17 @@ pub enum AIAction {
     /// the fleet for its target, [`crate::missions::MissionState::set_target_fleet`]).
     BoardFleet {
         character: CharacterKey,
+        fleet: FleetKey,
+    },
+
+    /// Destination (`0x214`) on `system`'s `area` manager naming the fleet
+    /// `fleet`: what it builds goes aboard (`FUN_00537180` takes a fleet
+    /// from every manager but the construction yards'; module `0xa`'s
+    /// `FUN_004ce350(+0x5c)`), carried out as Build Selection's drop on a
+    /// fleet ([`ManufacturingState::set_fleet_destination`]).
+    SetFleetDestination {
+        system: SystemKey,
+        area: crate::manufacturing::ProductionArea,
         fleet: FleetKey,
     },
 }
@@ -11223,6 +11244,66 @@ mod tests {
         assert!(!ok(&build(site, 0x2a00_0003, 0)));
         assert!(!ok(&build(elsewhere, 0x2a00_0003, 1)));
         assert!(!ok(&build(site, 0x2a00_0009, 1)));
+        // A Destination naming a fleet (FUN_00537180): the side's fleet,
+        // from a manager of the area there, never a construction yard's.
+        let own_fleet = world.fleets.insert(crate::world::Fleet {
+            location: elsewhere,
+            is_alliance: true,
+            ..Default::default()
+        });
+        let their_fleet = world.fleets.insert(crate::world::Fleet {
+            location: elsewhere,
+            is_alliance: false,
+            ..Default::default()
+        });
+        let to_fleet = |area, fleet| AIAction::SetFleetDestination {
+            system: site,
+            area,
+            fleet,
+        };
+        let ok = |order: &AIAction| {
+            accepts(
+                order,
+                &world,
+                &research,
+                AiFaction::Alliance,
+                &crate::troop_transport::TroopTransportState::new(),
+                &crate::movement::MovementState::new(),
+            )
+        };
+        assert!(!ok(&to_fleet(ProductionArea::ConstructionYard, own_fleet)));
+        assert!(!ok(&to_fleet(ProductionArea::Shipyard, own_fleet)));
+        let mut world = world.clone();
+        let shipyard = world
+            .manufacturing_facilities
+            .insert(crate::world::ManufacturingFacilityInstance {
+                class_dat_id: DatId(0x2800_0001),
+                side: crate::dat::Faction::Alliance,
+                is_shipyard: true,
+            });
+        world.systems[site].manufacturing_facilities.push(shipyard);
+        let ok = |order: &AIAction| {
+            accepts(
+                order,
+                &world,
+                &research,
+                AiFaction::Alliance,
+                &crate::troop_transport::TroopTransportState::new(),
+                &crate::movement::MovementState::new(),
+            )
+        };
+        assert!(ok(&to_fleet(ProductionArea::Shipyard, own_fleet)));
+        assert!(!ok(&to_fleet(ProductionArea::Shipyard, their_fleet)));
+        let mut gone = world.clone();
+        gone.fleets.remove(own_fleet);
+        assert!(!accepts(
+            &to_fleet(ProductionArea::Shipyard, own_fleet),
+            &gone,
+            &research,
+            AiFaction::Alliance,
+            &crate::troop_transport::TroopTransportState::new(),
+            &crate::movement::MovementState::new()
+        ));
         // Other orders are checked when applied.
         assert!(ok(&AIAction::AbortMission { mission_id: 1 }));
     }

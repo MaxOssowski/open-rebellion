@@ -150,8 +150,18 @@ impl ModuleA {
                 self.end(YARD_CYCLE, order)
             }
             9 => {
-                let to = self.destination_system(io);
-                match destination_in(ProductionArea::Shipyard, to, self.yard) {
+                let to = self.destination_system();
+                let order = match (self.destination, self.yard) {
+                    (Some(SquadronPlace::Fleet(fleet)), Yard::Manager(yard)) => {
+                        Some(AIAction::SetFleetDestination {
+                            system: yard,
+                            area: ProductionArea::Shipyard,
+                            fleet,
+                        })
+                    }
+                    _ => destination_in(ProductionArea::Shipyard, to, self.yard),
+                };
+                match order {
                     Some(order) => {
                         self.state = 10;
                         Step {
@@ -217,21 +227,12 @@ impl ModuleA {
         true
     }
 
-    /// The system the Destination names (`FUN_004ce350(+0x5c)`).
-    ///
-    /// port: a production manager's destination is a system in the port
-    /// ([`crate::production_cycle::ProductionState::set_destination`]); a
-    /// fleet's (the original's `0x214` takes one, `FUN_00537180`) is its
-    /// system when the order is given.
-    fn destination_system(&self, io: &Inputs<'_>) -> Target {
+    /// The system the Destination names (`FUN_004ce350(+0x5c)`); a fleet's
+    /// is [`AIAction::SetFleetDestination`].
+    fn destination_system(&self) -> Target {
         match self.destination {
             Some(SquadronPlace::Planet(system)) => Target::System(system),
-            Some(SquadronPlace::Fleet(fleet)) => io
-                .world
-                .fleets
-                .get(fleet)
-                .map_or(Target::None, |f| Target::System(f.location)),
-            None => Target::None,
+            Some(SquadronPlace::Fleet(_)) | None => Target::None,
         }
     }
 
@@ -873,10 +874,24 @@ mod tests {
             ROOMY,
             ALONE,
             |g| fleet_record(g, fleet, 0x10_0005, 1, 0, 0),
-            |m, io| (m.choose_destination(io), m.destination_system(io)),
+            |m, io| (m.choose_destination(io), m.destination),
         );
-        // port: the Destination names the fleet's system.
-        assert_eq!(found, (true, Target::System(f.empty)));
+        assert_eq!(found, (true, Some(SquadronPlace::Fleet(fleet))));
+        // FUN_004ce350(+0x5c): the Destination 0x214 names the fleet, which
+        // a shipyard manager takes (FUN_00537180).
+        state.module_a.phase = SQUADRON_CYCLE;
+        state.module_a.state = 9;
+        state.module_a.yard = Yard::Manager(f.yard);
+        let s = edited(&f, &mut state, ROOMY, ALONE, |_| {}, |m, io| m.step(io));
+        assert_eq!(
+            s.order,
+            Some(AIAction::SetFleetDestination {
+                system: f.yard,
+                area: ProductionArea::Shipyard,
+                fleet,
+            })
+        );
+        assert_eq!(state.module_a.state, 10);
     }
 
     #[test]
