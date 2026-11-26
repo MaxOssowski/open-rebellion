@@ -1,0 +1,1019 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 5000 --dual-ai --summary, seeds 1-5, release build at commit 0548e1c8 (code as d0a70808)",
+ "seeds": [
+  {
+   "seed": 1,
+   "end": "day 5000, no winner",
+   "snapshots": [
+    {
+     "tick": 250,
+     "alliance_systems": 8,
+     "empire_systems": 10,
+     "fleets": 15,
+     "in_transit": 8
+    },
+    {
+     "tick": 500,
+     "alliance_systems": 11,
+     "empire_systems": 13,
+     "fleets": 16,
+     "in_transit": 2
+    },
+    {
+     "tick": 750,
+     "alliance_systems": 16,
+     "empire_systems": 17,
+     "fleets": 20,
+     "in_transit": 6
+    },
+    {
+     "tick": 1000,
+     "alliance_systems": 18,
+     "empire_systems": 19,
+     "fleets": 22,
+     "in_transit": 9
+    },
+    {
+     "tick": 1250,
+     "alliance_systems": 21,
+     "empire_systems": 21,
+     "fleets": 21,
+     "in_transit": 6
+    },
+    {
+     "tick": 1500,
+     "alliance_systems": 19,
+     "empire_systems": 26,
+     "fleets": 21,
+     "in_transit": 6
+    },
+    {
+     "tick": 1750,
+     "alliance_systems": 21,
+     "empire_systems": 28,
+     "fleets": 19,
+     "in_transit": 6
+    },
+    {
+     "tick": 2000,
+     "alliance_systems": 22,
+     "empire_systems": 28,
+     "fleets": 21,
+     "in_transit": 5
+    },
+    {
+     "tick": 2250,
+     "alliance_systems": 25,
+     "empire_systems": 27,
+     "fleets": 19,
+     "in_transit": 4
+    },
+    {
+     "tick": 2500,
+     "alliance_systems": 29,
+     "empire_systems": 24,
+     "fleets": 18,
+     "in_transit": 4
+    },
+    {
+     "tick": 2750,
+     "alliance_systems": 28,
+     "empire_systems": 25,
+     "fleets": 30,
+     "in_transit": 8
+    },
+    {
+     "tick": 3000,
+     "alliance_systems": 29,
+     "empire_systems": 25,
+     "fleets": 26,
+     "in_transit": 6
+    },
+    {
+     "tick": 3250,
+     "alliance_systems": 33,
+     "empire_systems": 28,
+     "fleets": 38,
+     "in_transit": 16
+    },
+    {
+     "tick": 3500,
+     "alliance_systems": 32,
+     "empire_systems": 29,
+     "fleets": 41,
+     "in_transit": 15
+    },
+    {
+     "tick": 3750,
+     "alliance_systems": 32,
+     "empire_systems": 30,
+     "fleets": 66,
+     "in_transit": 33
+    },
+    {
+     "tick": 4000,
+     "alliance_systems": 31,
+     "empire_systems": 31,
+     "fleets": 54,
+     "in_transit": 21
+    },
+    {
+     "tick": 4250,
+     "alliance_systems": 31,
+     "empire_systems": 31,
+     "fleets": 41,
+     "in_transit": 18
+    },
+    {
+     "tick": 4500,
+     "alliance_systems": 32,
+     "empire_systems": 30,
+     "fleets": 28,
+     "in_transit": 5
+    },
+    {
+     "tick": 4750,
+     "alliance_systems": 32,
+     "empire_systems": 30,
+     "fleets": 29,
+     "in_transit": 5
+    },
+    {
+     "tick": 5000,
+     "alliance_systems": 32,
+     "empire_systems": 30,
+     "fleets": 33,
+     "in_transit": 9
+    }
+   ],
+   "fleets_line": "Fleets: Alliance 19 (max 31 on day 3489), Empire 14 (max 42 on day 3769)",
+   "missions": 5750,
+   "missions_by_kind": {
+    "Abduction": 88,
+    "Assassination": 72,
+    "Diplomacy": 83,
+    "Espionage": 444,
+    "FacilityDesignResearch": 6,
+    "InciteUprising": 92,
+    "Move": 3523,
+    "Reconnaissance": 1022,
+    "Recruitment": 67,
+    "Rescue": 77,
+    "Sabotage": 171,
+    "ShipDesignResearch": 7,
+    "SubdueUprising": 94,
+    "TroopTrainingResearch": 4
+   },
+   "victory_words": [
+    {
+     "tick": 602,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 618,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 635,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 828,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 1705,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 1728,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 1843,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 1865,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 1903,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 1920,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 2197,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 2335,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 4099,
+     "old": "0x0",
+     "new": "0x1"
+    }
+   ],
+   "death_star_fired": 2,
+   "space_battles": 206,
+   "space_battles_one_side_without_ships": 48,
+   "busiest_system": [
+    "Womrik",
+    52
+   ]
+  },
+  {
+   "seed": 2,
+   "end": "day 5000, no winner",
+   "snapshots": [
+    {
+     "tick": 250,
+     "alliance_systems": 10,
+     "empire_systems": 10,
+     "fleets": 11,
+     "in_transit": 3
+    },
+    {
+     "tick": 500,
+     "alliance_systems": 13,
+     "empire_systems": 14,
+     "fleets": 18,
+     "in_transit": 3
+    },
+    {
+     "tick": 750,
+     "alliance_systems": 14,
+     "empire_systems": 19,
+     "fleets": 17,
+     "in_transit": 3
+    },
+    {
+     "tick": 1000,
+     "alliance_systems": 17,
+     "empire_systems": 19,
+     "fleets": 23,
+     "in_transit": 6
+    },
+    {
+     "tick": 1250,
+     "alliance_systems": 24,
+     "empire_systems": 13,
+     "fleets": 19,
+     "in_transit": 7
+    },
+    {
+     "tick": 1500,
+     "alliance_systems": 25,
+     "empire_systems": 13,
+     "fleets": 27,
+     "in_transit": 5
+    },
+    {
+     "tick": 1750,
+     "alliance_systems": 24,
+     "empire_systems": 14,
+     "fleets": 30,
+     "in_transit": 6
+    },
+    {
+     "tick": 2000,
+     "alliance_systems": 27,
+     "empire_systems": 14,
+     "fleets": 34,
+     "in_transit": 17
+    },
+    {
+     "tick": 2250,
+     "alliance_systems": 27,
+     "empire_systems": 16,
+     "fleets": 29,
+     "in_transit": 8
+    },
+    {
+     "tick": 2500,
+     "alliance_systems": 28,
+     "empire_systems": 16,
+     "fleets": 20,
+     "in_transit": 6
+    },
+    {
+     "tick": 2750,
+     "alliance_systems": 30,
+     "empire_systems": 16,
+     "fleets": 31,
+     "in_transit": 5
+    },
+    {
+     "tick": 3000,
+     "alliance_systems": 29,
+     "empire_systems": 17,
+     "fleets": 27,
+     "in_transit": 9
+    },
+    {
+     "tick": 3250,
+     "alliance_systems": 31,
+     "empire_systems": 16,
+     "fleets": 32,
+     "in_transit": 10
+    },
+    {
+     "tick": 3500,
+     "alliance_systems": 31,
+     "empire_systems": 16,
+     "fleets": 36,
+     "in_transit": 12
+    },
+    {
+     "tick": 3750,
+     "alliance_systems": 32,
+     "empire_systems": 15,
+     "fleets": 41,
+     "in_transit": 17
+    },
+    {
+     "tick": 4000,
+     "alliance_systems": 32,
+     "empire_systems": 15,
+     "fleets": 30,
+     "in_transit": 4
+    },
+    {
+     "tick": 4250,
+     "alliance_systems": 32,
+     "empire_systems": 15,
+     "fleets": 38,
+     "in_transit": 10
+    },
+    {
+     "tick": 4500,
+     "alliance_systems": 32,
+     "empire_systems": 15,
+     "fleets": 32,
+     "in_transit": 5
+    },
+    {
+     "tick": 4750,
+     "alliance_systems": 31,
+     "empire_systems": 16,
+     "fleets": 40,
+     "in_transit": 12
+    },
+    {
+     "tick": 5000,
+     "alliance_systems": 31,
+     "empire_systems": 16,
+     "fleets": 64,
+     "in_transit": 21
+    }
+   ],
+   "fleets_line": "Fleets: Alliance 16 (max 26 on day 2111), Empire 48 (max 50 on day 4979)",
+   "missions": 6335,
+   "missions_by_kind": {
+    "Abduction": 89,
+    "Assassination": 67,
+    "Diplomacy": 88,
+    "Espionage": 608,
+    "FacilityDesignResearch": 5,
+    "InciteUprising": 93,
+    "Move": 3826,
+    "Reconnaissance": 1161,
+    "Recruitment": 73,
+    "Rescue": 71,
+    "Sabotage": 138,
+    "ShipDesignResearch": 6,
+    "SubdueUprising": 106,
+    "TroopTrainingResearch": 4
+   },
+   "victory_words": [
+    {
+     "tick": 2010,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 2117,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 2224,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 2578,
+     "old": "0x10",
+     "new": "0x0"
+    }
+   ],
+   "death_star_fired": 0,
+   "space_battles": 430,
+   "space_battles_one_side_without_ships": 34,
+   "busiest_system": [
+    "Norval II",
+    72
+   ]
+  },
+  {
+   "seed": 3,
+   "end": "day 5000, no winner",
+   "snapshots": [
+    {
+     "tick": 250,
+     "alliance_systems": 9,
+     "empire_systems": 10,
+     "fleets": 14,
+     "in_transit": 5
+    },
+    {
+     "tick": 500,
+     "alliance_systems": 12,
+     "empire_systems": 16,
+     "fleets": 15,
+     "in_transit": 1
+    },
+    {
+     "tick": 750,
+     "alliance_systems": 15,
+     "empire_systems": 19,
+     "fleets": 19,
+     "in_transit": 2
+    },
+    {
+     "tick": 1000,
+     "alliance_systems": 16,
+     "empire_systems": 22,
+     "fleets": 22,
+     "in_transit": 4
+    },
+    {
+     "tick": 1250,
+     "alliance_systems": 13,
+     "empire_systems": 27,
+     "fleets": 34,
+     "in_transit": 19
+    },
+    {
+     "tick": 1500,
+     "alliance_systems": 8,
+     "empire_systems": 33,
+     "fleets": 27,
+     "in_transit": 15
+    },
+    {
+     "tick": 1750,
+     "alliance_systems": 8,
+     "empire_systems": 34,
+     "fleets": 26,
+     "in_transit": 8
+    },
+    {
+     "tick": 2000,
+     "alliance_systems": 9,
+     "empire_systems": 33,
+     "fleets": 26,
+     "in_transit": 9
+    },
+    {
+     "tick": 2250,
+     "alliance_systems": 9,
+     "empire_systems": 33,
+     "fleets": 20,
+     "in_transit": 6
+    },
+    {
+     "tick": 2500,
+     "alliance_systems": 12,
+     "empire_systems": 31,
+     "fleets": 25,
+     "in_transit": 5
+    },
+    {
+     "tick": 2750,
+     "alliance_systems": 11,
+     "empire_systems": 31,
+     "fleets": 19,
+     "in_transit": 9
+    },
+    {
+     "tick": 3000,
+     "alliance_systems": 13,
+     "empire_systems": 30,
+     "fleets": 18,
+     "in_transit": 5
+    },
+    {
+     "tick": 3250,
+     "alliance_systems": 13,
+     "empire_systems": 30,
+     "fleets": 15,
+     "in_transit": 3
+    },
+    {
+     "tick": 3500,
+     "alliance_systems": 13,
+     "empire_systems": 30,
+     "fleets": 15,
+     "in_transit": 5
+    },
+    {
+     "tick": 3750,
+     "alliance_systems": 14,
+     "empire_systems": 29,
+     "fleets": 24,
+     "in_transit": 4
+    },
+    {
+     "tick": 4000,
+     "alliance_systems": 20,
+     "empire_systems": 24,
+     "fleets": 22,
+     "in_transit": 7
+    },
+    {
+     "tick": 4250,
+     "alliance_systems": 20,
+     "empire_systems": 24,
+     "fleets": 43,
+     "in_transit": 4
+    },
+    {
+     "tick": 4500,
+     "alliance_systems": 20,
+     "empire_systems": 24,
+     "fleets": 35,
+     "in_transit": 0
+    },
+    {
+     "tick": 4750,
+     "alliance_systems": 20,
+     "empire_systems": 24,
+     "fleets": 43,
+     "in_transit": 5
+    },
+    {
+     "tick": 5000,
+     "alliance_systems": 19,
+     "empire_systems": 27,
+     "fleets": 44,
+     "in_transit": 19
+    }
+   ],
+   "fleets_line": "Fleets: Alliance 34 (max 39 on day 4732), Empire 10 (max 30 on day 1618)",
+   "missions": 5097,
+   "missions_by_kind": {
+    "Abduction": 69,
+    "Assassination": 74,
+    "Diplomacy": 76,
+    "Espionage": 420,
+    "FacilityDesignResearch": 4,
+    "InciteUprising": 41,
+    "Move": 3114,
+    "Reconnaissance": 946,
+    "Recruitment": 68,
+    "Rescue": 64,
+    "Sabotage": 165,
+    "ShipDesignResearch": 14,
+    "SubdueUprising": 38,
+    "TroopTrainingResearch": 4
+   },
+   "victory_words": [
+    {
+     "tick": 101,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 220,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 1004,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 1374,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 2424,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 2453,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 3316,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 3329,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 4591,
+     "old": "0x0",
+     "new": "0x10"
+    }
+   ],
+   "death_star_fired": 1,
+   "space_battles": 467,
+   "space_battles_one_side_without_ships": 29,
+   "busiest_system": [
+    "Kessel",
+    175
+   ]
+  },
+  {
+   "seed": 4,
+   "end": "day 5000, no winner",
+   "snapshots": [
+    {
+     "tick": 250,
+     "alliance_systems": 11,
+     "empire_systems": 10,
+     "fleets": 13,
+     "in_transit": 5
+    },
+    {
+     "tick": 500,
+     "alliance_systems": 17,
+     "empire_systems": 13,
+     "fleets": 16,
+     "in_transit": 5
+    },
+    {
+     "tick": 750,
+     "alliance_systems": 18,
+     "empire_systems": 18,
+     "fleets": 15,
+     "in_transit": 2
+    },
+    {
+     "tick": 1000,
+     "alliance_systems": 22,
+     "empire_systems": 19,
+     "fleets": 17,
+     "in_transit": 6
+    },
+    {
+     "tick": 1250,
+     "alliance_systems": 26,
+     "empire_systems": 19,
+     "fleets": 19,
+     "in_transit": 5
+    },
+    {
+     "tick": 1500,
+     "alliance_systems": 25,
+     "empire_systems": 22,
+     "fleets": 19,
+     "in_transit": 4
+    },
+    {
+     "tick": 1750,
+     "alliance_systems": 27,
+     "empire_systems": 23,
+     "fleets": 25,
+     "in_transit": 8
+    },
+    {
+     "tick": 2000,
+     "alliance_systems": 29,
+     "empire_systems": 23,
+     "fleets": 38,
+     "in_transit": 10
+    },
+    {
+     "tick": 2250,
+     "alliance_systems": 30,
+     "empire_systems": 22,
+     "fleets": 38,
+     "in_transit": 16
+    },
+    {
+     "tick": 2500,
+     "alliance_systems": 30,
+     "empire_systems": 24,
+     "fleets": 26,
+     "in_transit": 5
+    },
+    {
+     "tick": 2750,
+     "alliance_systems": 31,
+     "empire_systems": 23,
+     "fleets": 39,
+     "in_transit": 6
+    },
+    {
+     "tick": 3000,
+     "alliance_systems": 32,
+     "empire_systems": 22,
+     "fleets": 47,
+     "in_transit": 2
+    },
+    {
+     "tick": 3250,
+     "alliance_systems": 33,
+     "empire_systems": 22,
+     "fleets": 48,
+     "in_transit": 5
+    },
+    {
+     "tick": 3500,
+     "alliance_systems": 32,
+     "empire_systems": 23,
+     "fleets": 56,
+     "in_transit": 14
+    },
+    {
+     "tick": 3750,
+     "alliance_systems": 30,
+     "empire_systems": 25,
+     "fleets": 62,
+     "in_transit": 33
+    },
+    {
+     "tick": 4000,
+     "alliance_systems": 31,
+     "empire_systems": 26,
+     "fleets": 93,
+     "in_transit": 22
+    },
+    {
+     "tick": 4250,
+     "alliance_systems": 32,
+     "empire_systems": 25,
+     "fleets": 103,
+     "in_transit": 27
+    },
+    {
+     "tick": 4500,
+     "alliance_systems": 32,
+     "empire_systems": 25,
+     "fleets": 70,
+     "in_transit": 11
+    },
+    {
+     "tick": 4750,
+     "alliance_systems": 32,
+     "empire_systems": 27,
+     "fleets": 66,
+     "in_transit": 10
+    },
+    {
+     "tick": 5000,
+     "alliance_systems": 32,
+     "empire_systems": 27,
+     "fleets": 59,
+     "in_transit": 9
+    }
+   ],
+   "fleets_line": "Fleets: Alliance 13 (max 53 on day 4229), Empire 46 (max 70 on day 4181)",
+   "missions": 5130,
+   "missions_by_kind": {
+    "Abduction": 51,
+    "Assassination": 55,
+    "Diplomacy": 74,
+    "Espionage": 373,
+    "FacilityDesignResearch": 4,
+    "InciteUprising": 52,
+    "Move": 3263,
+    "Reconnaissance": 956,
+    "Recruitment": 74,
+    "Rescue": 98,
+    "Sabotage": 102,
+    "ShipDesignResearch": 8,
+    "SubdueUprising": 16,
+    "TroopTrainingResearch": 4
+   },
+   "victory_words": [
+    {
+     "tick": 308,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 462,
+     "old": "0x10",
+     "new": "0x0"
+    },
+    {
+     "tick": 2973,
+     "old": "0x0",
+     "new": "0x10"
+    },
+    {
+     "tick": 4160,
+     "old": "0x10",
+     "new": "0x0"
+    }
+   ],
+   "death_star_fired": 0,
+   "space_battles": 483,
+   "space_battles_one_side_without_ships": 72,
+   "busiest_system": [
+    "Khuiumin",
+    79
+   ]
+  },
+  {
+   "seed": 5,
+   "end": "day 5000, no winner",
+   "snapshots": [
+    {
+     "tick": 250,
+     "alliance_systems": 11,
+     "empire_systems": 12,
+     "fleets": 17,
+     "in_transit": 4
+    },
+    {
+     "tick": 500,
+     "alliance_systems": 15,
+     "empire_systems": 15,
+     "fleets": 17,
+     "in_transit": 2
+    },
+    {
+     "tick": 750,
+     "alliance_systems": 20,
+     "empire_systems": 20,
+     "fleets": 21,
+     "in_transit": 6
+    },
+    {
+     "tick": 1000,
+     "alliance_systems": 22,
+     "empire_systems": 21,
+     "fleets": 20,
+     "in_transit": 1
+    },
+    {
+     "tick": 1250,
+     "alliance_systems": 24,
+     "empire_systems": 25,
+     "fleets": 35,
+     "in_transit": 12
+    },
+    {
+     "tick": 1500,
+     "alliance_systems": 26,
+     "empire_systems": 27,
+     "fleets": 26,
+     "in_transit": 3
+    },
+    {
+     "tick": 1750,
+     "alliance_systems": 26,
+     "empire_systems": 27,
+     "fleets": 27,
+     "in_transit": 6
+    },
+    {
+     "tick": 2000,
+     "alliance_systems": 29,
+     "empire_systems": 24,
+     "fleets": 27,
+     "in_transit": 10
+    },
+    {
+     "tick": 2250,
+     "alliance_systems": 32,
+     "empire_systems": 21,
+     "fleets": 44,
+     "in_transit": 7
+    },
+    {
+     "tick": 2500,
+     "alliance_systems": 30,
+     "empire_systems": 25,
+     "fleets": 61,
+     "in_transit": 10
+    },
+    {
+     "tick": 2750,
+     "alliance_systems": 36,
+     "empire_systems": 25,
+     "fleets": 50,
+     "in_transit": 20
+    },
+    {
+     "tick": 3000,
+     "alliance_systems": 36,
+     "empire_systems": 25,
+     "fleets": 61,
+     "in_transit": 13
+    },
+    {
+     "tick": 3250,
+     "alliance_systems": 36,
+     "empire_systems": 25,
+     "fleets": 53,
+     "in_transit": 7
+    },
+    {
+     "tick": 3500,
+     "alliance_systems": 38,
+     "empire_systems": 23,
+     "fleets": 60,
+     "in_transit": 14
+    },
+    {
+     "tick": 3750,
+     "alliance_systems": 39,
+     "empire_systems": 22,
+     "fleets": 49,
+     "in_transit": 6
+    },
+    {
+     "tick": 4000,
+     "alliance_systems": 39,
+     "empire_systems": 22,
+     "fleets": 43,
+     "in_transit": 5
+    },
+    {
+     "tick": 4250,
+     "alliance_systems": 39,
+     "empire_systems": 22,
+     "fleets": 44,
+     "in_transit": 5
+    },
+    {
+     "tick": 4500,
+     "alliance_systems": 39,
+     "empire_systems": 22,
+     "fleets": 42,
+     "in_transit": 2
+    },
+    {
+     "tick": 4750,
+     "alliance_systems": 39,
+     "empire_systems": 22,
+     "fleets": 44,
+     "in_transit": 2
+    },
+    {
+     "tick": 5000,
+     "alliance_systems": 39,
+     "empire_systems": 22,
+     "fleets": 54,
+     "in_transit": 0
+    }
+   ],
+   "fleets_line": "Fleets: Alliance 48 (max 54 on day 3439), Empire 6 (max 34 on day 2107)",
+   "missions": 4902,
+   "missions_by_kind": {
+    "Abduction": 51,
+    "Assassination": 40,
+    "Diplomacy": 71,
+    "Espionage": 323,
+    "FacilityDesignResearch": 5,
+    "InciteUprising": 31,
+    "Move": 3167,
+    "Reconnaissance": 881,
+    "Recruitment": 74,
+    "Rescue": 61,
+    "Sabotage": 179,
+    "ShipDesignResearch": 5,
+    "SubdueUprising": 10,
+    "TroopTrainingResearch": 4
+   },
+   "victory_words": [],
+   "death_star_fired": 0,
+   "space_battles": 387,
+   "space_battles_one_side_without_ships": 1,
+   "busiest_system": [
+    "Xyquine",
+    64
+   ]
+  }
+ ]
+}
