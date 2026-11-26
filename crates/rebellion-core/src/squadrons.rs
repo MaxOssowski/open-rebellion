@@ -672,6 +672,110 @@ impl SquadronTransits {
         Ok(moved)
     }
 
+    /// A change of `system`'s holder to `holder` for its squadrons.
+    /// `FUN_004fae40` walks the system in mode 3 (Existing, so those on
+    /// their way there too) and calls slot `+0xb0` on each: a squadron's
+    /// (`FightSquad_vtb0`, `FUN_00503510`) sets Autorouting
+    /// (`FUN_004f78e0(1)`) unless it is destroyed. The `0x307` handler
+    /// (`FUN_00515480`) runs the autoroute search ([`planet_place`]) from
+    /// the system:
+    /// - a squadron of the holder stays (the search's first step,
+    ///   `FUN_00554740`, accepts its own container);
+    /// - another side's finds the nearest unblockaded system of its side,
+    ///   and `FUN_00556390` sends it there at its speed. One already on its
+    ///   way keeps travelling: its arrival `0x387` still comes on its day,
+    ///   and `FUN_00556620` starts the leg on. port: its new arrival day is
+    ///   the old one plus the transit from `system` to the new place;
+    /// - with no place, slot `+0xac(2)` destroys it.
+    ///
+    /// port: the original does this as the side changes; the port does it
+    /// at the day's squadron step ([`GameWorld::side_changes`]).
+    pub fn autoroute_side_change(
+        &mut self,
+        world: &mut GameWorld,
+        system: SystemKey,
+        holder: crate::dat::Faction,
+        now: u64,
+    ) -> SideChangeRouted {
+        let mut out = SideChangeRouted::default();
+        let Some(origin) = world
+            .systems
+            .get(system)
+            .map(|value| (i64::from(value.x), i64::from(value.y)))
+        else {
+            return out;
+        };
+        let leaves = |world: &GameWorld, class: FighterKey| {
+            is_alliance(world, class)
+                .map(|alliance| (crate::dat::Faction::of_alliance(alliance) != holder, alliance))
+        };
+        let mut classes: Vec<(FighterKey, bool)> = Vec::new();
+        for entry in &world.systems[system].fighters {
+            if let Some((true, alliance)) = leaves(world, entry.class) {
+                if !classes.iter().any(|(class, _)| *class == entry.class) {
+                    classes.push((entry.class, alliance));
+                }
+            }
+        }
+        for (class, alliance) in classes {
+            let count = world.systems[system]
+                .fighters
+                .iter()
+                .filter(|entry| entry.class == class)
+                .fold(0_u32, |sum, entry| sum.saturating_add(entry.count));
+            let place = planet_place(world, alliance, origin);
+            let sent = place.filter(|&place| {
+                self.move_squadrons(
+                    world,
+                    alliance,
+                    class,
+                    count,
+                    SquadronPlace::Planet(system),
+                    SquadronPlace::Planet(place),
+                    now,
+                )
+                .is_ok()
+            });
+            match sent {
+                Some(place) => out.moved.push((class, count, place)),
+                None => {
+                    world.systems[system]
+                        .fighters
+                        .retain(|entry| entry.class != class);
+                    if count > 0 {
+                        out.destroyed.push((class, count));
+                    }
+                }
+            }
+        }
+        let mut kept = Vec::with_capacity(self.transits.len());
+        for mut transit in std::mem::take(&mut self.transits) {
+            let alliance = match leaves(world, transit.class) {
+                Some((true, alliance)) if transit.to == SquadronPlace::Planet(system) => alliance,
+                _ => {
+                    kept.push(transit);
+                    continue;
+                }
+            };
+            match planet_place(world, alliance, origin) {
+                Some(place) => {
+                    transit.arrival_tick += u64::from(squadron_transit_ticks(
+                        world,
+                        transit.class,
+                        system,
+                        place,
+                    ));
+                    transit.to = SquadronPlace::Planet(place);
+                    out.moved.push((transit.class, transit.count, place));
+                    kept.push(transit);
+                }
+                None => out.destroyed.push((transit.class, transit.count)),
+            }
+        }
+        self.transits = kept;
+        out
+    }
+
     /// Place every squadron whose day has come in its destination: a
     /// planet, or a fleet wherever it is. One whose fleet is gone or whose
     /// planet is destroyed is lost (`FUN_004fc080`). Returns the arrivals
@@ -844,6 +948,52 @@ fn disband_if_empty(world: &mut GameWorld, fleet: FleetKey) {
 
 /// Squadrons of `class` travel between systems at the class's speed
 /// (`FUN_00502f80`, `FUN_0055d8c0`).
+/// The autoroute search (`FUN_005545e0`) for a squadron of the side
+/// `alliance` from `origin`: the nearest system whose planet takes it.
+///
+/// Every candidate passes the move validator (`FUN_005571c0`), where the
+/// system's `vt74` (`FUN_005073d0`, `FUN_00553410`) refuses a system of
+/// another side (`{1, 0x24}`) or a blockaded one (`{0x90, 4}`), lifting
+/// those only for fleets and characters, never for a squadron's `0x204`
+/// (`check_route`); the planet's room for squadrons is unlimited
+/// (`FUN_00507750`). So the neutral (`FUN_005551e0`), enemy
+/// (`FUN_005552e0`) and blockaded (`FUN_005550e0`) steps place none, and
+/// what is left is the nearest unblockaded system of its side
+/// (`FUN_00554e80`), nearest by the `FUN_0055d860` distance.
+///
+/// port: the step of its side's fleets (`FUN_00554f80`, a fleet with room
+/// in a system) is not ported; a squadron it would seat finds no place.
+#[must_use]
+pub(crate) fn planet_place(
+    world: &GameWorld,
+    alliance: bool,
+    origin: (i64, i64),
+) -> Option<SystemKey> {
+    let side = crate::dat::Faction::of_alliance(alliance);
+    world
+        .systems
+        .iter()
+        .filter(|(_, value)| !value.is_destroyed && value.control.faction() == Some(side))
+        .filter(|(_, value)| !crate::blockade::BlockadeSystem::system_is_blockaded(world, value))
+        .map(|(key, value)| {
+            let (dx, dy) = (i64::from(value.x) - origin.0, i64::from(value.y) - origin.1);
+            (crate::movement::original_isqrt(dx * dx + dy * dy), key)
+        })
+        .min_by_key(|(distance, _)| *distance)
+        .map(|(_, key)| key)
+}
+
+/// What a side change did to the squadrons of its system
+/// ([`SquadronTransits::autoroute_side_change`]).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SideChangeRouted {
+    /// Squadrons sent on to another system of their side: class, count,
+    /// system.
+    pub moved: Vec<(FighterKey, u32, SystemKey)>,
+    /// Squadrons that found no place, destroyed: class and count.
+    pub destroyed: Vec<(FighterKey, u32)>,
+}
+
 fn squadron_transit_ticks(
     world: &GameWorld,
     class: FighterKey,
@@ -1079,6 +1229,189 @@ mod tests {
             x_wing,
             tie,
         }
+    }
+
+    /// `s` with `here` turned the Empire's, `there` 50 away and a third
+    /// Alliance system 300 away: (that system, the transits).
+    fn lost_here(s: &mut Setup) -> SystemKey {
+        s.world.systems[s.here].control = ControlKind::Controlled(Faction::Empire);
+        s.world.systems[s.there].x = 50;
+        let mut far = s.world.systems[s.there].clone();
+        far.name = "Far".into();
+        far.x = 300;
+        s.world.systems.insert(far)
+    }
+
+    // FUN_004fae40 -> FightSquad_vtb0 (FUN_00503510): every squadron in a
+    // system that changes sides is set Autorouting. The 0x307 handler
+    // (FUN_00515480) keeps the holder's (FUN_00554740 accepts its own
+    // container) and sends another side's to the nearest unblockaded
+    // system of its side (FUN_005545e0 -> FUN_00554e80, FUN_00556390).
+    #[test]
+    fn a_side_change_sends_the_old_side_s_planet_squadrons_to_its_nearest_system() {
+        let mut s = setup(0);
+        let far = lost_here(&mut s);
+        put(&mut s.world.systems[s.here].fighters, s.x_wing, 3, None);
+        put(&mut s.world.systems[s.here].fighters, s.tie, 2, None);
+        let mut transits = SquadronTransits::default();
+        let routed = transits.autoroute_side_change(&mut s.world, s.here, Faction::Empire, 10);
+        assert_eq!(routed.moved, vec![(s.x_wing, 3, s.there)]);
+        assert!(routed.destroyed.is_empty());
+        assert_eq!(on_planet(&s.world, s.here, true), 0);
+        assert_eq!(on_planet(&s.world, s.here, false), 2);
+        let [transit] = transits.transits() else {
+            panic!("one transit");
+        };
+        assert_eq!((transit.class, transit.count), (s.x_wing, 3));
+        assert_eq!(transit.to, SquadronPlace::Planet(s.there));
+        assert_eq!(
+            transit.arrival_tick,
+            10 + u64::from(squadron_transit_ticks(&s.world, s.x_wing, s.here, s.there))
+        );
+        assert_ne!(transit.to, SquadronPlace::Planet(far));
+    }
+
+    // FUN_005073d0 refuses a blockaded system ({0x90, 4}) to a squadron's
+    // 0x204, so the search passes it by (FUN_00554e80 takes unblockaded
+    // systems only).
+    #[test]
+    fn a_side_change_sends_squadrons_past_a_blockaded_system_of_their_side() {
+        let mut s = setup(0);
+        let far = lost_here(&mut s);
+        let blockader = s.world.fleets.insert(Fleet {
+            location: s.there,
+            capital_ships: vec![ShipInstance::new(
+                s.world.fleets[s.fleet].capital_ships[0].class,
+                100,
+                false,
+            )],
+            is_alliance: false,
+            ..Default::default()
+        });
+        s.world.systems[s.there].fleets.push(blockader);
+        assert!(crate::blockade::BlockadeSystem::system_is_blockaded(
+            &s.world,
+            &s.world.systems[s.there]
+        ));
+        put(&mut s.world.systems[s.here].fighters, s.x_wing, 1, None);
+        let mut transits = SquadronTransits::default();
+        let routed = transits.autoroute_side_change(&mut s.world, s.here, Faction::Empire, 0);
+        assert_eq!(routed.moved, vec![(s.x_wing, 1, far)]);
+    }
+
+    // FUN_00515480: a squadron already on its way keeps travelling and goes
+    // on from the lost system when its arrival (0x387) comes; one of the
+    // holder's keeps its course.
+    #[test]
+    fn a_squadron_on_its_way_to_a_lost_system_goes_on_to_its_side_s_nearest_system() {
+        let mut s = setup(0);
+        lost_here(&mut s);
+        let transit = |class, count| SquadronTransit {
+            class,
+            count,
+            origin: s.there,
+            to: SquadronPlace::Planet(s.here),
+            arrival_tick: 20,
+            lost: Vec::new(),
+        };
+        let mut transits = SquadronTransits::default();
+        transits.push_transit_for_test(transit(s.x_wing, 2));
+        transits.push_transit_for_test(transit(s.tie, 1));
+        let routed = transits.autoroute_side_change(&mut s.world, s.here, Faction::Empire, 5);
+        assert_eq!(routed.moved, vec![(s.x_wing, 2, s.there)]);
+        let leg = u64::from(squadron_transit_ticks(&s.world, s.x_wing, s.here, s.there));
+        assert!(leg > 0);
+        let [x_wings, ties] = transits.transits() else {
+            panic!("two transits");
+        };
+        assert_eq!(x_wings.to, SquadronPlace::Planet(s.there));
+        assert_eq!(x_wings.arrival_tick, 20 + leg);
+        assert_eq!(ties.to, SquadronPlace::Planet(s.here));
+        assert_eq!(ties.arrival_tick, 20);
+    }
+
+    // FUN_00515480: with no place found, slot +0xac(2) destroys it.
+    #[test]
+    fn a_squadron_whose_side_holds_no_system_is_destroyed_by_a_side_change() {
+        let mut s = setup(0);
+        for key in [s.here, s.there] {
+            s.world.systems[key].control = ControlKind::Controlled(Faction::Empire);
+        }
+        put(&mut s.world.systems[s.here].fighters, s.x_wing, 2, None);
+        // A spent entry is no squadron to report.
+        let a_wing = s.world.fighter_classes.insert(FighterClass {
+            name: "A-wing".into(),
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        s.world.systems[s.here].fighters.push(FighterEntry {
+            class: a_wing,
+            count: 0,
+            carrier: None,
+            damage: None,
+        });
+        let mut transits = SquadronTransits::default();
+        transits.push_transit_for_test(SquadronTransit {
+            class: s.x_wing,
+            count: 1,
+            origin: s.there,
+            to: SquadronPlace::Planet(s.here),
+            arrival_tick: 9,
+            lost: Vec::new(),
+        });
+        put(&mut s.world.systems[s.here].fighters, s.tie, 4, None);
+        let routed = transits.autoroute_side_change(&mut s.world, s.here, Faction::Empire, 0);
+        assert!(routed.moved.is_empty());
+        assert_eq!(routed.destroyed, vec![(s.x_wing, 2), (s.x_wing, 1)]);
+        // The holder's own stay.
+        let left: Vec<(FighterKey, u32)> = s.world.systems[s.here]
+            .fighters
+            .iter()
+            .map(|entry| (entry.class, entry.count))
+            .collect();
+        assert_eq!(left, vec![(s.tie, 4)]);
+        assert!(transits.transits().is_empty());
+    }
+
+    // FUN_005545e0 -> FUN_00554e80: the nearest system of the side, by the
+    // FUN_0055d860 distance, isqrt(dx^2 + dy^2), off both axes.
+    #[test]
+    fn a_squadron_s_autoroute_takes_the_nearest_system_of_its_side() {
+        let mut s = setup(0);
+        for key in [s.here, s.there] {
+            s.world.systems[key].control = ControlKind::Controlled(Faction::Empire);
+        }
+        let mut place = |x, y| {
+            let mut value = s.world.systems[s.there].clone();
+            (value.x, value.y) = (x, y);
+            value.control = ControlKind::Controlled(Faction::Alliance);
+            s.world.systems.insert(value)
+        };
+        // 43, 44 and 40 from (100, 100).
+        place(105, 143);
+        place(56, 106);
+        let nearest = place(139, 111);
+        assert_eq!(planet_place(&s.world, true, (100, 100)), Some(nearest));
+    }
+
+    // A neutral holder takes no squadron (FUN_005073d0, {1, 0x24}): both
+    // sides' leave.
+    #[test]
+    fn a_system_gone_neutral_sends_both_sides_squadrons_away() {
+        let mut s = setup(0);
+        s.world.systems[s.here].control = ControlKind::Uncontrolled;
+        s.world.systems[s.there].x = 50;
+        let mut imperial = s.world.systems[s.there].clone();
+        imperial.name = "Imperial".into();
+        imperial.x = 80;
+        imperial.control = ControlKind::Controlled(Faction::Empire);
+        let imperial = s.world.systems.insert(imperial);
+        put(&mut s.world.systems[s.here].fighters, s.x_wing, 1, None);
+        put(&mut s.world.systems[s.here].fighters, s.tie, 1, None);
+        let mut transits = SquadronTransits::default();
+        let routed = transits.autoroute_side_change(&mut s.world, s.here, Faction::Neutral, 0);
+        assert_eq!(routed.moved, vec![(s.x_wing, 1, s.there), (s.tie, 1, imperial)]);
+        assert!(s.world.systems[s.here].fighters.is_empty());
     }
 
     // FUN_00500b40: a ship holds up to its fighter capacity (+0x26c), and

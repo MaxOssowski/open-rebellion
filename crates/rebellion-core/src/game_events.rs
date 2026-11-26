@@ -157,6 +157,8 @@ pub const EVT_EMPEROR_ARRIVAL: &str = "emperor_arrival";
 pub const EVT_JABBA_PRISONERS: &str = "jabba_prisoners";
 pub const EVT_HAN_RESCUE: &str = "han_rescue";
 pub const EVT_TROOP_MOVED: &str = "troop_moved";
+/// Squadrons a side change sent to another system or destroyed.
+pub const EVT_SQUADRONS_AUTOROUTED: &str = "squadrons_autorouted";
 
 #[cfg(test)]
 mod tests {

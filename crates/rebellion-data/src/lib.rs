@@ -171,6 +171,7 @@ pub fn load_game_data_with_options(
         object_views: rebellion_core::object_views::ObjectViews::default(),
         products: rebellion_core::products::Products::default(),
         seeded_cargo: Vec::new(),
+        side_changes: Vec::new(),
     };
 
     // ── 1. Sectors ───────────────────────────────────────────────────────────

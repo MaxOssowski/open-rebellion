@@ -1594,6 +1594,20 @@ pub fn close_simulation_day(
         states.troop_transport.carried_count(fleet)
     });
 
+    // ── 13g. The squadrons of a system that changed sides ────────────────
+    // FUN_004fae40 -> FightSquad_vtb0 (FUN_00503510): another side's
+    // squadrons there, and those on their way, autoroute to the nearest
+    // unblockaded system of their side, or are destroyed.
+    for (system, holder) in std::mem::take(&mut world.side_changes) {
+        let routed = states.troop_transport.squadrons.autoroute_side_change(
+            world,
+            system,
+            holder,
+            current_tick,
+        );
+        integrator.record_squadrons_autorouted(world, system, &routed);
+    }
+
     // ── 13f. Each side's views of the other side's objects ──────────────
     // After movement, control and missions (FUN_004f9a60 per object;
     // ghidra/notes/per-side-object-views.md).
@@ -2676,9 +2690,14 @@ mod tests {
         // FUN_00509710 / FUN_00516d50: a squadron on the planet makes its side
         // present, so the Alliance fleet at the Empire's planet starts a
         // battle; port: the squadrons fight as a group and land after it.
-        let (mut world, mut states, fleet, _) = world_with_loading_fleet();
+        let (mut world, mut states, fleet, troop) = world_with_loading_fleet();
         let system = world.fleets[fleet].location;
         world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        // The planet stays the Empire's: its regiments alone make it so
+        // (FUN_0050b610). With the Alliance's it would change sides that
+        // day and send the Empire's squadrons away (FUN_004fae40 ->
+        // FUN_00503510).
+        world.troops[troop].is_alliance = false;
         let tie = world
             .fighter_classes
             .insert(rebellion_core::world::FighterClass {
@@ -2701,6 +2720,49 @@ mod tests {
         // The armed squadrons beat the unarmed transport and land again.
         assert!(!world.fleets.contains_key(fleet));
         assert!((1..=3).contains(&squadrons::on_planet(&world, system, false)));
+    }
+
+    #[test]
+    fn a_planet_that_changes_sides_sends_the_old_side_s_squadrons_to_its_nearest_system() {
+        // FUN_0050b610: the Alliance regiment alone makes the planet the
+        // Alliance's. FUN_004f6f40 -> FUN_004fae40 calls FightSquad_vtb0
+        // (FUN_00503510) on each squadron there: Autorouting, and the 0x307
+        // handler (FUN_00515480) sends the Empire's to the nearest
+        // unblockaded system the Empire holds (FUN_005545e0).
+        let (mut world, mut states, fleet, _) = world_with_loading_fleet();
+        let system = world.fleets[fleet].location;
+        world.systems[system].fleets.clear();
+        world.fleets.remove(fleet);
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let other = world.systems.keys().find(|&key| key != system).unwrap();
+        world.systems[other].control = ControlKind::Controlled(Faction::Empire);
+        let garrison = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(20),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[other].ground_units.push(garrison);
+        let tie = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_empire: true,
+                ..Default::default()
+            });
+        squadrons::add(&mut world.systems[system].fighters, tie, 3);
+
+        run_one_tick(&mut world, &mut states);
+
+        assert_eq!(
+            world.systems[system].control,
+            ControlKind::Controlled(Faction::Alliance)
+        );
+        assert_eq!(squadrons::on_planet(&world, system, false), 0);
+        let [transit] = states.troop_transport.squadrons.transits() else {
+            panic!("one transit");
+        };
+        assert_eq!((transit.class, transit.count), (tie, 3));
+        assert_eq!(transit.to, squadrons::SquadronPlace::Planet(other));
+        assert!(world.side_changes.is_empty());
     }
 
     #[test]

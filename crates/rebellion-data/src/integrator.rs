@@ -33,7 +33,7 @@ use rebellion_core::game_events::{
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
     EVT_ADRIFT_ORDERED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SQUADRON_REPAIRED,
-    EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_TROOP_MOVED,
+    EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_SQUADRONS_AUTOROUTED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
     EVT_UPRISING_SUPPORT,
     EVT_UPRISING_INCIDENT, EVT_VICTORY, EVT_VICTORY_CHECK, SYS_AI, SYS_BLOCKADE,
@@ -602,12 +602,16 @@ impl PerceptionIntegrator {
                     system,
                     new_control,
                 } => {
+                    let previous = world.systems.get(*system).map(|sys| sys.control);
                     if let Some(sys) = world.systems.get_mut(*system) {
                         sys.control = *new_control;
                     }
                     // FUN_00510d70 → FUN_004f6f40: the system's facilities
-                    // follow its new holder.
+                    // follow its new holder, and its squadrons autoroute.
                     world.hand_over_facilities(*system);
+                    if let Some(previous) = previous {
+                        world.record_side_change(*system, previous);
+                    }
                     self.emit(
                         SYS_ECONOMY,
                         EVT_CONTROL_CHANGED,
@@ -1302,6 +1306,30 @@ impl PerceptionIntegrator {
         }
     }
 
+    /// Telemetry for the squadrons a side change sent away or destroyed
+    /// ([`rebellion_core::squadrons::SquadronTransits::autoroute_side_change`]).
+    pub fn record_squadrons_autorouted(
+        &mut self,
+        world: &GameWorld,
+        system: SystemKey,
+        routed: &rebellion_core::squadrons::SideChangeRouted,
+    ) {
+        if routed.moved.is_empty() && routed.destroyed.is_empty() {
+            return;
+        }
+        let moved: u32 = routed.moved.iter().map(|(_, count, _)| count).sum();
+        let destroyed: u32 = routed.destroyed.iter().map(|(_, count)| count).sum();
+        self.emit(
+            SYS_COMBAT,
+            EVT_SQUADRONS_AUTOROUTED,
+            serde_json::json!({
+                "system": sys_name(world, system),
+                "moved": moved,
+                "destroyed": destroyed,
+            }),
+        );
+    }
+
     /// Apply territorial occupation after a decisive ground victory.
     /// Opposing characters physically present on the captured world become
     /// prisoners, allowing the standard victory rules to observe HQ captures.
@@ -1317,8 +1345,11 @@ impl PerceptionIntegrator {
             value.control = ControlKind::Controlled(winner);
         }
         // FUN_00510d70 → FUN_004f6f40: the system's facilities follow its
-        // new holder.
+        // new holder, and its squadrons autoroute.
         world.hand_over_facilities(system);
+        if let Some(previous) = previous {
+            world.record_side_change(system, previous);
+        }
         if previous != Some(ControlKind::Controlled(winner)) {
             self.emit(
                 SYS_COMBAT,

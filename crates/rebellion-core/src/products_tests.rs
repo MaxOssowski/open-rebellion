@@ -1372,6 +1372,87 @@ fn the_band_names_the_container_its_current_product_was_dropped_in() {
     assert_eq!(deployment_fleet(&s.world, s.yard), None);
 }
 
+/// port: an Imperial TIE squadron built at the yard for `there`, finished
+/// and on its way, both systems the Empire's.
+fn tie_en_route(s: &mut Setup) -> (u64, u64) {
+    for key in [s.yard, s.there] {
+        s.world.systems[key].control = ControlKind::Controlled(Faction::Empire);
+    }
+    let kind = BuildableKind::Fighter(s.tie);
+    s.manufacturing
+        .enqueue(s.yard, QueueItem::new(kind, 5).delivered_to(s.there));
+    reconcile(&mut s.world, &s.manufacturing);
+    let id = s.world.products.all()[0].id;
+    settle(
+        &mut s.world,
+        Vec::new(),
+        vec![Departure {
+            origin: s.yard,
+            destination: s.there,
+            tick: 1,
+            kind,
+            name: None,
+        }],
+    );
+    s.manufacturing
+        .queue_mut(s.yard, ProductionArea::of(kind))
+        .cancel(0);
+    let arrival = s.world.products.arrival(id).expect("travelling");
+    (id, arrival)
+}
+
+#[test]
+fn a_squadron_en_route_to_a_system_lost_goes_on_to_the_nearest_system_of_its_side() {
+    // FUN_004fae40 walks the lost system in mode 3 (en route too) and calls
+    // FightSquad_vtb0 (FUN_00503510): Autorouting. The 0x307 handler
+    // (FUN_00515480) finds the nearest unblockaded system of its side
+    // (FUN_005545e0) and FUN_00556390 sends it on; its arrival comes later
+    // by the leg from the lost system.
+    let mut s = setup();
+    let (id, arrival) = tie_en_route(&mut s);
+    // A squadron takes no energy (FUN_00507750: unlimited room), so a yard
+    // with none left for a facility still takes it.
+    s.world.systems[s.yard].total_energy = 0;
+    s.world.systems[s.there].control = ControlKind::Controlled(Faction::Alliance);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Alliance);
+    assert_eq!(routed.moved, vec![(id, s.yard)]);
+    assert_eq!(
+        s.world.products.get(id).map(|product| product.container),
+        Some(Container::System(s.yard))
+    );
+    let leg = crate::delivery::transit_days(
+        &s.world,
+        BuildableKind::Fighter(s.tie),
+        s.there,
+        s.yard,
+    );
+    assert!(leg > 0);
+    assert_eq!(s.world.products.arrival(id), Some(arrival + u64::from(leg)));
+}
+
+#[test]
+fn a_squadron_en_route_to_a_system_lost_with_no_system_of_its_side_left_is_removed() {
+    // FUN_00515480: the search ends in error, slot +0xac(2) destroys it.
+    let mut s = setup();
+    let (id, _) = tie_en_route(&mut s);
+    for key in [s.yard, s.there] {
+        s.world.systems[key].control = ControlKind::Controlled(Faction::Alliance);
+    }
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Alliance);
+    assert_eq!(routed.removed, vec![id]);
+    assert!(s.world.products.all().is_empty());
+}
+
+#[test]
+fn a_squadron_en_route_to_a_system_its_side_keeps_stays_on_course() {
+    // FUN_00554740, the search's first step, accepts its own container.
+    let mut s = setup();
+    let (id, arrival) = tie_en_route(&mut s);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
+    assert_eq!(routed, Autorouted::default());
+    assert_eq!(s.world.products.arrival(id), Some(arrival));
+}
+
 /// port: an Alliance construction yard (MANFACSD family `0x2a`) built at
 /// the yard for `there`, finished and on its way, both systems Alliance.
 fn alliance_yard_en_route(s: &mut Setup) -> (u64, BuildableKind, u64) {
@@ -1421,7 +1502,7 @@ fn a_facility_en_route_to_a_system_lost_with_no_room_elsewhere_is_removed_withou
     let (id, _, _) = alliance_yard_en_route(&mut s);
     s.world.systems[s.yard].total_energy = 0;
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
-    let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(routed.removed, vec![id]);
     assert!(routed.moved.is_empty());
     assert!(s.world.products.all().is_empty());
@@ -1445,11 +1526,11 @@ fn a_rerouted_facility_left_with_no_place_by_a_second_side_change_goes_without_a
     let mut s = setup();
     let (id, _, _) = alliance_yard_en_route(&mut s);
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
-    let first = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let first = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(first.moved, vec![(id, s.yard)]);
     assert!(s.world.products.arrival(id).is_some());
     s.world.systems[s.yard].control = ControlKind::Controlled(Faction::Empire);
-    let second = autoroute_facilities(&mut s.world, s.yard, Faction::Empire);
+    let second = autoroute_products(&mut s.world, s.yard, Faction::Empire);
     assert_eq!(
         second,
         Autorouted {
@@ -1501,7 +1582,7 @@ fn an_unfinished_facility_in_a_system_lost_moves_at_once_to_a_system_of_its_side
     reconcile(&mut s.world, &s.manufacturing);
     let id = s.world.products.all()[0].id;
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
-    let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(routed.moved, vec![(id, s.yard)]);
     assert_eq!(s.world.products.arrival(id), None);
     let container = |s: &Setup| s.world.products.all()[0].container;
@@ -1568,7 +1649,7 @@ fn an_autoroute_with_no_place_reports_an_unfinished_facility_as_destroyed() {
     reconcile(&mut s.world, &s.manufacturing);
     let id = s.world.products.all()[0].id;
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
-    let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(
         routed,
         Autorouted {
@@ -1577,7 +1658,7 @@ fn an_autoroute_with_no_place_reports_an_unfinished_facility_as_destroyed() {
         }
     );
     // A second autoroute before the queues are settled lists it once.
-    autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(destroy_lost(&mut s.world, &mut s.manufacturing), vec![id]);
     assert!(s.world.products.all().is_empty());
 }
@@ -1602,7 +1683,7 @@ fn a_mine_needs_a_raw_material_slot_where_it_autoroutes() {
     reconcile(&mut s.world, &s.manufacturing);
     let id = s.world.products.all()[0].id;
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
-    let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(routed.moved, vec![(id, far)]);
 }
 
@@ -1625,7 +1706,7 @@ fn an_autorouted_facility_takes_the_nearest_system_on_both_axes() {
     at(&mut s, 0, 300);
     at(&mut s, 290, 0);
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
-    let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(routed.moved, vec![(id, near)]);
 }
 
@@ -1659,7 +1740,7 @@ fn a_system_its_facilities_already_fill_takes_no_autorouted_facility() {
         .enqueue(s.there, QueueItem::new(mine(true), 5).delivered_to(s.yard));
     reconcile(&mut s.world, &s.manufacturing);
     s.world.systems[s.there].control = ControlKind::Controlled(Faction::Empire);
-    let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(routed.moved, vec![(id, far)]);
     // With a third energy slot the yard takes the construction yard, but
     // not a mine while its raw materials (2) are taken by the two mines.
@@ -1692,7 +1773,7 @@ fn a_facility_product_of_the_new_holders_side_stays() {
     // An Alliance system with room nearby takes nothing from it.
     let rebel = system(&mut s.world, 210);
     s.world.systems[rebel].control = ControlKind::Controlled(Faction::Alliance);
-    let routed = autoroute_facilities(&mut s.world, s.there, Faction::Empire);
+    let routed = autoroute_products(&mut s.world, s.there, Faction::Empire);
     assert_eq!(routed, Autorouted::default());
     let product = &s.world.products.all()[0];
     assert_eq!(product.container, Container::System(s.there));

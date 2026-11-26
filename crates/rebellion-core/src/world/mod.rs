@@ -1909,6 +1909,14 @@ pub struct GameWorld {
     /// never saved.
     #[serde(skip)]
     pub seeded_cargo: Vec<(crate::ids::FleetKey, crate::ids::TroopKey)>,
+    /// The systems whose holder changed since the day's squadron step, with
+    /// the new holder ([`Self::record_side_change`]). The squadrons there
+    /// autoroute
+    /// ([`crate::squadrons::SquadronTransits::autoroute_side_change`]).
+    /// port: the world holds no squadron transits, so the day's caller that
+    /// holds them takes these; never saved.
+    #[serde(skip)]
+    pub side_changes: Vec<(SystemKey, Faction)>,
 }
 
 /// An abode (ABODESD, family `0x98`, class vtable `0x00669260` built by
@@ -2083,7 +2091,25 @@ impl GameWorld {
     /// otherwise; so a system leaving the Alliance loses its
     /// headquarters. Returns the facilities removed. A class missing from the
     /// catalog keeps its facility (port). Facility products there, unfinished
-    /// or en route, autoroute ([`crate::products::autoroute_facilities`]).
+    /// or en route, autoroute ([`crate::products::autoroute_products`]).
+    /// Note a change of `system`'s holder from the control `previous`
+    /// (`FUN_004f6f40` -> `FUN_004fae40`, which calls slot `+0xb0` on each
+    /// object there): the squadrons there autoroute at the day's squadron
+    /// step ([`Self::side_changes`]). A control that keeps its side (an
+    /// uprising) changes nothing.
+    pub fn record_side_change(&mut self, system: SystemKey, previous: ControlKind) {
+        let Some(holder) = self
+            .systems
+            .get(system)
+            .and_then(|value| Self::facility_holder(value.control))
+        else {
+            return;
+        };
+        if Self::facility_holder(previous) != Some(holder) {
+            self.side_changes.push((system, holder));
+        }
+    }
+
     pub fn hand_over_facilities(&mut self, system: SystemKey) -> Vec<FacilityRef> {
         let Some(holder) = self
             .systems
@@ -2120,8 +2146,8 @@ impl GameWorld {
             }
         }
         // FUN_004f8680: an unfinished facility, or one en route, autoroutes
-        // instead (crate::products::autoroute_facilities).
-        crate::products::autoroute_facilities(self, system, holder);
+        // instead (crate::products::autoroute_products).
+        crate::products::autoroute_products(self, system, holder);
         removed
     }
 
@@ -2613,6 +2639,23 @@ mod facility_ownership_tests {
         let facility = yard(&mut world, here, imperial, Faction::Alliance);
         assert!(world.hand_over_facilities(here).is_empty());
         assert_eq!(side_of(&world, facility), Some(Faction::Alliance));
+    }
+
+    #[test]
+    fn only_a_change_of_side_sends_a_system_s_squadrons_away() {
+        // FUN_004f6f40 runs FUN_004fae40 (slot +0xb0 on each object, a
+        // squadron's FUN_00503510) when the side bits change; an uprising
+        // keeps the side.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, ControlKind::Uprising(Faction::Alliance));
+        world.record_side_change(here, ControlKind::Controlled(Faction::Alliance));
+        assert!(world.side_changes.is_empty());
+        world.systems[here].control = ControlKind::Controlled(Faction::Empire);
+        world.record_side_change(here, ControlKind::Uprising(Faction::Alliance));
+        assert_eq!(world.side_changes, vec![(here, Faction::Empire)]);
+        world.systems[here].control = ControlKind::Uncontrolled;
+        world.record_side_change(here, ControlKind::Controlled(Faction::Empire));
+        assert_eq!(world.side_changes[1], (here, Faction::Neutral));
     }
 
     #[test]

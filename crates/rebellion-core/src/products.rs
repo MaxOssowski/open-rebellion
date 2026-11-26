@@ -98,7 +98,7 @@ pub struct Products {
     /// the last field: a v124 save gains an empty one (save v125).
     trips: Vec<(u64, u64)>,
     /// Unfinished products destroyed by an autoroute that found no place
-    /// ([`autoroute_facilities`]), still waiting to leave their queues
+    /// ([`autoroute_products`]), still waiting to leave their queues
     /// ([`destroy_lost`]). port: the world holds no queues, so the caller
     /// that holds them takes these out at its next manufacturing step,
     /// before [`reconcile`]. Not saved (no format change): a side change by
@@ -1150,8 +1150,9 @@ pub const fn is_facility(kind: BuildableKind) -> bool {
     )
 }
 
-/// What a holder change did to the facility products of a system
-/// ([`autoroute_facilities`]).
+/// What a holder change did to the facility and squadron products of a
+/// system
+/// ([`autoroute_products`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Autorouted {
     /// Products put in another system of their side, with that system.
@@ -1161,6 +1162,16 @@ pub struct Autorouted {
     /// Unfinished products that found no place: destroyed, with no message,
     /// once [`destroy_lost`] takes them from their queues.
     pub destroyed: Vec<u64>,
+}
+
+/// The side of a product a holder change autoroutes: a facility's or a
+/// squadron's (`FightSquad_vtb0`, `FUN_00503510`, sets Autorouting as
+/// `FUN_004f8680` does for a facility not handed over).
+fn routed_side(product: &Product) -> Option<bool> {
+    match product.kind {
+        BuildableKind::Fighter(_) => Some(product.is_alliance),
+        kind => facility_side(kind),
+    }
 }
 
 /// The facility side a product of `kind` is built for ([`FacilityBuild`]).
@@ -1294,7 +1305,12 @@ fn facility_place(
 ///
 /// A product of the holder's side stays (the search's first step,
 /// `FUN_00554740`, accepts its own container).
-pub fn autoroute_facilities(
+///
+/// A squadron product of another side takes the same path
+/// (`FightSquad_vtb0`, `FUN_00503510`, sets Autorouting whatever its
+/// state), its place the nearest unblockaded system of its side
+/// ([`crate::squadrons::planet_place`]).
+pub fn autoroute_products(
     world: &mut GameWorld,
     system: SystemKey,
     holder: crate::dat::Faction,
@@ -1311,7 +1327,7 @@ pub fn autoroute_facilities(
         .products
         .in_system(system)
         .filter(|product| {
-            facility_side(product.kind)
+            routed_side(product)
                 .is_some_and(|is_alliance| crate::dat::Faction::of_alliance(is_alliance) != holder)
         })
         .map(|product| product.id)
@@ -1320,11 +1336,17 @@ pub fn autoroute_facilities(
         let Some(product) = world.products.get(id).cloned() else {
             continue;
         };
-        let Some(is_alliance) = facility_side(product.kind) else {
+        let Some(is_alliance) = routed_side(&product) else {
             continue;
         };
         let arrival = world.products.arrival(id);
-        match facility_place(world, is_alliance, origin, product.kind) {
+        let place = match product.kind {
+            BuildableKind::Fighter(_) => {
+                crate::squadrons::planet_place(world, is_alliance, origin)
+            }
+            _ => facility_place(world, is_alliance, origin, product.kind),
+        };
+        match place {
             Some(place) => {
                 if let Some(day) = arrival {
                     let days = crate::delivery::transit_days(world, product.kind, system, place);
@@ -1354,7 +1376,7 @@ pub fn autoroute_facilities(
     out
 }
 
-/// The unfinished products an autoroute destroyed ([`autoroute_facilities`],
+/// The unfinished products an autoroute destroyed ([`autoroute_products`],
 /// slot `+0xac(2)` in `FUN_00515480`) leave their manager's queue and the
 /// world ([`destroy`]). Returns the ids taken out.
 pub fn destroy_lost(world: &mut GameWorld, manufacturing: &mut ManufacturingState) -> Vec<u64> {

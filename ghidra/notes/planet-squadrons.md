@@ -81,9 +81,39 @@ status `0x14`/1. A squadron has a speed (`FUN_00502f80`, the FIGHTSD
 hyperdrive), so it can also travel between systems on its own.
 
 untraced: which leg builder (`FUN_00552000` and its siblings) fills which
-ship; whether a squadron may land on another side's planet; what happens to
-squadrons on a planet whose control changes. (The battle setup is
-`FUN_0040b0e0`, not `FUN_005442f0`: `planet-squadrons-in-battle.md`.)
+ship; whether a squadron may land on another side's planet. (The battle
+setup is `FUN_0040b0e0`, not `FUN_005442f0`:
+`planet-squadrons-in-battle.md`.)
+
+## A system that changes sides (2026-11-26)
+
+`FUN_004f6f40` -> slot `+0xf0` -> `FUN_004fae40` walks the system's
+objects in mode 3 (Existing: those on their way there too) and calls slot
+`+0xb0` on each (`facility-autoroute-on-side-change.md`). A squadron's is
+`FightSquad_vtb0` (`FUN_00503510`): unless Destroyed (`+0x50` bit 8) it
+sets Autorouting (`GameObj_SetAutorouting(1)`, `FUN_004f78e0`). A fleet's
+(`FUN_0051ebb0`) returns 1 and does nothing.
+
+The `0x307` handler (`FUN_00515480`) then runs the autoroute search
+(`FUN_005545e0`) from the system. Its first step (`FUN_00554740`) accepts
+the current container for the holder's own squadrons, so they stay.
+Another side's: `System_vt74` (`FUN_005073d0`) refuses a system of
+another side (`{1, 0x24}`) or a blockaded one (`{0x90, 4}`) and lifts that
+only for fleets and characters, so what is left is the nearest unblockaded
+system of the squadron's side (`FUN_00554e80`), or a fleet of its side
+(`FUN_00554f80`). `FUN_00556390` sends it there; with no place, slot
+`+0xac(2)` destroys it.
+
+Port: `GameWorld::record_side_change` notes the change, and the day's step
+13g runs `SquadronTransits::autoroute_side_change` (planet squadrons and
+squadrons travelling there); `products::autoroute_products` moves squadron
+products in the system as it does facilities. port: the fleet step
+(`FUN_00554f80`) is not ported, and the move happens at the day's step,
+not at the change itself.
+
+Found by the long campaigns of 2026-11-26: in seed 1 the Empire's squadrons
+stayed on Selonia after the Alliance took it, 42 of them, and met every
+Alliance ship built or sent there for 4,000 days (270 battles).
 
 ## Port
 
