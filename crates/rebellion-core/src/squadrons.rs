@@ -994,6 +994,12 @@ pub fn recover(world: &mut GameWorld, sorties: &[Sortie]) {
                 put_entry(&mut system.fighters, FighterEntry { carrier: None, ..entry });
             }
         }
+        // The planet's squadrons never joined the fleet in the original
+        // (FUN_00516ef0 counts them apart): a fleet whose last ship fell
+        // is empty once they land, and disbands (FUN_004fe630).
+        if !sortie.group {
+            crate::scrap::disband_if_empty(world, sortie.fleet);
+        }
     }
 }
 
@@ -1522,6 +1528,26 @@ mod tests {
         assert!(s.world.fleets[s.fleet].fighters.is_empty());
         assert_eq!(on_planet(&s.world, s.here, true), 1);
         assert_eq!(on_planet(&s.world, s.here, false), 2);
+    }
+
+    #[test]
+    fn a_fleet_whose_last_ship_fell_disbands_once_the_planet_s_squadrons_land() {
+        // The planet's squadrons fight beside the fleet (port: Sortie) but
+        // never belong to it (FUN_00516ef0 counts them apart). When the
+        // fleet's last ship is destroyed, the survivors land and the fleet,
+        // holding nothing, disbands (FUN_004fe630). Seed 1's 5,000-day
+        // campaign, day 2093: the fleet stayed, empty.
+        let mut s = setup(1);
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 2);
+        let sorties = scramble(&mut s.world, s.here);
+        assert_eq!((sorties[0].fleet, sorties[0].group), (s.fleet, false));
+        crate::scrap::destroy_ship(&mut s.world, s.fleet, 0);
+        assert!(s.world.fleets.contains_key(s.fleet));
+        recover(&mut s.world, &sorties);
+
+        assert!(!s.world.fleets.contains_key(s.fleet));
+        assert!(!s.world.systems[s.here].fleets.contains(&s.fleet));
+        assert_eq!(on_planet(&s.world, s.here, true), 2);
     }
 
     /// A squadron of `class` at `carrier` that has lost `lost` craft.

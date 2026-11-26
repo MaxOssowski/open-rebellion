@@ -622,26 +622,32 @@ pub fn deployment_fleet(world: &GameWorld, system: SystemKey) -> Option<FleetKey
     }
 }
 
-/// A staged fleet left with nothing goes (A0 2026-11-15 "u-3": the
-/// replaced Carrack's Fleet 4 and its icon disappeared).
+/// A fleet left with nothing goes (A0 2026-11-15 "u-3": the replaced
+/// Carrack's Fleet 4 and its icon disappeared): a staged spare, and a listed
+/// fleet whose finished ships had left before its product went
+/// (`FUN_004fe630` disbands any emptied fleet).
 fn drop_if_emptied(world: &mut GameWorld, container: Container) {
     let Container::Fleet(fleet) = container else {
         return;
     };
-    if world.products.holds(fleet) || !unlisted(world, fleet) {
+    if world.products.holds(fleet) {
         return;
     }
     let Some(value) = world.fleets.get(fleet) else {
         return;
     };
     if value.capital_ships.is_empty()
-        && value.fighters.is_empty()
+        && value.fighters.iter().all(|entry| entry.count == 0)
         && value.characters.is_empty()
         && value.special_forces.is_empty()
         && !value.has_death_star
     {
+        let location = value.location;
         world.fleets.remove(fleet);
         world.forget_ship_spare(fleet);
+        if let Some(system) = world.systems.get_mut(location) {
+            system.fleets.retain(|&key| key != fleet);
+        }
     }
 }
 

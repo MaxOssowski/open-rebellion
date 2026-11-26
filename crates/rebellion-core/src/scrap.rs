@@ -284,12 +284,7 @@ pub fn scrap(
                 i32::try_from(c.refined_material_cost).unwrap_or(i32::MAX)
             }) / 2
         }
-        ScrapTarget::Ship { fleet, index } => {
-            let ship = world.fleets[fleet].capital_ships[index].class;
-            world.capital_ship_classes.get(ship).map_or(0, |c| {
-                i32::try_from(c.refined_material_cost).unwrap_or(i32::MAX)
-            }) / 2
-        }
+        ScrapTarget::Ship { fleet, index } => ship_refund(world, fleet, index),
         ScrapTarget::Fleet(fleet) => fleet_refund(world, transport, fleet),
         _ => refined_cost(world, class) / 2,
     };
@@ -312,13 +307,37 @@ pub fn scrap(
             }
             disband_if_empty(world, fleet);
         }
-        ScrapTarget::Ship { fleet, index } => remove_ship(world, fleet, index),
+        ScrapTarget::Ship { fleet, index } => destroy_ship(world, fleet, index),
         ScrapTarget::Fleet(fleet) => scrap_fleet(world, transport, fleet),
     }
     if let Some(stock) = production.stock_mut(owner) {
         stock.refined += refund;
     }
     Ok(Scrapped { system, refund })
+}
+
+/// Half the ship's refined cost, and half each squadron's docked on it: the
+/// ship destroyed with reason `0x14` hands it to its Completed children
+/// (`FUN_004fb520`, `FUN_004f8710`), each refunded (`FUN_00530270`) as a
+/// scrapped fleet's are.
+fn ship_refund(world: &GameWorld, fleet: crate::ids::FleetKey, index: usize) -> i32 {
+    let half = |cost: u32| i32::try_from(cost).unwrap_or(i32::MAX) / 2;
+    let value = &world.fleets[fleet];
+    let ship = &value.capital_ships[index];
+    let own = world
+        .capital_ship_classes
+        .get(ship.class)
+        .map_or(0, |c| half(c.refined_material_cost));
+    let docked: i32 = value
+        .fighters
+        .iter()
+        .filter(|entry| ship.id != 0 && entry.carrier == Some(ship.id))
+        .filter_map(|entry| {
+            let class = world.fighter_classes.get(entry.class)?;
+            Some(half(class.refined_material_cost) * i32::try_from(entry.count).unwrap_or(0))
+        })
+        .sum();
+    own + docked
 }
 
 /// Half the refined cost of every ship, squadron and regiment aboard
@@ -427,7 +446,7 @@ pub(crate) fn disband_if_empty(world: &mut GameWorld, fleet: crate::ids::FleetKe
         return;
     };
     if !(value.capital_ships.is_empty()
-        && value.fighters.is_empty()
+        && value.fighters.iter().all(|entry| entry.count == 0)
         && value.characters.is_empty()
         && value.special_forces.is_empty())
     {
@@ -856,6 +875,118 @@ mod tests {
             ),
             Err(ScrapRefusal::Unresolved)
         );
+    }
+
+    // Scrap destroys the ship with reason 0x14 (FUN_00534c00 -> slot +0xac,
+    // FUN_004f71d0), which hands it to the ship's Completed children
+    // (FUN_004fb520, FUN_004f8710): its docked squadrons are scrapped too
+    // and each refunds half its refined cost (FUN_00530270). A fleet left
+    // with nothing disbands (FUN_004fe630), even when its last ship's
+    // squadron entry had run to zero.
+    #[test]
+    fn a_scrapped_ship_takes_its_docked_squadrons_and_its_emptied_fleet_disbands() {
+        let mut f = fixture();
+        let class = f
+            .world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                is_alliance: true,
+                refined_material_cost: 20,
+                ..Default::default()
+            });
+        let wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            refined_material_cost: 6,
+            ..Default::default()
+        });
+        let mut ships = crate::world::ShipInstance::make(class, 10, true, 1);
+        ships[0].id = 58;
+        let entry = |count| crate::world::FighterEntry {
+            class: wing,
+            count,
+            carrier: Some(58),
+            damage: None,
+        };
+        let mut pair = crate::world::ShipInstance::make(class, 10, true, 2);
+        pair[0].id = 58;
+        pair[1].id = 59;
+        let docked = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: pair,
+            fighters: vec![
+                entry(2),
+                crate::world::FighterEntry {
+                    carrier: Some(59),
+                    ..entry(1)
+                },
+            ],
+            is_alliance: true,
+            ..Default::default()
+        });
+        f.world.systems[f.system].fleets.push(docked);
+        let mut production = ProductionState::new();
+        let mut scrap_first = |f: &mut Fixture| {
+            scrap(
+                &mut f.world,
+                &mut production,
+                &mut TroopTransportState::new(),
+                Faction::Alliance,
+                ScrapTarget::Ship { fleet: docked, index: 0 },
+            )
+            .unwrap()
+        };
+        // 20 / 2 for the ship, 6 / 2 for each of its two squadrons; the
+        // other ship keeps its own.
+        assert_eq!(scrap_first(&mut f).refund, 16);
+        assert_eq!(f.world.fleets[docked].capital_ships.len(), 1);
+        assert_eq!(f.world.fleets[docked].fighters.len(), 1);
+        assert_eq!(scrap_first(&mut f).refund, 13);
+        assert!(!f.world.fleets.contains_key(docked));
+        assert!(!f.world.systems[f.system].fleets.contains(&docked));
+
+        // A squadron entry run to zero rides on the ship too (seed 2's
+        // 5,000-day campaign, day 1133: the fleet stayed, empty).
+        let spent = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: ships,
+            fighters: vec![entry(0)],
+            is_alliance: true,
+            ..Default::default()
+        });
+        f.world.systems[f.system].fleets.push(spent);
+        scrap(
+            &mut f.world,
+            &mut production,
+            &mut TroopTransportState::new(),
+            Faction::Alliance,
+            ScrapTarget::Ship { fleet: spent, index: 0 },
+        )
+        .unwrap();
+        assert!(!f.world.fleets.contains_key(spent));
+        assert!(!f.world.systems[f.system].fleets.contains(&spent));
+
+        // An entry on no ship that has run to zero holds no squadron
+        // either: the fleet still disbands.
+        let unseated = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: crate::world::ShipInstance::make(class, 10, true, 1),
+            fighters: vec![crate::world::FighterEntry {
+                carrier: None,
+                ..entry(0)
+            }],
+            is_alliance: true,
+            ..Default::default()
+        });
+        f.world.systems[f.system].fleets.push(unseated);
+        scrap(
+            &mut f.world,
+            &mut production,
+            &mut TroopTransportState::new(),
+            Faction::Alliance,
+            ScrapTarget::Ship { fleet: unseated, index: 0 },
+        )
+        .unwrap();
+        assert!(!f.world.fleets.contains_key(unseated));
     }
 
     // GameObj_vt11c (FUN_004fb520) -> FUN_004f8710 -> FUN_004f7ed0: the

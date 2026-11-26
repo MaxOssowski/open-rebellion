@@ -175,6 +175,24 @@ fn a_new_order_at_the_yard_removes_the_replaced_ship_and_its_emptied_spare() {
 }
 
 #[test]
+fn a_listed_fleet_whose_ships_left_disbands_when_its_last_product_goes() {
+    // FUN_004fe630 walks the fleet's ships in mode 3 (unfinished ones
+    // included) and destroys a Created fleet that has none (reason 0x14).
+    // A fleet listed in its system (its finished ships came and went) that
+    // holds only the replaced Carrack goes with it, as the staged spare does
+    // (A0 2026-11-15 "u-3"). Seed 4's 5,000-day campaign, day 644: it stayed.
+    let mut s = setup();
+    s.order(BuildableKind::CapitalShip(s.carrack), 1);
+    let fleet = s.only_fleet();
+    s.world.systems[s.yard].fleets.push(fleet);
+    assert!(!is_staged(&s.world, fleet));
+    s.order(BuildableKind::Fighter(s.tie), 1);
+    assert!(!s.world.fleets.contains_key(fleet));
+    assert!(!s.world.systems[s.yard].fleets.contains(&fleet));
+    assert!(s.world.ship_spare(s.yard, false).is_none());
+}
+
+#[test]
 fn stopping_the_yard_removes_its_products() {
     // Stop (manual p. 84) drops every unit the area was building.
     let mut s = setup();
@@ -585,8 +603,11 @@ fn a_spare_elsewhere_is_not_reused() {
 
 #[test]
 fn a_staged_spare_holding_anything_else_stays_when_its_products_go() {
-    // Only a spare left with nothing goes (A0 2026-11-15 "u-3").
-    for strip in 0..6 {
+    // Only a spare left with nothing goes (A0 2026-11-15 "u-3"). A listed
+    // fleet left with no ship goes too (FUN_004fe630 destroys a Created
+    // fleet whose mode-3 ship walk is empty), so it is no longer a case
+    // here: a_listed_fleet_whose_ships_left_disbands_when_its_last_product_goes.
+    for strip in 0..5 {
         let mut s = setup();
         s.order(BuildableKind::CapitalShip(s.carrack), 1);
         let spare = s.only_fleet();
@@ -608,10 +629,9 @@ fn a_staged_spare_holding_anything_else_stays_when_its_products_go() {
                 .special_forces
                 .push(crate::ids::SpecialForceKey::default()),
             3 => s.world.fleets[spare].has_death_star = true,
-            4 => s.world.fleets[spare]
+            _ => s.world.fleets[spare]
                 .characters
                 .push(crate::ids::CharacterKey::default()),
-            _ => s.world.systems[s.yard].fleets.push(spare),
         }
         s.manufacturing.stop(s.yard, ProductionArea::Shipyard);
         reconcile(&mut s.world, &s.manufacturing);
