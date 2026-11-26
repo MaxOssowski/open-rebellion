@@ -121,4 +121,48 @@ ship count leaves out.
 
 Points 2 and 3 (fleet count and transit) stay open: no leak was found.
 
+## Third follow-up: 10,000 days, and where the fleets come from
+
+The same 25 seeds on `edaeb9ba`, 10,000 days each
+(`long-campaigns-10000-days.json`):
+
+- **The Alliance wins too.** Seed 4 ends on day 7713 with Coruscant the
+  Alliance's and Vader and the Emperor captive (`0x11003100`). Seven
+  more games end in Empire wins (days 2184 to 7651); 17 reach day
+  10,000. In the 5,000-day runs the Alliance had come close: in seed 13
+  it held Coruscant from day 2283 on, and had Vader (days 2384 to 2700)
+  and later the Emperor (4243 to 4915), never both at once.
+- **The fleets keep growing; transit falls.** Over the seeds, the median
+  fleet count is 12 on day 250, 41 on day 5000 and 79 on day 10,000
+  (the most, 201, seed 20); the median share in transit falls from 33%
+  to 7%.
+
+A temporary dump (not committed) of seed 20 on day 10,000: 162 of the
+Alliance's 176 fleets are one fully repaired ship with nothing aboard,
+not moving; 133 of them wait at Kothlis, mostly Bulk Transports (86) and
+Bulk Cruisers (32). The chain, as far as it is traced:
+
+1. The side's troop room and the regiments it wants (`Tallies`,
+   `FUN_0041ba80`, `FUN_0041b7e0`) both rise for the whole game, from 4 /
+   15 to 1062 / 1048 for the Alliance. The regiments wanted are the most
+   a system needs to be taken, and garrisons grow with the maintenance
+   capacity (900 to 82,650): on day 10,000 Corellia holds 1,107 Imperial
+   regiments and Sullust 914 Alliance ones, 5,734 in the galaxy.
+2. While troop room is short, module `0xb` builds troop carriers
+   (`FUN_004ca5e0`, `choose_role`).
+3. The command planners take free ships into fleets of their own (Create
+   Fleet `0x270`, `FUN_004782a0`, `FUN_00477a40`): 2,026 such orders in
+   seed 20 against 1,409 joins. A ship a plan has done with stays free
+   where it is.
+4. The original's idle-fleet step (`FUN_004c94c0`) sends a fleet away
+   from a system that is no base (`+0x30` `0x40000`) to the nearest
+   base, else the headquarters, else other own systems (Move `0x201`).
+   The port leaves this move out (`ai_module_b.rs`, `go_home`): of the
+   plans that set the bases only kind 3's is ported. That move would
+   gather the idle fleets, not join them.
+
+Whether the original's garrisons grow the same way, and so its fleets,
+is not settled: no long run of the original exists to compare. Points 2
+and 3 stay open with this chain as the lead.
+
 Hashes of the committed files are in `SHA256SUMS`.
