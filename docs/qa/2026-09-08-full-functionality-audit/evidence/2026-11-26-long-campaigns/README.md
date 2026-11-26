@@ -201,4 +201,54 @@ late: space battles over the 25 runs fall from 1,187 in the first 1,000
 days to 152 in the last, with 17 games still running. Whether the
 original's late game is as quiet is not known.
 
+## Fifth follow-up: the quiet late game and the AI's maintenance check
+
+Three AI fixes, each traced:
+
+- `e3e68aff`: the AI's Build orders also pass the order's maintenance
+  check (`FUN_005385f0` -> `FUN_0052e970`). The 25 runs barely move: the
+  modules' budgets already keep the orders inside the capacity.
+- `46c80ced`: the AI's system record (`FUN_00433e40`) walks regiments and
+  squadrons in mode 3, Existing, so an unfinished unit ordered there and
+  one on its way there count. The port read only the planet's.
+- `b37a3d8d`: module `0xa`'s Destination names the fleet its squadrons are
+  for (`FUN_004ce350`, `FUN_00537180`). The port named the fleet's system,
+  so the squadrons landed on that planet.
+
+What the late game is (`late-game-10000-days.json`, 25 seeds, 10,000
+days):
+
+- **The galaxy is divided by about day 3,000.** The median count of
+  neutral systems stays at 48 to 50 from day 3,000 on. A temporary dump (not
+  committed) of seeds 1 and 2 on day 10,000 found every populated system
+  held; the 47 neutral ones were unpopulated and unexplored, which
+  Diplomacy cannot take. Diplomacy missions (`e3e68aff`) fall from 676 in
+  the first 1,000 days to 3 in the last (17 games running).
+- **The forces stop growing.** In four sample seeds the ships, regiments
+  and maintenance capacity of each side on day 10,000 are close to day
+  2,500's: capacity is fixed by the systems' energy, and the modules spend
+  up to their shares of it (80% of each module's percent).
+- **A squadron churn.** Module `0xb`, with no role wanted
+  (`FUN_004ca5e0` leaves the flags 0), lists every shipyard class and
+  draws among equal keys, so it often builds a cheap squadron; on its
+  planet that squadron pushes the squadrons' upkeep past module 7's 80%
+  line, and module 7 (`FUN_004d46e0` returns 7, `FUN_004d4800`) scraps
+  one. About 21,000 planet squadrons are scrapped over the 25 runs. Both
+  steps follow the traced functions; whether the original churns the
+  same way is not known.
+
+| | `4a7d9734` | `e3e68aff` | `46c80ced` | `b37a3d8d` |
+|---|---|---|---|---|
+| Games ended | 8 | 8 | 7 | 11 |
+| Space battles | 4,996 | 4,949 | 5,204 | 6,582 |
+| Space battles, last 1,000 days | 152 | 152 | 346 | 327 |
+| Ground battles | 1,069 | 1,069 | 933 | 1,097 |
+| Planet squadrons scrapped | 23,193 | 22,933 | 21,246 | 21,294 |
+
+With the last two fixes the war stays busier through the middle game
+(space battles 837 in days 4,001 to 5,000, against 359) and more games
+end (11: 6 Alliance, 5 Empire). The late game still slows: the front
+between the two sides barely moves (ground battles 3 in the last 1,000
+days). No long run of the original exists to compare.
+
 Hashes of the committed files are in `SHA256SUMS`.

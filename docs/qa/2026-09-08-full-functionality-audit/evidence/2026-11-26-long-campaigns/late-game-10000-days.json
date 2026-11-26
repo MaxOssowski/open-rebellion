@@ -1,0 +1,512 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 10000 --dual-ai --summary, seeds 1-25",
+ "bins": "days 1-1000, 1001-2000, ... 9001-10000; all 25 seeds",
+ "4a7d9734_room": {
+  "games_ended": [
+   {
+    "seed": 2,
+    "day": 3014,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 3,
+    "day": 3244,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 6,
+    "day": 4367,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 7,
+    "day": 5816,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 13,
+    "day": 5405,
+    "winner": "Empire"
+   },
+   {
+    "seed": 19,
+    "day": 5622,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 20,
+    "day": 3566,
+    "winner": "Empire"
+   },
+   {
+    "seed": 21,
+    "day": 2701,
+    "winner": "Alliance"
+   }
+  ],
+  "per_1000_days": {
+   "planet_squadrons_scrapped": [
+    1446,
+    4281,
+    3891,
+    2876,
+    2606,
+    2064,
+    1530,
+    1659,
+    1481,
+    1359
+   ],
+   "squadrons_built": [
+    8039,
+    6424,
+    5856,
+    3910,
+    3175,
+    2474,
+    2103,
+    2116,
+    1777,
+    1460
+   ],
+   "combat_ground": [
+    238,
+    273,
+    262,
+    98,
+    67,
+    45,
+    30,
+    42,
+    5,
+    9
+   ],
+   "control_changed": [
+    907,
+    566,
+    427,
+    115,
+    86,
+    83,
+    39,
+    109,
+    11,
+    7
+   ],
+   "combat_space": [
+    1188,
+    729,
+    738,
+    492,
+    359,
+    249,
+    253,
+    435,
+    401,
+    152
+   ]
+  },
+  "neutral_systems_day_10000": [
+   39,
+   42,
+   44,
+   45,
+   47,
+   47,
+   47,
+   48,
+   48,
+   48,
+   48,
+   48,
+   48,
+   48,
+   51,
+   52,
+   53
+  ]
+ },
+ "e3e68aff_maintenance": {
+  "games_ended": [
+   {
+    "seed": 2,
+    "day": 3014,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 3,
+    "day": 3244,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 6,
+    "day": 4367,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 7,
+    "day": 5816,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 13,
+    "day": 5405,
+    "winner": "Empire"
+   },
+   {
+    "seed": 19,
+    "day": 5622,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 20,
+    "day": 3566,
+    "winner": "Empire"
+   },
+   {
+    "seed": 21,
+    "day": 2701,
+    "winner": "Alliance"
+   }
+  ],
+  "per_1000_days": {
+   "planet_squadrons_scrapped": [
+    1446,
+    4273,
+    3910,
+    2887,
+    2578,
+    2008,
+    1526,
+    1659,
+    1440,
+    1206
+   ],
+   "squadrons_built": [
+    8039,
+    6421,
+    5801,
+    3865,
+    3147,
+    2434,
+    2103,
+    2117,
+    1732,
+    1308
+   ],
+   "combat_ground": [
+    238,
+    273,
+    262,
+    98,
+    67,
+    45,
+    30,
+    42,
+    5,
+    9
+   ],
+   "control_changed": [
+    907,
+    566,
+    423,
+    115,
+    86,
+    83,
+    39,
+    109,
+    11,
+    7
+   ],
+   "combat_space": [
+    1188,
+    737,
+    705,
+    449,
+    369,
+    258,
+    253,
+    435,
+    403,
+    152
+   ]
+  },
+  "neutral_systems_day_10000": [
+   42,
+   43,
+   44,
+   45,
+   47,
+   47,
+   47,
+   48,
+   48,
+   48,
+   48,
+   48,
+   48,
+   48,
+   51,
+   52,
+   53
+  ]
+ },
+ "46c80ced_units_on_their_way": {
+  "games_ended": [
+   {
+    "seed": 3,
+    "day": 2616,
+    "winner": "Empire"
+   },
+   {
+    "seed": 12,
+    "day": 3673,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 14,
+    "day": 5596,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 19,
+    "day": 5604,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 20,
+    "day": 3408,
+    "winner": "Empire"
+   },
+   {
+    "seed": 21,
+    "day": 4484,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 25,
+    "day": 3881,
+    "winner": "Alliance"
+   }
+  ],
+  "per_1000_days": {
+   "planet_squadrons_scrapped": [
+    1080,
+    3407,
+    3390,
+    3251,
+    2985,
+    2438,
+    1363,
+    1285,
+    1174,
+    873
+   ],
+   "squadrons_built": [
+    7594,
+    5954,
+    5347,
+    4451,
+    3743,
+    2964,
+    1567,
+    1424,
+    1343,
+    1175
+   ],
+   "combat_ground": [
+    309,
+    263,
+    182,
+    96,
+    51,
+    12,
+    5,
+    13,
+    2,
+    0
+   ],
+   "control_changed": [
+    940,
+    569,
+    386,
+    177,
+    108,
+    21,
+    6,
+    22,
+    10,
+    2
+   ],
+   "combat_space": [
+    875,
+    791,
+    632,
+    625,
+    451,
+    434,
+    410,
+    343,
+    297,
+    346
+   ]
+  },
+  "neutral_systems_day_10000": [
+   39,
+   42,
+   44,
+   44,
+   45,
+   47,
+   47,
+   47,
+   48,
+   48,
+   48,
+   48,
+   48,
+   48,
+   52,
+   52,
+   53,
+   54
+  ]
+ },
+ "b37a3d8d_fleet_destination": {
+  "games_ended": [
+   {
+    "seed": 1,
+    "day": 5556,
+    "winner": "Empire"
+   },
+   {
+    "seed": 2,
+    "day": 3500,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 7,
+    "day": 8159,
+    "winner": "Empire"
+   },
+   {
+    "seed": 10,
+    "day": 3372,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 14,
+    "day": 7681,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 17,
+    "day": 3339,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 18,
+    "day": 8248,
+    "winner": "Empire"
+   },
+   {
+    "seed": 21,
+    "day": 3090,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 22,
+    "day": 4156,
+    "winner": "Empire"
+   },
+   {
+    "seed": 24,
+    "day": 5343,
+    "winner": "Empire"
+   },
+   {
+    "seed": 25,
+    "day": 5390,
+    "winner": "Alliance"
+   }
+  ],
+  "per_1000_days": {
+   "planet_squadrons_scrapped": [
+    1280,
+    3232,
+    3679,
+    2827,
+    2695,
+    1846,
+    2032,
+    1658,
+    991,
+    1054
+   ],
+   "squadrons_built": [
+    7845,
+    5917,
+    5689,
+    4204,
+    3816,
+    2497,
+    2329,
+    2065,
+    1173,
+    1330
+   ],
+   "combat_ground": [
+    327,
+    247,
+    218,
+    116,
+    66,
+    37,
+    39,
+    35,
+    9,
+    3
+   ],
+   "control_changed": [
+    967,
+    569,
+    367,
+    145,
+    105,
+    58,
+    77,
+    46,
+    14,
+    0
+   ],
+   "combat_space": [
+    949,
+    782,
+    876,
+    879,
+    837,
+    560,
+    519,
+    455,
+    398,
+    327
+   ]
+  },
+  "neutral_systems_day_10000": [
+   42,
+   45,
+   47,
+   48,
+   48,
+   48,
+   48,
+   50,
+   51,
+   51,
+   52,
+   52,
+   53,
+   58
+  ]
+ }
+}
