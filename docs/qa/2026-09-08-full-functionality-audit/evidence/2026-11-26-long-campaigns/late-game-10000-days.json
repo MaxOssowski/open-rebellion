@@ -818,5 +818,175 @@
    52,
    56
   ]
+ },
+ "c0eaf7db_side_change_characters": {
+  "games_ended": [
+   {
+    "seed": 1,
+    "day": 5725,
+    "winner": "Empire"
+   },
+   {
+    "seed": 3,
+    "day": 7311,
+    "winner": "Empire"
+   },
+   {
+    "seed": 5,
+    "day": 4759,
+    "winner": "Empire"
+   },
+   {
+    "seed": 6,
+    "day": 5124,
+    "winner": "Empire"
+   },
+   {
+    "seed": 7,
+    "day": 5850,
+    "winner": "Empire"
+   },
+   {
+    "seed": 8,
+    "day": 6392,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 9,
+    "day": 7060,
+    "winner": "Empire"
+   },
+   {
+    "seed": 10,
+    "day": 5687,
+    "winner": "Empire"
+   },
+   {
+    "seed": 11,
+    "day": 3737,
+    "winner": "Empire"
+   },
+   {
+    "seed": 12,
+    "day": 3708,
+    "winner": "Empire"
+   },
+   {
+    "seed": 13,
+    "day": 7407,
+    "winner": "Empire"
+   },
+   {
+    "seed": 16,
+    "day": 6918,
+    "winner": "Empire"
+   },
+   {
+    "seed": 17,
+    "day": 2247,
+    "winner": "Empire"
+   },
+   {
+    "seed": 19,
+    "day": 6479,
+    "winner": "Empire"
+   },
+   {
+    "seed": 21,
+    "day": 5441,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 22,
+    "day": 8693,
+    "winner": "Empire"
+   },
+   {
+    "seed": 24,
+    "day": 6127,
+    "winner": "Empire"
+   },
+   {
+    "seed": 25,
+    "day": 5160,
+    "winner": "Empire"
+   }
+  ],
+  "per_1000_days": {
+   "planet_squadrons_scrapped": [
+    619,
+    1903,
+    1712,
+    1159,
+    949,
+    779,
+    341,
+    138,
+    191,
+    112
+   ],
+   "squadrons_built": [
+    7210,
+    5811,
+    4733,
+    4013,
+    3347,
+    2035,
+    1255,
+    868,
+    690,
+    395
+   ],
+   "combat_ground": [
+    300,
+    320,
+    175,
+    136,
+    124,
+    71,
+    36,
+    26,
+    15,
+    20
+   ],
+   "control_changed": [
+    885,
+    601,
+    327,
+    258,
+    219,
+    182,
+    138,
+    123,
+    58,
+    68
+   ],
+   "combat_space": [
+    1024,
+    1464,
+    1451,
+    1245,
+    1048,
+    717,
+    527,
+    580,
+    573,
+    495
+   ]
+  },
+  "neutral_systems_day_10000": [
+   48,
+   48,
+   48,
+   48,
+   50,
+   52,
+   54
+  ],
+  "characters": {
+   "occupation_captures": 0,
+   "occupation_captures_before": 172,
+   "prisoners_released": 132
+  }
  }
 }

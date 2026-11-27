@@ -485,8 +485,11 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   the uncited 200-tick grace period; and route contested, unopposed, manual, and
   tactical bombardment through the persisted HQ-survival flag
   ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md)).
-- [ ] Replace deterministic mass capture with validated capture/evasion
-  behavior.
+- [x] Replace deterministic mass capture with validated capture/evasion
+  behavior. Done 2026-11-27 (`c0eaf7db`): the original captures nobody on
+  a side change; `Character_vtb0` (`FUN_004ef260`) frees the prisoners
+  there and sends the other side's characters, not on a mission, to
+  safety. Captures come from missions only.
 - [ ] Establish faction liveness and the full cited campaign loop, including
   production, diplomacy, recruitment, intelligence, research, blockade
   follow-up, uprisings, bombardment, HQ relocation, and principal missions.

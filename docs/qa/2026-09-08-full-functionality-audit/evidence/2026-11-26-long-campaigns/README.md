@@ -313,4 +313,29 @@ the original this is still not read as a balance finding.
 The entry `gohome_base_move` in `late-game-10000-days.json` holds the
 counts.
 
+## Eighth follow-up: no capture on a side change (commit `c0eaf7db`)
+
+The port took every enemy character on an occupied planet prisoner, with
+no roll. The original's side change calls `Character_vtb0`
+(`FUN_004ef260`) on each character there that is on no mission: a
+prisoner is let go (`FUN_004ef5b0`), and a character of the other side
+autoroutes to safety (`FUN_00543040`). Nobody is captured.
+
+| | `720e36d8` | `c0eaf7db` |
+|---|---|---|
+| Games ended | 17 (3 A / 14 E) | 18 (2 A / 16 E) |
+| Median end day | 4,230 | 5,788 |
+| Space battles | 9,305 | 9,124 |
+| Space battles, last 1,000 days | 224 | 495 |
+| Ground battles | 1,289 | 1,223 |
+| Systems changing hands | 2,765 | 2,859 |
+| Occupation captures | 172 | 0 |
+| Prisoners let go by a side change | 0 | 132 |
+
+The games last longer, likely because a side no longer loses its leaders to an
+occupation, so victories wait for the Standard rules' other paths. The
+Empire still wins most games; no long run of the original exists to
+compare. The entry `c0eaf7db_side_change_characters` in
+`late-game-10000-days.json` holds the counts.
+
 Hashes of the committed files are in `SHA256SUMS`.
