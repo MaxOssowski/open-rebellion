@@ -4953,6 +4953,78 @@ fn on_a_mission(state: &MissionState, world: &GameWorld, key: CharacterKey) -> b
         || state.engaged(MissionMember::Character(key))
 }
 
+/// `FUN_004f6f40` -> `FUN_004fae40` -> `Character_vtb0` (`FUN_004ef260`) for
+/// each character standing at `system` after its holder became `holder`.
+///
+/// A character on a mission (`+0x78` OnMission) or destroyed (`+0x50` bit
+/// 8) is left alone, and so is one inside a fleet or an abode, whose
+/// container is not the system. For the others, when the system's side is
+/// not the character's (`+0x24` bits 6..7, a prisoner's being its captor's,
+/// `FUN_004eec60`):
+/// - a prisoner is let go (slot `+0x218`, `FUN_004ef5b0`: status `+0x98`
+///   2, `FUN_004ee3e0`), which returns it to its own side;
+/// - if the side still differs, it autoroutes
+///   (`GameObj_SetAutorouting(1)`) to [`escape_destination`].
+///
+/// Nobody is taken prisoner: a side change captures no character.
+pub fn side_change_characters(
+    state: &mut MissionState,
+    world: &GameWorld,
+    system: SystemKey,
+    holder: crate::dat::Faction,
+    now: u64,
+) -> Vec<MissionEffect> {
+    use crate::dat::Faction;
+
+    let mut effects = Vec::new();
+    let here: Vec<CharacterKey> = world
+        .characters
+        .iter()
+        .filter(|(key, c)| {
+            crate::uprising::usable_at(c, system)
+                && c.current_abode.is_none()
+                && !state.is_autorouting(*key)
+        })
+        .map(|(key, _)| key)
+        .collect();
+    for key in here {
+        let c = &world.characters[key];
+        let own = if c.is_alliance {
+            Faction::Alliance
+        } else if c.is_empire {
+            Faction::Empire
+        } else {
+            Faction::Neutral
+        };
+        let held = c.captured_by.filter(|_| c.is_captive);
+        if held.unwrap_or(own) == holder {
+            continue;
+        }
+        if held.is_some() {
+            let returned_to = if c.is_alliance {
+                MissionFaction::Alliance
+            } else {
+                MissionFaction::Empire
+            };
+            effects.push(MissionEffect::CharacterRescued {
+                character: key,
+                returned_to,
+                at_system: system,
+            });
+            // Captured cleared re-enters FUN_004f1a80, which cancels the
+            // escape timer 0x38a (captive-escape.md).
+            state.escape_timers.retain(|timer| timer.character != key);
+        }
+        if own == holder {
+            continue;
+        }
+        if let Some(to) = escape_destination(world, key, system) {
+            travel_to_safety(state, world, key, system, to, now, &mut effects);
+        }
+    }
+    effects
+}
+
 /// `FUN_004ef0c0` -> `FUN_004ef570`: frees `key`, which restores its home
 /// side and sets Autorouting (`FUN_004f18e0`): it leaves a location another
 /// side holds for [`escape_destination`] and travels there (`FUN_0054c7d0`).
@@ -4975,6 +5047,20 @@ fn escape(
     let Some(to) = escape_destination(world, key, from) else {
         return;
     };
+    travel_to_safety(state, world, key, from, to, now, effects);
+}
+
+/// The autorouting trip of `key` from `from` to `to` (`FUN_0054c7d0`): at
+/// once when it takes no day, else off the map until it arrives.
+fn travel_to_safety(
+    state: &mut MissionState,
+    world: &GameWorld,
+    key: CharacterKey,
+    from: SystemKey,
+    to: SystemKey,
+    now: u64,
+    effects: &mut Vec<MissionEffect>,
+) {
     let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
     // port: a character travels at the GNPRTB 1 default speed.
     let days = crate::movement::transit_ticks_between(
@@ -5841,6 +5927,96 @@ mod tests {
             Some(MissionEffect::CharacterEscaped { character, escaped_to_alliance: true })
                 if *character == captive
         ));
+    }
+
+    /// Where `character` goes in `effects`: at once, or on the road.
+    fn went_to(
+        state: &MissionState,
+        effects: &[MissionEffect],
+        character: CharacterKey,
+    ) -> Option<SystemKey> {
+        let moved = effects.iter().find_map(|effect| match effect {
+            MissionEffect::MemberMoved {
+                member: MissionMember::Character(c),
+                to,
+            } if *c == character => Some(*to),
+            _ => None,
+        })?;
+        moved.or_else(|| {
+            state
+                .escapees
+                .iter()
+                .find(|transit| transit.character == character)
+                .map(|transit| transit.to)
+        })
+    }
+
+    #[test]
+    fn a_side_change_frees_its_prisoners_and_sends_the_other_side_away() {
+        // FUN_004f6f40 -> FUN_004fae40 -> Character_vtb0 (FUN_004ef260):
+        // for a character at the system, not on a mission, whose side
+        // (+0x24, a prisoner's being its captor's) is not the system's, a
+        // prisoner is let go (slot +0x218, FUN_004ef5b0: status 2), and a
+        // character still of another side autoroutes (FUN_00543040). Nobody
+        // is taken prisoner.
+        let mut world = escape_world();
+        let taken = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        let empire = held_system(&mut world, 400, crate::dat::Faction::Empire);
+        held_system(&mut world, 900, crate::dat::Faction::Alliance);
+        let captive = captive_at(&mut world, taken, 0, 0);
+        let officer = agent_at(&mut world, taken, false);
+        let on_mission = agent_at(&mut world, taken, false);
+        world.characters[on_mission].on_mission = true;
+        let rebel = agent_at(&mut world, taken, true);
+        world.systems[taken].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let mut state = MissionState::new();
+        MissionSystem::advance_escapes(&mut state, &world, 0, &[0.0]);
+        assert!(timer_of(&state, captive).is_some());
+
+        let effects =
+            side_change_characters(&mut state, &world, taken, crate::dat::Faction::Alliance, 5);
+
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            MissionEffect::CharacterRescued {
+                character,
+                returned_to: MissionFaction::Alliance,
+                at_system,
+            } if *character == captive && *at_system == taken
+        )));
+        assert_eq!(timer_of(&state, captive), None);
+        // Freed at a system of its own side, the prisoner stays.
+        assert_eq!(went_to(&state, &effects, captive), None);
+        assert_eq!(went_to(&state, &effects, officer), Some(empire));
+        assert_eq!(went_to(&state, &effects, on_mission), None);
+        assert_eq!(went_to(&state, &effects, rebel), None);
+        assert!(!effects
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::CharacterCaptured { .. })));
+    }
+
+    #[test]
+    fn a_prisoner_freed_at_a_third_side_s_system_autoroutes_home() {
+        // FUN_004ef260: slot +0x218 frees the prisoner, whose side is then
+        // its own; the system is still another side's, so it autoroutes
+        // to its side's nearest system (FUN_00554e80).
+        let mut world = escape_world();
+        let taken = held_system(&mut world, 0, crate::dat::Faction::Empire);
+        held_system(&mut world, 400, crate::dat::Faction::Empire);
+        let refuge = held_system(&mut world, 900, crate::dat::Faction::Alliance);
+        let captive = captive_at(&mut world, taken, 0, 0);
+        world.systems[taken].control = crate::world::ControlKind::Uncontrolled;
+        let mut state = MissionState::new();
+
+        let effects =
+            side_change_characters(&mut state, &world, taken, crate::dat::Faction::Neutral, 5);
+
+        assert!(matches!(
+            effects.first(),
+            Some(MissionEffect::CharacterRescued { character, .. }) if *character == captive
+        ));
+        assert_eq!(went_to(&state, &effects, captive), Some(refuge));
     }
 
     #[test]

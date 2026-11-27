@@ -23,7 +23,7 @@ use rebellion_core::game_events::{
     GameEventRecord, EVT_AI_ACTION, EVT_BLOCKADE_ENDED, EVT_BLOCKADE_STARTED,
     EVT_BLOCKADE_SUPPORT, EVT_BLOCKADE_TROOP_DESTROYED, EVT_BOMBARDMENT, EVT_BUILD_COMPLETE,
     EVT_CAMPAIGN_SNAPSHOT,
-    EVT_CAPTURE, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
+    EVT_RELEASED, EVT_CHARACTER_HEALTH, EVT_CHARACTER_KILLED, EVT_COLLECTION_RATE,
     EVT_COMBAT_GROUND, EVT_COMBAT_SPACE, EVT_CONTROL_CHANGED, EVT_DS_FIRED,
     EVT_DS_STATUS, EVT_ECONOMY_TICK, EVT_ESCAPE, EVT_EVENT_FIRED, EVT_FLEET_ARRIVED,
     EVT_CONFRONTATION, EVT_FOG_REVEALED, EVT_FORCE_DISCOVERED, EVT_FORCE_ENCOUNTER,
@@ -1341,15 +1341,15 @@ impl PerceptionIntegrator {
         );
     }
 
-    /// Apply territorial occupation after a decisive ground victory.
-    /// Opposing characters physically present on the captured world become
-    /// prisoners, allowing the standard victory rules to observe HQ captures.
+    /// Apply territorial occupation after a decisive ground victory. The
+    /// characters there are handled with every other side change at the
+    /// day's step 13g ([`rebellion_core::missions::side_change_characters`]):
+    /// the original takes nobody prisoner (`FUN_004ef260`).
     pub fn apply_ground_occupation(
         &mut self,
         world: &mut GameWorld,
         system: SystemKey,
         winner: rebellion_core::dat::Faction,
-        tick: u64,
     ) {
         let previous = world.systems.get(system).map(|value| value.control);
         if let Some(value) = world.systems.get_mut(system) {
@@ -1369,39 +1369,6 @@ impl PerceptionIntegrator {
                     "system": sys_name(world, system),
                     "from": format!("{:?}", previous.unwrap_or_default()),
                     "to": format!("{:?}", ControlKind::Controlled(winner)),
-                    "cause": "ground_occupation",
-                }),
-            );
-        }
-
-        let captives: Vec<_> = world
-            .characters
-            .iter()
-            .filter(|(_, character)| {
-                character.current_system == Some(system)
-                    && !character.is_killed
-                    && match winner {
-                        rebellion_core::dat::Faction::Alliance => character.is_empire,
-                        rebellion_core::dat::Faction::Empire => character.is_alliance,
-                        rebellion_core::dat::Faction::Neutral => false,
-                    }
-            })
-            .map(|(key, character)| (key, character.name.clone()))
-            .collect();
-        for (character, name) in captives {
-            if let Some(value) = world.characters.get_mut(character) {
-                value.is_captive = true;
-                value.captured_by = Some(winner);
-                value.capture_tick = Some(tick);
-                value.current_fleet = None;
-            }
-            self.emit(
-                SYS_COMBAT,
-                EVT_CAPTURE,
-                serde_json::json!({
-                    "character": name,
-                    "system": sys_name(world, system),
-                    "captured_by": format!("{:?}", winner),
                     "cause": "ground_occupation",
                 }),
             );
@@ -1624,6 +1591,29 @@ impl PerceptionIntegrator {
             ) {
                 // A Pickup's prisoner lands aboard Vader's ship.
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
+            } else if let MissionEffect::CharacterRescued {
+                character,
+                returned_to,
+                at_system,
+            } = effect
+            {
+                // A side change let a prisoner go (FUN_004ef5b0, status 2):
+                // it is its own side's again.
+                if let Some(c) = world.characters.get_mut(*character) {
+                    c.is_alliance = *returned_to == MissionFaction::Alliance;
+                    c.is_empire = !c.is_alliance;
+                    c.is_captive = false;
+                    c.captured_by = None;
+                    c.capture_tick = None;
+                }
+                self.emit(
+                    SYS_MISSIONS,
+                    EVT_RELEASED,
+                    serde_json::json!({
+                        "character": char_name(world, *character),
+                        "system": sys_name(world, *at_system),
+                    }),
+                );
             } else if let MissionEffect::CharacterEscaped {
                 character,
                 escaped_to_alliance,
@@ -3769,8 +3759,27 @@ mod tests {
         let mut world = GameWorld::default();
         let system = empire_facilities(&mut world, "Kuat");
         let mut integrator = PerceptionIntegrator::new(1, 0);
-        integrator.apply_ground_occupation(&mut world, system, Faction::Alliance, 1);
+        integrator.apply_ground_occupation(&mut world, system, Faction::Alliance);
         assert_alliance_took_over(&world, system);
+    }
+
+    #[test]
+    fn a_ground_occupation_takes_no_character_prisoner() {
+        // Character_vtb0 (FUN_004ef260), the side change's only call on a
+        // character, never captures: an Empire officer on the planet the
+        // Alliance occupies stays free (it autoroutes at step 13g).
+        let mut world = GameWorld::default();
+        let system = empire_facilities(&mut world, "Kuat");
+        let officer = world.characters.insert(rebellion_core::world::Character {
+            is_empire: true,
+            current_system: Some(system),
+            ..rebellion_core::world::Character::default()
+        });
+        let mut integrator = PerceptionIntegrator::new(1, 0);
+        integrator.apply_ground_occupation(&mut world, system, Faction::Alliance);
+        let c = &world.characters[officer];
+        assert!(!c.is_captive && c.captured_by.is_none());
+        assert_eq!(world.side_changes, vec![(system, Faction::Alliance)]);
     }
 
     #[test]

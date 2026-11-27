@@ -679,7 +679,7 @@ pub fn day_head(
             rebellion_core::economy::system_holder(world, system)
         {
             if system.control != ControlKind::Controlled(winner) {
-                integrator.apply_ground_occupation(world, sys_key, winner, current_tick);
+                integrator.apply_ground_occupation(world, sys_key, winner);
                 let step = DayStep::Occupied(sys_key, winner);
                 present(presentation, world, states, &step, StepPhase::After);
             }
@@ -1598,6 +1598,8 @@ pub fn close_simulation_day(
     // FUN_004fae40 -> FightSquad_vtb0 (FUN_00503510): another side's
     // squadrons there, and those on their way, autoroute to the nearest
     // unblockaded system of their side, or are destroyed.
+    // Character_vtb0 (FUN_004ef260): a prisoner there is let go, and a
+    // character of another side, not on a mission, autoroutes to safety.
     for (system, holder) in std::mem::take(&mut world.side_changes) {
         let routed = states.troop_transport.squadrons.autoroute_side_change(
             world,
@@ -1606,6 +1608,14 @@ pub fn close_simulation_day(
             current_tick,
         );
         integrator.record_squadrons_autorouted(world, system, &routed);
+        let effects = rebellion_core::missions::side_change_characters(
+            &mut states.missions,
+            world,
+            system,
+            holder,
+            current_tick,
+        );
+        integrator.apply_escape_effects(world, &effects);
     }
 
     // ── 13f. Each side's views of the other side's objects ──────────────
@@ -2763,6 +2773,57 @@ mod tests {
         assert_eq!((transit.class, transit.count), (tie, 3));
         assert_eq!(transit.to, squadrons::SquadronPlace::Planet(other));
         assert!(world.side_changes.is_empty());
+    }
+
+    #[test]
+    fn a_planet_that_changes_sides_frees_its_prisoners_and_sends_the_old_side_away() {
+        // FUN_004f6f40 -> FUN_004fae40 calls Character_vtb0 (FUN_004ef260)
+        // on each character there: the Alliance prisoner is let go (slot
+        // +0x218, FUN_004ef5b0) and the Empire officer, not on a mission,
+        // autoroutes to the Empire's nearest system (FUN_00543040). Neither
+        // is taken prisoner.
+        let (mut world, mut states, fleet, _) = world_with_loading_fleet();
+        let system = world.fleets[fleet].location;
+        world.systems[system].fleets.clear();
+        world.fleets.remove(fleet);
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let other = world.systems.keys().find(|&key| key != system).unwrap();
+        world.systems[other].control = ControlKind::Controlled(Faction::Empire);
+        let officer = world.characters.insert(rebellion_core::world::Character {
+            name: "Officer".into(),
+            is_empire: true,
+            current_system: Some(system),
+            recruited: true,
+            ..Default::default()
+        });
+        let prisoner = world.characters.insert(rebellion_core::world::Character {
+            name: "Prisoner".into(),
+            is_alliance: true,
+            is_captive: true,
+            captured_by: Some(Faction::Empire),
+            current_system: Some(system),
+            recruited: true,
+            ..Default::default()
+        });
+
+        run_one_tick(&mut world, &mut states);
+
+        assert_eq!(
+            world.systems[system].control,
+            ControlKind::Controlled(Faction::Alliance)
+        );
+        let (o, p) = (&world.characters[officer], &world.characters[prisoner]);
+        assert!(!o.is_captive && o.captured_by.is_none() && o.is_empire);
+        assert!(!p.is_captive && p.captured_by.is_none() && p.is_alliance && !p.is_empire);
+        assert_eq!(p.current_system, Some(system));
+        let went = states
+            .missions
+            .escapees()
+            .iter()
+            .find(|transit| transit.character == officer)
+            .map(|transit| transit.to)
+            .or(o.current_system.filter(|&s| s != system));
+        assert_eq!(went, Some(other));
     }
 
     #[test]

@@ -98,6 +98,8 @@ pub const EVT_VICTORY: &str = "victory_check";
 pub const EVT_ESCAPE: &str = "character_escaped";
 pub const EVT_STORY: &str = "story_event";
 pub const EVT_CAPTURE: &str = "character_captured";
+/// A side change let a prisoner go (`FUN_004ef260` -> `FUN_004ef5b0`).
+pub const EVT_RELEASED: &str = "character_released";
 pub const EVT_FOG_REVEALED: &str = "fog_revealed";
 pub const EVT_CONTROL_CHANGED: &str = "control_changed";
 pub const EVT_CAMPAIGN_SNAPSHOT: &str = "campaign_snapshot";
@@ -224,6 +226,7 @@ mod tests {
             EVT_ESCAPE,
             EVT_STORY,
             EVT_CAPTURE,
+            EVT_RELEASED,
             EVT_FOG_REVEALED,
             EVT_CONTROL_CHANGED,
             EVT_CAMPAIGN_SNAPSHOT,
