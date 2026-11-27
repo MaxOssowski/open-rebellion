@@ -1277,21 +1277,24 @@ pub(crate) fn nearest_sector_system(
     from: SectorKey,
     masks: [Mask; 3],
 ) -> Option<SystemKey> {
-    let home = io.galaxy.sector(from)?.position;
+    nearest_sector_system_in(io.galaxy, &mut *io.random, from, masks)
+}
+
+/// [`nearest_sector_system`] over a galaxy and a draw (`FUN_0041cd80`).
+pub(crate) fn nearest_sector_system_in(
+    galaxy: &crate::ai_records::Galaxy,
+    random: &mut dyn FnMut(i32) -> i32,
+    from: SectorKey,
+    masks: [Mask; 3],
+) -> Option<SystemKey> {
+    let home = galaxy.sector(from)?.position;
     let mut best: Option<(i32, SystemKey)> = None;
-    let sectors: Vec<(SectorKey, (i16, i16))> = io
-        .galaxy
-        .sectors
-        .iter()
-        .filter(|s| s.sector != from)
-        .map(|s| (s.sector, s.position))
-        .collect();
-    for (sector, at) in sectors {
-        let d = crate::ai_records::squared_distance(home, at);
+    for s in galaxy.sectors.iter().filter(|s| s.sector != from) {
+        let d = crate::ai_records::squared_distance(home, s.position);
         if best.is_some_and(|(top, _)| d >= top) {
             continue;
         }
-        if let Some(system) = random_system(io, sector, masks) {
+        if let Some(system) = random_system_in(galaxy, random, s.sector, masks) {
             best = Some((d, system));
         }
     }
@@ -1306,8 +1309,17 @@ pub(crate) fn random_system(
     sector: SectorKey,
     masks: [Mask; 3],
 ) -> Option<SystemKey> {
-    let systems: Vec<SystemKey> = io
-        .galaxy
+    random_system_in(io.galaxy, &mut *io.random, sector, masks)
+}
+
+/// [`random_system`] over a galaxy and a draw (`FUN_0041cd80`).
+pub(crate) fn random_system_in(
+    galaxy: &crate::ai_records::Galaxy,
+    random: &mut dyn FnMut(i32) -> i32,
+    sector: SectorKey,
+    masks: [Mask; 3],
+) -> Option<SystemKey> {
+    let systems: Vec<SystemKey> = galaxy
         .sector(sector)?
         .systems
         .iter()
@@ -1316,7 +1328,7 @@ pub(crate) fn random_system(
         })
         .map(|r| r.system)
         .collect();
-    let draws = std::cell::RefCell::new(&mut *io.random);
+    let draws = std::cell::RefCell::new(random);
     let items = systems.into_iter().map(|s| (s, (draws.borrow_mut())(10)));
     pick(&[ranked(items, Order::Ascending, &mut || {
         (draws.borrow_mut())(10) < 5

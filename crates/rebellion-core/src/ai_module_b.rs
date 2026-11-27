@@ -14,6 +14,8 @@ use crate::ai_module1::{
 };
 use crate::ai_module2::{borrow_yard, keep_site};
 use crate::ai_module3::{choose_target, tenth_less_yards, CORUSCANT};
+use crate::ai_plan::BASE;
+use crate::ai_planner::nearest_sector_system_in;
 use crate::ai_records::{
     pick, picks, ranked, ship_damaged, ClassRecord, Mask, Order, SHIP_FREE, SHIP_OWN,
 };
@@ -292,16 +294,16 @@ impl ModuleB {
 
     /// `FUN_004c94c0`: the side's fleets not en route and with no damaged
     /// ship (`5`, forbidding `0x3802`), fewest ships first (key 0, order
-    /// 2), until one gives an order: a fleet with the Death Star (`0x10`)
-    /// goes to Coruscant (`0x90000109`) while it is the side's.
+    /// 2), until one gives an order. A fleet with no inactive ship (`+0x38`
+    /// `0x400` clear) at a system with a record moves:
     ///
-    /// port: the move to a base (`+0x30` `0x40000`) is left out. Of the
-    /// plan objects that set the bases only kind 3's (`FUN_004af8a0`) is
-    /// ported, not `FUN_004b24b0`, `FUN_004b5b20`, `FUN_004b8070`, and
-    /// without a base the original's fallback sends every idle fleet to
-    /// another sector at each step. No
-    /// ship is inactive (record `0x2000`), so no fleet takes Create Fleet
-    /// (`0x270`).
+    /// - with the Death Star (`0x10`), to Coruscant (`0x90000109`) while
+    ///   it is the side's and the fleet is elsewhere;
+    /// - else, when its system is not an own base (`+0x30` 1 and
+    ///   `0x40000`), to [`home_base`].
+    ///
+    /// port: no ship is inactive (record `0x2000`), so no fleet takes the
+    /// Create Fleet (`0x270`) of its standing ships (`0x4000`).
     fn go_home(&mut self, io: &mut Inputs<'_>) -> Option<AIAction> {
         let coruscant = io
             .world
@@ -312,18 +314,24 @@ impl ModuleB {
             .filter(|&c| io.galaxy.system(c).is_some_and(|r| r.kind & 1 != 0));
         for fleet in picks(vec![fleets(io, Mask::new(5, 0x3802), 0, Order::Descending)]) {
             self.fleet = Some(fleet);
-            let has_death_star = io
-                .galaxy
-                .fleets
-                .get(&fleet)
-                .is_some_and(|r| r.flags & 0x10 != 0);
+            let Some(flags) = io.galaxy.fleets.get(&fleet).map(|r| r.flags) else {
+                continue;
+            };
             let Some(value) = io.world.fleets.get(fleet) else {
                 continue;
             };
-            if record_at(io, fleet).is_none() || !has_death_star {
+            let here = value.location;
+            if flags & 0x400 != 0 {
                 continue;
             }
-            if let Some(home) = coruscant.filter(|&c| c != value.location) {
+            let Some(kind) = io.galaxy.system(here).map(|r| r.kind) else {
+                continue;
+            };
+            let mut to = coruscant.filter(|&c| flags & 0x10 != 0 && c != here);
+            if to.is_none() && kind & (1 | BASE) != 1 | BASE {
+                to = home_base(io, here);
+            }
+            if let Some(to) = to {
                 let ships = value
                     .capital_ships
                     .iter()
@@ -331,11 +339,7 @@ impl ModuleB {
                     .filter(|(_, s)| s.alive)
                     .map(|(i, _)| i)
                     .collect();
-                return Some(AIAction::MoveShips {
-                    fleet,
-                    ships,
-                    to: home,
-                });
+                return Some(AIAction::MoveShips { fleet, ships, to });
             }
         }
         self.fleet = None;
@@ -717,6 +721,31 @@ fn nearest(
     pick(&[systems])
 }
 
+/// `FUN_004c94c0`'s base for a fleet at `here`, with its sector's record
+/// (`FUN_004f5940`): the own base of the sector nearest `here`
+/// (`FUN_0041a400`: `+0x30` `0x40001`, forbidding `+0x28` 2; order 2);
+/// else, in a sector with a headquarters (`+0x24` `0x40000000`), its own
+/// headquarters nearest `here` (`+0x28` `0x80000000`, `+0x30` 1, forbidding
+/// `+0x28` 2); else an own base of the nearest other sector with one
+/// (`FUN_0041b2b0`); else an own system there, not blockaded.
+fn home_base(io: &mut Inputs<'_>, here: SystemKey) -> Option<SystemKey> {
+    let sector = io.world.systems.get(here)?.sector;
+    let headquarters = io.galaxy.sector(sector)?.candidates & 0x4000_0000 != 0;
+    let base = [Mask::new(0, 2), ANY, Mask::new(1 | BASE, 0)];
+    let own = [Mask::new(0, 2), ANY, Mask::new(1, 0)];
+    let hq = [Mask::new(0x8000_0000, 2), ANY, Mask::new(1, 0)];
+    let near = |io: &mut Inputs<'_>, masks| {
+        let systems =
+            io.galaxy
+                .systems_by_distance(sector, here, masks, Order::Descending, io.coin);
+        pick(&[systems])
+    };
+    near(io, base)
+        .or_else(|| headquarters.then(|| near(io, hq)).flatten())
+        .or_else(|| nearest_sector_system_in(io.galaxy, io.random, sector, base))
+        .or_else(|| nearest_sector_system_in(io.galaxy, io.random, sector, own))
+}
+
 /// The ship class record's slot `+4` (`FUN_00473930`) for the roles' keys.
 fn ship_value(r: &ClassRecord, key: u32) -> i32 {
     match key {
@@ -1024,7 +1053,8 @@ mod tests {
         // FUN_004c94c0: a fleet whose record has the Death Star bit 0x10,
         // not at Coruscant (0x90000109), Moves there while Coruscant's
         // record is the side's (+0x30 1). The fleets are walked fewest
-        // ships first; a fleet without the Death Star stays.
+        // ships first; a fleet without the Death Star at an own base
+        // (+0x30 1 and 0x40000) stays.
         let (mut f, h) = ship_fixture();
         f.world.systems[f.yard].dat_id = DatId::new(CORUSCANT);
         let death_star = f.world.capital_ship_classes.insert(CapitalShipClass {
@@ -1036,9 +1066,11 @@ mod tests {
         let here = f.empty;
         fleet(&mut f, here, &[(h.gunship, 100)]);
         let ds = fleet(&mut f, here, &[(death_star, 100), (h.gunship, 100)]);
+        // The fleets wait at an own base, where only the Death Star moves.
+        let based = |g: &mut Galaxy| rec(g, here).kind |= BASE;
         let mut state = AIState::new(AiFaction::Alliance);
         at(&mut state, FLEET_CYCLE, 3);
-        let s = step(&f, &mut state, ROOMY);
+        let s = edited(&f, &mut state, ROOMY, based, |m, io| m.step(io));
         assert_eq!(
             s.order,
             Some(AIAction::MoveShips {
@@ -1053,10 +1085,115 @@ mod tests {
         // Not while Coruscant is another side's.
         let mut state = AIState::new(AiFaction::Alliance);
         at(&mut state, FLEET_CYCLE, 3);
-        let lost = |g: &mut Galaxy| rec(g, f.yard).kind &= !1;
+        let lost = |g: &mut Galaxy| {
+            based(g);
+            rec(g, f.yard).kind &= !1;
+        };
         let s = edited(&f, &mut state, ROOMY, lost, |m, io| m.step(io));
         assert_eq!(s, Step::pending());
         assert_eq!(state.module_b.fleet, None);
+    }
+
+    #[test]
+    fn an_idle_fleet_away_from_a_base_goes_to_the_nearest_base() {
+        // FUN_004c94c0: a fleet at a system that is not an own base
+        // (+0x30 1 and 0x40000) moves to the own base of its sector nearest
+        // it, not blockaded (FUN_0041a400: +0x30 0x40001, forbidding +0x28
+        // 2, order 2); else, in a sector with a headquarters (+0x24
+        // 0x40000000), the headquarters (+0x28 0x80000000, +0x30 1); else
+        // an own base of another sector (FUN_0041b2b0), else an own system
+        // there. A fleet with an inactive ship (+0x38 0x400) or at an own
+        // base stays.
+        let (mut f, h) = ship_fixture();
+        let sector = f.sector;
+        let near = system(&mut f.world, sector, 9);
+        f.world.sectors[sector].systems.push(near);
+        let other = f.world.sectors.insert(crate::world::Sector {
+            dat_id: DatId::new(0x8000_0002),
+            name: "Other".into(),
+            group: crate::dat::SectorGroup::Core,
+            x: 50,
+            y: 0,
+            systems: vec![],
+        });
+        let out = system(&mut f.world, other, 50);
+        f.world.sectors[other].systems.push(out);
+        let here = f.empty;
+        let idle = fleet(&mut f, here, &[(h.gunship, 100)]);
+        let moved = |to| {
+            Some(AIAction::MoveShips {
+                fleet: idle,
+                ships: vec![0],
+                to,
+            })
+        };
+        let run = |edit: &dyn Fn(&mut Galaxy)| {
+            let mut state = AIState::new(AiFaction::Alliance);
+            at(&mut state, FLEET_CYCLE, 3);
+            edited(&f, &mut state, ROOMY, edit, |m, io| m.step(io)).order
+        };
+        let yard = f.yard;
+        let bases = |g: &mut Galaxy| {
+            rec(g, yard).kind |= BASE;
+            rec(g, near).kind |= BASE;
+        };
+        // `near` (distance 4) before `yard` (5).
+        assert_eq!(run(&bases), moved(near));
+        assert_eq!(
+            run(&|g| {
+                bases(g);
+                rec(g, near).state |= 2;
+            }),
+            moved(yard)
+        );
+        // A base of the other side is none.
+        assert_eq!(
+            run(&|g| {
+                bases(g);
+                rec(g, near).kind &= !1;
+            }),
+            moved(yard)
+        );
+        // At an own base, or with an inactive ship, the fleet stays.
+        assert_eq!(
+            run(&|g| {
+                bases(g);
+                rec(g, here).kind |= BASE;
+            }),
+            None
+        );
+        assert_eq!(
+            run(&|g| {
+                bases(g);
+                g.fleets.get_mut(&idle).unwrap().flags |= 0x400;
+            }),
+            None
+        );
+        // A base the other side holds is not the fleet's own base.
+        assert_eq!(
+            run(&|g| {
+                bases(g);
+                rec(g, here).kind = (rec(g, here).kind | BASE) & !1;
+            }),
+            moved(near)
+        );
+        // Without a base, the headquarters while the sector has one.
+        let hq = |g: &mut Galaxy| {
+            rec(g, yard).state |= 0x8000_0000;
+            let i = g.sectors.iter().position(|s| s.sector == sector).unwrap();
+            g.sectors[i].candidates |= 0x4000_0000;
+        };
+        assert_eq!(run(&hq), moved(yard));
+        // Else the other sector's base, else its own system.
+        assert_eq!(
+            run(&|g| {
+                rec(g, yard).state |= 0x8000_0000;
+                rec(g, out).kind |= BASE;
+            }),
+            moved(out)
+        );
+        assert_eq!(run(&|_| {}), moved(out));
+        assert_eq!(run(&|g| rec(g, out).kind &= !1), None);
     }
 
     /// A regiment at `at` loaded onto `fleet`.
