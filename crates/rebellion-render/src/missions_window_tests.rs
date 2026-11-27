@@ -212,6 +212,7 @@ fn a_killed_or_unseen_traveller_is_not_listed_and_two_force_classes_carry_their_
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             },
         ))
     };

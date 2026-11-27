@@ -1378,8 +1378,8 @@ fn skill_of(world: &GameWorld, character: CharacterKey, skill: Skill) -> i32 {
         .map_or(0, |value| i32::try_from(value).unwrap_or(0))
 }
 
-/// Set or clear a member's on-mission role flag. Clearing it also clears a
-/// character's hidden-mission flag.
+/// Set or clear a member's on-mission role flag. Clearing it also clears the
+/// member's hidden-mission flag.
 ///
 /// The original's leave path `FUN_00536220` recomputes OnMission (bit 7,
 /// `FUN_00534950` → `FUN_00534800`) and clears bits 0 and 2..5; where it
@@ -1397,6 +1397,26 @@ pub fn set_on_mission(world: &mut GameWorld, member: MissionMember, on_mission: 
         MissionMember::SpecialForce(key) => {
             if let Some(unit) = world.special_forces.get_mut(key) {
                 unit.on_mission = on_mission;
+                if !on_mission {
+                    unit.on_hidden_mission = false;
+                }
+            }
+        }
+    }
+}
+
+/// Set a member's hidden-mission flag (role `+0x78` bit 8), a character's
+/// or a special force's: the role flags are the same object's.
+pub fn set_hidden_mission(world: &mut GameWorld, member: MissionMember, hidden: bool) {
+    match member {
+        MissionMember::Character(key) => {
+            if let Some(c) = world.characters.get_mut(key) {
+                c.on_hidden_mission = hidden;
+            }
+        }
+        MissionMember::SpecialForce(key) => {
+            if let Some(unit) = world.special_forces.get_mut(key) {
+                unit.on_hidden_mission = hidden;
             }
         }
     }
@@ -1804,12 +1824,7 @@ pub fn apply_advance_effects(world: &mut GameWorld, effects: &[MissionEffect]) {
             }
             MissionEffect::MemberOnMission { member, hidden } => {
                 set_on_mission(world, *member, true);
-                if let Some(c) = member
-                    .character()
-                    .and_then(|key| world.characters.get_mut(key))
-                {
-                    c.on_hidden_mission = *hidden;
-                }
+                set_hidden_mission(world, *member, *hidden);
             }
             MissionEffect::CharacterCaptured {
                 character,
@@ -2340,12 +2355,7 @@ impl MissionState {
             .is_some_and(|record| record.hidden);
         for member in team.iter().chain(&decoys).chain(&captured) {
             set_on_mission(world, *member, true);
-            if let Some(c) = member
-                .character()
-                .and_then(|key| world.characters.get_mut(key))
-            {
-                c.on_hidden_mission = hidden;
-            }
+            set_hidden_mission(world, *member, hidden);
         }
         let id = self.dispatch(MissionRequest {
             team,
@@ -5791,6 +5801,7 @@ mod tests {
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: true,
+                on_hidden_mission: false,
             },
         ));
 
@@ -6773,6 +6784,7 @@ mod tests {
             is_alliance,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         let at = world.systems.insert(crate::world::System {
             dat_id: crate::ids::DatId::new(0x9000_0001),
@@ -7042,6 +7054,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
         let team = vec![
             MissionMember::SpecialForce(unit),
@@ -7201,6 +7214,7 @@ mod tests {
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: true,
+                on_hidden_mission: false,
             });
 
         let result = phase_ten(
@@ -8126,6 +8140,7 @@ mod tests {
             is_alliance: true,
             skills,
             on_mission: false,
+            on_hidden_mission: false,
         });
         let chance = member_chance(
             &world,
@@ -8448,6 +8463,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         let member = MissionMember::SpecialForce(unit);
         assert_eq!(member_move_days(&world, member, to), None);
@@ -8471,6 +8487,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.systems[from].special_forces.push(unit);
         let (han, mate, unit) = (
@@ -8746,6 +8763,59 @@ mod tests {
     }
 
     #[test]
+    fn a_special_force_on_a_move_is_on_a_hidden_mission_until_it_ends() {
+        // FUN_00520b70 reads the Move record's hidden flag (+0x5c) into the
+        // member's role bit 8, a special force's as a character's (the
+        // role flags are shared, FUN_00536b00). Leaving the mission clears
+        // it with OnMission.
+        let mut world = minimal_world();
+        world.mission_records = vec![move_record()];
+        let from = system_at(&mut world, 0);
+        let to = system_at(&mut world, 100);
+        world.systems[to].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+            on_hidden_mission: false,
+        });
+        world.systems[from].special_forces.push(unit);
+        let member = MissionMember::SpecialForce(unit);
+        let mut state = MissionState::new();
+        state
+            .dispatch_guarded(
+                MissionRequest {
+                    kind: MissionKind::Move,
+                    faction: MissionFaction::Alliance,
+                    team: vec![member],
+                    decoys: Vec::new(),
+                    target_system: to,
+                    target_character: None,
+                    target_object: None,
+                    tick: 0,
+                },
+                &mut world,
+            )
+            .expect("a free unit");
+        let force = &world.special_forces[unit];
+        assert!(force.on_mission && force.on_hidden_mission);
+
+        set_on_mission(&mut world, member, false);
+        let force = &world.special_forces[unit];
+        assert!(!force.on_mission && !force.on_hidden_mission);
+        apply_advance_effects(
+            &mut world,
+            &[MissionEffect::MemberOnMission {
+                member,
+                hidden: true,
+            }],
+        );
+        assert!(world.special_forces[unit].on_hidden_mission);
+    }
+
+    #[test]
     fn a_move_takes_its_member_to_the_target_and_ends_with_no_result() {
         // The Move class (vtable 0x665578, FUN_0056ebc0 = 0x41) steps
         // phases with the base handler FUN_00524b70, which rolls no one in
@@ -8870,6 +8940,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         let mut out = MissionAdvance::default();
         note_arrival(
@@ -9034,6 +9105,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.systems[to].special_forces.push(unit);
         let member = MissionMember::SpecialForce(unit);
@@ -9084,6 +9156,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.fleets[fleet].special_forces.push(unit);
 
@@ -9102,6 +9175,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.fleets[fleet].special_forces.push(unit);
 
@@ -9970,6 +10044,7 @@ mod tests {
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.systems[here].special_forces.push(unit);
 
@@ -10281,6 +10356,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.systems[from].special_forces.push(unit);
         let mut state = MissionState::new();
@@ -10355,6 +10431,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
         world.systems[from].special_forces.push(unit);
 
@@ -10990,6 +11067,7 @@ mod tests {
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: true,
+                on_hidden_mission: false,
             });
             world.systems[here].special_forces.push(key);
             key
@@ -11083,6 +11161,7 @@ mod tests {
             is_alliance,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         }))
     }
 

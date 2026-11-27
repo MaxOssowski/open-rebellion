@@ -67,6 +67,7 @@ fn the_shipped_texts_build_the_a0_probe_droid_recon_report() {
             is_alliance: false,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
     let result = MissionResult {
         mission_id: 1,

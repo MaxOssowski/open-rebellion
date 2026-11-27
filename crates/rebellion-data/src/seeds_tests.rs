@@ -33,6 +33,7 @@ fn special_forces_roll_each_skill_from_their_class_and_skip_unknown_classes() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     };
     let known = world.special_forces.insert(unit(class));
     let unknown = world.special_forces.insert(unit(DatId::new(0)));
@@ -72,6 +73,7 @@ fn special_forces_with_no_variance_draw_nothing_from_the_rng() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(7);
     let untouched = rng.clone();

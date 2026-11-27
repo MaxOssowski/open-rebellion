@@ -614,15 +614,17 @@ pub(crate) fn transit_members<'a>(
             }
             MissionMember::SpecialForce(key) => {
                 let force = world.special_forces.get(key)?;
-                Some((transit.member, fleet_side(force.is_alliance), false))
+                Some((
+                    transit.member,
+                    fleet_side(force.is_alliance),
+                    force.on_hidden_mission,
+                ))
             }
         })
 }
 
 /// The characters and special forces at `system`, each with its side and
 /// whether it is on a hidden mission (role `+0x78` bit 8).
-///
-/// port: special forces carry no hidden-mission flag.
 pub(crate) fn system_members(
     world: &GameWorld,
     system: SystemKey,
@@ -656,7 +658,7 @@ pub(crate) fn system_members(
             Some((
                 MissionMember::SpecialForce(*key),
                 fleet_side(force.is_alliance),
-                false,
+                force.on_hidden_mission,
             ))
         });
     characters.chain(forces)

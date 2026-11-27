@@ -1243,6 +1243,7 @@ mod tests {
                     is_alliance: true,
                     skills: [0; 8],
                     on_mission: false,
+                    on_hidden_mission: false,
                 });
             world.systems[first].special_forces.push(commandos);
             let mut defenses = DefensesWindowState::default();

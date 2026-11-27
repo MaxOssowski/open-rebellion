@@ -2535,6 +2535,7 @@ mod tests {
             is_alliance: true,
             skills,
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.systems[system].special_forces.push(unit);
         let mut missions = MissionState::new();

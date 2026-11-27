@@ -2892,6 +2892,7 @@ mod interaction_tests {
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
         let theirs = world
             .special_forces
@@ -2900,6 +2901,7 @@ mod interaction_tests {
                 is_alliance: false,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
         world.systems[key].special_forces = vec![force, theirs];
         assert_eq!(count(&world, false).player, 3);

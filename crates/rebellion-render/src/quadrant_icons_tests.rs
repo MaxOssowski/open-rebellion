@@ -303,6 +303,7 @@ fn each_kind_in_a_frozen_copy_lights_the_defenses_icon_alone() {
         is_alliance: false,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.systems[system].special_forces.push(force);
     frozen(&mut world, system);
@@ -475,6 +476,7 @@ fn a_regiment_or_a_special_force_lights_the_defenses_icon() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.systems[system].special_forces.push(force);
     assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(1));
@@ -660,6 +662,7 @@ fn a_defenses_icons_move_team_is_its_sides_regiments_squadrons_and_personnel() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.systems[system].special_forces.push(force);
     let facility = world.defense_facilities.insert(DefenseFacilityInstance {
@@ -843,6 +846,49 @@ fn a_recon_team_lights_the_missions_icon_of_the_unexplored_system_it_goes_to() {
         ),
         None
     );
+}
+
+#[test]
+fn a_special_force_on_a_move_counts_as_personnel_at_its_target_not_a_mission() {
+    // User report 2026-11-27: a unit on its way shows at its destination
+    // en route, not as a mission named Move. FUN_00520b70 puts a Move's
+    // members on a hidden mission (MISSNSD +0x5c), special forces as
+    // characters; FUN_004a1f60 skips them and FUN_0045ce80 counts them.
+    let (mut world, system) = alliance_world();
+    let unit = world
+        .special_forces
+        .insert(rebellion_core::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: true,
+            on_hidden_mission: true,
+        });
+    let member = MissionMember::SpecialForce(unit);
+    let mut missions = MissionState::new();
+    missions.dispatch(MissionRequest {
+        kind: MissionKind::Move,
+        faction: MissionFaction::Alliance,
+        team: vec![member],
+        decoys: Vec::new(),
+        target_system: system,
+        target_character: None,
+        target_object: None,
+        tick: 0,
+    });
+    missions.push_transit(rebellion_core::missions::MemberTransit {
+        member,
+        mission_id: 0,
+        to: system,
+        arrival: 9,
+        abode: None,
+    });
+    let player = Faction::Alliance;
+    assert_eq!(side(&world, &missions, player, system, Quadrant::Missions), None);
+    assert_eq!(side(&world, &missions, player, system, Quadrant::Defenses), Some(1));
+    // On a visible mission it is a mission, not personnel.
+    world.special_forces[unit].on_hidden_mission = false;
+    assert_eq!(side(&world, &missions, player, system, Quadrant::Missions), Some(1));
 }
 
 #[test]

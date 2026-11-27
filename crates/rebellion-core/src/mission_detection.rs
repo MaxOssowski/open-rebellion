@@ -1871,6 +1871,7 @@ mod tests {
             is_alliance: true,
             skills,
             on_mission: true,
+            on_hidden_mission: false,
         });
         world.systems[at].special_forces.push(unit);
         MissionMember::SpecialForce(unit)
@@ -2052,6 +2053,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
         world.systems[here].special_forces.push(unit);
         let mut mission = sabotage(vec![MissionMember::SpecialForce(unit)], here, 2);

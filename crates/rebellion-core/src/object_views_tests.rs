@@ -557,6 +557,7 @@ fn a_system_copy_holds_its_squadrons_special_forces_and_characters() {
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     setup.world.systems[chandrila].special_forces.push(force);
     let vader = DatId::new(0x3000_0001);
@@ -1054,6 +1055,7 @@ fn only_a_unit_seen_the_day_before_is_copied_leaving_and_only_for_an_unseen_plac
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     setup.world.systems[chandrila].special_forces.push(seen);
     let unseen = setup
@@ -1064,6 +1066,7 @@ fn only_a_unit_seen_the_day_before_is_copied_leaving_and_only_for_an_unseen_plac
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     let stranger = setup.world.characters.insert(crate::world::Character {
         dat_id: DatId::new(0x3000_0005),
@@ -1465,6 +1468,7 @@ fn a_seen_systems_missions_are_copied_with_their_members() {
             is_alliance: false,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
     missions.dispatch(crate::missions::MissionRequest {
         kind: crate::missions::MissionKind::Sabotage,

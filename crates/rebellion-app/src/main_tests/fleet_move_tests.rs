@@ -775,6 +775,7 @@ fn a_special_forces_menu_move_is_disabled_while_it_is_on_a_mission_or_travelling
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.systems[destination].special_forces.push(unit);
     let gate = |world: &GameWorld, missions: &MissionState, faction| {
@@ -887,6 +888,7 @@ fn defenses_world() -> DefensesWorld {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.systems[origin].special_forces.push(force);
     DefensesWorld {
@@ -1915,6 +1917,7 @@ fn a_team_of_jailer_and_captive_takes_its_move_from_the_pair() {
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     let mixed = [
         MenuObject::Character(captive),

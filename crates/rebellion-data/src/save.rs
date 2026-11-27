@@ -75,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 140;
+pub const SAVE_VERSION: u32 = 141;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -3971,6 +3971,7 @@ pub(crate) mod tests {
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
         let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
             location: system,
@@ -4132,6 +4133,7 @@ pub(crate) mod tests {
             is_alliance: true,
             skills: [1, 2, 3, 4, 5, 6, 7, 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         state.world.systems[system].special_forces.push(unit);
         state.world.mission_records.push(MissionRecord {

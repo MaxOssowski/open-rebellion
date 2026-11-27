@@ -155,6 +155,7 @@ fn stocked() -> (GameWorld, SystemKey, MissionState) {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.systems[system].special_forces.push(force);
     for (raw, name, alliance, count) in [
@@ -216,6 +217,7 @@ fn members_on_their_way_are_listed_at_their_destination_characters_first() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     let elsewhere = add_character(&mut world, system, "Elsewhere", true);
     world.characters[elsewhere].current_system = None;
@@ -317,6 +319,7 @@ fn members_on_their_way_take_the_en_route_mark_over_their_backdrop() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     for member in [
         MissionMember::Character(walker),

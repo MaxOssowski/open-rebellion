@@ -1004,6 +1004,7 @@ fn a_recon_led_by_a_special_force_names_the_force_as_its_leader() {
             is_alliance: false,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
     let result = MissionResult {
         mission_id: 1,

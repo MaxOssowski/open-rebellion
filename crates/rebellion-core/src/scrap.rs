@@ -1127,6 +1127,7 @@ mod tests {
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
         let fleet = f.world.insert_fleet(crate::world::Fleet {
             location: f.system,

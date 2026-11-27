@@ -974,6 +974,7 @@ fn dispatch_ground_item(
                 is_alliance,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             };
             let key = world.special_forces.insert(unit);
             world.systems[system_key].special_forces.push(key);
@@ -1863,6 +1864,7 @@ fn create_group(
                     is_alliance,
                     skills: [0; 8],
                     on_mission: false,
+                    on_hidden_mission: false,
                 };
                 let key = world.special_forces.insert(unit);
                 match aboard.filter(|_| carrier.is_some()) {

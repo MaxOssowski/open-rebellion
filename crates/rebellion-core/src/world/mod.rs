@@ -1585,6 +1585,11 @@ pub struct SpecialForceUnit {
     /// Currently a mission member (role flag bit 7, `RoleOnMissionNotif`
     /// `FUN_00536b00`; special forces share the role flags with characters).
     pub on_mission: bool,
+    /// On a mission whose MISSNSD record is hidden (role bit 8, as a
+    /// character's `on_hidden_mission`; `FUN_00520b70` reads the record's
+    /// `+0x5c`): a Move is not shown as a mission (save v141).
+    #[serde(default)]
+    pub on_hidden_mission: bool,
 }
 
 /// What one unit of a regiment, special-force or facility class costs to

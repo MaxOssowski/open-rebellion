@@ -405,6 +405,7 @@ pub fn perform(
                 is_alliance,
                 skills,
                 on_mission: false,
+                on_hidden_mission: false,
             });
             world.abodes.get_mut(palace)?.special_forces.push(unit);
             if let Some(system) = world.systems.get_mut(at) {

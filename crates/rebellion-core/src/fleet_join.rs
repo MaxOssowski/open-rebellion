@@ -877,6 +877,7 @@ mod tests {
                 is_alliance: true,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
         setup.world.fleets[mover].special_forces.push(unit);
         let mut transport = TroopTransportState::default();

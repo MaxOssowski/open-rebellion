@@ -480,6 +480,7 @@ fn fleet_status_personnel_counts_special_forces_and_capital_ship_status_does_not
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         })
     };
     let aboard = force(&mut world);
@@ -1093,6 +1094,7 @@ fn a_special_force_reads_skills_zero_one_five_and_six() {
         is_alliance: true,
         skills: [10, 11, 12, 13, 14, 15, 16, 17],
         on_mission: true,
+        on_hidden_mission: false,
     });
     world.systems[here].special_forces.push(unit);
     let states = States::new();
@@ -1132,6 +1134,7 @@ fn a_special_force_aboard_a_fleet_is_attached_to_its_ship() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.fleets[fleet].special_forces.push(unit);
     world.number_ships();
@@ -2131,6 +2134,7 @@ fn a_special_force_on_its_way_is_attached_to_the_target() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: true,
+        on_hidden_mission: false,
     });
     world.systems[here].special_forces.push(unit);
     let mut states = States::new();
@@ -2189,6 +2193,7 @@ fn a_member_on_its_way_aboard_a_fleet_is_attached_to_its_first_ship() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: true,
+        on_hidden_mission: false,
     });
     world.systems[here].special_forces.push(unit);
     let mut states = States::new();
@@ -2473,6 +2478,7 @@ fn the_galaxy_overview_groups_the_sides_objects_by_class_in_family_order() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
 
     let rows: Vec<_> = overview_rows(&world, true)

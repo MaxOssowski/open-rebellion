@@ -1900,6 +1900,7 @@ pub fn apply(
                 is_alliance: player_is_alliance,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
         if enroute {
             // A member on its way is listed in its destination's Defenses
@@ -3689,6 +3690,7 @@ fn place_probe_droid_aboard(
             is_alliance: false,
             skills: [0, 30, 0, 0, 0, 10, 0, 0],
             on_mission: false,
+            on_hidden_mission: false,
         });
     rebellion_core::missions::board_fleet(
         world,
@@ -6502,6 +6504,7 @@ fn send_member_aboard(
             is_alliance: alliance,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     missions.push_transit(rebellion_core::missions::MemberTransit {
         member: MissionMember::SpecialForce(force),
@@ -8658,6 +8661,7 @@ pub fn mission_results(
             is_alliance: false,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
     let recon = rebellion_core::missions::MissionResult {
         mission_id: u64::MAX - 5,

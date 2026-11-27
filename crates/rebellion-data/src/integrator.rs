@@ -2494,6 +2494,7 @@ pub fn apply_event_action_to_world(
                             is_alliance: spawn_alliance,
                             skills: [0; 8],
                             on_mission: false,
+                            on_hidden_mission: false,
                         });
                         if let Some(sys) = world.systems.get_mut(at_system) {
                             sys.special_forces.push(sf_key);
@@ -5083,6 +5084,7 @@ mod tests {
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
 
         assert_eq!(
@@ -6806,6 +6808,7 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                 is_alliance,
                 skills,
                 on_mission: false,
+                on_hidden_mission: false,
             });
             if let Some(sys) = world.systems.get_mut(sys_key) {
                 sys.special_forces.push(key);

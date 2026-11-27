@@ -1165,6 +1165,7 @@ fn a_regiment_or_special_force_finished_aboard_boards_its_fleet() {
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     s.world.systems[s.yard].special_forces.push(unit);
     let mut transport = crate::troop_transport::TroopTransportState::default();

@@ -1063,6 +1063,7 @@ mod tests {
             is_alliance: true,
             skills,
             on_mission: false,
+            on_hidden_mission: false,
         }))
     }
 

@@ -556,6 +556,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         f.world.systems[f.here].special_forces.push(unit);
         let defense = f
@@ -628,6 +629,7 @@ mod tests {
                 is_alliance,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
             f.world.systems[f.here].special_forces.push(other);
         }

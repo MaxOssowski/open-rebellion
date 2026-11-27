@@ -873,6 +873,7 @@ fn the_agents_list_breaks_a_long_name_into_centred_lines_a_cell_apart() {
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     let mut state = open_with(vec![MissionMember::SpecialForce(droid)]);
     click(&world, &mut state, (195.0, 36.0));
@@ -1196,6 +1197,7 @@ fn a_member_shows_its_system_window_mini_and_name() {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
 
     assert_eq!(

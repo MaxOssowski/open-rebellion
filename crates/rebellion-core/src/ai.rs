@@ -6705,6 +6705,7 @@ mod tests {
                 is_alliance,
                 skills,
                 on_mission: false,
+                on_hidden_mission: false,
             },
         ))
     }
@@ -11805,6 +11806,7 @@ mod tests {
                 is_alliance,
                 skills: [0; 8],
                 on_mission: false,
+                on_hidden_mission: false,
             });
         }
         assert_eq!(special_upkeep(&world, AiFaction::Alliance), 7);

@@ -214,6 +214,7 @@ mod tests {
             is_alliance: true,
             skills: [0; 8],
             on_mission: true,
+            on_hidden_mission: false,
         });
         let abode = world.abodes.insert(crate::world::Abode {
             dat_id: crate::ids::DatId::new(0x9800_0441),

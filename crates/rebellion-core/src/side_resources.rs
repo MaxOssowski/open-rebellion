@@ -380,6 +380,7 @@ mod tests {
             is_alliance: false,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
         world.defense_facilities.insert(DefenseFacilityInstance {
             class_dat_id: battery,

@@ -155,6 +155,7 @@ fn add_sf(
         is_alliance,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.systems[system].special_forces.push(key);
     key

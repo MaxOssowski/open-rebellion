@@ -1321,7 +1321,7 @@ pub fn special_force_rows(
     );
     let status = if transit.is_some() {
         "Enroute"
-    } else if unit.on_mission {
+    } else if unit.on_mission && !unit.on_hidden_mission {
         "On Mission"
     } else {
         "Awaiting Orders"

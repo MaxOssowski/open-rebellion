@@ -346,6 +346,7 @@ fn a_selected_ship_lists_and_counts_what_it_carries() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     world.fleets[fleet].special_forces.push(unit);
     let objects = |index| {
@@ -381,6 +382,7 @@ fn a_killed_or_other_sides_member_bound_for_a_fleet_is_not_aboard() {
         is_alliance: false,
         skills: [0; 8],
         on_mission: true,
+        on_hidden_mission: false,
     });
     let arrivals = [
         (MissionMember::Character(killed), fleet),
@@ -1612,6 +1614,7 @@ fn a_drop_carries_its_own_fleets_ships_and_squadrons_and_every_member() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     assert_eq!(
         right_drop(
@@ -4755,6 +4758,7 @@ fn the_personnel_tab_lists_special_forces_aboard_after_the_characters() {
             is_alliance: true,
             skills: [0; 8],
             on_mission: false,
+            on_hidden_mission: false,
         });
     world.fleets[fleet].special_forces.push(unit);
     assert!(tab_enabled(

@@ -7324,6 +7324,7 @@ fn a_ships_contents_list_its_characters_then_forces_then_regiments() {
         is_alliance: true,
         skills: [0; 8],
         on_mission: false,
+        on_hidden_mission: false,
     });
     let mothma = world.characters.insert(Character {
         name: "Mon Mothma".into(),
