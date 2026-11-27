@@ -583,12 +583,17 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   window and an open Fleet window; its chrome is exact against STRATEGY.DLL.
   The Finder now remains above modeless windows. Transport-limited native
   journeys remain open under F-007C.
-- [ ] Balance one-ship fleets in the AI. With the arrival merge retired, the
+- [x] Balance one-ship fleets in the AI. With the arrival merge retired, the
   AI's own fleets no longer combine where they meet: in seed 42's 1,500-tick
   dual-AI run the fleet count at its six snapshots runs 5, 6, 11, 11, 17, 17
   where it ran 4, 4, 9, 9, 15, 15. Teach the AI to avoid lone-ship fleets,
   or join them by condition, and measure against that run (Tom,
-  2026-10-05).
+  2026-10-05). Closed 2026-11-27 as following the original: every one-ship
+  fleet comes from a traced sector planner order (`FUN_004782a0`,
+  `FUN_00478aa0`, `FUN_00478690`, `FUN_00477a40`), the original's join
+  (`FUN_004b0c90`) is ported, and idle fleets return to a base
+  (`720e36d8`); a join by another condition would be invented
+  ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-27-one-ship-fleets/README.md)).
 - [x] Source or retire the port's automatic landing (F-007E: cargo lands
   when its side alone orbits a system). The unloading trace finds no
   original path that lands cargo without an order
