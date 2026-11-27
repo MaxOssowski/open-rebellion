@@ -281,4 +281,36 @@ this is not read as a balance finding.
 The entry `cc3f1ffb_role_requests` in `late-game-10000-days.json` holds
 the counts.
 
+## Seventh follow-up: idle fleets return to a base (commit `720e36d8`)
+
+The third follow-up found idle one-ship fleets that were never gathered
+again. `FUN_004c94c0` walks the side's fleets that are not en route and
+have no damaged ship, fewest ships first, and moves the first one away
+from an own base (system record `+0x30` 1 and `0x40000`) to a base: the
+nearest own base of its sector (`FUN_0041a400`), else, in a sector with
+a headquarters, that headquarters, else an own base of the nearest other
+sector (`FUN_0041b2b0`), else an own system there. The port had kept only
+the Death Star's return to Coruscant, because before every plan kind
+marked its bases the fallback would have sent each idle fleet to another
+sector at every step.
+
+| | `cc3f1ffb` | `720e36d8` |
+|---|---|---|
+| Games ended | 14 (4 A / 10 E) | 17 (3 A / 14 E) |
+| Space battles | 10,130 | 9,305 |
+| Space battles, last 1,000 days | 538 | 224 |
+| Ground battles | 1,237 | 1,289 |
+| Systems changing hands | 2,977 | 2,765 |
+| Planet squadrons scrapped | 10,563 | 8,371 |
+| Squadrons built | 32,129 | 32,449 |
+
+More games end, earlier (median end day 4,230, against 4,657), and the squadron churn
+falls again. The space war of the last 1,000 days is quieter because
+fewer games are still running and the fleets wait at bases instead of
+drifting. The Empire wins 14 of the 17; with 25 seeds and no long run of
+the original this is still not read as a balance finding.
+
+The entry `gohome_base_move` in `late-game-10000-days.json` holds the
+counts.
+
 Hashes of the committed files are in `SHA256SUMS`.

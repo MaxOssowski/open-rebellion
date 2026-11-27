@@ -657,5 +657,166 @@
    52,
    54
   ]
+ },
+ "gohome_base_move": {
+  "games_ended": [
+   {
+    "seed": 2,
+    "day": 4000,
+    "winner": "Empire"
+   },
+   {
+    "seed": 3,
+    "day": 4230,
+    "winner": "Empire"
+   },
+   {
+    "seed": 4,
+    "day": 3279,
+    "winner": "Empire"
+   },
+   {
+    "seed": 7,
+    "day": 4439,
+    "winner": "Empire"
+   },
+   {
+    "seed": 8,
+    "day": 1416,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 9,
+    "day": 6605,
+    "winner": "Empire"
+   },
+   {
+    "seed": 10,
+    "day": 5581,
+    "winner": "Empire"
+   },
+   {
+    "seed": 11,
+    "day": 4956,
+    "winner": "Empire"
+   },
+   {
+    "seed": 12,
+    "day": 4047,
+    "winner": "Empire"
+   },
+   {
+    "seed": 13,
+    "day": 6070,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 14,
+    "day": 5053,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 16,
+    "day": 2640,
+    "winner": "Empire"
+   },
+   {
+    "seed": 17,
+    "day": 4208,
+    "winner": "Empire"
+   },
+   {
+    "seed": 19,
+    "day": 9506,
+    "winner": "Empire"
+   },
+   {
+    "seed": 22,
+    "day": 3515,
+    "winner": "Empire"
+   },
+   {
+    "seed": 24,
+    "day": 1837,
+    "winner": "Empire"
+   },
+   {
+    "seed": 25,
+    "day": 8165,
+    "winner": "Empire"
+   }
+  ],
+  "per_1000_days": {
+   "planet_squadrons_scrapped": [
+    594,
+    1585,
+    1227,
+    1034,
+    786,
+    972,
+    800,
+    520,
+    551,
+    302
+   ],
+   "squadrons_built": [
+    7141,
+    5435,
+    5039,
+    4926,
+    3370,
+    2249,
+    1272,
+    1303,
+    968,
+    746
+   ],
+   "combat_ground": [
+    314,
+    352,
+    189,
+    137,
+    121,
+    64,
+    34,
+    37,
+    22,
+    19
+   ],
+   "control_changed": [
+    898,
+    666,
+    313,
+    233,
+    224,
+    169,
+    93,
+    91,
+    45,
+    33
+   ],
+   "combat_space": [
+    1016,
+    1434,
+    1604,
+    1478,
+    1183,
+    775,
+    720,
+    542,
+    329,
+    224
+   ]
+  },
+  "neutral_systems_day_10000": [
+   42,
+   47,
+   47,
+   48,
+   48,
+   50,
+   52,
+   56
+  ]
  }
 }
