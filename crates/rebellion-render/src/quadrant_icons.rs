@@ -96,7 +96,15 @@ pub fn quadrant_side(
     system: SystemKey,
     quadrant: Quadrant,
 ) -> Option<u8> {
-    let contents = SystemContents::new(world, fog, player, system)?;
+    let Some(contents) = SystemContents::new(world, fog, player, system) else {
+        // An unexplored system still lights the Missions icon for the
+        // player's own members there or on their way, a Recon's team
+        // above all (user report 2026-11-27 from the original).
+        return match mission_side(&SystemContents::own_only(world, player, system), missions) {
+            0 | 3 => None,
+            side => (quadrant == Quadrant::Missions).then_some(side),
+        };
+    };
     match quadrant {
         // FUN_0045cdc0: the system's side bits while it has manufacturing or
         // production facilities (families 0x28..0x30, FUN_0053b6e0).
@@ -269,8 +277,9 @@ pub(crate) fn missions_side(
     player: Faction,
     system: SystemKey,
 ) -> u8 {
-    SystemContents::new(world, fog, player, system)
-        .map_or(3, |contents| mission_side(&contents, missions))
+    let contents = SystemContents::new(world, fog, player, system)
+        .unwrap_or_else(|| SystemContents::own_only(world, player, system));
+    mission_side(&contents, missions)
 }
 
 /// The quadrant item's two bitmaps, or `None` when it is not drawn.
@@ -339,6 +348,24 @@ impl<'a> SystemContents<'a> {
             frozen,
             frozen_extras: crate::viewed_contents::frozen_extras(world, fog, player, system),
         })
+    }
+
+    /// At a system the player has not explored: only the player's own
+    /// objects, with no copy of the other side's.
+    ///
+    /// hyp: the original's unexplored copy still holds the viewer's own
+    /// mission members, as the user saw a Recon's icon at its target
+    /// (2026-11-27); recovered by an A0 capture of a Recon in flight.
+    fn own_only(world: &'a GameWorld, player: Faction, system: SystemKey) -> Self {
+        Self {
+            world,
+            system,
+            player,
+            player_side: faction_side(player),
+            opposing_visible: false,
+            frozen: None,
+            frozen_extras: None,
+        }
     }
 
     /// The system's side bits `(+0x24 >> 6) & 3`, as the player's frozen

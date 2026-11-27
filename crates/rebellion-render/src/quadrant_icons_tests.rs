@@ -789,6 +789,63 @@ fn a_mission_whose_team_is_on_its_way_lights_its_targets_icon() {
 }
 
 #[test]
+fn a_recon_team_lights_the_missions_icon_of_the_unexplored_system_it_goes_to() {
+    // User report 2026-11-27 from the original: a Recon mission's icon
+    // shows at its target, which is unexplored. The team is in the
+    // target's container while it travels (FUN_00556430, FUN_00556390);
+    // only the Missions icon lights, with the player's own side.
+    let (mut world, system) = world(ControlKind::Uncontrolled);
+    world.systems[system].exploration_status = ExplorationStatus::Unexplored;
+    let agent = add_character(&mut world, system, true);
+    world.characters[agent].current_system = None;
+    let mut missions = MissionState::new();
+    let player = Faction::Alliance;
+    assert!(!rebellion_core::object_views::side_explored(
+        &world, player, system
+    ));
+    assert_eq!(
+        side(&world, &missions, player, system, Quadrant::Missions),
+        None
+    );
+
+    missions.dispatch(MissionRequest::single(
+        MissionKind::Reconnaissance,
+        MissionFaction::Alliance,
+        agent,
+        system,
+        None,
+        0,
+    ));
+    missions.push_transit(rebellion_core::missions::MemberTransit {
+        member: MissionMember::Character(agent),
+        mission_id: 0,
+        to: system,
+        arrival: 9,
+        abode: None,
+    });
+    assert_eq!(
+        side(&world, &missions, player, system, Quadrant::Missions),
+        Some(1)
+    );
+    let fog = FogState::new(player);
+    assert_eq!(missions_side(&world, &fog, &missions, player, system), 1);
+    for quadrant in [Quadrant::System, Quadrant::Defenses, Quadrant::Fleets] {
+        assert_eq!(side(&world, &missions, player, system, quadrant), None);
+    }
+    // The other side sees nothing there.
+    assert_eq!(
+        side(
+            &world,
+            &missions,
+            Faction::Empire,
+            system,
+            Quadrant::Missions
+        ),
+        None
+    );
+}
+
+#[test]
 fn a_member_moving_away_counts_at_its_target_and_not_where_it_left() {
     // FUN_00556390 reparents a moving member into the target at once.
     // A0 2026-11-14-quadrants-status-known/02: Adar Tallon, Averam's
