@@ -251,4 +251,34 @@ end (11: 6 Alliance, 5 Empire). The late game still slows: the front
 between the two sides barely moves (ground battles 3 in the last 1,000
 days). No long run of the original exists to compare.
 
+## Sixth follow-up: module `0xb`'s role (commit `cc3f1ffb`)
+
+The squadron churn above came from a port gap, not from the original.
+`FUN_004ca5e0` counts the role requests of module 8's planners
+(controller `+0xd8`, request flags `+0x64`) and takes the role asked for
+most; the port, written before module 8, skipped them. With the requests
+read, module `0xb` builds what the planners ask for (troop carriers,
+armed ships, lasers, bombarders, carriers, interdictors) and draws among
+all classes only when nobody asks. The bombarder and interdictor roles
+(keys `0x800` and `0x10000`, class record `+0x38` and `+0x3c`,
+`FUN_00473930`) come up with them.
+
+| | `b37a3d8d` | `cc3f1ffb` |
+|---|---|---|
+| Games ended | 11 (6 A / 5 E) | 14 (4 A / 10 E) |
+| Space battles | 6,582 | 10,130 |
+| Space battles, last 1,000 days | 327 | 538 |
+| Ground battles | 1,097 | 1,237 |
+| Planet squadrons scrapped | 21,294 | 10,563 |
+| Squadrons built | 36,865 | 32,129 |
+
+The churn halves and the middle game is busier (space battles 1,520 in
+days 3,001 to 4,000, against 879). The galaxy is still divided by about
+day 3,000 and the last 1,000 days stay quieter than the first. More games
+now end in an Empire win; with 25 seeds and no long run of the original
+this is not read as a balance finding.
+
+The entry `cc3f1ffb_role_requests` in `late-game-10000-days.json` holds
+the counts.
+
 Hashes of the committed files are in `SHA256SUMS`.

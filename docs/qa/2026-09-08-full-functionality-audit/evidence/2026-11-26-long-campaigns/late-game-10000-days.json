@@ -508,5 +508,154 @@
    53,
    58
   ]
+ },
+ "cc3f1ffb_role_requests": {
+  "games_ended": [
+   {
+    "seed": 1,
+    "day": 2788,
+    "winner": "Empire"
+   },
+   {
+    "seed": 3,
+    "day": 8976,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 5,
+    "day": 4046,
+    "winner": "Empire"
+   },
+   {
+    "seed": 6,
+    "day": 6293,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 7,
+    "day": 2959,
+    "winner": "Empire"
+   },
+   {
+    "seed": 8,
+    "day": 6202,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 9,
+    "day": 4460,
+    "winner": "Empire"
+   },
+   {
+    "seed": 12,
+    "day": 2359,
+    "winner": "Alliance"
+   },
+   {
+    "seed": 15,
+    "day": 6070,
+    "winner": "Empire"
+   },
+   {
+    "seed": 16,
+    "day": 5230,
+    "winner": "Empire"
+   },
+   {
+    "seed": 19,
+    "day": 7060,
+    "winner": "Empire"
+   },
+   {
+    "seed": 21,
+    "day": 4853,
+    "winner": "Empire"
+   },
+   {
+    "seed": 22,
+    "day": 2623,
+    "winner": "Empire"
+   },
+   {
+    "seed": 24,
+    "day": 4325,
+    "winner": "Empire"
+   }
+  ],
+  "per_1000_days": {
+   "planet_squadrons_scrapped": [
+    670,
+    1723,
+    1861,
+    1557,
+    1057,
+    823,
+    850,
+    781,
+    759,
+    482
+   ],
+   "squadrons_built": [
+    7015,
+    5604,
+    4695,
+    3942,
+    3183,
+    2461,
+    1747,
+    1440,
+    1220,
+    822
+   ],
+   "combat_ground": [
+    320,
+    274,
+    239,
+    147,
+    111,
+    86,
+    29,
+    10,
+    11,
+    10
+   ],
+   "control_changed": [
+    940,
+    602,
+    424,
+    425,
+    216,
+    138,
+    48,
+    50,
+    74,
+    60
+   ],
+   "combat_space": [
+    1104,
+    1408,
+    1356,
+    1520,
+    1444,
+    1104,
+    633,
+    527,
+    496,
+    538
+   ]
+  },
+  "neutral_systems_day_10000": [
+   39,
+   44,
+   47,
+   48,
+   48,
+   48,
+   48,
+   48,
+   50,
+   52,
+   54
+  ]
  }
 }
