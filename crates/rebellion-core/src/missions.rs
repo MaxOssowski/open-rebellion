@@ -132,6 +132,14 @@ pub enum MissionKind {
     /// handler `FUN_00524b70` and the base rules `FUN_005215e0`.
     Return,
 
+    /// The Autorouting pseudo-mission (MISSNSD `0x43000003`, TEXTSTRA 11267,
+    /// vtable `0x00668850`): the trip of characters leaving a place another
+    /// side holds after an escape or a side change (`FUN_0054c7d0`,
+    /// `FUN_00549230` -> `FUN_00547740`). Its slots are Move's but for the
+    /// class's own identity slots, the detection mode word (`+0x94`,
+    /// `FUN_005761b0`) included; its record is hidden with timer 0.
+    Autorouting,
+
     /// The Adrift pseudo-mission (MISSNSD `0x44000004`, TEXTSTRA 11268,
     /// vtable `0x00668d58`): the trip of characters whose container was
     /// destroyed (`FUN_004ef2e0`, `FUN_00549230` -> `FUN_00547880`). Move's
@@ -199,6 +207,7 @@ impl MissionKind {
             | MissionKind::TroopTrainingResearch
             | MissionKind::Move
             | MissionKind::Return
+            | MissionKind::Autorouting
             | MissionKind::Adrift
             | MissionKind::JediTraining
             | MissionKind::Dagobah
@@ -244,7 +253,7 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => (10, 20),
             // The shipped record's 0 + rand(0..=0).
-            MissionKind::Move | MissionKind::Return | MissionKind::Adrift => (0, 0),
+            MissionKind::Move | MissionKind::Return | MissionKind::Autorouting | MissionKind::Adrift => (0, 0),
             // The shipped record's 60 + rand(0..=30).
             MissionKind::JediTraining => (60, 90),
             // The shipped record's 100 + rand(0..=0).
@@ -1331,7 +1340,7 @@ pub fn member_chance(
         | MissionKind::FacilityDesignResearch
         | MissionKind::TroopTrainingResearch => return 0,
         // The base class has no slot +0x274 roll; phase 10 rolls no one.
-        MissionKind::Move | MissionKind::Return | MissionKind::Adrift => return 0,
+        MissionKind::Move | MissionKind::Return | MissionKind::Autorouting | MissionKind::Adrift => return 0,
         // FUN_005710b0 reads the mission's teacher +0xa8: phase 10 takes
         // the chance from [`jedi_training_chance`].
         MissionKind::JediTraining => return 0,
@@ -2059,13 +2068,12 @@ pub struct EscapeTimer {
     pub due: u64,
 }
 
-/// An escaped character autorouting to safety (`FUN_004f18e0`).
+/// A character autorouting to an abode or a ship (`FUN_004f18e0`).
 ///
-/// port: the original sends an autorouting group on an Autorouting order
-/// `0x43000003` (`FUN_00549230` -> `FUN_00547740`); the port keeps a direct
-/// trip. The order adds a mandatory mission flag, which no order meets
-/// while the traveller is off the map, and its traveller lands even when
-/// the order ends on the way (`FUN_00522fc0`), as this trip does
+/// port: the original sends these on an Autorouting order `0x43000003`
+/// too (`FUN_00549230` -> `FUN_00547740`), which a trip to a system takes
+/// in the port ([`MissionKind::Autorouting`]); an abode's landing posts
+/// nothing (`FUN_004955b0`), and these trips keep a direct transit
 /// (`ghidra/notes/mission-lifecycle.md`, "The Autorouting order").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EscapeeTransit {
@@ -2180,9 +2188,13 @@ impl MissionState {
     /// Whether `character` is autorouting to safety (`+0x50` bit `0x1000`).
     #[must_use]
     pub fn is_autorouting(&self, character: CharacterKey) -> bool {
+        let member = MissionMember::Character(character);
         self.escapees
             .iter()
             .any(|transit| transit.character == character)
+            || self.missions.iter().any(|mission| {
+                mission.kind == MissionKind::Autorouting && mission.team.contains(&member)
+            })
     }
 
     /// `FUN_00543040` for a character whose destination is an abode: it
@@ -2932,6 +2944,7 @@ impl MissionKind {
             MissionKind::TroopTrainingResearch => 0x5300_0022,
             MissionKind::Move => 0x4100_0001,
             MissionKind::Return => 0x4200_0002,
+            MissionKind::Autorouting => 0x4300_0003,
             MissionKind::Adrift => 0x4400_0004,
             MissionKind::JediTraining => 0x5800_0042,
             MissionKind::Dagobah => 0x7100_0043,
@@ -2963,7 +2976,7 @@ impl MissionKind {
             | MissionKind::FacilityDesignResearch
             | MissionKind::TroopTrainingResearch => TargetRules::System,
             // FUN_005215e0: the base rules alone, at a system target.
-            MissionKind::Move | MissionKind::Return | MissionKind::Adrift => TargetRules::Place,
+            MissionKind::Move | MissionKind::Return | MissionKind::Autorouting | MissionKind::Adrift => TargetRules::Place,
             // FUN_00570690: the system rules, then its own.
             MissionKind::JediTraining => TargetRules::System,
             // Its target is an abode, a place (FUN_00521070).
@@ -4102,7 +4115,7 @@ impl MissionSystem {
             PHASE_OUTCOME
                 if matches!(
                     mission.kind,
-                    MissionKind::Move | MissionKind::Return | MissionKind::Adrift
+                    MissionKind::Move | MissionKind::Return | MissionKind::Autorouting | MissionKind::Adrift
                 ) => {}
             PHASE_OUTCOME => {
                 let result = Self::roll_members(mission, ctx, now, &mut draws.stream, &out.results);
@@ -4601,7 +4614,7 @@ impl MissionSystem {
                 }
                 MissionKind::Autoscrap => result = 3,
                 // Never reached: phase 10 skips Move (FUN_00524b70).
-                MissionKind::Move | MissionKind::Return | MissionKind::Adrift => {}
+                MissionKind::Move | MissionKind::Return | MissionKind::Autorouting | MissionKind::Adrift => {}
                 // FUN_0056bec0: 3, with no skill raise.
                 MissionKind::Reconnaissance => result = 3,
                 // FUN_00572470: 3.
@@ -5060,8 +5073,17 @@ fn escape(
     travel_to_safety(state, world, key, from, to, now, effects);
 }
 
-/// The autorouting trip of `key` from `from` to `to` (`FUN_0054c7d0`): at
-/// once when it takes no day, else off the map until it arrives.
+/// The autorouting trip of `key` from `from` to `to` (`FUN_0054c7d0`): an
+/// Autorouting order (`0x43000003`, `FUN_00549230` -> `FUN_00547740`),
+/// shared by the characters of one side leaving one place for one
+/// destination. Its record is hidden, so the traveller counts at its
+/// destination as personnel on its way; the order's detection gives the
+/// side holding `from` its chance at it (Move's mode word), and its
+/// landing posts Personnel Arrive (family `0x43`, `FUN_004955b0`).
+///
+/// port: the order starts on the next mission step; the original creates
+/// it from the autorouting event (`0x307`, `FUN_00515480`). Its Mandatory
+/// flag (`FUN_00547ba0` argument 12) is not kept.
 fn travel_to_safety(
     state: &mut MissionState,
     world: &GameWorld,
@@ -5071,34 +5093,51 @@ fn travel_to_safety(
     now: u64,
     effects: &mut Vec<MissionEffect>,
 ) {
-    let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
-    // port: a character travels at the GNPRTB 1 default speed.
-    let days = crate::movement::transit_ticks_between(
-        world,
-        position(from),
-        position(to),
-        crate::movement::default_speed(world),
-    );
-    if days == 0 {
-        effects.push(MissionEffect::MemberMoved {
-            member: MissionMember::Character(key),
-            to: Some(to),
-        });
+    let Some(character) = world.characters.get(key) else {
+        return;
+    };
+    let faction = if character.is_alliance {
+        MissionFaction::Alliance
     } else {
-        // port: a travelling character is off the map, as a mission
-        // member is.
-        effects.push(MissionEffect::MemberMoved {
-            member: MissionMember::Character(key),
-            to: None,
-        });
-        state.escapees.push(EscapeeTransit {
-            character: key,
-            to,
-            arrival: now + u64::from(days),
-            abode: None,
-            ship: None,
-        });
+        MissionFaction::Empire
+    };
+    let member = MissionMember::Character(key);
+    let hidden = MissionKind::Autorouting
+        .record_id()
+        .and_then(|id| world.mission_record(id))
+        .is_some_and(|record| record.hidden);
+    effects.push(MissionEffect::MemberOnMission { member, hidden });
+    // FUN_00548e90 gathers every autorouting character at one place;
+    // FUN_00549230 sends those of one side and destination together.
+    let leaves_from = |mission: &ActiveMission| {
+        mission.team.first().is_some_and(|first| match first {
+            MissionMember::Character(c) => {
+                world.characters.get(*c).and_then(|c| c.current_system) == Some(from)
+            }
+            MissionMember::SpecialForce(_) => false,
+        })
+    };
+    if let Some(order) = state.missions.iter_mut().find(|mission| {
+        mission.kind == MissionKind::Autorouting
+            && mission.ordered_tick == now
+            && mission.phase == 0
+            && mission.faction == faction
+            && mission.target_system == to
+            && leaves_from(mission)
+    }) {
+        order.team.push(member);
+        return;
     }
+    let id = state.next_id;
+    state.next_id += 1;
+    state.missions.push_back(ActiveMission::new(
+        id,
+        MissionKind::Autorouting,
+        faction,
+        vec![member],
+        to,
+        now,
+    ));
 }
 
 /// `FUN_00561990` -> `FUN_0055e7e0`: the ESCAPETB input of `captive`,
@@ -5940,25 +5979,30 @@ mod tests {
         ));
     }
 
-    /// Where `character` goes in `effects`: at once, or on the road.
+    /// Where `character` goes: on the Autorouting order it set out on in
+    /// `effects`, or at once.
     fn went_to(
         state: &MissionState,
         effects: &[MissionEffect],
         character: CharacterKey,
     ) -> Option<SystemKey> {
-        let moved = effects.iter().find_map(|effect| match effect {
+        let member = MissionMember::Character(character);
+        if effects.contains(&MissionEffect::MemberOnMission {
+            member,
+            hidden: false,
+        }) {
+            return state
+                .missions()
+                .iter()
+                .find(|m| m.kind == MissionKind::Autorouting && m.team.contains(&member))
+                .map(|m| m.target_system);
+        }
+        effects.iter().find_map(|effect| match effect {
             MissionEffect::MemberMoved {
                 member: MissionMember::Character(c),
                 to,
-            } if *c == character => Some(*to),
+            } if *c == character => *to,
             _ => None,
-        })?;
-        moved.or_else(|| {
-            state
-                .escapees
-                .iter()
-                .find(|transit| transit.character == character)
-                .map(|transit| transit.to)
         })
     }
 
@@ -6005,6 +6049,69 @@ mod tests {
         assert!(!effects
             .iter()
             .any(|effect| matches!(effect, MissionEffect::CharacterCaptured { .. })));
+    }
+
+    #[test]
+    fn characters_of_one_side_leaving_one_place_for_one_destination_share_an_order() {
+        // FUN_00548e90 gathers the autorouting characters at one place and
+        // FUN_00549230 sends those of one side and destination on one
+        // Autorouting order (FUN_00547740). An order of another kind, day,
+        // phase, side, destination or place is not theirs.
+        use crate::dat::Faction;
+        let mut world = escape_world();
+        let taken = held_system(&mut world, 0, Faction::Empire);
+        let empire = held_system(&mut world, 400, Faction::Empire);
+        let refuge = held_system(&mut world, 900, Faction::Alliance);
+        let first = agent_at(&mut world, taken, false);
+        let second = agent_at(&mut world, taken, false);
+        world.systems[taken].control = crate::world::ControlKind::Controlled(Faction::Alliance);
+        let mut state = MissionState::new();
+        let mut other_order = |world: &mut GameWorld, at, change: &dyn Fn(&mut ActiveMission)| {
+            let busy = agent_at(world, at, false);
+            world.characters[busy].on_mission = true;
+            let id = state.next_id;
+            state.next_id += 1;
+            let mut order = ActiveMission::new(
+                id,
+                MissionKind::Autorouting,
+                MissionFaction::Empire,
+                vec![MissionMember::Character(busy)],
+                empire,
+                5,
+            );
+            change(&mut order);
+            state.missions.push_back(order);
+            busy
+        };
+        let on_move = other_order(&mut world, taken, &|m| m.kind = MissionKind::Move);
+        let yesterday = other_order(&mut world, taken, &|m| m.ordered_tick = 4);
+        other_order(&mut world, taken, &|m| m.phase = 1);
+        other_order(&mut world, taken, &|m| m.faction = MissionFaction::Alliance);
+        other_order(&mut world, taken, &|m| m.target_system = refuge);
+        other_order(&mut world, empire, &|_| {});
+
+        let effects = side_change_characters(&mut state, &world, taken, Faction::Alliance, 5);
+
+        assert!(!state.is_autorouting(on_move) && state.is_autorouting(yesterday));
+        let [first, second] = [first, second].map(MissionMember::Character);
+        let theirs: Vec<_> = state
+            .missions()
+            .iter()
+            .filter(|m| m.team.contains(&first) || m.team.contains(&second))
+            .collect();
+        assert_eq!(theirs.len(), 1);
+        assert_eq!(theirs[0].team, [first, second]);
+        assert_eq!(theirs[0].kind, MissionKind::Autorouting);
+        assert!(state.missions().iter().all(|m| m.team.len() == 1 || m.id == theirs[0].id));
+        let mut ids: Vec<_> = state.missions().iter().map(|m| m.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), 7, "the new order takes an id of its own");
+        assert_eq!(state.next_id, 7, "and the next order another");
+        assert!(effects.contains(&MissionEffect::MemberOnMission {
+            member: first,
+            hidden: false
+        }));
     }
 
     #[test]
@@ -6233,11 +6340,20 @@ mod tests {
     }
 
     #[test]
-    fn an_escapee_leaves_the_map_and_arrives_after_its_transit_days() {
-        // build-delivery.md, Travel: FUN_0055d8c0 gives isqrt(100^2) / 5 *
-        // 100 / 100 = 20 days at the GNPRTB 1 default speed.
+    fn an_escapee_autoroutes_home_on_a_hidden_order_and_reports_its_arrival() {
+        // FUN_004ef570 frees the captive and sets Autorouting; FUN_00549230
+        // sends it on an Autorouting order 0x43000003 (FUN_00547740), whose
+        // record is hidden. The order's slots are Move's (vtable 0x668850):
+        // its members travel, FUN_0055d8c0 giving isqrt(100^2) / 5 * 100 /
+        // 100 = 20 days at the GNPRTB 1 default speed (build-delivery.md,
+        // Travel), and its family 0x43 posts Personnel Arrive on landing
+        // (FUN_004955b0, notes/message-pictures.md).
         use crate::dat::Faction;
         let mut world = escape_world();
+        world.mission_records = vec![crate::world::MissionRecord {
+            dat_id: crate::ids::DatId::new(0x4300_0003),
+            ..move_record()
+        }];
         let prison = held_system(&mut world, 0, Faction::Empire);
         let haven = held_system(&mut world, 100, Faction::Alliance);
         let captive = captive_at(&mut world, prison, 0, 0);
@@ -6252,15 +6368,35 @@ mod tests {
 
         let member = MissionMember::Character(captive);
         let effects = MissionSystem::advance_escapes(&mut state, &world, 5, &[0.0, 0.0]);
-        assert_eq!(effects[1], MissionEffect::MemberMoved { member, to: None });
-        assert!(MissionSystem::advance_escapes(&mut state, &world, 24, &[]).is_empty());
+        assert_eq!(effects[1], MissionEffect::MemberOnMission { member, hidden: true });
+        let orders: Vec<_> = state
+            .missions()
+            .iter()
+            .map(|m| (m.kind, m.faction, m.team.clone(), m.target_system))
+            .collect();
         assert_eq!(
-            MissionSystem::advance_escapes(&mut state, &world, 25, &[]),
-            vec![MissionEffect::MemberMoved {
-                member,
-                to: Some(haven)
-            }]
+            orders,
+            [(MissionKind::Autorouting, MissionFaction::Alliance, vec![member], haven)]
         );
+        assert!(state.is_autorouting(captive));
+        world.characters[captive].is_captive = false;
+        world.characters[captive].captured_by = None;
+        apply_advance_effects(&mut world, &effects[1..]);
+
+        let mut arrivals = Vec::new();
+        for day in 6..=40 {
+            let advance = step(&mut state, &world, day, &[]);
+            apply_advance_effects(&mut world, &advance.effects);
+            arrivals.extend(advance.arrivals);
+        }
+        assert_eq!(world.characters[captive].current_system, Some(haven));
+        assert_eq!(arrivals.len(), 1);
+        assert_eq!(
+            (arrivals[0].system, arrivals[0].members.clone(), arrivals[0].tick),
+            (haven, vec![member], 25),
+            "20 days from the order's day"
+        );
+        assert!(state.missions().is_empty() && !state.is_autorouting(captive));
     }
 
     #[test]

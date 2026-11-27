@@ -537,6 +537,7 @@ pub(super) fn apply_panel_action(
                 MissionKind::Autoscrap => "Autoscrap",
                 MissionKind::Move => "Move",
                 MissionKind::Return => "Return",
+                MissionKind::Autorouting => "Autorouting",
                 MissionKind::Adrift => "Adrift",
                 MissionKind::JediTraining => "Jedi Training",
                 MissionKind::Dagobah => "Dagobah",

@@ -89,6 +89,9 @@ fn capability(kind: MissionKind) -> Option<u32> {
         MissionKind::Return => return None,
         // A destroyed container's characters go Adrift (FUN_00549230).
         MissionKind::Adrift => return None,
+        // An escape or a side change sends characters Autorouting
+        // (FUN_00549230 -> FUN_00547740).
+        MissionKind::Autorouting => return None,
         // FUN_00402720 reads Jedi Training's record (0x58000042, the image's
         // only use of that id, 0x402c74) but sets no bit, so no planner
         // sends it; only the player does.
@@ -311,6 +314,7 @@ fn selectors(kind: MissionKind, subtype: u32) -> Option<Selectors> {
         // The Move pseudo-mission has no selectors (FUN_004bd570 builds it).
         MissionKind::Move
         | MissionKind::Return
+        | MissionKind::Autorouting
         | MissionKind::Adrift
         | MissionKind::JediTraining
         | MissionKind::Dagobah

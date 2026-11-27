@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v140, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v139 migrations"
+description: "Native and browser save v142, canonical fingerprints, campaign setup, continuation state, troop cargo, regiment withdraw percents, deliveries, each side's object views, the squadrons' losses, the system copies' bits and uprising bits, and the v116 to v139 migrations"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-11-21
+updated: 2026-11-27
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,8 +11,9 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v140. v116 to v139 still load
-through their migrations (below); no other version does.
+serializable snapshot. The current format is v142 (v141: a special force's
+`on_hidden_mission`; v142: `MissionKind::Autorouting`). v116 to v141 still
+load (below); no other version does.
 
 v139 keeps v138's layout. A v138 or older save was made before every
 system rolled its energy and raw materials (`RimSystem_vtbc`
@@ -21,7 +22,7 @@ systems hold 0/0. `decode_body` rolls each system left without energy
 from a stream seeded by its id (`seeds::roll_missing_resources`), and a
 side's explored copy still showing 0/0 takes the new values.
 
-## Native format (v140)
+## Native format (v142)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]

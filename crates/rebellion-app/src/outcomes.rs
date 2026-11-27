@@ -36,6 +36,7 @@ pub(super) fn apply_mission_result(
         MissionKind::Autoscrap => "Autoscrap",
         MissionKind::Move => "Move",
         MissionKind::Return => "Return",
+        MissionKind::Autorouting => "Autorouting",
         MissionKind::Adrift => "Adrift",
         MissionKind::JediTraining => "Jedi Training",
         MissionKind::Dagobah => "Dagobah",
@@ -70,6 +71,7 @@ pub(super) fn apply_mission_result(
         | MissionKind::Autoscrap
         | MissionKind::Move
         | MissionKind::Return
+        | MissionKind::Autorouting
         | MissionKind::Adrift
         | MissionKind::JediTraining
         | MissionKind::Dagobah

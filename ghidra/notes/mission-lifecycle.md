@@ -806,8 +806,23 @@ member's side holds it (port: without the route checks).
   port's `EscapeeTransit` lands there too, so for an escapee or an abode
   trip, which leaves at once, the port's direct trip gives the same
   landing. What it lacks is the mandatory mission flag, which no order can
-  meet while the traveller is off the map. The port keeps the direct
-  trips (port: no Autorouting order object).
+  meet while the traveller is off the map. The port kept the direct
+  trips until 2026-11-27.
+- Ported 2026-11-27 (save v142): the class is vtable `0x00668850`; read
+  from the image, its slots are Move's (`0x00665578`) but for the class's
+  identity slots `+0x0`, `+0x4`, `+0x3c`, `+0x58` and `+0xe4`, so its
+  detection mode word (slot `+0x94`, `FUN_005761b0`) is Move's, not
+  Adrift's (`FUN_00576960`). MISSNSD `0x43000003` is hidden, with timer 0
+  and detection phases. So the direct trip missed three things: the
+  traveller counts at its destination as personnel on its way (the hidden
+  role bit); its landing posts Personnel Arrive (family `0x43` is in
+  `FUN_004955b0`'s `0x40..0x4f`); and the order's detection at the place
+  it leaves gives that place's side its chance at it.
+  `MissionKind::Autorouting`: `travel_to_safety` (escape, side change)
+  sends the characters of one side leaving one place for one destination
+  on one order. port: the order steps from the next mission step; abode
+  and ship trips keep the direct transit (an abode's landing posts
+  nothing); the Mandatory flag is not kept.
 - The jails (`FUN_00549580`) need a member with no destination at all.
   Read 2026-10-20: the move validator each candidate passes
   (`FUN_005571c0`) sets up the character's order kind `0x241`

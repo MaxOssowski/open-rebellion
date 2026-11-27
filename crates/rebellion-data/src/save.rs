@@ -75,7 +75,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 141;
+pub const SAVE_VERSION: u32 = 142;
 
 /// The oldest version that still loads: v116, from before the object
 /// views. Its body lacks `SaveState::object_views` ([`migrate_body`]).
@@ -4229,7 +4229,19 @@ pub(crate) mod tests {
         );
         assert!(!effects.is_empty());
         assert_eq!(state.missions.escape_timers().len(), 1);
-        assert_eq!(state.missions.escapees().len(), 1);
+        // v142: the escapee sets out on an Autorouting order (FUN_00547740).
+        let orders = |missions: &rebellion_core::missions::MissionState| -> Vec<_> {
+            missions
+                .missions()
+                .iter()
+                .map(|m| (m.kind, m.team.clone(), m.target_system))
+                .collect()
+        };
+        assert_eq!(orders(&state.missions).len(), 1);
+        assert_eq!(
+            orders(&state.missions)[0].0,
+            rebellion_core::missions::MissionKind::Autorouting
+        );
         save_slot(&saves_dir, 0, "V35 Save", &state, &[]).unwrap();
 
         let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
@@ -4238,7 +4250,7 @@ pub(crate) mod tests {
             loaded.missions.escape_timers(),
             state.missions.escape_timers()
         );
-        assert_eq!(loaded.missions.escapees(), state.missions.escapees());
+        assert_eq!(orders(&loaded.missions), orders(&state.missions));
     }
 
     #[test]

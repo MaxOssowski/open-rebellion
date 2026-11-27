@@ -616,7 +616,10 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   sends it in the original), Dagobah, Pickup, Move, and Return (members of
   an ended agent mission go home to where they joined it, save v91,
   2026-10-20). Vacation is excluded: nothing in the original creates it.
-  Open: Autorouting `0x43` and Adrift `0x44` as orders, and the jails.
+  Adrift `0x44` is an order since 2026-10-20 (save v93) and Autorouting
+  `0x43` since 2026-11-27 (save v142, escapes and side changes; abode and
+  ship trips keep a direct transit). The jails are excluded: only a side-3
+  character can reach one (`ghidra/notes/mission-lifecycle.md`).
 - [x] Let the player move characters (F-040, 2026-10-20): the menu's Move
   and Confirmed Move (with its transit window), a Move aboard a fleet (save
   v92), and the Fleet window's Personnel menu and drag. Open: the drag out

@@ -1617,6 +1617,7 @@ pub fn close_simulation_day(
         );
         integrator.apply_escape_effects(world, &effects);
     }
+    integrator.record_autorouting_orders(world, &states.missions, current_tick);
 
     // ── 13f. Each side's views of the other side's objects ──────────────
     // After movement, control and missions (FUN_004f9a60 per object;
@@ -2816,14 +2817,20 @@ mod tests {
         assert!(!o.is_captive && o.captured_by.is_none() && o.is_empire);
         assert!(!p.is_captive && p.captured_by.is_none() && p.is_alliance && !p.is_empire);
         assert_eq!(p.current_system, Some(system));
+        // The officer leaves on an Autorouting order (FUN_00549230 ->
+        // FUN_00547740).
+        let member = rebellion_core::missions::MissionMember::Character(officer);
         let went = states
             .missions
-            .escapees()
+            .missions()
             .iter()
-            .find(|transit| transit.character == officer)
-            .map(|transit| transit.to)
-            .or(o.current_system.filter(|&s| s != system));
+            .find(|m| {
+                m.kind == rebellion_core::missions::MissionKind::Autorouting
+                    && m.team.contains(&member)
+            })
+            .map(|m| m.target_system);
         assert_eq!(went, Some(other));
+        assert!(o.on_mission && states.missions.is_autorouting(officer));
     }
 
     #[test]

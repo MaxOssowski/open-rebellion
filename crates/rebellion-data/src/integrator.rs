@@ -31,7 +31,7 @@ use rebellion_core::game_events::{
     EVT_GARRISON_REQUIRED, EVT_HERITAGE_LEARNED, EVT_HQ_CAPTURED, EVT_INFORMANT_INTEL,
     EVT_LUKE_DAGOBAH,
     EVT_MAINTENANCE_SHORTFALL, EVT_MANUFACTURING_IDLE, EVT_MISSION_DISPATCHED,
-    EVT_ADRIFT_ORDERED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
+    EVT_ADRIFT_ORDERED, EVT_AUTOROUTING_ORDERED, EVT_MISSION_RESOLVED, EVT_NATURAL_DISASTER, EVT_RETURN_ORDERED, EVT_RESEARCH_UNLOCKED, EVT_RESOURCE_DISCOVERY,
     EVT_SABOTEUR_DETECTED, EVT_SHIP_REPAIRED, EVT_SHIP_REPAIR_STARTED, EVT_SQUADRON_REPAIRED,
     EVT_SMUGGLING_PERCENT, EVT_TRAITOR_REVEALED, EVT_SQUADRONS_AUTOROUTED, EVT_TROOP_MOVED,
     EVT_DESTROYED_ON_ARRIVAL, EVT_UNITS_DEPLOYED, EVT_UPRISING_BEGAN, EVT_UPRISING_CHECK, EVT_UPRISING_ENDED,
@@ -699,11 +699,37 @@ impl PerceptionIntegrator {
     /// (`FUN_00548910`, `FUN_00549230`): a `return_ordered` or
     /// `adrift_ordered` event for each, with its team and destination.
     pub fn record_return_orders(&mut self, world: &GameWorld, missions: &MissionState, tick: u64) {
+        self.record_orders(world, missions, tick, |kind| match kind {
+            MissionKind::Return => Some(EVT_RETURN_ORDERED),
+            MissionKind::Adrift => Some(EVT_ADRIFT_ORDERED),
+            _ => None,
+        });
+    }
+
+    /// Record the Autorouting orders the day's escapes and side changes
+    /// gave (`FUN_00549230` -> `FUN_00547740`), after both: an
+    /// `autorouting_ordered` event for each, with its team and destination.
+    pub fn record_autorouting_orders(
+        &mut self,
+        world: &GameWorld,
+        missions: &MissionState,
+        tick: u64,
+    ) {
+        self.record_orders(world, missions, tick, |kind| {
+            (kind == MissionKind::Autorouting).then_some(EVT_AUTOROUTING_ORDERED)
+        });
+    }
+
+    fn record_orders(
+        &mut self,
+        world: &GameWorld,
+        missions: &MissionState,
+        tick: u64,
+        event_of: impl Fn(MissionKind) -> Option<&'static str>,
+    ) {
         for order in missions.missions().iter().filter(|m| m.ordered_tick == tick) {
-            let event = match order.kind {
-                MissionKind::Return => EVT_RETURN_ORDERED,
-                MissionKind::Adrift => EVT_ADRIFT_ORDERED,
-                _ => continue,
+            let Some(event) = event_of(order.kind) else {
+                continue;
             };
             self.events.push(GameEventRecord::new(
                 tick,
@@ -1590,6 +1616,10 @@ impl PerceptionIntegrator {
                 MissionEffect::MemberBoarded { .. } | MissionEffect::MemberSeated { .. }
             ) {
                 // A Pickup's prisoner lands aboard Vader's ship.
+                rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
+            } else if matches!(effect, MissionEffect::MemberOnMission { .. }) {
+                // An escapee or a side change's traveller sets out on an
+                // Autorouting order (FUN_00547740).
                 rebellion_core::missions::apply_advance_effects(world, std::slice::from_ref(effect));
             } else if let MissionEffect::CharacterRescued {
                 character,
@@ -3087,6 +3117,14 @@ mod tests {
             None,
             7,
         ));
+        missions.dispatch(MissionRequest::single(
+            MissionKind::Autorouting,
+            MissionFaction::Alliance,
+            envoy,
+            home,
+            None,
+            7,
+        ));
         let mut integrator = PerceptionIntegrator::new(1, 0);
 
         integrator.record_return_orders(&world, &missions, 7);
@@ -3100,6 +3138,15 @@ mod tests {
         assert_eq!(integrator.events[1].details["to"], "Elsewhere");
         integrator.record_return_orders(&world, &missions, 8);
         assert_eq!(integrator.events.len(), 2);
+        // The escapes' and side changes' orders are recorded on their own,
+        // after both have run.
+        integrator.record_autorouting_orders(&world, &missions, 8);
+        assert_eq!(integrator.events.len(), 2);
+        integrator.record_autorouting_orders(&world, &missions, 7);
+        assert_eq!(integrator.events.len(), 3);
+        assert_eq!(integrator.events[2].event_type, EVT_AUTOROUTING_ORDERED);
+        assert_eq!(integrator.events[2].details["team"][0], "Envoy");
+        assert_eq!(integrator.events[2].details["to"], "Home");
     }
 
     #[test]

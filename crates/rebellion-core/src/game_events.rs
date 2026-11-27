@@ -78,6 +78,9 @@ pub const EVT_RETURN_ORDERED: &str = "return_ordered";
 /// Adrift characters left on an Adrift order (`FUN_00549230` ->
 /// `FUN_00547880`).
 pub const EVT_ADRIFT_ORDERED: &str = "adrift_ordered";
+/// Characters leaving a place another side holds after an escape or a side
+/// change left on an Autorouting order (`FUN_00549230` -> `FUN_00547740`).
+pub const EVT_AUTOROUTING_ORDERED: &str = "autorouting_ordered";
 pub const EVT_EVENT_FIRED: &str = "event_fired";
 pub const EVT_AI_ACTION: &str = "ai_action";
 pub const EVT_BLOCKADE_STARTED: &str = "blockade_started";
@@ -210,6 +213,7 @@ mod tests {
             EVT_MISSION_RESOLVED,
             EVT_RETURN_ORDERED,
             EVT_ADRIFT_ORDERED,
+            EVT_AUTOROUTING_ORDERED,
             EVT_EVENT_FIRED,
             EVT_AI_ACTION,
             EVT_BLOCKADE_STARTED,
