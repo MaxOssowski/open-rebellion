@@ -1212,8 +1212,14 @@ port:
   runs.
 - `FUN_004c9cb0` is ported (stage 5i, `ModuleB::carry_to_base`). A
   fleet's regiments are its cargo, not a ship's, so a fleet gives all its
-  cargo when any of its ships is free and its own. The role requests of `FUN_004ca5e0` need module 8's sector planners;
-  the bombardment and interdictor roles never come up.
+  cargo when any of its ships is free and its own.
+- `FUN_004ca5e0`'s role requests read module 8's planners (`+0x64`) since
+  2026-11-27; before, the port skipped them (written before module 8),
+  so with every need met module `0xb` took no role and drew among all its
+  shipyards' classes, cheap squadrons often. The bombarders
+  (`0x100800`, key `0x800`, `values[2]`) and interdictors (`0x100400`,
+  key `0x10000`, `values[3]`; class record slot `+4`, `FUN_00473930`)
+  come up with them.
 - A fleet of squadrons alone (the port's seeding) is passed over by the
   fleet queries.
 - hyp: controller `+0x16c` has no writer found and reads as 0.

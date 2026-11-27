@@ -82,6 +82,18 @@ const DEATH_STAR: Role = Role {
     key: 0x200,
     tried: 0x2000_0000,
 };
+/// Bombarding ships by bombardment (`FUN_004ca5e0`).
+const BOMBARDERS: Role = Role {
+    flags: 0x10_0800,
+    key: 0x800,
+    tried: 0x1000_0000,
+};
+/// Interdictors by their `values[3]` (`FUN_004ca5e0`).
+const INTERDICTORS: Role = Role {
+    flags: 0x10_0400,
+    key: 0x1_0000,
+    tried: 0x4000_0000,
+};
 
 /// Module `0xb`'s own fields (`FUN_004c8820`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -388,13 +400,53 @@ impl ModuleB {
     /// carriers while the hangar room (`+0x27c`) is at most controller
     /// `+0x16c`; else no role.
     ///
-    /// port: module 8's sector planners (controller `+0xd8`) are not
-    /// ported, so no request counts and the bombardment and interdictor
-    /// roles never come up. Controller `+0x16c` is the class tree's best
-    /// hangar room ([`crate::ai_records::ClassFloors::hangars`]).
+    /// The requests are planner `+0x64` bits 1 (armed), `0x80` (lasers),
+    /// 4 (troop carriers), 8 (carriers), `0x10` (bombarders) and, with
+    /// controller `+4` bit `0x1000000`, `0x800` (interdictors). Troop
+    /// carriers win with any request; otherwise a role needs at least one
+    /// and as many as each role after it in that order. Controller
+    /// `+0x16c` is the class tree's best hangar room
+    /// ([`crate::ai_records::ClassFloors::hangars`]).
     fn choose_role(&mut self, io: &Inputs<'_>) {
         let t = io.tallies;
         let open = |role: Role| self.tried & role.tried == 0;
+        let interdict = io.controller.flags_with(&t) & 0x100_0000 != 0;
+        let asked = |bit: u32, role: Role| {
+            if !open(role) {
+                return 0;
+            }
+            let n = io.planners.iter().filter(|p| p.requests & bit != 0).count();
+            i32::try_from(n).unwrap_or(i32::MAX)
+        };
+        let armed = asked(1, ARMED);
+        let lasers = asked(0x80, LASERS);
+        let troops = asked(4, TROOP_CARRIERS);
+        let carriers = asked(8, CARRIERS);
+        let bombarders = asked(0x10, BOMBARDERS);
+        let interdictors = if interdict { asked(0x800, INTERDICTORS) } else { 0 };
+        let requested = if troops > 0 {
+            Some(TROOP_CARRIERS)
+        } else if armed > 0
+            && [lasers, troops, bombarders, carriers, interdictors].iter().all(|&n| armed >= n)
+        {
+            Some(ARMED)
+        } else if lasers > 0
+            && [troops, bombarders, carriers, interdictors].iter().all(|&n| lasers >= n)
+        {
+            Some(LASERS)
+        } else if bombarders > 0 && bombarders >= carriers && bombarders >= interdictors {
+            Some(BOMBARDERS)
+        } else if carriers > 0 && carriers >= interdictors {
+            Some(CARRIERS)
+        } else if interdictors > 0 {
+            Some(INTERDICTORS)
+        } else {
+            None
+        };
+        if let Some(role) = requested {
+            self.role = role;
+            return;
+        }
         self.role = if open(TROOP_CARRIERS) && t.troop_room < t.troops_wanted {
             TROOP_CARRIERS
         } else if !io.is_alliance && self.sites.len() > 1 && !t.death_star && open(DEATH_STAR) {
@@ -673,6 +725,8 @@ fn ship_value(r: &ClassRecord, key: u32) -> i32 {
         0x400 => r.values[1],
         0x80 => r.values[5],
         0x100 => r.values[6],
+        0x800 => r.values[2],
+        0x1_0000 => r.values[3],
         _ => 0,
     }
 }
@@ -1301,6 +1355,59 @@ mod tests {
     }
 
     #[test]
+    fn the_role_is_the_one_the_sector_planners_ask_for_most() {
+        // FUN_004ca5e0 counts module 8's planners' requests (+0x64) whose
+        // role was not tried: 4 troop carriers win with one; then armed (1),
+        // lasers (0x80), bombarders (0x10), carriers (8) and interdictors
+        // (0x800, with controller +4 bit 0x1000000), each needing as many
+        // as every one after it.
+        let (f, _) = ship_fixture();
+        let mut state = AIState::new(AiFaction::Alliance);
+        let role = |state: &mut AIState, asks: &[u32]| {
+            state.module8.planners = asks
+                .iter()
+                .enumerate()
+                .map(|(i, &requests)| crate::ai_module8::SectorPlanner {
+                    id: u32::try_from(i).unwrap() + 1,
+                    requests,
+                    ..Default::default()
+                })
+                .collect();
+            let mut galaxy = records_of(&f, state);
+            with_io(
+                &f,
+                state,
+                &mut galaxy,
+                ROOMY,
+                true,
+                &Default::default(),
+                |m, io| {
+                    m.choose_role(io);
+                    m.role
+                },
+            )
+        };
+        assert_eq!(role(&mut state, &[1, 1, 0x80, 4]), TROOP_CARRIERS);
+        assert_eq!(role(&mut state, &[1, 0x81]), ARMED);
+        assert_eq!(role(&mut state, &[1, 0x80, 0x80]), LASERS);
+        assert_eq!(role(&mut state, &[0x80, 0x10, 0x10]), BOMBARDERS);
+        assert_eq!(role(&mut state, &[0x10, 8, 8]), CARRIERS);
+        assert_eq!(role(&mut state, &[0x11, 8]), ARMED);
+        assert_eq!(role(&mut state, &[0x10, 8]), BOMBARDERS);
+        // Interdictors count only with controller +4 bit 0x1000000.
+        assert_ne!(role(&mut state, &[0x800]), INTERDICTORS);
+        state.controller.flags |= 0x100_0000;
+        assert_eq!(role(&mut state, &[0x800]), INTERDICTORS);
+        assert_eq!(role(&mut state, &[8, 0x800, 0x800]), INTERDICTORS);
+        assert_eq!(role(&mut state, &[8, 0x800]), CARRIERS);
+        // A tried role's requests do not count.
+        state.module_b.tried = ARMED.tried;
+        assert_eq!(role(&mut state, &[1, 1, 0x80]), LASERS);
+        state.module_b.tried = TROOP_CARRIERS.tried;
+        assert_eq!(role(&mut state, &[4, 1]), ARMED);
+    }
+
+    #[test]
     fn the_role_falls_back_from_troops_to_the_death_star_armed_lasers_and_carriers() {
         // FUN_004ca5e0 with no planner requests: troop carriers while
         // +0x260 < +0x20c; the Death Star for the Empire (+0x30 == 2) with
@@ -1491,13 +1598,17 @@ mod tests {
     #[test]
     fn the_roles_rank_ship_classes_on_their_class_record_values() {
         // FUN_00473930 (ship class record slot +4): 0x200 +0x30, 0x80000
-        // +0x58, 0x400 +0x34, 0x80 +0x44, 0x100 +0x48; others 0.
+        // +0x58, 0x400 +0x34, 0x80 +0x44, 0x100 +0x48, 0x800 +0x38,
+        // 0x10000 +0x3c; others 0.
         let r = ClassRecord {
             values: std::array::from_fn(|i| 10 + i32::try_from(i).unwrap()),
             ..ClassRecord::default()
         };
-        let keys = [0x200, 0x8_0000, 0x400, 0x80, 0x100, 0];
-        assert_eq!(keys.map(|k| ship_value(&r, k)), [10, 20, 11, 15, 16, 0]);
+        let keys = [0x200, 0x8_0000, 0x400, 0x80, 0x100, 0x800, 0x1_0000, 0];
+        assert_eq!(
+            keys.map(|k| ship_value(&r, k)),
+            [10, 20, 11, 15, 16, 12, 13, 0]
+        );
     }
 
     #[test]
