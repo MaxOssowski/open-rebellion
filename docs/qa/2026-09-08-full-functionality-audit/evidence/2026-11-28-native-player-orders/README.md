@@ -64,7 +64,9 @@ reliably:
 
 A real mouse sends motion before every press, so this is a limit of the
 harness, not a finding against the game. `cua-driver`'s `drag` tool
-(a uinput pointer) was not used on the user's desktop. A nested X server
+(a uinput pointer) was not used on the user's desktop, and
+`move_cursor` only moves the driver's own cursor overlay: a hover over a
+menu item with it left the item unlit (tested). A nested X server
 with `xdotool` (neither installed) would give real pointer motion without
 touching the desktop.
 

@@ -104,6 +104,24 @@ cua-driver serve &             # standard permission mode
 - Export Game Log keeps the last 500 messages; export several times
   during a long run.
 - Wait about 15 seconds after launch before the first menu click.
+- Found 2026-11-28 (`evidence/2026-11-28-native-player-orders/`):
+  - Background clicks carry no pointer motion, so egui's pointer lags. The
+    first `click` on a menu item or list row only hovers it; click again.
+  - A targeting release (Move, Confirmed Move, a mission target) is read
+    from egui's latest pointer position, so a background click or
+    `mouse_button_down`/`mouse_drag`/`mouse_button_up` can land on an
+    earlier point (traced: "a fleet cannot move into itself"). Only one
+    Move of several went through. `move_cursor` moves the agent cursor
+    overlay only and sends nothing to the game; `drag` uses a uinput
+    pointer, so it is not for the user's desktop. A nested X server with
+    `xdotool` (not installed) would give real motion.
+  - The `"session"` ends after a while idle; calls then fail with "session
+    has ended". `call start_session '{"session":"rebel"}'` revives it.
+  - The muted intro can still stick on film 001; Escape skips it. Escape in
+    the galaxy goes back to the main menu, and Escape there quits.
+  - Quitting on the NVIDIA driver aborts after the game's cleanup
+    (`buffer overflow detected`, `xcb_dri3_free_syncobj` in NVIDIA's EGL
+    exit destructor).
 
 ### Run a check
 
