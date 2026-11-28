@@ -441,6 +441,22 @@ cross-runtime proof remain open
   observed computer-opponent profile. The 50–400 battle range and geographic
   spread remain provisional engineering guards because no located source
   provides original AI-versus-AI telemetry or those numeric constants.
+- 2026-11-28 (`evidence/2026-11-28-five-campaigns/`,
+  `evidence/2026-11-28-standard-victory-targets/`,
+  `evidence/2026-11-28-native-player-orders/`): five 5,000-day dual-AI
+  seeds pass the fleet-order (0.55 to 0.72 of arrivals) and fleet-count (1.6
+  to 3.0 times) bounds but not transit (most 44% to 70% against 10%). The
+  transit comes from the ported sector planners' moves and a base-choice loop
+  of `FUN_004af8a0`; the 10% guide awaits the owner's decision. Over 25 seeds
+  the AI reaches every Standard target at least once; the Empire wins 6, the
+  Alliance none. With 100 more Imperial mine and refinery pairs and a Death
+  Star given, the planners order Destroy System `0x223` and destroy 5 systems
+  in seeds 2, 4 and 5; with the capacity alone none is built
+  (`FUN_004ca5e0` takes the Death Star role only as a fallback). In the native
+  Linux window a player's Move passes; Confirmed Move, the troop load and the
+  mission entry are not checked, because the background input harness cannot
+  place a target. Module `0xb` now scraps only a free, standing own ship
+  (`FUN_0041ac80`, `5fdb9714`).
 - Acceptance remains open: fleet, transit, and player troop-dispatch bounds
   pass. Faction liveness, target diversity, battle diagnostics, complete
   capture/evasion, the wider campaign loop, and five-seed cross-runtime proof

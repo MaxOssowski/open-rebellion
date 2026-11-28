@@ -326,7 +326,8 @@
     "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
         "docs/reference/campaign-history/index.md",
         "docs/reference/campaign-history/ai-behavior-parity.md",
-        "docs/reference/campaign-history/sources.json"
+        "docs/reference/campaign-history/sources.json",
+        "2026-11-28 (evidence/2026-11-28-five-campaigns/, 2026-11-28-standard-victory-targets/, 2026-11-28-native-player-orders/): five 5,000-day dual-AI seeds pass the fleet-order (0.55-0.72 of arrivals) and fleet-count (1.6-3.0x) bounds but not transit (most 44-70% against 10%); the transit comes from the ported sector planners' moves and a base-choice loop of FUN_004af8a0, and the 10% guide awaits the owner's decision. Over 25 seeds the AI reaches every Standard target at least once; the Empire wins 6, the Alliance none. With 100 more Imperial mine and refinery pairs and a Death Star given, the planners order Destroy System 0x223 and destroy 5 systems in seeds 2, 4 and 5; with the capacity alone none is built (FUN_004ca5e0 takes the Death Star role only as a fallback). Native Linux: a player's Move passes; Confirmed Move, the troop load and the mission entry are not checked because the background input harness cannot place a target. Module 0xb scrapping now admits only a free, standing own ship (FUN_0041ac80, 5fdb9714). The status stays partially remediated."
       ],
       "resolved_root_causes": [
         "In-transit fleets remained eligible for AI dispatch and replacement orders reset travel progress.",
