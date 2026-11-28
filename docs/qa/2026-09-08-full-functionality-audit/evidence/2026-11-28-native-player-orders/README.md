@@ -59,7 +59,7 @@ reliably:
   `destination=SystemKey(100v1) join=Some(FleetKey(2v1)) checked=Err("a fleet cannot move into itself")`:
   the point of the earlier right click on Fleet 1's own entry
   (`alliance-confirmed/a-13.png`).
-- Three Confirmed Move attempts chose their target frame (Toprawa, Ord
+- Four Confirmed Move attempts chose their target frame (Toprawa, Ord
   Mantell, Kashyyyk, Selonia) but issued no order.
 
 A real mouse sends motion before every press, so this is a limit of the
