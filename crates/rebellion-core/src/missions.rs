@@ -3176,8 +3176,12 @@ pub(crate) fn running_end_code(
     // Rule 1 (FUN_00522480.c:42-52): end 5 unless a team member stands
     // without a remove or resign request (role +0x78 & 0xc); an empty team
     // ends too, and a killed member is deleted. +0xa4 bit 1 (ImpliedTeam,
-    // FUN_005221a0), which lifts the rule, is set only on the Autorouting
-    // order 0x43 (FUN_00547740), which the port does not run.
+    // FUN_005221a0) lifts the rule; only the Autorouting order 0x43 takes it
+    // (FUN_00547740 argument 11). The port's Autorouting orders are those of
+    // FUN_00549230 (travel_to_safety), which passes 0 (FUN_00549230.c:122);
+    // the one caller that passes a held state, the jails (FUN_00549580), is
+    // excluded (ghidra/notes/mission-lifecycle.md). So the bit is clear on
+    // every order the port runs.
     let standing = mission.team.iter().any(|&member| {
         member_state(world, member).is_some()
             && !mission.resigning.contains(&member)
@@ -11264,6 +11268,42 @@ mod tests {
         assert_eq!(
             running_end_code(&mission, &world, &uprisings, &ResearchState::default(), &[]),
             0
+        );
+    }
+
+    #[test]
+    fn an_escape_autorouting_order_ends_when_its_traveller_is_held() {
+        // FUN_00549230.c:122 builds the escape's Autorouting order with
+        // ImpliedTeam 0 (FUN_00547740 argument 11), so rule 1
+        // (FUN_00522480.c:34-52) ends it with code 5 once its lone traveller
+        // has a remove request (captured on the way, mission_detection), and
+        // when its team is empty.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let traveller = MissionMember::Character(agent_at(&mut world, here, true));
+        let uprisings = UprisingState::default();
+        let mut order = ActiveMission::new(
+            1,
+            MissionKind::Autorouting,
+            MissionFaction::Alliance,
+            vec![traveller],
+            here,
+            0,
+        );
+        assert_eq!(
+            running_end_code(&order, &world, &uprisings, &ResearchState::default(), &[]),
+            0
+        );
+        order.removing = vec![traveller];
+        assert_eq!(
+            running_end_code(&order, &world, &uprisings, &ResearchState::default(), &[]),
+            5
+        );
+        order.team.clear();
+        order.removing.clear();
+        assert_eq!(
+            running_end_code(&order, &world, &uprisings, &ResearchState::default(), &[]),
+            5
         );
     }
 

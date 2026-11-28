@@ -2474,7 +2474,7 @@ cross-runtime proof remain open
 ### F-034: Mission resolution departs from the recovered phases
 
 - Severity: P1
-- Status: open
+- Status: remediated
 - Evidence:
   - Detection collapses into one defense score fed to a rebellion2 quadratic;
     the original rolls FOILTB per defender with a composite input
@@ -2532,6 +2532,21 @@ cross-runtime proof remain open
   `FUN_004f9510` hands an event to a side's view (hyp: no rule). Nothing in
   F-034's evidence stays open; the status stays open until a review
   confirms the closing.
+- 2026-11-28 (closing review): the acceptance holds. Detection rolls
+  FOILTB per defender (`mission_detection.rs`, `FUN_0058a130`), escape
+  follows ESCAPETB and the autoroute search (`FUN_00561990`,
+  `FUN_0054c7d0`), and sabotage, incite and subdue run their recovered
+  effects, each with tests; members are the team, decoy and captured lists
+  (`FUN_00525bb0`, `FUN_0054c200`). The last item, ImpliedTeam (`+0xa4`
+  bit 1), was re-read after the Autorouting order was ported (save v142):
+  `FUN_00547740` takes it as an argument; the port's orders come from
+  `FUN_00549230`, which passes 0 (`FUN_00549230.c:122`), and the one
+  caller that passes a held state, the jails (`FUN_00549580`), is excluded
+  with evidence. So rule 1 ends an escape order whose traveller is
+  captured on the way (test
+  `an_escape_autorouting_order_ends_when_its_traveller_is_held`; the
+  `running_end_code` comment that said the port runs no Autorouting is
+  corrected; `ghidra/notes/decoy-roll.md`).
 - Acceptance: Detection, escape, and effects follow their decompiles with
   failing-without tests; mission members become a roster (with F-019).
 

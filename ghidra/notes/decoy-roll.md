@@ -754,6 +754,15 @@ ends with 5, and so does a team whose members were all deleted.
   create command `0x250` of the player's and AI's orders (`FUN_0054d360` ->
   manager slot `+0x1bc` `FUN_00549bf0`) pass 0. So for every kind the port runs
   the bit is clear, as the port assumed; Autorouting is not a port mission.
+- Re-read 2026-11-28, after the Autorouting order was ported (save v142):
+  `FUN_00547740` hands its fourth argument to that eleventh slot. The
+  escape and side-change path the port runs (`FUN_00549230`,
+  `travel_to_safety`) passes 0 (`FUN_00549230.c:122`); only the jails
+  (`FUN_00549580.c:129-130`) pass the member's held state (slot `+0x1d4`),
+  and the jails are excluded (`mission-lifecycle.md`). So the bit stays
+  clear on every order the port runs, and an escape order whose traveller
+  is captured on the way ends with code 5 (test
+  `an_escape_autorouting_order_ends_when_its_traveller_is_held`).
 - The traitor's own fate: `FUN_00588da0` (disassembly `0x588da0..0x588e6b`)
   rolls loyalty, logs the roll (`0x5897b0`) and stores the traitor's key in
   the pool's `+0x38`; nothing else touches the traitor. The mission is
