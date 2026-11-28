@@ -641,6 +641,10 @@ acceptance. Their JSON ledgers provide stable finding and feature IDs.
   systems, busiest-system ≤40%, and 10% minority-faction attack share as
   diagnostics until original telemetry or calibrated playtests justify hard
   lower bounds.
+  2026-11-28 (`b7984cda`, seeds 1-5): orders/arrivals 0.55-0.72 and fleets
+  1.6-3.0× pass; transit 44-70% fails, from the ported planners' moves and
+  a base-choice loop of `FUN_004af8a0` itself ([evidence](../docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-28-five-campaigns/README.md)).
+  The transit guide awaits the owner's decision.
 
 Parameter autoresearch remains paused until this milestone closes; otherwise it
 would tune around known simulation feedback defects.

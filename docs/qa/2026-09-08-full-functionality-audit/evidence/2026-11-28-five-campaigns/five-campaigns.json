@@ -1,0 +1,723 @@
+{
+ "commit": "b7984cda",
+ "command": "rebellion-playtest data/base --dual-ai --ticks 5000 --seed N --output cN.jsonl",
+ "runs": [
+  {
+   "seed": 1,
+   "last_day": 5000,
+   "victory_word_last": [
+    3755,
+    0
+   ],
+   "initial_fleets": 14,
+   "max_fleets_at_snapshot": 22,
+   "fleet_ratio": 1.57,
+   "transit_max": 0.444,
+   "transit_mean": 0.244,
+   "fleet_move_orders": 754,
+   "fleet_arrivals": 1079,
+   "orders_per_arrival": 0.7,
+   "space_battles": 118,
+   "ground_battles": 32,
+   "battle_systems": 23,
+   "busiest_system": "Mon Calamari",
+   "busiest_share": 0.22,
+   "snapshots": [
+    {
+     "day": 250,
+     "fleets": 10,
+     "in_transit": 3,
+     "alliance_systems": 9,
+     "empire_systems": 11
+    },
+    {
+     "day": 500,
+     "fleets": 9,
+     "in_transit": 0,
+     "alliance_systems": 12,
+     "empire_systems": 16
+    },
+    {
+     "day": 750,
+     "fleets": 15,
+     "in_transit": 5,
+     "alliance_systems": 12,
+     "empire_systems": 21
+    },
+    {
+     "day": 1000,
+     "fleets": 15,
+     "in_transit": 4,
+     "alliance_systems": 16,
+     "empire_systems": 24
+    },
+    {
+     "day": 1250,
+     "fleets": 14,
+     "in_transit": 4,
+     "alliance_systems": 17,
+     "empire_systems": 26
+    },
+    {
+     "day": 1500,
+     "fleets": 9,
+     "in_transit": 1,
+     "alliance_systems": 17,
+     "empire_systems": 29
+    },
+    {
+     "day": 1750,
+     "fleets": 16,
+     "in_transit": 3,
+     "alliance_systems": 20,
+     "empire_systems": 30
+    },
+    {
+     "day": 2000,
+     "fleets": 16,
+     "in_transit": 3,
+     "alliance_systems": 19,
+     "empire_systems": 34
+    },
+    {
+     "day": 2250,
+     "fleets": 13,
+     "in_transit": 3,
+     "alliance_systems": 18,
+     "empire_systems": 35
+    },
+    {
+     "day": 2500,
+     "fleets": 12,
+     "in_transit": 1,
+     "alliance_systems": 16,
+     "empire_systems": 37
+    },
+    {
+     "day": 2750,
+     "fleets": 18,
+     "in_transit": 5,
+     "alliance_systems": 16,
+     "empire_systems": 37
+    },
+    {
+     "day": 3000,
+     "fleets": 18,
+     "in_transit": 8,
+     "alliance_systems": 16,
+     "empire_systems": 37
+    },
+    {
+     "day": 3250,
+     "fleets": 13,
+     "in_transit": 3,
+     "alliance_systems": 16,
+     "empire_systems": 37
+    },
+    {
+     "day": 3500,
+     "fleets": 12,
+     "in_transit": 2,
+     "alliance_systems": 16,
+     "empire_systems": 37
+    },
+    {
+     "day": 3750,
+     "fleets": 13,
+     "in_transit": 3,
+     "alliance_systems": 16,
+     "empire_systems": 37
+    },
+    {
+     "day": 4000,
+     "fleets": 13,
+     "in_transit": 2,
+     "alliance_systems": 16,
+     "empire_systems": 37
+    },
+    {
+     "day": 4250,
+     "fleets": 21,
+     "in_transit": 7,
+     "alliance_systems": 15,
+     "empire_systems": 38
+    },
+    {
+     "day": 4500,
+     "fleets": 16,
+     "in_transit": 4,
+     "alliance_systems": 13,
+     "empire_systems": 40
+    },
+    {
+     "day": 4750,
+     "fleets": 22,
+     "in_transit": 9,
+     "alliance_systems": 9,
+     "empire_systems": 44
+    },
+    {
+     "day": 5000,
+     "fleets": 20,
+     "in_transit": 8,
+     "alliance_systems": 6,
+     "empire_systems": 47
+    }
+   ]
+  },
+  {
+   "seed": 2,
+   "last_day": 2577,
+   "victory_word_last": [
+    2577,
+    269484081
+   ],
+   "initial_fleets": 13,
+   "max_fleets_at_snapshot": 26,
+   "fleet_ratio": 2.0,
+   "transit_max": 0.636,
+   "transit_mean": 0.395,
+   "fleet_move_orders": 757,
+   "fleet_arrivals": 1191,
+   "orders_per_arrival": 0.64,
+   "space_battles": 228,
+   "ground_battles": 28,
+   "battle_systems": 26,
+   "busiest_system": "Talus",
+   "busiest_share": 0.211,
+   "snapshots": [
+    {
+     "day": 250,
+     "fleets": 14,
+     "in_transit": 3,
+     "alliance_systems": 12,
+     "empire_systems": 13
+    },
+    {
+     "day": 500,
+     "fleets": 26,
+     "in_transit": 14,
+     "alliance_systems": 13,
+     "empire_systems": 15
+    },
+    {
+     "day": 750,
+     "fleets": 17,
+     "in_transit": 7,
+     "alliance_systems": 10,
+     "empire_systems": 21
+    },
+    {
+     "day": 1000,
+     "fleets": 20,
+     "in_transit": 7,
+     "alliance_systems": 11,
+     "empire_systems": 23
+    },
+    {
+     "day": 1250,
+     "fleets": 20,
+     "in_transit": 8,
+     "alliance_systems": 8,
+     "empire_systems": 29
+    },
+    {
+     "day": 1500,
+     "fleets": 24,
+     "in_transit": 6,
+     "alliance_systems": 9,
+     "empire_systems": 32
+    },
+    {
+     "day": 1750,
+     "fleets": 20,
+     "in_transit": 3,
+     "alliance_systems": 10,
+     "empire_systems": 34
+    },
+    {
+     "day": 2000,
+     "fleets": 19,
+     "in_transit": 11,
+     "alliance_systems": 10,
+     "empire_systems": 35
+    },
+    {
+     "day": 2250,
+     "fleets": 19,
+     "in_transit": 8,
+     "alliance_systems": 9,
+     "empire_systems": 36
+    },
+    {
+     "day": 2500,
+     "fleets": 22,
+     "in_transit": 14,
+     "alliance_systems": 8,
+     "empire_systems": 37
+    }
+   ]
+  },
+  {
+   "seed": 3,
+   "last_day": 5000,
+   "victory_word_last": [
+    2036,
+    0
+   ],
+   "initial_fleets": 12,
+   "max_fleets_at_snapshot": 21,
+   "fleet_ratio": 1.75,
+   "transit_max": 0.524,
+   "transit_mean": 0.273,
+   "fleet_move_orders": 923,
+   "fleet_arrivals": 1287,
+   "orders_per_arrival": 0.72,
+   "space_battles": 229,
+   "ground_battles": 61,
+   "battle_systems": 33,
+   "busiest_system": "Uvena",
+   "busiest_share": 0.262,
+   "snapshots": [
+    {
+     "day": 250,
+     "fleets": 9,
+     "in_transit": 1,
+     "alliance_systems": 10,
+     "empire_systems": 12
+    },
+    {
+     "day": 500,
+     "fleets": 14,
+     "in_transit": 1,
+     "alliance_systems": 16,
+     "empire_systems": 12
+    },
+    {
+     "day": 750,
+     "fleets": 15,
+     "in_transit": 4,
+     "alliance_systems": 20,
+     "empire_systems": 14
+    },
+    {
+     "day": 1000,
+     "fleets": 13,
+     "in_transit": 5,
+     "alliance_systems": 20,
+     "empire_systems": 18
+    },
+    {
+     "day": 1250,
+     "fleets": 15,
+     "in_transit": 0,
+     "alliance_systems": 20,
+     "empire_systems": 19
+    },
+    {
+     "day": 1500,
+     "fleets": 16,
+     "in_transit": 6,
+     "alliance_systems": 21,
+     "empire_systems": 19
+    },
+    {
+     "day": 1750,
+     "fleets": 11,
+     "in_transit": 2,
+     "alliance_systems": 22,
+     "empire_systems": 18
+    },
+    {
+     "day": 2000,
+     "fleets": 11,
+     "in_transit": 3,
+     "alliance_systems": 22,
+     "empire_systems": 19
+    },
+    {
+     "day": 2250,
+     "fleets": 12,
+     "in_transit": 2,
+     "alliance_systems": 26,
+     "empire_systems": 16
+    },
+    {
+     "day": 2500,
+     "fleets": 17,
+     "in_transit": 8,
+     "alliance_systems": 26,
+     "empire_systems": 16
+    },
+    {
+     "day": 2750,
+     "fleets": 14,
+     "in_transit": 3,
+     "alliance_systems": 26,
+     "empire_systems": 16
+    },
+    {
+     "day": 3000,
+     "fleets": 20,
+     "in_transit": 9,
+     "alliance_systems": 23,
+     "empire_systems": 19
+    },
+    {
+     "day": 3250,
+     "fleets": 14,
+     "in_transit": 3,
+     "alliance_systems": 23,
+     "empire_systems": 19
+    },
+    {
+     "day": 3500,
+     "fleets": 13,
+     "in_transit": 3,
+     "alliance_systems": 22,
+     "empire_systems": 20
+    },
+    {
+     "day": 3750,
+     "fleets": 21,
+     "in_transit": 11,
+     "alliance_systems": 22,
+     "empire_systems": 19
+    },
+    {
+     "day": 4000,
+     "fleets": 13,
+     "in_transit": 4,
+     "alliance_systems": 23,
+     "empire_systems": 19
+    },
+    {
+     "day": 4250,
+     "fleets": 13,
+     "in_transit": 5,
+     "alliance_systems": 23,
+     "empire_systems": 19
+    },
+    {
+     "day": 4500,
+     "fleets": 12,
+     "in_transit": 2,
+     "alliance_systems": 23,
+     "empire_systems": 19
+    },
+    {
+     "day": 4750,
+     "fleets": 13,
+     "in_transit": 4,
+     "alliance_systems": 23,
+     "empire_systems": 19
+    },
+    {
+     "day": 5000,
+     "fleets": 14,
+     "in_transit": 5,
+     "alliance_systems": 23,
+     "empire_systems": 19
+    }
+   ]
+  },
+  {
+   "seed": 4,
+   "last_day": 4053,
+   "victory_word_last": [
+    4053,
+    269484081
+   ],
+   "initial_fleets": 12,
+   "max_fleets_at_snapshot": 36,
+   "fleet_ratio": 3.0,
+   "transit_max": 0.542,
+   "transit_mean": 0.167,
+   "fleet_move_orders": 455,
+   "fleet_arrivals": 666,
+   "orders_per_arrival": 0.68,
+   "space_battles": 69,
+   "ground_battles": 36,
+   "battle_systems": 21,
+   "busiest_system": "Woostri",
+   "busiest_share": 0.145,
+   "snapshots": [
+    {
+     "day": 250,
+     "fleets": 18,
+     "in_transit": 7,
+     "alliance_systems": 15,
+     "empire_systems": 11
+    },
+    {
+     "day": 500,
+     "fleets": 21,
+     "in_transit": 5,
+     "alliance_systems": 20,
+     "empire_systems": 15
+    },
+    {
+     "day": 750,
+     "fleets": 24,
+     "in_transit": 13,
+     "alliance_systems": 22,
+     "empire_systems": 18
+    },
+    {
+     "day": 1000,
+     "fleets": 18,
+     "in_transit": 5,
+     "alliance_systems": 17,
+     "empire_systems": 26
+    },
+    {
+     "day": 1250,
+     "fleets": 29,
+     "in_transit": 2,
+     "alliance_systems": 17,
+     "empire_systems": 27
+    },
+    {
+     "day": 1500,
+     "fleets": 29,
+     "in_transit": 7,
+     "alliance_systems": 14,
+     "empire_systems": 33
+    },
+    {
+     "day": 1750,
+     "fleets": 36,
+     "in_transit": 7,
+     "alliance_systems": 12,
+     "empire_systems": 35
+    },
+    {
+     "day": 2000,
+     "fleets": 33,
+     "in_transit": 4,
+     "alliance_systems": 13,
+     "empire_systems": 35
+    },
+    {
+     "day": 2250,
+     "fleets": 24,
+     "in_transit": 3,
+     "alliance_systems": 13,
+     "empire_systems": 35
+    },
+    {
+     "day": 2500,
+     "fleets": 21,
+     "in_transit": 2,
+     "alliance_systems": 12,
+     "empire_systems": 36
+    },
+    {
+     "day": 2750,
+     "fleets": 22,
+     "in_transit": 3,
+     "alliance_systems": 11,
+     "empire_systems": 37
+    },
+    {
+     "day": 3000,
+     "fleets": 24,
+     "in_transit": 2,
+     "alliance_systems": 6,
+     "empire_systems": 42
+    },
+    {
+     "day": 3250,
+     "fleets": 22,
+     "in_transit": 1,
+     "alliance_systems": 4,
+     "empire_systems": 44
+    },
+    {
+     "day": 3500,
+     "fleets": 23,
+     "in_transit": 1,
+     "alliance_systems": 3,
+     "empire_systems": 45
+    },
+    {
+     "day": 3750,
+     "fleets": 29,
+     "in_transit": 2,
+     "alliance_systems": 0,
+     "empire_systems": 51
+    },
+    {
+     "day": 4000,
+     "fleets": 29,
+     "in_transit": 0,
+     "alliance_systems": 0,
+     "empire_systems": 55
+    }
+   ]
+  },
+  {
+   "seed": 5,
+   "last_day": 5000,
+   "victory_word_last": [
+    1296,
+    0
+   ],
+   "initial_fleets": 14,
+   "max_fleets_at_snapshot": 32,
+   "fleet_ratio": 2.29,
+   "transit_max": 0.704,
+   "transit_mean": 0.395,
+   "fleet_move_orders": 1244,
+   "fleet_arrivals": 2271,
+   "orders_per_arrival": 0.55,
+   "space_battles": 541,
+   "ground_battles": 59,
+   "battle_systems": 34,
+   "busiest_system": "Kabal",
+   "busiest_share": 0.19,
+   "snapshots": [
+    {
+     "day": 250,
+     "fleets": 10,
+     "in_transit": 3,
+     "alliance_systems": 12,
+     "empire_systems": 11
+    },
+    {
+     "day": 500,
+     "fleets": 10,
+     "in_transit": 1,
+     "alliance_systems": 13,
+     "empire_systems": 16
+    },
+    {
+     "day": 750,
+     "fleets": 17,
+     "in_transit": 9,
+     "alliance_systems": 17,
+     "empire_systems": 19
+    },
+    {
+     "day": 1000,
+     "fleets": 22,
+     "in_transit": 9,
+     "alliance_systems": 20,
+     "empire_systems": 21
+    },
+    {
+     "day": 1250,
+     "fleets": 27,
+     "in_transit": 19,
+     "alliance_systems": 23,
+     "empire_systems": 23
+    },
+    {
+     "day": 1500,
+     "fleets": 32,
+     "in_transit": 17,
+     "alliance_systems": 22,
+     "empire_systems": 26
+    },
+    {
+     "day": 1750,
+     "fleets": 22,
+     "in_transit": 10,
+     "alliance_systems": 25,
+     "empire_systems": 24
+    },
+    {
+     "day": 2000,
+     "fleets": 20,
+     "in_transit": 9,
+     "alliance_systems": 26,
+     "empire_systems": 24
+    },
+    {
+     "day": 2250,
+     "fleets": 22,
+     "in_transit": 10,
+     "alliance_systems": 27,
+     "empire_systems": 23
+    },
+    {
+     "day": 2500,
+     "fleets": 26,
+     "in_transit": 16,
+     "alliance_systems": 26,
+     "empire_systems": 24
+    },
+    {
+     "day": 2750,
+     "fleets": 22,
+     "in_transit": 6,
+     "alliance_systems": 29,
+     "empire_systems": 24
+    },
+    {
+     "day": 3000,
+     "fleets": 28,
+     "in_transit": 10,
+     "alliance_systems": 30,
+     "empire_systems": 23
+    },
+    {
+     "day": 3250,
+     "fleets": 22,
+     "in_transit": 10,
+     "alliance_systems": 31,
+     "empire_systems": 22
+    },
+    {
+     "day": 3500,
+     "fleets": 23,
+     "in_transit": 9,
+     "alliance_systems": 32,
+     "empire_systems": 21
+    },
+    {
+     "day": 3750,
+     "fleets": 27,
+     "in_transit": 12,
+     "alliance_systems": 34,
+     "empire_systems": 19
+    },
+    {
+     "day": 4000,
+     "fleets": 27,
+     "in_transit": 9,
+     "alliance_systems": 35,
+     "empire_systems": 18
+    },
+    {
+     "day": 4250,
+     "fleets": 23,
+     "in_transit": 8,
+     "alliance_systems": 36,
+     "empire_systems": 17
+    },
+    {
+     "day": 4500,
+     "fleets": 22,
+     "in_transit": 5,
+     "alliance_systems": 38,
+     "empire_systems": 15
+    },
+    {
+     "day": 4750,
+     "fleets": 17,
+     "in_transit": 5,
+     "alliance_systems": 41,
+     "empire_systems": 12
+    },
+    {
+     "day": 5000,
+     "fleets": 18,
+     "in_transit": 4,
+     "alliance_systems": 42,
+     "empire_systems": 11
+    }
+   ]
+  }
+ ]
+}
