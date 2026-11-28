@@ -2160,7 +2160,7 @@ cross-runtime proof remain open
 ### F-033: Strategic combat formulas are port-authored
 
 - Severity: P1
-- Status: open
+- Status: remediated
 - Evidence:
   - combat.rs reads GNPRTB 5120 (0x1400) as a combat difficulty modifier in
     space and ground combat; 5120 is the transit distance divisor
@@ -2453,6 +2453,20 @@ cross-runtime proof remain open
   - A leaving Imperial squadron docks on the Death Star last
     (`FUN_005afe40`), after the side's other ships.
   - 2 new tests; mutants 9 caught, 0 missed; 24 campaigns unchanged.
+  - 2026-11-28 (closing review): the acceptance holds. The four
+    abstract-battle slot handlers (`abstract_battle.rs`, W2d..W2l: targeting,
+    retreat, the battle choice, the loser's withdrawal, the Death Star's
+    actions, the trench run's commander and hangar lists) and the ground
+    caller (the Planetary Assault event `0x234`, `FUN_00563390` ->
+    `FUN_0058c1e0` -> `FUN_0058c120`, `assault.rs`, 2026-10-16) are ported
+    with citations; the original fights on the ground only there
+    (`ghidra/notes/ground-combat.md`, superseded by
+    `planetary-assault.md`).
+    The 5120 misuse is gone (2026-10-21), and the port's round formula with
+    its hyp: phases was removed (W2g). Each ported formula came with
+    failing-without tests and mutants (entries above). The effect
+    GroundBattleResolved has no producer left; it is only matched. The
+    provenance scan reports 0 uncited items.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.
@@ -2578,7 +2592,7 @@ cross-runtime proof remain open
 ### F-036: The AI polls on an invented cadence with invented weights
 
 - Severity: P2
-- Status: open
+- Status: remediated
 - Evidence:
   - The original AI is driven by notifications and timers; there is no daily
     AI tick and 0x1f0 is a mission UI message (ghidra/notes/timer-
@@ -2908,6 +2922,18 @@ cross-runtime proof remain open
   removed. The campaigns are identical. Save v59; golden
   `v1:51f96ff9faae705b` -> `v1:e47089c0adbf9615`
   (`evidence/2026-10-17-hold-and-config-removed/`).
+  - 2026-11-28 (closing review): the acceptance holds. The AI is the
+    original's modules 1 to `0xc` (`ai_module1.rs` .. `ai_module_c.rs`,
+    `ai_planner.rs`, `ai_plan.rs`, ported 2026-10 to 2026-11), scheduled as
+    the original: one AI pass per sub-tick (ai::passes_per_day, `FUN_00485b40`
+    in `FUN_0041dff0` case 8; the shared day loop of F-012, decision
+    2026-11-20). The constants this finding named are gone from the code:
+    AI_TICK_INTERVAL, AiConfig with tick_interval, the deploy budgets and
+    ds_retreat_strength_ratio (removed 2026-10-17), the force ratios, scoring
+    weights, the duration_roll placeholders and DIPLOMACY_SKILL_THRESHOLD; so
+    are the two wrong formulas (the linear aggression curve and
+    system_strength's facility weight), which went with the heuristic AI. The
+    provenance scan reports 0 uncited items.
 - Acceptance: Every AI constant is recovered, or tagged port: where the polled
   architecture has no counterpart, and the two wrong formulas follow their
   decompiles.
@@ -3107,7 +3133,7 @@ cross-runtime proof remain open
 ### F-038: Character timers are missing and story events are port-authored
 
 - Severity: P2
-- Status: open
+- Status: remediated
 - Evidence:
   - Injury recovery (timer 0x388, character +0x94, GNPRTB 2563/2564) has no
     port field or timer; timers 0x389 and 0x38a are unported
@@ -3732,6 +3758,18 @@ cross-runtime proof remain open
   prisoner on (the Final Battle's `DarthToLuke` repeated 76 times in seed
   14). Save v90 (golden regenerated: initial `v1:0d8727a7d2a2ee81`, final
   `v1:3f8a4e8cc1d73a06`) (`evidence/2026-10-20-capture-remove-request/`).
+  - 2026-11-28 (closing review): the acceptance holds. The character timers
+    are ported: `0x388` injury recovery (`healing.rs`, 2026-10-17), `0x389`
+    Force discovery (`force_discovery.rs`, 2026-10-18) and `0x38a` the captive
+    escape (`captive-escape.md`, verified 2026-10-19). The story events are
+    the original's: `story_events.rs` defines none, and the Jabba palace and
+    bounty hunters (`jabba.rs`, timer `0x393`), Dagobah (`dagobah.rs`, timer
+    `0x392`), the Final Battle (`final_battle.rs`) and the Emperor's arrival
+    (`seat_of_power.rs`, `FUN_005617b0`) run the recovered rules, with the
+    invented thresholds and the carbonite countdown removed. The port defines
+    no story event id, so none meets the timers `0x380`..`0x396`, and a test
+    guards the range (2026-10-19). The unmapped story message classes are
+    message presentation (the interface ledger), not part of this acceptance.
 - Acceptance: Character timers are ported, story events are recovered from the
   original or tagged port:, and event ids no longer collide with timer ids.
 
@@ -3790,7 +3828,7 @@ cross-runtime proof remain open
 ### F-040: Original mission kinds the port lacks
 
 - Severity: P2
-- Status: open
+- Status: remediated
 - Evidence:
   - MISSNSD holds 25 records; the port has 10 agent kinds plus Autoscrap.
     The missing kinds, with their outcome slots:
@@ -3997,6 +4035,19 @@ cross-runtime proof remain open
   them, scrap disbands only a fleet without characters, and the Death
   Star kills them (Death Star area). Campaigns and replay unchanged
   (`evidence/2026-10-20-adrift-tactical/`).
+  - 2026-11-28 (closing review): every MISSNSD kind is now ported or excluded
+    with evidence. Ported: Reconnaissance `0x54`, the three Research kinds
+    `0x53`, Move `0x41`, Jedi Training `0x58` (player only, as the original),
+    Dagobah `0x71`, Palace `0x64` and Bounty `0x65` (148dbd83, b43895ec),
+    Pickup `0x73` (f05e1831), Return `0x42` (save v91), Adrift `0x44` (save
+    v93) and, since b7984cda (save v142), Autorouting `0x43`: escapes and side
+    changes send their characters on the order (`FUN_00549230` ->
+    `FUN_00547740`) instead of the port's direct trip, which supersedes the
+    2026-10-20 exclusion above; trips to an abode or aboard a ship stay direct
+    (no Personnel Arrive for an abode, `FUN_004955b0`). Excluded with
+    evidence: Vacation `0x72` (nothing in the original creates one) and the
+    jails (`FUN_00549580`; only a side-3 character could reach one). The
+    acceptance holds.
 - Acceptance: Each original kind runs through the F-019 lifecycle with its
   recovered slots, AI planner, and legality rules, or is documented as
   deliberately excluded with evidence.
