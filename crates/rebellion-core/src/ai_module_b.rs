@@ -787,21 +787,22 @@ fn ship_budget(t: crate::ai_module1::Tallies) -> i32 {
 }
 
 /// `FUN_004cab20`: Scrap `0x200` of the side's fleet not en route with the
-/// least upkeep (`5`, forbidding `0x402`, key `0xe`, order 2), its living
-/// ship with the least maintenance (`FUN_0041ac80`: `0x24000`, forbidding
-/// `0x2800`, key `0xb`, order 2).
+/// least upkeep (`5`, forbidding `0x402`, key `0xe`, order 2), its ship
+/// with the least maintenance among the own ships no planner holds, not
+/// travelling or inactive (`FUN_0041ac80`: `0x24000`, forbidding `0x2800`,
+/// key `0xb`, order 2). With no such ship there is no order
+/// (`thunk_FUN_005f5060`).
 fn scrap_ship(io: &mut Inputs<'_>) -> Option<AIAction> {
     let fleet = pick(&[fleets(io, Mask::new(5, 0x402), 0xe, Order::Descending)])?;
-    let value = io.world.fleets.get(fleet)?;
-    let ships: Vec<_> = value
-        .capital_ships
+    let mask = Mask::new(SHIP_OWN | SHIP_FREE, 0x2800);
+    let ships: Vec<_> = io
+        .galaxy
+        .fleets
+        .get(&fleet)?
+        .ships
         .iter()
-        .enumerate()
-        .filter(|(_, s)| s.alive)
-        .map(|(i, s)| {
-            let upkeep = io.galaxy.classes.ship(s.class).map_or(0, |r| r.maintenance);
-            (i, upkeep)
-        })
+        .filter(|s| mask.admits(s.flags))
+        .map(|s| (s.index, s.values[11]))
         .collect();
     let index = pick(&[ranked(ships, Order::Descending, io.coin)])?;
     Some(AIAction::Scrap {
@@ -1824,6 +1825,45 @@ mod tests {
         );
         assert!(s.complete);
         assert_eq!(state.module_b.phase, YARD_CYCLE);
+    }
+
+    #[test]
+    fn only_a_free_standing_own_ship_is_scrapped_over_budget() {
+        // FUN_004cab20 takes the ship through FUN_0041ac80(fleet, 0x24000,
+        // 0x2800, key 0xb, order 2): an own ship no planner holds (0x4000,
+        // 0x20000), not travelling (0x800) or inactive (0x2000). A ship a
+        // planner holds is passed over though it costs less; with no ship
+        // passing, no Scrap is given (thunk_FUN_005f5060).
+        let (mut f, h) = ship_fixture();
+        let here = f.empty;
+        let cheap = fleet(&mut f, here, &[(h.gunship, 100), (h.trooper, 100)]);
+        let mut state = AIState::new(AiFaction::Alliance);
+        let over = Tallies {
+            ship_upkeep: 271,
+            ..ROOMY
+        };
+        let hold = |index: usize| {
+            move |g: &mut Galaxy| {
+                let r = g.fleets.get_mut(&cheap).expect("the fleet's record");
+                for s in r.ships.iter_mut().filter(|s| s.index == index || index == usize::MAX) {
+                    s.flags &= !SHIP_FREE;
+                }
+            }
+        };
+        at(&mut state, SHIP_CYCLE, 10);
+        let s = edited(&f, &mut state, over, hold(1), |m, io| m.step(io));
+        assert_eq!(
+            s.order,
+            Some(AIAction::Scrap {
+                team: vec![ScrapTarget::Ship {
+                    fleet: cheap,
+                    index: 0,
+                }],
+            })
+        );
+        at(&mut state, SHIP_CYCLE, 10);
+        let s = edited(&f, &mut state, over, hold(usize::MAX), |m, io| m.step(io));
+        assert_eq!(s.order, None);
     }
 
     #[test]
