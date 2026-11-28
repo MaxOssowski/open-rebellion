@@ -1,0 +1,58 @@
+{
+ "fixture": "200-system campaign (campaign_seed_options), Empire +100 mine and +100 refinery facilities over its own systems, dual AI, 3000 days, commit a803fcd7",
+ "given_death_star": {
+  "1": {
+   "lost_day": 2301,
+   "destroy_system_orders": 0,
+   "destroyed": []
+  },
+  "2": {
+   "lost_day": null,
+   "destroy_system_orders": 2,
+   "destroyed": [
+    "Commenor",
+    "Corellia"
+   ]
+  },
+  "3": {
+   "lost_day": null,
+   "destroy_system_orders": 0,
+   "destroyed": []
+  },
+  "4": {
+   "lost_day": null,
+   "destroy_system_orders": 1,
+   "destroyed": [
+    "Caprionril"
+   ]
+  },
+  "5": {
+   "lost_day": null,
+   "destroy_system_orders": 2,
+   "destroyed": [
+    "Storthus",
+    "Corellia"
+   ]
+  }
+ },
+ "capacity_only": {
+  "death_star_built": {
+   "1": false,
+   "2": false,
+   "3": false,
+   "4": false,
+   "5": false
+  },
+  "death_star_role_taken": [
+   {
+    "seed": 1,
+    "day": 1,
+    "budget": 1526,
+    "yard": "Caprionril",
+    "cost_points": 584,
+    "points_by_day_275": 68,
+    "yard_lost_day": 289
+   }
+  ]
+ }
+}

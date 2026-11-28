@@ -73,17 +73,60 @@ not travelling or inactive (`0x24000` forbidding `0x2800`). That is fixed
 in `5fdb9714`. The Death Star alone at Coruscant still passes that mask,
 so the fix does not save it.
 
-A fixture in which the Empire can afford a Death Star (its upkeep within
-the budget) is still to be written. Without one, the Death Star's part
-(the planners' Destroy System `0x223`, `FUN_004b1330`) is covered only by
-the unit test in `ai_plan.rs`.
+## An affordable Death Star (fixture)
+
+A temporary test (not committed; `death-star-fixture.json` holds the
+results) loads the full 200-system campaign of seeds 1 to 5 and gives the
+Empire 100 more mine and refinery pairs, spread over its own systems. The
+capacity is 50 per pair (the smaller of the mines' and refineries' sums,
+`FUN_005323c0`), so this adds 5,000, and the ship budget rises by about
+1,350. Both sides are run by the AI for 3,000 days.
+
+**With a Death Star given on day 0, the planners use it.** It is never
+scrapped in the five runs. The sector planners bind it to the bombard
+role and give Destroy System `0x223` (`FUN_004b1330`); the Death Star
+fires (`death_star_fired`) and the system is destroyed:
+
+| Seed | Death Star | Destroy System orders | Systems destroyed |
+|---|---|---|---|
+| 1 | lost on day 2301 | 0 | none |
+| 2 | stands | 2 | Commenor, Corellia |
+| 3 | stands | 0 | none |
+| 4 | stands | 1 | Caprionril |
+| 5 | stands | 2 | Storthus, Corellia |
+
+Each order destroyed its system. The same runs give 184 to 1,549 ordinary
+bombardments (`0x220`) and some `0x222` orders.
+
+**With the capacity alone, the Empire still builds no Death Star in 3,000
+days.** A temporary trace (not committed) followed module `0xb`:
+
+- `FUN_004ca5e0` takes the Death Star role only as a fallback, when no
+  sector planner requests a role. Since the planners' requests
+  (`cc3f1ffb`), they nearly always do. In the five runs the role came up
+  once (seed 1, day 1).
+- That time the budget was 1,526 and the Death Star (upkeep 600) fit.
+  Module `0xb` ordered it at Caprionril (Build `0x211`, 584 points), and
+  the order passed the room and maintenance checks.
+- The build gets one point per yard cycle (`FUN_0052a430`), about 0.25 a
+  day there: 68 of 584 points by day 275. The Alliance took Caprionril on
+  day 289, and the queue went with it.
+
+So the Death Star's part works once the Empire has one and can keep it:
+module `0xb` keeps it, and the planners destroy systems with it. Building
+one is rare: the role is a fallback, and its 584 points take years at one
+yard.
 
 ## Conclusion
 
 The AI reaches every Standard target. The Empire wins 6 of 25 games. The
-Alliance has no win; seed 15 came closest. The Death Star part stays
-open, for two reasons:
+Alliance has no win; seed 15 came closest.
+
+In the affordable fixture, the Death Star destroys 5 systems over seeds
+2, 4 and 5. Two questions stay open:
 
 - the side's maintenance capacity, which decides whether the Empire can
-  afford a Death Star, is the open economy question above;
-- no affordable-Death-Star fixture exists yet.
+  afford a Death Star in an ordinary game, is the open economy question
+  above;
+- whether the original also builds the Death Star this rarely cannot be
+  shown without telemetry from the original.
