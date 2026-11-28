@@ -77,6 +77,25 @@ port's `choose_base`), and the bits of step 3 match `FUN_00432350`. No
 orphan base mark was found: a per-step check in module 8 saw every
 `0x40000` mark held by a planner's base.
 
+## What if the base did not change (not a fix)
+
+A temporary switch (not committed, commit `b58c216f`) kept a planner's base
+while it stays the side's and unblockaded, even when it is not the sector's
+headquarters, so step 3 above never drops it. The same five seeds, against
+the same build without the switch:
+
+| Seed | Transit most / mean now | With the base kept |
+|---|---|---|
+| 1 | 44% / 24% | 50% / 23% |
+| 2 | 64% / 40% (Empire wins day 2577) | 59% / 35% (day 5000) |
+| 3 | 52% / 27% | 43% / 18% |
+| 4 | 54% / 17% (Empire wins day 4053) | 61% / 33% (day 5000) |
+| 5 | 70% / 40% | 48% / 30% |
+
+The loop is not where most of the transit comes from: without it the most
+is still 43% to 61%. It comes from the plans' own moves (states `0xc` and
+`0xd`). The orders-to-arrivals ratio stays 0.63 to 0.74.
+
 ## Conclusion
 
 The orders and fleet-count thresholds pass. The transit threshold does
